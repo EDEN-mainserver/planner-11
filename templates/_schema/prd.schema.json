@@ -1,0 +1,554 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "planforge://schemas/prd.schema.json",
+  "title": "PRD (Product Requirements Document)",
+  "description": "에덴 에이전트가 소비하는 PRD 구조. 사람용 MD/PDF와 1:1 매핑됨.",
+  "type": "object",
+  "required": [
+    "meta",
+    "overview",
+    "target_users",
+    "features",
+    "success_criteria"
+  ],
+  "properties": {
+
+    "meta": {
+      "type": "object",
+      "description": "문서 메타데이터",
+      "required": ["project_id", "title", "version", "created_at", "status"],
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "고유 프로젝트 식별자",
+          "pattern": "^PRJ-[0-9]{4}-[0-9]{3}$",
+          "examples": ["PRJ-2026-001"]
+        },
+        "title": {
+          "type": "string",
+          "description": "프로젝트 이름",
+          "examples": ["크몽 자동 응대 시스템"]
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "description": "시맨틱 버전",
+          "examples": ["1.0.0"]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "review", "approved", "archived"],
+          "description": "문서 상태"
+        },
+        "author": {
+          "type": "string",
+          "description": "작성자"
+        },
+        "client": {
+          "type": "string",
+          "description": "클라이언트명 (AX 자동화 의뢰인)"
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "검색/분류용 태그",
+          "examples": [["자동화", "크몽", "CS"]]
+        }
+      }
+    },
+
+    "overview": {
+      "type": "object",
+      "description": "프로젝트 개요 — 에이전트가 프로젝트 맥락을 파악하는 핵심 섹션",
+      "required": ["one_liner", "background", "problem", "solution"],
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "서비스 카테고리",
+          "examples": ["생산성/자동화", "마케팅/세일즈", "고객관리/CS"]
+        },
+        "one_liner": {
+          "type": "string",
+          "description": "한 줄 정의 (30자 이내 권장)",
+          "maxLength": 50,
+          "examples": ["크몽 문의 자동 응대 및 견적 발송 시스템"]
+        },
+        "background": {
+          "type": "string",
+          "description": "프로젝트 배경 — 왜 필요한가"
+        },
+        "problem": {
+          "type": "string",
+          "description": "해결하려는 핵심 문제"
+        },
+        "solution": {
+          "type": "string",
+          "description": "해결 방식 요약"
+        },
+        "differentiator": {
+          "type": "string",
+          "description": "차별점 / 기존 방식 대비 개선점"
+        }
+      }
+    },
+
+    "target_users": {
+      "type": "array",
+      "description": "타겟 사용자 정의 — 에이전트가 자동화 대상을 파악하는 근거",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["role", "description"],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "사용자 역할",
+            "examples": ["사업주", "마케터", "CS 담당자"]
+          },
+          "description": {
+            "type": "string",
+            "description": "이 사용자가 누구인지, 어떤 문제를 겪는지"
+          },
+          "goals": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "이 사용자의 핵심 목표"
+          },
+          "pain_points": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "현재 겪고 있는 불편함"
+          }
+        }
+      }
+    },
+
+    "scenarios": {
+      "type": "array",
+      "description": "사용 시나리오 — 자동화 워크플로우의 직접적 입력값",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "steps"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^SC-[0-9]{3}$",
+            "examples": ["SC-001"]
+          },
+          "title": {
+            "type": "string",
+            "description": "시나리오 제목",
+            "examples": ["신규 문의 자동 응대"]
+          },
+          "actor": {
+            "type": "string",
+            "description": "시나리오 주체 (사용자 역할)"
+          },
+          "precondition": {
+            "type": "string",
+            "description": "시나리오 시작 전 전제 조건"
+          },
+          "steps": {
+            "type": "array",
+            "description": "시나리오 순서 — 에이전트가 이걸 자동화 스텝으로 변환",
+            "items": {
+              "type": "object",
+              "required": ["order", "action"],
+              "properties": {
+                "order": { "type": "integer" },
+                "action": {
+                  "type": "string",
+                  "description": "수행 동작"
+                },
+                "expected_result": {
+                  "type": "string",
+                  "description": "기대 결과"
+                }
+              }
+            }
+          },
+          "postcondition": {
+            "type": "string",
+            "description": "시나리오 완료 후 상태"
+          }
+        }
+      }
+    },
+
+    "features": {
+      "type": "array",
+      "description": "주요 기능 목록 — 기능명세서(spec.json)와 ID로 연결됨",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "description", "priority"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^F-[0-9]{3}$",
+            "description": "기능 ID — spec.json에서 참조",
+            "examples": ["F-001"]
+          },
+          "title": {
+            "type": "string",
+            "description": "기능명",
+            "examples": ["크몽 문의 자동 감지"]
+          },
+          "description": {
+            "type": "string",
+            "description": "기능 설명"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"],
+            "description": "우선순위"
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "수용 기준 (완료 판단 근거)"
+          },
+          "linked_scenario_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "관련 시나리오 ID",
+            "examples": [["SC-001", "SC-002"]]
+          },
+          "linked_spec_id": {
+            "type": "string",
+            "description": "기능명세서 상세 문서 ID (spec.json 참조)",
+            "examples": ["SPEC-001"]
+          }
+        }
+      }
+    },
+
+    "automation_context": {
+      "type": "object",
+      "description": "★ AX 자동화 전용 섹션 — 에덴 에이전트가 가장 먼저 읽는 블록",
+      "required": ["target_systems", "triggers", "actions"],
+      "properties": {
+        "target_systems": {
+          "type": "array",
+          "description": "자동화 대상 시스템/플랫폼",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": ["크몽", "네이버", "Threads", "Gmail"]
+              },
+              "type": {
+                "type": "string",
+                "enum": ["web_app", "api", "email", "messenger", "spreadsheet", "database", "file_system", "other"]
+              },
+              "access_method": {
+                "type": "string",
+                "enum": ["api", "scraping", "browser_automation", "webhook", "manual"],
+                "description": "접근 방식"
+              },
+              "auth_required": {
+                "type": "boolean"
+              },
+              "notes": {
+                "type": "string",
+                "description": "접근 관련 특이사항"
+              }
+            }
+          }
+        },
+        "triggers": {
+          "type": "array",
+          "description": "자동화 트리거 조건",
+          "items": {
+            "type": "object",
+            "required": ["id", "event", "source"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^TRG-[0-9]{3}$"
+              },
+              "event": {
+                "type": "string",
+                "description": "트리거 이벤트",
+                "examples": ["새 문의 접수", "키워드 매칭", "스케줄(매일 09:00)"]
+              },
+              "source": {
+                "type": "string",
+                "description": "트리거 발생 소스",
+                "examples": ["크몽 메시지함", "Gmail 수신함"]
+              },
+              "condition": {
+                "type": "string",
+                "description": "추가 조건",
+                "examples": ["문의 내용에 '견적' 포함 시"]
+              }
+            }
+          }
+        },
+        "actions": {
+          "type": "array",
+          "description": "실행할 액션 목록 (순서대로)",
+          "items": {
+            "type": "object",
+            "required": ["id", "order", "action_type", "description"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^ACT-[0-9]{3}$"
+              },
+              "order": {
+                "type": "integer",
+                "description": "실행 순서"
+              },
+              "action_type": {
+                "type": "string",
+                "enum": [
+                  "data_read",
+                  "data_write",
+                  "data_transform",
+                  "api_call",
+                  "scrape",
+                  "notify",
+                  "generate_content",
+                  "decision",
+                  "wait",
+                  "human_review",
+                  "file_operation",
+                  "other"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "description": "액션 상세 설명"
+              },
+              "target_system": {
+                "type": "string",
+                "description": "대상 시스템명"
+              },
+              "input_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "type"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "type": {
+                      "type": "string",
+                      "enum": ["string", "number", "boolean", "date", "url", "file", "json", "array"]
+                    },
+                    "required": { "type": "boolean" },
+                    "source": {
+                      "type": "string",
+                      "description": "이 값이 어디서 오는지",
+                      "examples": ["TRG-001.payload", "ACT-001.output", "user_input"]
+                    }
+                  }
+                }
+              },
+              "output_fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "type"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "type": {
+                      "type": "string",
+                      "enum": ["string", "number", "boolean", "date", "url", "file", "json", "array"]
+                    }
+                  }
+                }
+              },
+              "trigger_id": {
+                "type": "string",
+                "description": "이 액션을 트리거하는 조건 ID"
+              },
+              "depends_on": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "선행 액션 ID",
+                "examples": [["ACT-001"]]
+              }
+            }
+          }
+        },
+        "error_handling": {
+          "type": "array",
+          "description": "예외/에러 처리 규칙",
+          "items": {
+            "type": "object",
+            "required": ["error_type", "handling"],
+            "properties": {
+              "error_type": {
+                "type": "string",
+                "examples": ["auth_failure", "timeout", "data_not_found", "rate_limit", "validation_error"]
+              },
+              "target_action_id": {
+                "type": "string",
+                "description": "에러 발생 대상 액션 ID"
+              },
+              "handling": {
+                "type": "string",
+                "enum": ["retry", "skip", "fallback", "notify_human", "abort"],
+                "description": "처리 방식"
+              },
+              "retry_count": {
+                "type": "integer",
+                "description": "재시도 횟수 (handling=retry일 때)"
+              },
+              "fallback_action": {
+                "type": "string",
+                "description": "대체 동작 설명"
+              }
+            }
+          }
+        },
+        "data_flow": {
+          "type": "array",
+          "description": "데이터 입출력 필드 전체 매핑",
+          "items": {
+            "type": "object",
+            "required": ["field_name", "type"],
+            "properties": {
+              "field_name": {
+                "type": "string",
+                "examples": ["상품명", "가격", "문의내용", "고객이메일"]
+              },
+              "type": {
+                "type": "string",
+                "enum": ["string", "number", "boolean", "date", "url", "file", "json", "array"]
+              },
+              "source": {
+                "type": "string",
+                "description": "어디서 수집되는지"
+              },
+              "destination": {
+                "type": "string",
+                "description": "어디에 저장/전송되는지"
+              },
+              "transform": {
+                "type": "string",
+                "description": "변환 로직 (있을 경우)"
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "success_criteria": {
+      "type": "object",
+      "description": "성공 기준",
+      "required": ["definition_of_done"],
+      "properties": {
+        "definition_of_done": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "완료 판단 기준 목록",
+          "examples": [["100건 문의 자동 응대 성공", "오답률 5% 미만"]]
+        },
+        "kpis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["metric", "target"],
+            "properties": {
+              "metric": {
+                "type": "string",
+                "examples": ["자동 응대 성공률", "평균 응답 시간"]
+              },
+              "target": {
+                "type": "string",
+                "examples": ["95% 이상", "30초 이내"]
+              },
+              "current_baseline": {
+                "type": "string",
+                "description": "현재 기준치 (있을 경우)"
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "constraints": {
+      "type": "object",
+      "description": "제약 사항 및 가정",
+      "properties": {
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "가정 사항"
+        },
+        "technical_constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "기술적 제약",
+          "examples": [["크몽 API 미제공 → 스크래핑 필요", "일일 요청 한도 1000건"]]
+        },
+        "business_constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "비즈니스 제약",
+          "examples": [["예산 월 50만원 이내", "2주 내 구축 완료"]]
+        }
+      }
+    },
+
+    "risks": {
+      "type": "array",
+      "description": "리스크 목록",
+      "items": {
+        "type": "object",
+        "required": ["description", "impact", "probability"],
+        "properties": {
+          "description": { "type": "string" },
+          "impact": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "probability": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "mitigation": {
+            "type": "string",
+            "description": "대응 방안"
+          }
+        }
+      }
+    },
+
+    "_links": {
+      "type": "object",
+      "description": "관련 문서 참조 링크",
+      "properties": {
+        "spec_json": {
+          "type": "string",
+          "description": "기능명세서 JSON 경로",
+          "examples": ["./spec.json"]
+        },
+        "flow_json": {
+          "type": "string",
+          "description": "유저플로우 JSON 경로",
+          "examples": ["./flow.json"]
+        },
+        "full_context": {
+          "type": "string",
+          "description": "통합 컨텍스트 JSON 경로",
+          "examples": ["./full_context.json"]
+        }
+      }
+    }
+  }
+}

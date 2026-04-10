@@ -1,0 +1,351 @@
+{
+  "meta": {
+    "project_id": "PRJ-0000-000",
+    "prd_version": "1.0.0",
+    "created_at": "2026-04-09T21:00:00+09:00",
+    "updated_at": "2026-04-09T21:00:00+09:00"
+  },
+
+  "flows": [
+    {
+      "flow_id": "FLOW-001",
+      "title": "메인 플로우: 클라이언트 요구사항 → 기획 문서 3종 생성 → 에이전트 투입",
+      "description": "정대표님이 클라이언트 요구사항을 받아서 PRD/기능명세서/유저플로우를 자동 생성하고, 에덴 에이전트에 투입하기까지의 전체 흐름",
+      "actor": "정대표 (시스템 운영자)",
+
+      "nodes": [
+        {
+          "node_id": "N-001",
+          "type": "start",
+          "label": "시작",
+          "description": "클라이언트로부터 자동화 의뢰 접수",
+          "executor": "human"
+        },
+        {
+          "node_id": "N-002",
+          "type": "human_input",
+          "label": "클라이언트 요구사항 수집",
+          "description": "클라이언트가 전달한 원본 자료(텍스트, 음성, 캡처 등)를 input/raw/에 저장",
+          "executor": "human",
+          "estimated_duration": "30분~1일",
+          "data_snapshot": {
+            "available_data": [],
+            "new_data": ["client_brief", "meeting_notes", "reference_files"]
+          }
+        },
+        {
+          "node_id": "N-003",
+          "type": "action",
+          "label": "요구사항 구조화 (AI 파싱)",
+          "description": "raw 데이터를 LLM으로 분석하여 intake_form.json → requirements.json 생성",
+          "executor": "ai",
+          "estimated_duration": "1~2분",
+          "data_snapshot": {
+            "available_data": ["client_brief", "meeting_notes"],
+            "new_data": ["requirements.json"]
+          }
+        },
+        {
+          "node_id": "N-004",
+          "type": "decision",
+          "label": "요구사항 충분한가?",
+          "description": "파싱된 requirements.json에 필수 필드(target_system, triggers, actions)가 모두 있는지 검증",
+          "executor": "system",
+          "data_snapshot": {
+            "available_data": ["requirements.json"],
+            "new_data": ["validation_result"]
+          }
+        },
+        {
+          "node_id": "N-005",
+          "type": "human_input",
+          "label": "클라이언트에게 추가 질문",
+          "description": "부족한 정보를 클라이언트에게 재확인 요청",
+          "executor": "human",
+          "estimated_duration": "1시간~1일"
+        },
+        {
+          "node_id": "N-006",
+          "type": "action",
+          "label": "PRD 자동 생성",
+          "description": "engine/rules/prd_structure.yaml 기반 뼈대 생성 → engine/prompts/generate_prd.md로 LLM 내용 채우기 → prd.json 출력",
+          "linked_action_id": "파이프라인: engine/pipelines/prd_pipeline.py",
+          "executor": "ai",
+          "estimated_duration": "2~3분",
+          "data_snapshot": {
+            "available_data": ["requirements.json"],
+            "new_data": ["prd.json", "PRD.md"]
+          }
+        },
+        {
+          "node_id": "N-007",
+          "type": "decision",
+          "label": "PRD 품질 통과?",
+          "description": "validators/quality_checker.py로 자동 검증 + 정대표님 육안 확인",
+          "executor": "human",
+          "data_snapshot": {
+            "available_data": ["prd.json"],
+            "new_data": ["quality_score"]
+          }
+        },
+        {
+          "node_id": "N-008",
+          "type": "action",
+          "label": "PRD 수동 수정",
+          "description": "자동 생성된 PRD의 부정확한 부분을 직접 수정. 수정 내역은 memory/에 feedback으로 기록",
+          "executor": "human",
+          "estimated_duration": "10~30분"
+        },
+        {
+          "node_id": "N-009",
+          "type": "action",
+          "label": "기능 명세서 자동 생성",
+          "description": "확정된 PRD의 features 배열을 기반으로 SPEC-001~N 자동 생성. 각 feature → 1개 spec 매핑",
+          "linked_action_id": "파이프라인: engine/pipelines/spec_pipeline.py",
+          "executor": "ai",
+          "estimated_duration": "3~5분",
+          "data_snapshot": {
+            "available_data": ["prd.json", "requirements.json"],
+            "new_data": ["spec.json", "기능명세서.md"]
+          }
+        },
+        {
+          "node_id": "N-010",
+          "type": "decision",
+          "label": "명세서 검증 통과?",
+          "description": "PRD features와 SPEC의 linked_feature_id 매핑 검증 + technical_detail 완성도 체크",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-011",
+          "type": "action",
+          "label": "명세서 수동 보완",
+          "description": "technical_detail (선택자, API, 구현 방식 등) 수동 보완. 특히 selectors는 직접 확인 필요",
+          "executor": "human",
+          "estimated_duration": "15~30분"
+        },
+        {
+          "node_id": "N-012",
+          "type": "action",
+          "label": "유저 플로우 자동 생성",
+          "description": "PRD scenarios + SPEC specs를 기반으로 노드/엣지 자동 생성. Mermaid 코드 동시 생성",
+          "linked_action_id": "파이프라인: engine/pipelines/flow_pipeline.py",
+          "executor": "ai",
+          "estimated_duration": "2~3분",
+          "data_snapshot": {
+            "available_data": ["prd.json", "spec.json"],
+            "new_data": ["flow.json", "유저플로우.mermaid"]
+          }
+        },
+        {
+          "node_id": "N-013",
+          "type": "decision",
+          "label": "플로우 검증 통과?",
+          "description": "고립 노드 검출, 순환 참조 검사, decision 노드에 분기 조건 존재 여부 확인",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-014",
+          "type": "action",
+          "label": "플로우 수동 조정",
+          "description": "분기 조건, 에러 경로, 노드 순서 수동 조정",
+          "executor": "human",
+          "estimated_duration": "10~20분"
+        },
+        {
+          "node_id": "N-015",
+          "type": "action",
+          "label": "full_context.json 통합 생성",
+          "description": "prd.json + spec.json + flow.json → full_context.json으로 병합. 에덴 에이전트의 최종 입력 파일",
+          "executor": "system",
+          "estimated_duration": "즉시",
+          "data_snapshot": {
+            "available_data": ["prd.json", "spec.json", "flow.json"],
+            "new_data": ["full_context.json"]
+          }
+        },
+        {
+          "node_id": "N-016",
+          "type": "decision",
+          "label": "에이전트에 바로 투입?",
+          "description": "정대표님이 full_context.json을 최종 확인 후 에이전트 투입 여부 결정",
+          "executor": "human"
+        },
+        {
+          "node_id": "N-017",
+          "type": "action",
+          "label": "사람용 문서 내보내기",
+          "description": "human/ 폴더에 PRD.md, PRD.pdf, 기능명세서.md, 유저플로우.mermaid 생성. 클라이언트 공유용",
+          "executor": "system",
+          "estimated_duration": "즉시"
+        },
+        {
+          "node_id": "N-018",
+          "type": "subprocess",
+          "label": "에덴 에이전트 자동화 구축",
+          "description": "full_context.json을 에덴 에이전트에 전달 → 자동화 파이프라인 구축 시작. 별도 플로우(FLOW-002)로 분리",
+          "executor": "ai",
+          "estimated_duration": "수 시간~수 일"
+        },
+        {
+          "node_id": "N-019",
+          "type": "action",
+          "label": "메모리 저장",
+          "description": "이번 프로젝트의 decisions, feedback, changelog를 memory/projects/[project_id]/에 저장. correction_log 업데이트",
+          "executor": "system",
+          "estimated_duration": "즉시"
+        },
+        {
+          "node_id": "N-020",
+          "type": "end",
+          "label": "완료",
+          "description": "기획 문서 3종 생성 + 에이전트 투입 완료"
+        },
+        {
+          "node_id": "N-ERR-001",
+          "type": "error",
+          "label": "LLM API 오류",
+          "description": "API 호출 실패 (timeout, rate limit, auth error). 3회 재시도 후 실패 시 수동 모드 전환",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-ERR-002",
+          "type": "error",
+          "label": "스키마 검증 실패",
+          "description": "생성된 JSON이 schema를 위반. 에러 필드 표시 후 재생성 또는 수동 수정",
+          "executor": "system"
+        }
+      ],
+
+      "edges": [
+        { "from": "N-001", "to": "N-002", "label": "의뢰 접수" },
+        { "from": "N-002", "to": "N-003", "label": "원본 저장 완료" },
+        { "from": "N-003", "to": "N-004" },
+
+        {
+          "from": "N-004", "to": "N-006",
+          "label": "Yes: 충분",
+          "condition": { "field": "validation_result.missing_fields", "operator": "equals", "value": 0 }
+        },
+        {
+          "from": "N-004", "to": "N-005",
+          "label": "No: 부족",
+          "condition": { "field": "validation_result.missing_fields", "operator": "greater_than", "value": 0 }
+        },
+        { "from": "N-005", "to": "N-003", "label": "추가 정보 수신 → 재파싱" },
+
+        { "from": "N-006", "to": "N-007" },
+        {
+          "from": "N-007", "to": "N-009",
+          "label": "통과",
+          "condition": { "field": "quality_score", "operator": "greater_than", "value": 0.8 }
+        },
+        {
+          "from": "N-007", "to": "N-008",
+          "label": "수정 필요",
+          "condition": { "field": "quality_score", "operator": "less_than", "value": 0.8 }
+        },
+        { "from": "N-008", "to": "N-007", "label": "수정 후 재검증" },
+
+        { "from": "N-009", "to": "N-010" },
+        {
+          "from": "N-010", "to": "N-012",
+          "label": "통과",
+          "condition": { "field": "spec_validation.complete", "operator": "equals", "value": true }
+        },
+        {
+          "from": "N-010", "to": "N-011",
+          "label": "보완 필요",
+          "condition": { "field": "spec_validation.complete", "operator": "equals", "value": false }
+        },
+        { "from": "N-011", "to": "N-010", "label": "보완 후 재검증" },
+
+        { "from": "N-012", "to": "N-013" },
+        {
+          "from": "N-013", "to": "N-015",
+          "label": "통과",
+          "condition": { "field": "flow_validation.errors", "operator": "equals", "value": 0 }
+        },
+        {
+          "from": "N-013", "to": "N-014",
+          "label": "조정 필요",
+          "condition": { "field": "flow_validation.errors", "operator": "greater_than", "value": 0 }
+        },
+        { "from": "N-014", "to": "N-013", "label": "조정 후 재검증" },
+
+        { "from": "N-015", "to": "N-016" },
+        { "from": "N-015", "to": "N-017", "label": "사람용 문서 동시 생성" },
+        {
+          "from": "N-016", "to": "N-018",
+          "label": "Yes: 투입",
+          "condition": { "field": "human_approval", "operator": "equals", "value": true }
+        },
+        {
+          "from": "N-016", "to": "N-008",
+          "label": "No: PRD부터 재수정",
+          "condition": { "field": "human_approval", "operator": "equals", "value": false }
+        },
+        { "from": "N-018", "to": "N-019" },
+        { "from": "N-019", "to": "N-020" },
+
+        {
+          "from": "N-006", "to": "N-ERR-001",
+          "label": "API 실패",
+          "is_error_path": true
+        },
+        {
+          "from": "N-009", "to": "N-ERR-001",
+          "label": "API 실패",
+          "is_error_path": true
+        },
+        {
+          "from": "N-012", "to": "N-ERR-001",
+          "label": "API 실패",
+          "is_error_path": true
+        },
+        {
+          "from": "N-ERR-001", "to": "N-008",
+          "label": "3회 재시도 실패 → 수동 모드"
+        },
+        {
+          "from": "N-006", "to": "N-ERR-002",
+          "label": "스키마 위반",
+          "is_error_path": true
+        },
+        {
+          "from": "N-ERR-002", "to": "N-006",
+          "label": "재생성 시도"
+        }
+      ],
+
+      "error_flows": [
+        {
+          "trigger_node_id": "N-006",
+          "error_type": "api_failure",
+          "handling_node_id": "N-ERR-001",
+          "description": "PRD 생성 중 LLM API 호출 실패. 3회 재시도 → 실패 시 수동 작성 모드"
+        },
+        {
+          "trigger_node_id": "N-006",
+          "error_type": "schema_violation",
+          "handling_node_id": "N-ERR-002",
+          "description": "생성된 PRD JSON이 prd.schema.json을 위반. 에러 필드 로그 후 재생성"
+        },
+        {
+          "trigger_node_id": "N-009",
+          "error_type": "api_failure",
+          "handling_node_id": "N-ERR-001",
+          "description": "기능명세서 생성 중 LLM API 호출 실패"
+        },
+        {
+          "trigger_node_id": "N-012",
+          "error_type": "api_failure",
+          "handling_node_id": "N-ERR-001",
+          "description": "유저플로우 생성 중 LLM API 호출 실패"
+        }
+      ],
+
+      "mermaid": "flowchart TD\n  N001((시작)) --> N002[클라이언트 요구사항 수집]\n  N002 --> N003[AI 요구사항 구조화]\n  N003 --> N004{요구사항 충분?}\n  N004 -->|No| N005[클라이언트 추가 질문]\n  N005 --> N003\n  N004 -->|Yes| N006[PRD 자동 생성]\n  N006 --> N007{PRD 품질 통과?}\n  N007 -->|No| N008[PRD 수동 수정]\n  N008 --> N007\n  N007 -->|Yes| N009[기능명세서 자동 생성]\n  N009 --> N010{명세서 검증?}\n  N010 -->|No| N011[명세서 수동 보완]\n  N011 --> N010\n  N010 -->|Yes| N012[유저플로우 자동 생성]\n  N012 --> N013{플로우 검증?}\n  N013 -->|No| N014[플로우 수동 조정]\n  N014 --> N013\n  N013 -->|Yes| N015[full_context.json 통합]\n  N015 --> N016{에이전트 투입?}\n  N015 --> N017[사람용 문서 내보내기]\n  N016 -->|No| N008\n  N016 -->|Yes| N018[[에덴 에이전트 자동화 구축]]\n  N018 --> N019[메모리 저장]\n  N019 --> N020((완료))\n  N006 -.->|API 실패| ERR1[LLM 오류 처리]\n  N009 -.->|API 실패| ERR1\n  N012 -.->|API 실패| ERR1\n  ERR1 --> N008\n  N006 -.->|스키마 위반| ERR2[스키마 검증 실패]\n  ERR2 --> N006\n\n  style N001 fill:#2d6a4f,stroke:#40916c,color:#fff\n  style N020 fill:#2d6a4f,stroke:#40916c,color:#fff\n  style ERR1 fill:#9d0208,stroke:#d00000,color:#fff\n  style ERR2 fill:#9d0208,stroke:#d00000,color:#fff\n  style N018 fill:#1d3557,stroke:#457b9d,color:#fff"
+    }
+  ]
+}

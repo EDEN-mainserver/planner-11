@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(node_modules/.bin/tailwindcss init:*)",
+      "Bash(npm run:*)",
+      "Bash(wc -l App.jsx components/*.jsx pages/*.jsx utils/*.js data/*.js)"
+    ]
+  }
+}

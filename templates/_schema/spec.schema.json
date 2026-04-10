@@ -1,0 +1,319 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "planforge://schemas/spec.schema.json",
+  "title": "Feature Specification (기능 명세서)",
+  "description": "PRD의 features와 ID로 연결되며, 에덴 에이전트가 각 기능의 구현 상세를 파악하는 문서.",
+  "type": "object",
+  "required": ["meta", "specs"],
+  "properties": {
+
+    "meta": {
+      "type": "object",
+      "required": ["project_id", "prd_version", "created_at"],
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "PRD와 동일한 프로젝트 ID",
+          "pattern": "^PRJ-[0-9]{4}-[0-9]{3}$"
+        },
+        "prd_version": {
+          "type": "string",
+          "description": "참조하는 PRD 버전",
+          "examples": ["1.0.0"]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+
+    "specs": {
+      "type": "array",
+      "description": "기능별 상세 명세 목록",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "spec_id",
+          "linked_feature_id",
+          "title",
+          "description",
+          "priority",
+          "acceptance_criteria",
+          "technical_detail"
+        ],
+        "properties": {
+
+          "spec_id": {
+            "type": "string",
+            "pattern": "^SPEC-[0-9]{3}$",
+            "description": "명세 고유 ID — PRD features.linked_spec_id와 매칭",
+            "examples": ["SPEC-001"]
+          },
+
+          "linked_feature_id": {
+            "type": "string",
+            "description": "PRD의 feature ID 참조",
+            "examples": ["F-001"]
+          },
+
+          "title": {
+            "type": "string",
+            "description": "기능명",
+            "examples": ["크몽 메시지 자동 감지"]
+          },
+
+          "description": {
+            "type": "string",
+            "description": "기능 상세 설명"
+          },
+
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+
+          "status": {
+            "type": "string",
+            "enum": ["not_started", "in_progress", "review", "done"],
+            "default": "not_started"
+          },
+
+          "user_scenario": {
+            "type": "object",
+            "description": "이 기능의 사용자 시나리오",
+            "properties": {
+              "actor": {
+                "type": "string",
+                "description": "시나리오 주체"
+              },
+              "precondition": {
+                "type": "string"
+              },
+              "flow": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["step", "action"],
+                  "properties": {
+                    "step": { "type": "integer" },
+                    "action": { "type": "string" },
+                    "expected_result": { "type": "string" }
+                  }
+                }
+              },
+              "postcondition": {
+                "type": "string"
+              }
+            }
+          },
+
+          "acceptance_criteria": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "수용 기준 (체크리스트)"
+          },
+
+          "technical_detail": {
+            "type": "object",
+            "description": "★ 기술 구현 상세 — 에이전트가 코드를 짤 때 참조하는 핵심 블록",
+            "required": ["approach"],
+            "properties": {
+
+              "approach": {
+                "type": "string",
+                "description": "구현 방식 요약",
+                "examples": ["Playwright로 크몽 메시지함 DOM 감시 + 5분 주기 폴링"]
+              },
+
+              "tech_stack": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "사용 기술",
+                "examples": [["Python", "Playwright", "BeautifulSoup"]]
+              },
+
+              "input": {
+                "type": "array",
+                "description": "이 기능이 받는 입력",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "type", "source"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "type": {
+                      "type": "string",
+                      "enum": ["string", "number", "boolean", "date", "url", "file", "json", "array"]
+                    },
+                    "source": {
+                      "type": "string",
+                      "description": "데이터 출처",
+                      "examples": ["크몽 메시지함 DOM", "config.yaml", "이전 액션 출력"]
+                    },
+                    "required": { "type": "boolean" }
+                  }
+                }
+              },
+
+              "output": {
+                "type": "array",
+                "description": "이 기능이 내보내는 출력",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "type"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "type": {
+                      "type": "string",
+                      "enum": ["string", "number", "boolean", "date", "url", "file", "json", "array"]
+                    },
+                    "destination": {
+                      "type": "string",
+                      "description": "출력이 가는 곳",
+                      "examples": ["다음 기능 (SPEC-002)", "Google Sheets", "로그 파일"]
+                    }
+                  }
+                }
+              },
+
+              "api_endpoints": {
+                "type": "array",
+                "description": "사용하는 API (있을 경우)",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": "string",
+                      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                    },
+                    "url": { "type": "string" },
+                    "auth_type": {
+                      "type": "string",
+                      "enum": ["api_key", "oauth2", "session_cookie", "bearer_token", "none"]
+                    },
+                    "notes": { "type": "string" }
+                  }
+                }
+              },
+
+              "selectors": {
+                "type": "array",
+                "description": "스크래핑/자동화 시 사용하는 CSS/XPath 선택자",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "선택자가 가리키는 요소",
+                      "examples": ["메시지 목록 컨테이너", "읽지 않은 메시지 배지"]
+                    },
+                    "selector": {
+                      "type": "string",
+                      "examples": ["div.message-list > div.unread", "//span[@class='badge-count']"]
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["css", "xpath"]
+                    }
+                  }
+                }
+              },
+
+              "dependencies": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "선행 기능 ID",
+                "examples": [["SPEC-001"]]
+              },
+
+              "estimated_effort": {
+                "type": "string",
+                "description": "예상 구현 시간",
+                "examples": ["4시간", "1일", "3일"]
+              }
+            }
+          },
+
+          "error_cases": {
+            "type": "array",
+            "description": "예외/에러 상황 정의",
+            "items": {
+              "type": "object",
+              "required": ["case", "handling"],
+              "properties": {
+                "case": {
+                  "type": "string",
+                  "description": "에러 상황",
+                  "examples": ["세션 만료로 로그인 페이지 리다이렉트"]
+                },
+                "handling": {
+                  "type": "string",
+                  "description": "처리 방법",
+                  "examples": ["자동 재로그인 시도 → 실패 시 담당자 알림"]
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["critical", "high", "medium", "low"]
+                }
+              }
+            }
+          },
+
+          "ui_ux": {
+            "type": "object",
+            "description": "UI/UX 관련 (관리 화면이 있는 경우)",
+            "properties": {
+              "has_ui": {
+                "type": "boolean",
+                "description": "사용자 인터페이스 필요 여부"
+              },
+              "screen_description": {
+                "type": "string",
+                "description": "화면 설명"
+              },
+              "wireframe_link": {
+                "type": "string",
+                "description": "와이어프레임/목업 링크"
+              }
+            }
+          },
+
+          "test_cases": {
+            "type": "array",
+            "description": "테스트 케이스",
+            "items": {
+              "type": "object",
+              "required": ["case", "expected"],
+              "properties": {
+                "case": {
+                  "type": "string",
+                  "description": "테스트 시나리오",
+                  "examples": ["읽지 않은 메시지 3건 존재 시"]
+                },
+                "input": {
+                  "type": "string",
+                  "description": "테스트 입력"
+                },
+                "expected": {
+                  "type": "string",
+                  "description": "기대 결과",
+                  "examples": ["3건 모두 감지하여 반환"]
+                }
+              }
+            }
+          },
+
+          "notes": {
+            "type": "string",
+            "description": "추가 메모/참고사항"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,479 @@
+{
+  "meta": {
+    "project_id": "PRJ-2026-001",
+    "prd_version": "1.0.0",
+    "created_at": "2026-04-09T22:10:17.801587+09:00",
+    "updated_at": "2026-04-09T22:10:17.801587+09:00"
+  },
+  "flows": [
+    {
+      "flow_id": "FLOW-001",
+      "title": "단순 문의(가격) 자동 응대 플로우",
+      "linked_scenario_id": "SC-001",
+      "description": "크몽에서 새 메시지를 감지하여 '가격 문의'로 분류된 경우, 자동으로 가격 정보를 포함한 응답을 발송하고 내역을 기록하는 자동화 흐름입니다.",
+      "actor": "시스템",
+      "nodes": [
+        {
+          "node_id": "N-001",
+          "type": "start",
+          "label": "5분 주기 스케줄러",
+          "description": "매 5분마다 크몽 메시지 확인 프로세스를 시작합니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-002",
+          "type": "action",
+          "label": "크몽 메시지 수집",
+          "description": "Playwright를 사용하여 크몽 메시지함에 접속하고, 읽지 않은 새 메시지를 스크래핑합니다.",
+          "executor": "system",
+          "linked_spec_id": "SPEC-001",
+          "linked_action_id": "ACT-001",
+          "data_snapshot": {
+            "available_data": [
+              "session_cookie"
+            ],
+            "new_data": [
+              "new_messages"
+            ]
+          }
+        },
+        {
+          "node_id": "N-003",
+          "type": "decision",
+          "label": "새 문의 존재?",
+          "description": "스크래핑 결과, 처리되지 않은 새 메시지가 있는지 확인합니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-004",
+          "type": "action",
+          "label": "AI 문의 유형 분류",
+          "description": "수집된 메시지 내용을 LLM API로 전송하여 문의 유형을 분류합니다.",
+          "executor": "ai",
+          "linked_spec_id": "SPEC-002",
+          "linked_action_id": "ACT-002",
+          "data_snapshot": {
+            "available_data": [
+              "message_content"
+            ],
+            "new_data": [
+              "inquiry_type"
+            ]
+          }
+        },
+        {
+          "node_id": "N-005",
+          "type": "decision",
+          "label": "가격 문의인가?",
+          "description": "분류된 문의 유형이 'price_inquiry'인지 확인하여 자동 응대 여부를 결정합니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-006",
+          "type": "action",
+          "label": "자동 응답 생성",
+          "description": "가격 문의용 템플릿과 LLM을 사용하여 고객 맞춤형 응답 메시지를 생성합니다.",
+          "executor": "ai",
+          "linked_spec_id": "SPEC-003",
+          "linked_action_id": "ACT-003",
+          "data_snapshot": {
+            "available_data": [
+              "inquiry_type",
+              "message_content"
+            ],
+            "new_data": [
+              "response_message"
+            ]
+          }
+        },
+        {
+          "node_id": "N-007",
+          "type": "action",
+          "label": "크몽 자동 응답 발송",
+          "description": "생성된 응답 메시지를 Playwright를 통해 크몽 메시지함에서 발송합니다.",
+          "executor": "system",
+          "linked_spec_id": "SPEC-003",
+          "linked_action_id": "ACT-004",
+          "data_snapshot": {
+            "available_data": [
+              "response_message"
+            ],
+            "new_data": [
+              "sent_status"
+            ]
+          }
+        },
+        {
+          "node_id": "N-008",
+          "type": "action",
+          "label": "구글 시트 로그 기록",
+          "description": "처리된 문의 내역(유형, 조치 등)을 Google Sheets API를 통해 기록합니다.",
+          "executor": "system",
+          "linked_spec_id": "SPEC-005",
+          "linked_action_id": "ACT-006"
+        },
+        {
+          "node_id": "N-009",
+          "type": "end",
+          "label": "프로세스 완료",
+          "description": "이번 사이클의 모든 처리를 완료하고 다음 스케줄을 대기합니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-010",
+          "type": "action",
+          "label": "담당자 알림 (예외)",
+          "description": "자동 응대 유형이 아닌 문의를 담당자에게 카카오톡으로 알립니다.",
+          "executor": "system",
+          "linked_spec_id": "SPEC-004",
+          "linked_action_id": "ACT-005"
+        },
+        {
+          "node_id": "N-091",
+          "type": "error",
+          "label": "크몽 세션 만료 처리",
+          "description": "크몽 스크래핑 중 세션 만료 발생 시 처리하는 노드입니다. 재로그인 실패 시 담당자에게 알립니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-092",
+          "type": "error",
+          "label": "LLM API 실패 처리",
+          "description": "문의 분류 또는 응답 생성 API 호출 실패 시 처리하는 노드입니다. 담당자 알림으로 전환합니다.",
+          "executor": "system"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N-001",
+          "to": "N-002"
+        },
+        {
+          "from": "N-002",
+          "to": "N-003"
+        },
+        {
+          "from": "N-003",
+          "to": "N-009",
+          "label": "No: 새 문의 없음",
+          "condition": {
+            "field": "new_messages.count",
+            "operator": "equals",
+            "value": 0
+          }
+        },
+        {
+          "from": "N-003",
+          "to": "N-004",
+          "label": "Yes: 새 문의 있음",
+          "condition": {
+            "field": "new_messages.count",
+            "operator": "greater_than",
+            "value": 0
+          }
+        },
+        {
+          "from": "N-004",
+          "to": "N-005"
+        },
+        {
+          "from": "N-005",
+          "to": "N-006",
+          "label": "Yes",
+          "condition": {
+            "field": "inquiry_type",
+            "operator": "equals",
+            "value": "price_inquiry"
+          }
+        },
+        {
+          "from": "N-005",
+          "to": "N-010",
+          "label": "No",
+          "condition": {
+            "field": "inquiry_type",
+            "operator": "not_equals",
+            "value": "price_inquiry"
+          }
+        },
+        {
+          "from": "N-006",
+          "to": "N-007"
+        },
+        {
+          "from": "N-007",
+          "to": "N-008"
+        },
+        {
+          "from": "N-010",
+          "to": "N-008"
+        },
+        {
+          "from": "N-008",
+          "to": "N-009"
+        },
+        {
+          "from": "N-002",
+          "to": "N-091",
+          "label": "세션 만료",
+          "is_error_path": true
+        },
+        {
+          "from": "N-004",
+          "to": "N-092",
+          "label": "API 실패",
+          "is_error_path": true
+        },
+        {
+          "from": "N-091",
+          "to": "N-010",
+          "label": "Fallback"
+        },
+        {
+          "from": "N-092",
+          "to": "N-010",
+          "label": "Fallback"
+        }
+      ],
+      "error_flows": [
+        {
+          "trigger_node_id": "N-002",
+          "error_type": "auth_failure",
+          "handling_node_id": "N-091",
+          "description": "크몽 세션 만료 시 재로그인을 시도하고, 실패하면 담당자에게 알림을 보냅니다."
+        },
+        {
+          "trigger_node_id": "N-004",
+          "error_type": "api_failure",
+          "handling_node_id": "N-092",
+          "description": "LLM 분류 API 호출 실패 시, 담당자 알림으로 프로세스를 전환합니다."
+        }
+      ],
+      "mermaid": "flowchart TD\n  N-001((5분 주기 스케줄러)) --> N-002[크몽 메시지 수집]\n  N-002 --> N-003{{새 문의 존재?}}\n  N-003 -- \"No: 새 문의 없음\" --> N-009((프로세스 완료))\n  N-003 -- \"Yes: 새 문의 있음\" --> N-004[AI 문의 유형 분류]\n  N-004 --> N-005{{가격 문의인가?}}\n  N-005 -- \"Yes\" --> N-006[자동 응답 생성]\n  N-005 -- \"No\" --> N-010[담당자 알림 (예외)]\n  N-006 --> N-007[크몽 자동 응답 발송]\n  N-007 --> N-008[구글 시트 로그 기록]\n  N-010 --> N-008\n  N-008 --> N-009\n\n  N-002 -.->|세션 만료| N-091[크몽 세션 만료 처리]\n  N-004 -.->|API 실패| N-092[LLM API 실패 처리]\n  N-091 -- \"Fallback\" --> N-010\n  N-092 -- \"Fallback\" --> N-010\n\n  style N-001 fill:#2d6a4f,stroke:#40916c,color:#fff\n  style N-009 fill:#2d6a4f,stroke:#40916c,color:#fff\n  style N-091 fill:#9d0208,stroke:#d00000,color:#fff\n  style N-092 fill:#9d0208,stroke:#d00000,color:#fff"
+    },
+    {
+      "flow_id": "FLOW-002",
+      "title": "복합 문의 담당자 알림 플로우",
+      "linked_scenario_id": "SC-002",
+      "description": "크몽에서 새 메시지를 감지하여 '커스텀 문의'로 분류된 경우, 담당자에게 카카오톡으로 문의 내용을 즉시 알리고 내역을 기록하는 자동화 흐름입니다.",
+      "actor": "시스템",
+      "nodes": [
+        {
+          "node_id": "N-011",
+          "type": "start",
+          "label": "5분 주기 스케줄러",
+          "description": "매 5분마다 크몽 메시지 확인 프로세스를 시작합니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-012",
+          "type": "action",
+          "label": "크몽 메시지 수집",
+          "description": "Playwright를 사용하여 크몽 메시지함에 접속하고, 읽지 않은 새 메시지를 스크래핑합니다.",
+          "executor": "system",
+          "linked_spec_id": "SPEC-001",
+          "linked_action_id": "ACT-001",
+          "data_snapshot": {
+            "available_data": [
+              "session_cookie"
+            ],
+            "new_data": [
+              "new_messages"
+            ]
+          }
+        },
+        {
+          "node_id": "N-013",
+          "type": "decision",
+          "label": "새 문의 존재?",
+          "description": "스크래핑 결과, 처리되지 않은 새 메시지가 있는지 확인합니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-014",
+          "type": "action",
+          "label": "AI 문의 유형 분류",
+          "description": "수집된 메시지 내용을 LLM API로 전송하여 문의 유형을 분류합니다.",
+          "executor": "ai",
+          "linked_spec_id": "SPEC-002",
+          "linked_action_id": "ACT-002",
+          "data_snapshot": {
+            "available_data": [
+              "message_content"
+            ],
+            "new_data": [
+              "inquiry_type"
+            ]
+          }
+        },
+        {
+          "node_id": "N-015",
+          "type": "decision",
+          "label": "커스텀 문의인가?",
+          "description": "분류된 문의 유형이 'custom_inquiry'인지 확인하여 담당자 알림 여부를 결정합니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-016",
+          "type": "action",
+          "label": "담당자 카카오톡 알림",
+          "description": "카카오톡 알림톡 API를 통해 담당자에게 문의 내용 요약과 링크를 발송합니다.",
+          "executor": "system",
+          "linked_spec_id": "SPEC-004",
+          "linked_action_id": "ACT-005",
+          "data_snapshot": {
+            "available_data": [
+              "message_content",
+              "sender_name"
+            ],
+            "new_data": [
+              "notification_sent"
+            ]
+          }
+        },
+        {
+          "node_id": "N-017",
+          "type": "action",
+          "label": "구글 시트 로그 기록",
+          "description": "처리된 문의 내역(유형, 조치 등)을 Google Sheets API를 통해 기록합니다.",
+          "executor": "system",
+          "linked_spec_id": "SPEC-005",
+          "linked_action_id": "ACT-006"
+        },
+        {
+          "node_id": "N-018",
+          "type": "end",
+          "label": "프로세스 완료",
+          "description": "이번 사이클의 모든 처리를 완료하고 다음 스케줄을 대기합니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-019",
+          "type": "action",
+          "label": "자동 응답 발송 (예외)",
+          "description": "커스텀 문의가 아닌 단순 문의를 자동으로 처리합니다.",
+          "executor": "system",
+          "linked_spec_id": "SPEC-003",
+          "linked_action_id": "ACT-004"
+        },
+        {
+          "node_id": "N-093",
+          "type": "error",
+          "label": "크몽 세션 만료 처리",
+          "description": "크몽 스크래핑 중 세션 만료 발생 시 처리하는 노드입니다. 재로그인 실패 시 담당자에게 알립니다.",
+          "executor": "system"
+        },
+        {
+          "node_id": "N-094",
+          "type": "error",
+          "label": "LLM API 실패 처리",
+          "description": "문의 분류 API 호출 실패 시 처리하는 노드입니다. 담당자 알림으로 전환합니다.",
+          "executor": "system"
+        }
+      ],
+      "edges": [
+        {
+          "from": "N-011",
+          "to": "N-012"
+        },
+        {
+          "from": "N-012",
+          "to": "N-013"
+        },
+        {
+          "from": "N-013",
+          "to": "N-018",
+          "label": "No: 새 문의 없음",
+          "condition": {
+            "field": "new_messages.count",
+            "operator": "equals",
+            "value": 0
+          }
+        },
+        {
+          "from": "N-013",
+          "to": "N-014",
+          "label": "Yes: 새 문의 있음",
+          "condition": {
+            "field": "new_messages.count",
+            "operator": "greater_than",
+            "value": 0
+          }
+        },
+        {
+          "from": "N-014",
+          "to": "N-015"
+        },
+        {
+          "from": "N-015",
+          "to": "N-016",
+          "label": "Yes",
+          "condition": {
+            "field": "inquiry_type",
+            "operator": "equals",
+            "value": "custom_inquiry"
+          }
+        },
+        {
+          "from": "N-015",
+          "to": "N-019",
+          "label": "No",
+          "condition": {
+            "field": "inquiry_type",
+            "operator": "not_equals",
+            "value": "custom_inquiry"
+          }
+        },
+        {
+          "from": "N-016",
+          "to": "N-017"
+        },
+        {
+          "from": "N-019",
+          "to": "N-017"
+        },
+        {
+          "from": "N-017",
+          "to": "N-018"
+        },
+        {
+          "from": "N-012",
+          "to": "N-093",
+          "label": "세션 만료",
+          "is_error_path": true
+        },
+        {
+          "from": "N-014",
+          "to": "N-094",
+          "label": "API 실패",
+          "is_error_path": true
+        },
+        {
+          "from": "N-093",
+          "to": "N-016",
+          "label": "Fallback"
+        },
+        {
+          "from": "N-094",
+          "to": "N-016",
+          "label": "Fallback"
+        }
+      ],
+      "error_flows": [
+        {
+          "trigger_node_id": "N-012",
+          "error_type": "auth_failure",
+          "handling_node_id": "N-093",
+          "description": "크몽 세션 만료 시 재로그인을 시도하고, 실패하면 담당자에게 알림을 보냅니다."
+        },
+        {
+          "trigger_node_id": "N-014",
+          "error_type": "api_failure",
+          "handling_node_id": "N-094",
+          "description": "LLM 분류 API 호출 실패 시, 담당자 알림으로 프로세스를 전환합니다."
+        }
+      ],
+      "mermaid": "flowchart TD\n  N-011((5분 주기 스케줄러)) --> N-012[크몽 메시지 수집]\n  N-012 --> N-013{{새 문의 존재?}}\n  N-013 -- \"No: 새 문의 없음\" --> N-018((프로세스 완료))\n  N-013 -- \"Yes: 새 문의 있음\" --> N-014[AI 문의 유형 분류]\n  N-014 --> N-015{{커스텀 문의인가?}}\n  N-015 -- \"Yes\" --> N-016[담당자 카카오톡 알림]\n  N-015 -- \"No\" --> N-019[자동 응답 발송 (예외)]\n  N-016 --> N-017[구글 시트 로그 기록]\n  N-019 --> N-017\n  N-017 --> N-018\n\n  N-012 -.->|세션 만료| N-093[크몽 세션 만료 처리]\n  N-014 -.->|API 실패| N-094[LLM API 실패 처리]\n  N-093 -- \"Fallback\" --> N-016\n  N-094 -- \"Fallback\" --> N-016\n\n  style N-011 fill:#2d6a4f,stroke:#40916c,color:#fff\n  style N-018 fill:#2d6a4f,stroke:#40916c,color:#fff\n  style N-093 fill:#9d0208,stroke:#d00000,color:#fff\n  style N-094 fill:#9d0208,stroke:#d00000,color:#fff"
+    }
+  ]
+}

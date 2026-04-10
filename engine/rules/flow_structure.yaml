@@ -1,0 +1,28 @@
+# 유저플로우 구조 생성 룰
+
+generation_rule:
+  source: prd.scenarios
+  mapping: 1 scenario → 1 flow
+
+node_types:
+  start: 플로우 시작점
+  end: 플로우 종료점
+  action: 실행 노드 (system/ai)
+  decision: 분기 노드 (반드시 2개 이상 edge 필요)
+  subprocess: 하위 플로우 호출
+  wait: 대기
+  human_input: 사람 개입
+  error: 에러 처리
+
+auto_rules:
+  - 모든 flow에 start/end 노드 필수
+  - decision 노드에는 반드시 condition이 있는 edge 2개 이상
+  - action 노드의 linked_spec_id는 spec.json에 존재하는 ID여야 함
+  - action 노드의 linked_action_id는 prd.automation_context.actions에 존재하는 ID여야 함
+  - error_flows 최소 1개 필수
+
+mermaid_generation:
+  - nodes → mermaid 노드 구문 자동 변환
+  - edges → mermaid 연결선 자동 변환
+  - error paths → 점선(-.->)으로 표현
+  - decision → 다이아몬드({{}})로 표현

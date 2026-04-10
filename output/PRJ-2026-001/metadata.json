@@ -1,0 +1,23 @@
+{
+  "project_id": "PRJ-2026-001",
+  "title": "크몽 문의 자동 응대 시스템",
+  "generated_at": "2026-04-09T22:12:16.701194+09:00",
+  "prd_version": "1.0.0",
+  "llm_model": "gemini-2.5-pro",
+  "quality_scores": {
+    "prd_schema_pass": true,
+    "spec_schema_pass": true,
+    "flow_schema_pass": true,
+    "id_integrity": true,
+    "quality_score": 0.96,
+    "todo_count": 7
+  },
+  "schema_errors": {
+    "prd": [],
+    "spec": [],
+    "flow": []
+  },
+  "id_issues": [],
+  "generation_time_sec": 0.0,
+  "manual_edit_ratio": 0.0
+}

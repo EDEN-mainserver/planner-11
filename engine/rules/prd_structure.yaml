@@ -1,0 +1,50 @@
+# PRD 구조 생성 룰
+# 이 YAML이 PRD JSON의 뼈대를 정의한다
+
+sections:
+  - name: meta
+    required: true
+    fields: [project_id, title, version, created_at, status]
+
+  - name: overview
+    required: true
+    fields: [category, one_liner, background, problem, solution]
+
+  - name: target_users
+    required: true
+    min_items: 1
+
+  - name: scenarios
+    required: true
+    min_items: 1
+
+  - name: features
+    required: true
+    min_items: 1
+    auto_generate:
+      - linked_spec_id: "SPEC-{index:03d}"
+
+  - name: automation_context
+    required: true
+    subsections:
+      - target_systems (min: 1)
+      - triggers (min: 1)
+      - actions (min: 1)
+      - error_handling
+      - data_flow
+
+  - name: success_criteria
+    required: true
+
+  - name: constraints
+    required: false
+
+  - name: risks
+    required: false
+
+id_patterns:
+  project: "PRJ-{year}-{seq:03d}"
+  scenario: "SC-{seq:03d}"
+  feature: "F-{seq:03d}"
+  trigger: "TRG-{seq:03d}"
+  action: "ACT-{seq:03d}"
