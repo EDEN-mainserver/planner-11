@@ -262,11 +262,22 @@ PRD 핵심 가치: ${JSON.stringify(prd?.core_value||{})}
   // ── 초기 생성
   const generate = async () => {
     setLoading(true);
-    const prompt = `다음 PRD를 분석하여 기능명세서를 JSON으로 생성하세요.
+    const prompt = `다음 PRD를 분석하여 기능명세서와 유저 여정 흐름을 JSON으로 생성하세요.
 PRD: ${JSON.stringify(prd)}
+
 형식(JSON만):
-{"features":[{"id":"F-001","title":"기능 제목","description":"2~3문장 설명","priority":"high|medium|low","sub_features":[{"id":"SF-001-1","title":"하위 기능","detail":"상세 설명","sub_features":[]}]}]}
-규칙: features 3~6개, sub_features 2~4개, 한국어`;
+{"features":[{"id":"F-001","title":"기능 제목","description":"2~3문장 설명","priority":"high|medium|low","sub_features":[{"id":"SF-001-1","title":"하위 기능","detail":"상세 설명","leads_to":null,"sub_features":[]}]}]}
+
+규칙:
+1. features 3~6개, sub_features 2~4개, 한국어
+2. leads_to: 이 서브피처를 완료하면 사용자가 다음으로 이동하는 feature의 id (예: "F-002") 또는 null
+3. 유저 여정 설계: 실제 사용자 흐름에 따라 각 기능의 마지막 단계(게이트웨이) 서브피처에 leads_to를 설정하세요.
+   - 첫 번째 기능의 마지막 서브피처 → 두 번째 기능 (leads_to: "F-002")
+   - 두 번째 기능의 마지막 서브피처 → 세 번째 기능 (leads_to: "F-003")
+   - 마지막 기능의 서브피처는 leads_to: null
+4. 단, 분기가 자연스러운 경우 여러 서브피처에서 동일한 기능을 leads_to로 지정 가능
+5. 첫 번째 feature(F-001)은 어떤 features도 leads_to로 지정하지 않음 (진입점)
+6. 반드시 모든 기능(F-001 제외)은 최소 1개의 서브피처로부터 leads_to로 연결되어야 함`;
     try {
       const text = await callGemini([{role:'user',content:prompt}], '');
       const m = text.match(/\{[\s\S]*\}/);

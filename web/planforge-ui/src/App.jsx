@@ -8,23 +8,26 @@ import EditorPage from "./pages/EditorPage";
 export default function App() {
   const [page, setPage]                   = useState('home');
   const [prd, setPrd]                     = useState(EMPTY_PRD);
+  const [specData, setSpecData]           = useState(null);
+  const [flowData, setFlowData]           = useState(null);
   const [projectTitle, setProjectTitle]   = useState('');
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [projects, setProjects]           = useState(() => loadProjects());
   const [aiScore, setAiScore]             = useState(0);
 
   /* 프로젝트 저장 (신규 or 업데이트) */
-  const upsertProject = useCallback((id, title, prdData) => {
+  const upsertProject = useCallback((id, title, prdData, spec, flow) => {
     setProjects(prev => {
       const exists = prev.find(p => p.id === id);
       let updated;
       if (exists) {
         updated = prev.map(p =>
-          p.id === id ? { ...p, title, prd: prdData, updatedAt: new Date().toISOString() } : p
+          p.id === id
+            ? { ...p, title, prd: prdData, specData: spec, flowData: flow, updatedAt: new Date().toISOString() }
+            : p
         );
       } else {
-        const newProject = { id, title, prd: prdData, updatedAt: new Date().toISOString() };
-        updated = [newProject, ...prev];
+        updated = [{ id, title, prd: prdData, specData: spec, flowData: flow, updatedAt: new Date().toISOString() }, ...prev];
       }
       saveProjects(updated);
       return updated;
@@ -46,37 +49,45 @@ export default function App() {
     setCurrentProjectId(newId);
     setProjectTitle(idea);
     setPrd(EMPTY_PRD);
+    setSpecData(null);
+    setFlowData(null);
     setAiScore(0);
     setPage('interview');
   };
 
   /* 인터뷰 완료 → 에디터로 + 저장 */
   const handleInterviewComplete = useCallback(() => {
-    upsertProject(currentProjectId, projectTitle, prd);
+    upsertProject(currentProjectId, projectTitle, prd, specData, flowData);
     setPage('editor');
-  }, [currentProjectId, projectTitle, prd, upsertProject]);
+  }, [currentProjectId, projectTitle, prd, specData, flowData, upsertProject]);
 
   /* 기존 프로젝트 불러오기 */
   const handleLoad = (project) => {
     setCurrentProjectId(project.id);
     setProjectTitle(project.title);
     setPrd(project.prd || EMPTY_PRD);
+    setSpecData(project.specData || null);
+    setFlowData(project.flowData || null);
+    setAiScore(0);
     setPage('editor');
   };
 
   /* 에디터에서 홈으로 (자동 저장) */
   const handleHome = useCallback(() => {
-    if (currentProjectId) upsertProject(currentProjectId, projectTitle, prd);
+    if (currentProjectId) upsertProject(currentProjectId, projectTitle, prd, specData, flowData);
     setPage('home');
-  }, [currentProjectId, projectTitle, prd, upsertProject]);
+  }, [currentProjectId, projectTitle, prd, specData, flowData, upsertProject]);
 
-  /* PRD 변경 시 자동 저장 (에디터 페이지에서만) */
+  /* PRD / specData / flowData 변경 시 자동 저장 (에디터 페이지에서만) */
   useEffect(() => {
     if (page === 'editor' && currentProjectId) {
-      const timer = setTimeout(() => upsertProject(currentProjectId, projectTitle, prd), 1500);
+      const timer = setTimeout(
+        () => upsertProject(currentProjectId, projectTitle, prd, specData, flowData),
+        1500
+      );
       return () => clearTimeout(timer);
     }
-  }, [prd, projectTitle, page, currentProjectId, upsertProject]);
+  }, [prd, specData, flowData, projectTitle, page, currentProjectId, upsertProject]);
 
   if (page === 'home') return (
     <HomePage
@@ -101,6 +112,10 @@ export default function App() {
     <EditorPage
       prd={prd}
       setPrd={setPrd}
+      specData={specData}
+      setSpecData={setSpecData}
+      flowData={flowData}
+      setFlowData={setFlowData}
       projectTitle={projectTitle}
       setProjectTitle={setProjectTitle}
       onHome={handleHome}

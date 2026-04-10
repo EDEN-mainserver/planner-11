@@ -5,13 +5,12 @@ import PRDPanel from "../components/PRDPanel";
 import SpecPanel from "../components/SpecPanel";
 import FlowPanel from "../components/FlowPanel";
 
-export default function EditorPage({ prd, setPrd, projectTitle, setProjectTitle, onHome, aiScore, setAiScore }) {
+export default function EditorPage({ prd, setPrd, specData, setSpecData, flowData, setFlowData, projectTitle, setProjectTitle, onHome, aiScore, setAiScore }) {
   const [activeTab, setActiveTab]   = useState('prd');
   const [chatInput, setChatInput]   = useState('');
   const [messages, setMessages]     = useState([{ role: 'assistant', content: 'PRD가 생성되었습니다! 수정이 필요하면 말씀해주세요.' }]);
   const [isLoading, setIsLoading]   = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [specData, setSpecData]     = useState(null);
   const [suggestions, setSuggestions] = useState([]);
   const chatEndRef = useRef(null);
 
@@ -171,7 +170,7 @@ __END_SUGGESTIONS__`;
         <div className="flex-1 overflow-hidden">
           {activeTab === 'prd'  && <PRDPanel prd={prd} setPrd={setPrd} aiScore={aiScore} setAiScore={setAiScore} />}
           {activeTab === 'spec' && <SpecPanel prd={prd} specData={specData} setSpecData={setSpecData} />}
-          {activeTab === 'flow' && <FlowPanel />}
+          {activeTab === 'flow' && <FlowPanel prd={prd} specData={specData} flowData={flowData} setFlowData={setFlowData} />}
         </div>
       </div>
     </div>
