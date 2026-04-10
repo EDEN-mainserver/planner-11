@@ -225,7 +225,7 @@ function specToExcelHtml(specData, prd, title) {
 
 function flowToMarkdown(specData, prd, title) {
   const date = new Date().toISOString().split('T')[0];
-  const { ov, cv, tg, mt, st, roles, devices } = prdFields(prd, title, date);
+  const { ov, tg, st, roles, devices } = prdFields(prd, title, date);
 
   let md = `# ${title} — 유저 플로우\n\n`;
   md += `| | |\n|---|---|\n`;
@@ -234,12 +234,12 @@ function flowToMarkdown(specData, prd, title) {
   md += `| **회사명** | |\n`;
   md += `| **날짜** | ${date} |\n\n`;
   md += `---\n## 1. 프로젝트 개요\n---\n`;
-  if (st.category)     md += `### 카테고리\n> ${st.category}\n\n`;
-  if (ov.one_liner)    md += `### 한 줄 정의\n${ov.one_liner}\n\n`;
-  if (tg.users)        md += `### 타겟 사용자\n${tg.users}\n\n`;
-  if (tg.scenario)     md += `### 사용 시나리오\n${tg.scenario}\n\n`;
-  if (roles)           md += `### 사용자 역할\n> ${roles}\n\n`;
-  if (devices)         md += `### 디바이스 (기기)\n> ${devices}\n\n`;
+  if (st.category)   md += `### 카테고리\n> ${st.category}\n\n`;
+  if (ov.one_liner)  md += `### 한 줄 정의\n${ov.one_liner}\n\n`;
+  if (tg.users)      md += `### 타겟 사용자\n${tg.users}\n\n`;
+  if (tg.scenario)   md += `### 사용 시나리오\n${tg.scenario}\n\n`;
+  if (roles)         md += `### 사용자 역할\n> ${roles}\n\n`;
+  if (devices)       md += `### 디바이스 (기기)\n> ${devices}\n\n`;
   md += `## 2. 유저 플로우\n---\n\n`;
 
   let i = 1;
@@ -254,6 +254,10 @@ function flowToMarkdown(specData, prd, title) {
       subs.forEach((s, si) => {
         const nxt = s.leads_to ? ` → ${s.leads_to}` : '';
         md += `${si + 1}. ${s.title}${nxt}\n   ${s.detail || ''}\n`;
+        // ── 세부 단계 (sub_features 3단계)
+        (s.sub_features || []).forEach((ss, ssi) => {
+          md += `   ${si + 1}.${ssi + 1}. ${ss.title}\n        ${ss.detail || ''}\n`;
+        });
       });
       md += `\`\`\`\n\n\n---\n\n\n`;
     } else {
@@ -292,6 +296,10 @@ function flowToText(specData, prd, title) {
       subs.forEach((s, si) => {
         const nxt = s.leads_to ? ` -----> ${s.leads_to}` : '';
         txt += `  ${si + 1}. ${s.title}${nxt}\n     ${s.detail || ''}\n`;
+        // ── 세부 단계 (3단계)
+        (s.sub_features || []).forEach((ss, ssi) => {
+          txt += `    ${si + 1}.${ssi + 1}. ${ss.title}\n       ${ss.detail || ''}\n`;
+        });
       });
     }
     txt += `\n\n${SEP50}\n\n`;
@@ -319,13 +327,25 @@ function flowToExcelHtml(specData, prd, title) {
   body += `</table>`;
 
   body += `<table style="border-collapse:collapse;width:100%">`;
-  body += `<tr><td style="${THS}">섹션 Section</td><td style="${THS}">단계 Step</td><td style="${THS}">상세 설명 Detail</td><td style="${THS}">다음 섹션 Next</td></tr>`;
+  body += `<tr><td style="${THS}">섹션 Section</td><td style="${THS}">단계 Step</td><td style="${THS}">세부 단계 Sub-step</td><td style="${THS}">상세 설명 Detail</td><td style="${THS}">다음 섹션 Next</td></tr>`;
   let i = 1;
   for (const f of (specData?.features || [])) {
     const subs = f.sub_features || [];
-    body += `<tr><td style="${CS}font-weight:600;" rowspan="${subs.length + 1}">${i}. ${f.title}<br/><span style="color:#6b7280;font-size:10px;">${f.description || ''}</span></td><td style="${CS}" colspan="3"></td></tr>`;
+    // 섹션 행의 rowspan: subs + 각 sub의 ss 수 합산 + 1(빈 헤더행)
+    const totalRows = subs.reduce((acc, s) => acc + 1 + (s.sub_features || []).length, 0) + 1;
+    body += `<tr><td style="${CS}font-weight:600;" rowspan="${totalRows}">${i}. ${f.title}<br/><span style="color:#6b7280;font-size:10px;">${f.description || ''}</span></td><td style="${CS}" colspan="4"></td></tr>`;
     subs.forEach((s, si) => {
-      body += `<tr><td style="${CS}">${si + 1}. ${s.title}</td><td style="${CS}">${s.detail || ''}</td><td style="${CS}">${s.leads_to || '-'}</td></tr>`;
+      const ssSubs = s.sub_features || [];
+      const sRowspan = ssSubs.length > 0 ? ssSubs.length + 1 : 1;
+      if (ssSubs.length > 0) {
+        // 단계 행 (rowspan으로 ss 감싸기)
+        body += `<tr><td style="${CS}" rowspan="${sRowspan}">${si + 1}. ${s.title}</td><td style="${CS}"></td><td style="${CS}">${s.detail || ''}</td><td style="${CS}">${s.leads_to || '-'}</td></tr>`;
+        ssSubs.forEach((ss, ssi) => {
+          body += `<tr><td style="${CS}">${si + 1}.${ssi + 1}. ${ss.title}</td><td style="${CS}">${ss.detail || ''}</td><td style="${CS}">-</td></tr>`;
+        });
+      } else {
+        body += `<tr><td style="${CS}">${si + 1}. ${s.title}</td><td style="${CS}"></td><td style="${CS}">${s.detail || ''}</td><td style="${CS}">${s.leads_to || '-'}</td></tr>`;
+      }
     });
     i++;
   }
@@ -941,7 +961,7 @@ __END_SUGGESTIONS__`;
                   <tr className="bg-gray-800 text-white">
                     {(isSpec
                       ? ['요구사항 Requirement','기능 Feature','상세 기능 Detailed Spec','설명 및 상세 요구사항 Description']
-                      : ['섹션 Section','단계 Step','상세 설명 Detail','다음 섹션 Next']
+                      : ['섹션 Section','단계 Step','세부 단계 Sub-step','상세 설명 Detail','다음 섹션 Next']
                     ).map(h => <th key={h} className="border border-gray-600 px-3 py-2 text-left font-semibold">{h}</th>)}
                   </tr>
                 </thead>
@@ -955,8 +975,25 @@ __END_SUGGESTIONS__`;
                         ])
                       ])
                     : features.flatMap((f, fi) => [
-                        <tr key={f.id} className="bg-gray-50"><td className="border border-gray-200 px-3 py-1.5 font-semibold">{fi+1}. {f.title}</td><td colSpan={3} className="border border-gray-200 px-3 py-1.5 text-gray-500">{f.description}</td></tr>,
-                        ...(f.sub_features||[]).map((s, si) => <tr key={s.id}><td className="border border-gray-200 px-3 py-1.5" /><td className="border border-gray-200 px-3 py-1.5">{fi+1}.{si+1} {s.title}</td><td className="border border-gray-200 px-3 py-1.5 text-gray-500">{s.detail}</td><td className="border border-gray-200 px-3 py-1.5 text-purple-600">{s.leads_to||'-'}</td></tr>)
+                        <tr key={f.id} className="bg-gray-50"><td className="border border-gray-200 px-3 py-1.5 font-semibold" colSpan={5}>{fi+1}. {f.title} <span className="text-gray-400 font-normal">— {f.description}</span></td></tr>,
+                        ...(f.sub_features||[]).flatMap((s, si) => [
+                          <tr key={s.id}>
+                            <td className="border border-gray-200 px-3 py-1.5" />
+                            <td className="border border-gray-200 px-3 py-1.5">{fi+1}.{si+1} {s.title}</td>
+                            <td className="border border-gray-200 px-3 py-1.5" />
+                            <td className="border border-gray-200 px-3 py-1.5 text-gray-500">{s.detail}</td>
+                            <td className="border border-gray-200 px-3 py-1.5 text-purple-600">{s.leads_to||'-'}</td>
+                          </tr>,
+                          ...(s.sub_features||[]).map((ss, ssi) =>
+                            <tr key={ss.id}>
+                              <td className="border border-gray-200 px-3 py-1.5" />
+                              <td className="border border-gray-200 px-3 py-1.5" />
+                              <td className="border border-gray-200 px-3 py-1.5">{fi+1}.{si+1}.{ssi+1} {ss.title}</td>
+                              <td className="border border-gray-200 px-3 py-1.5 text-gray-500">{ss.detail}</td>
+                              <td className="border border-gray-200 px-3 py-1.5 text-gray-400">-</td>
+                            </tr>
+                          )
+                        ])
                       ])
                   }
                 </tbody>
