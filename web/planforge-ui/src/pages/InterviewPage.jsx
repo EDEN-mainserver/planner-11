@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { callGemini, deepMergePrd } from "../utils/gemini";
+import { calcPrdPct, pctColor } from "../utils/prd";
 import InterviewQuestionCard from "../components/InterviewQuestionCard";
 import FreeTextInput from "../components/FreeTextInput";
 import PrdPreview from "../components/PrdPreview";
@@ -18,38 +19,72 @@ export default function InterviewPage({ initialIdea, prd, setPrd, onComplete, on
   const isMidScore  = aiScore >= 40;
   const isTired     = qCount >= 7;
 
-  const INTERVIEW_SYSTEM = `당신은 PlanForge AI 어시스턴트입니다. 사용자의 아이디어를 듣고 PRD에 필요한 정보를 체계적으로 수집합니다.
+  const INTERVIEW_SYSTEM = `당신은 PlanForge AI 어시스턴트입니다. 사용자의 아이디어를 듣고 PRD에 필요한 정보를 체계적으로 수집하고, 전문적인 PRD 문서를 작성합니다.
 
 사용자 초기 아이디어: "${initialIdea}"
 현재 PRD: ${JSON.stringify(prd)}
 
-규칙:
+━━━ 대화 규칙 ━━━
 1. 매 답변마다 반드시 __QUESTION__, __PRD_UPDATE__, __SCORE__ 블록을 모두 포함하세요.
-2. 질문은 한 번에 하나씩. **반드시 복수선택형(multiple_choice)으로** 출제하세요. 옵션은 3~4개 + 마지막에 반드시 "직접 입력" 옵션을 포함하세요. 주관식(open_text)은 이름/브랜드명처럼 선택지를 제시할 수 없는 경우에만 사용하세요.
-3. 빈약하거나 비어있는 핵심 필드(one_liner, problem, solution, users, kpis)를 우선적으로 채우는 방향으로 질문하세요.
+2. 질문은 한 번에 하나씩. 반드시 복수선택형(multiple_choice)으로 출제하세요.
+   - 옵션은 3~4개 + 마지막에 반드시 "직접 입력" 옵션 포함
+   - 선택지는 단어/레이블이 아닌 구체적인 상황/문장으로 작성 (사용자가 공감할 수 있는 페인포인트나 시나리오)
+   - 주관식(open_text)은 이름/브랜드명처럼 선택지 불가능한 경우만
+3. 질문 우선순위: problem → solution → one_liner → users → scenario → kpis → differentiator → risks
 4. 답변 텍스트에서 블록 언급 금지.
 5. 한국어로 친근하게 대화하세요.
 
-__SCORE__ 형식 (PRD 완성도를 0~100 사이 정수로 평가):
+━━━ PRD 필드 작성 규칙 (핵심!) ━━━
+사용자 답변을 절대 그대로 복사하지 마세요. 반드시 AI가 해석·확장하여 완전한 PRD 문장으로 작성하세요.
+
+❌ 나쁜 예 (복사): users: "광고 대행사 또는 MCN 직원"
+✅ 좋은 예 (확장): users: "광고 대행사 소속 디지털 마케터, MCN 콘텐츠 매니저, 인플루언서 등 소셜미디어 콘텐츠의 성과를 데이터로 입증해야 하는 미디어 전문가입니다."
+
+필드별 작성 기준:
+- one_liner: 10~20자, 제품의 핵심 가치를 한 줄로 (예: "AI 기반 바이럴 콘텐츠 예측 플랫폼")
+- product_goal: 누가 / 무엇을 통해 / 어떤 결과를 얻는지 명확히 (2~3문장)
+- background: 시장 맥락 + 문제의 심각성 + AI 기술 필요성 (2~3문장)
+- problem: 사용자의 구체적인 고통점을 감정적으로 공감되게 (2문장)
+- solution: 플랫폼이 제공하는 핵심 기능 3가지 이상을 구체적으로 (2~3문장)
+- differentiator: 경쟁사 대비 차별화 포인트를 명시 (2문장)
+- users: 구체적 페르소나 2~3가지 (직업 + 상황 + 목표) (2문장)
+- scenario: 실제 사용 흐름을 3단계 서사로 (접속 → 핵심 기능 사용 → 결과), 반드시 구체적 수치/예시 포함 (예: "키워드 '제로 슈거 음료' 입력", "영상 길이 1분 30초 권장")
+- kpis: 반드시 5개 이상, 다음 카테고리 모두 커버:
+  ① 핵심 성과 (참여율/전환율 % 수치)
+  ② 사용자 규모 (MAU 또는 WAU 수치)
+  ③ 효율 개선 (시간/비용 절감 %)
+  ④ 제품 품질 (예측 정확도 %, 만족도 등)
+  ⑤ 재방문/리텐션 (재방문율 %, NPS 등)
+  예시: "월별 AI 추천 활용률 20% 증대, 예측 정확도 50% 달성, 기획 시간 15% 단축, MAU 5만 명, 재방문율 60% 이상"
+- risks: 반드시 기술/시장/운영 3카테고리로 체계화, 각 카테고리 2개 이상:
+  [기술적] AI 예측 정확도 한계, 데이터 수집·처리 기술 문제 등
+  [시장적] 경쟁사 진입, 트렌드 변화 속도, 사용자 신뢰 확보 등
+  [운영적] 프라이버시·보안, 유지보수 비용, 온보딩 학습 곡선 등
+
+하나의 답변에서 연관 필드를 동시에 채우세요:
+- 문제 답변 → problem + background 동시
+- 타겟 답변 → users + scenario 동시
+- 기능 답변 → solution + differentiator 동시
+
+━━━ __SCORE__ 형식 ━━━
 __SCORE__
 45
 __END_SCORE__
 
-평가 기준:
-- one_liner(한 줄 설명), problem(핵심 문제), solution(해결책): 각 20점 (핵심)
-- users(타겟 사용자), kpis(성공 지표): 각 10점
-- differentiator(차별점), scenario(사용 시나리오), risks(위험 요소): 각 5점 (선택)
-- 내용이 구체적이고 충분할수록 높은 점수. 막연하거나 짧으면 절반 이하.
+평가 기준 (실제 PRD 내용의 풍부함으로 판단):
+- one_liner(20점): 비어있으면 0, 구체적이면 20
+- problem(20점): 비어있으면 0, 페인포인트가 명확하면 20
+- solution(20점): 비어있으면 0, 기능 3개 이상 구체적이면 20
+- users(10점): 페르소나가 구체적이면 10
+- kpis(10점): 수치 포함되면 10
+- differentiator(5점), scenario(5점), risks(5점), background(5점)
 
-__QUESTION__ 형식:
+━━━ __QUESTION__ 형식 ━━━
 __QUESTION__
-{"number":1,"text":"질문 내용","type":"multiple_choice","options":["옵션1","옵션2","옵션3","직접 입력"]}
+{"number":1,"text":"질문 내용","type":"multiple_choice","options":["구체적 상황 옵션1","구체적 상황 옵션2","구체적 상황 옵션3","직접 입력"]}
 __END_QUESTION__
 
-복수선택형 예시: {"number":2,"text":"주요 타겟 사용자는 누구인가요?","type":"multiple_choice","options":["20-30대 직장인","학생/대학생","소상공인/자영업자","기업 담당자","직접 입력"]}
-주관식은 불가피한 경우만: {"number":3,"text":"서비스 이름이 있다면?","type":"open_text","options":[]}
-
-__PRD_UPDATE__ 형식:
+━━━ __PRD_UPDATE__ 형식 ━━━
 __PRD_UPDATE__
 {"overview":{"one_liner":"","product_goal":"","background":""},"core_value":{"problem":"","solution":"","differentiator":""},"target":{"users":"","scenario":""},"metrics":{"kpis":"","risks":""},"settings":{"category":"","roles":[],"devices":[]}}
 __END_PRD_UPDATE__`;
@@ -129,8 +164,10 @@ __END_PRD_UPDATE__`;
     sendAnswer(answer, newHistory);
   }, [messages, sendAnswer]);
 
-  const scoreColor = aiScore >= 75 ? '#7c3aed' : aiScore >= 40 ? '#f59e0b' : '#9ca3af';
-  const scoreLabel = aiScore >= 75 ? '충분해요' : aiScore >= 40 ? '보통' : '부족해요';
+  // 실제 PRD 필드 내용 기반 완성도 (표시용)
+  const realPct   = calcPrdPct(prd);
+  const scoreColor = pctColor(realPct);
+  const scoreLabel = realPct >= 75 ? '충분해요' : realPct >= 40 ? '보통' : '부족해요';
   const tabs = ['PRD', '기능명세서', '유저플로우'];
 
   return (
@@ -172,11 +209,11 @@ __END_PRD_UPDATE__`;
           <div className="px-4 py-2 border-b border-gray-100">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-xs text-purple-600 font-medium bg-purple-50 px-2 py-0.5 rounded-full">PRD 완성도</span>
-              <span className="text-xs font-mono font-semibold ml-auto" style={{ color: scoreColor }}>{aiScore}%</span>
+              <span className="text-xs font-mono font-semibold ml-auto" style={{ color: scoreColor }}>{realPct}%</span>
               <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ background: scoreColor + '18', color: scoreColor }}>{scoreLabel}</span>
             </div>
             <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${aiScore}%`, background: scoreColor }} />
+              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${realPct}%`, background: scoreColor }} />
             </div>
           </div>
 
@@ -242,7 +279,7 @@ __END_PRD_UPDATE__`;
               <div className="px-4 pt-3">
                 <button onClick={onComplete}
                   className="w-full py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors shadow-md">
-                  ✨ PRD 생성하기 ({aiScore}% 완성)
+                  ✨ PRD 생성하기 ({realPct}% 완성)
                 </button>
               </div>
             )}
