@@ -66,70 +66,92 @@ export default function FlowPanel({ prd, specData, flowData, setFlowData }) {
   }, []);
   const onUp = useCallback(() => { drag.current.active = false; }, []);
 
-  // ── AI 생성
+  // ── 섹션 하나를 specData 계층으로 결정론적 빌드 (AI 실패 시 폴백)
+  const buildSectionFromSpec = (f, isFirst) => {
+    const nodes = [], edges = [], subs = f.sub_features || [];
+    let rowCursor = 0;
+    const subLayout = subs.map(s => {
+      const ssubs = s.sub_features || [];
+      const height = Math.max(1, ssubs.length);
+      const pageRow = rowCursor + Math.floor((height - 1) / 2);
+      const startRow = rowCursor;
+      rowCursor += height;
+      return { s, ssubs, pageRow, startRow };
+    });
+    const secTopRow = Math.floor((Math.max(rowCursor, 1) - 1) / 2);
+    if (isFirst) {
+      nodes.push({ id: 'start', type: 'start', label: '시작', col: 0, row: secTopRow });
+      edges.push({ from: 'start', to: f.id });
+    }
+    const lbl = t => t.length > 10 ? t.slice(0, 10) + '…' : t;
+    nodes.push({ id: f.id, type: 'section_top', label: lbl(f.title), col: 1, row: secTopRow });
+    subLayout.forEach(({ s, ssubs, pageRow, startRow }) => {
+      nodes.push({ id: s.id, type: 'page', label: lbl(s.title), col: 2, row: pageRow });
+      edges.push({ from: f.id, to: s.id });
+      ssubs.forEach((ss, ssi) => {
+        nodes.push({ id: ss.id, type: 'action', label: lbl(ss.title), col: 3, row: startRow + ssi });
+        edges.push({ from: s.id, to: ss.id });
+      });
+    });
+    return { featureId: f.id, featureTitle: f.title, nodes, edges };
+  };
+
+  // ── 섹션별 AI 생성 (한 번에 1개씩 → JSON 잘림 방지)
   const generate = async () => {
     if (!specData?.features?.length) { alert('먼저 기능명세서를 생성해주세요.'); return; }
     setLoading(true);
 
-    // specData IDs를 그대로 전달 (AI가 노드 ID로 사용)
-    const feats = specData.features.map(f => ({
-      id: f.id,
-      title: f.title,
-      subs: (f.sub_features || []).slice(0, 6).map(s => ({ id: s.id, title: s.title }))
-    }));
+    const allSections = [];
 
-    const prompt = `당신은 UX 설계 전문가입니다. 아래 기능명세서를 바탕으로 각 기능의 내부 유저 플로우를 JSON으로 설계하세요.
+    for (let fi = 0; fi < specData.features.length; fi++) {
+      const f = specData.features[fi];
+      const isFirst = fi === 0;
 
-기능명세서(ID 포함):
-${JSON.stringify(feats, null, 2)}
+      // AI에 넘길 최소 입력 (제목+ID만, detail 제외 → 프롬프트 최소화)
+      const secInput = {
+        id: f.id, title: f.title,
+        subs: (f.sub_features || []).map(s => ({
+          id: s.id, title: s.title,
+          subs: (s.sub_features || []).map(ss => ({ id: ss.id, title: ss.title }))
+        }))
+      };
 
-⚠️ 중요한 ID 규칙:
-- section_top 노드의 id = 해당 feature의 id 그대로 사용 (예: 기능 id가 "F-001"이면 → id: "F-001")
-- page/action 노드의 id = 해당 sub_feature의 id 그대로 사용 (예: sub_feature id가 "SF-001-1"이면 → id: "SF-001-1")
-- start 노드의 id = "start"
-- 절대로 다른 id를 임의로 만들지 마세요!
+      const prompt = `UX 플로우 설계 전문가입니다. 아래 기능 1개의 유저 플로우를 JSON으로 설계하세요.
 
-출력 형식(JSON만, 다른 텍스트 금지):
-{
-  "sections": [
-    {
-      "featureId": "F-001",
-      "featureTitle": "섹션명",
-      "nodes": [
-        {"id": "정확한ID", "type": "start|section_top|page|action", "label": "한국어10자이내", "col": 0, "row": 0}
-      ],
-      "edges": [{"from": "nodeId", "to": "nodeId"}]
+기능 데이터:
+${JSON.stringify(secInput)}
+
+출력(JSON 오브젝트만, 다른 텍스트 절대 금지):
+{"nodes":[{"id":"...","type":"start|section_top|page|action","label":"10자이내","col":0,"row":0}],"edges":[{"from":"...","to":"..."}]}
+
+규칙:
+1. ${isFirst ? `start 노드(id:"start",col:0,row:중앙) → section_top(id:"${f.id}",col:1)` : `section_top(id:"${f.id}",col:1)부터 시작, start 노드 없음`}
+2. sub_features → col:2 type:"page", 각 sub의 sub_features → col:3 type:"action"
+3. 모든 id는 입력 데이터의 id 그대로 사용 (임의 생성 금지)
+4. row는 0부터 순서대로, 같은 col 안에서 중복 금지
+5. section_top의 row = 직계 자식(col:2)들의 중앙 row
+6. edges: 이 섹션 내부 연결만 포함
+7. 유저가 실제 이동하는 화면/행동 순서로 연결 (기능 목록 나열 X, 흐름 O)`;
+
+      let section = null;
+      try {
+        const text = await callGemini([{ role: 'user', content: prompt }], '');
+        // 마크다운 코드블록 제거 후 JSON 추출
+        const cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+        const m = cleaned.match(/\{[\s\S]*\}/);
+        if (m) {
+          const parsed = JSON.parse(m[0]);
+          if (Array.isArray(parsed.nodes) && parsed.nodes.length) {
+            section = { featureId: f.id, featureTitle: f.title, nodes: parsed.nodes, edges: parsed.edges || [] };
+          }
+        }
+      } catch (_) { /* 파싱 실패 → 폴백 */ }
+
+      // AI 실패 시 결정론적 레이아웃으로 대체 (에러 알림 없음)
+      allSections.push(section ?? buildSectionFromSpec(f, isFirst));
     }
-  ]
-}
 
-노드 타입 정의:
-- start: 최초 시작점, 첫 섹션에만 1개 (id:"start", col:0, row:0, label:"시작")
-- section_top: 각 기능의 메인 진입점, 섹션당 1개 (id = feature.id)
-- page: 섹션 내 하위 화면 (id = sub_feature.id)
-- action: 유저의 구체적 행동/결과 (id = sub_feature.id 중 행동성 항목)
-
-섹션 내부 연결 규칙:
-1. 첫 섹션: start(col:0) → section_top(col:1) → sub_features를 page/action(col:2)으로
-2. 두 번째+ 섹션: section_top(col:1) → sub_features를 page/action(col:2)으로
-   (섹션 간 연결은 우리가 자동으로 처리하므로 cross-section edge는 생성하지 마세요)
-3. section_top의 row = 자식 노드들의 중간 row (소수 내림)
-4. 같은 섹션 내 page/action의 row는 0부터 순서대로
-5. 모든 edge 방향: 작은 col → 큰 col
-6. edges에는 같은 섹션 내부 연결만 포함
-
-예시:
-섹션1(F-001): nodes: [start(col:0), F-001(col:1), SF-001-1(col:2), SF-001-2(col:2)]
-              edges: [{from:"start",to:"F-001"},{from:"F-001",to:"SF-001-1"},{from:"F-001",to:"SF-001-2"}]
-섹션2(F-002): nodes: [F-002(col:1), SF-002-1(col:2), SF-002-2(col:2)]
-              edges: [{from:"F-002",to:"SF-002-1"},{from:"F-002",to:"SF-002-2"}]
-→ F-001과 F-002 사이 연결은 우리가 자동 생성`;
-
-    try {
-      const text = await callGemini([{ role: 'user', content: prompt }], '');
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) setFlowData(JSON.parse(m[0]));
-    } catch (e) { alert('생성 실패: ' + e.message); }
+    setFlowData({ sections: allSections });
     setLoading(false);
   };
 
@@ -209,8 +231,8 @@ ${JSON.stringify(feats, null, 2)}
       return { ...group, targets: newTargets };
     });
 
-    // bypass 레인: col:2 노드 바로 오른쪽 고정 (경로 최소화)
-    const BYPASS_BASE = cx(2) + cw(2) + 24;
+    // bypass 레인: 실제 최대 컬럼 바로 오른쪽에 배치 (col:3 노드가 생기면 그 오른쪽으로 이동)
+    const BYPASS_BASE = cx(maxColGlobal) + cw(maxColGlobal) + 24;
     const BYPASS_STEP = 16;
     const maxBypassX = crossIdx > 0 ? BYPASS_BASE + (crossIdx - 1) * BYPASS_STEP : BYPASS_BASE;
 
@@ -293,6 +315,25 @@ ${JSON.stringify(feats, null, 2)}
                   {(sec.featureTitle || '').slice(0, 13)}
                 </text>
               ))}
+
+              {/* ── 섹션 간 수직 연결 (section_top → next section_top) */}
+              {layout.sections.slice(0, -1).map((sec, si) => {
+                const nextSec = layout.sections[si + 1];
+                const fromTop = sec.positioned.find(n => n.type === 'section_top');
+                const toTop   = nextSec?.positioned?.find(n => n.type === 'section_top');
+                if (!fromTop || !toTop) return null;
+                const x  = fromTop.cx;
+                const y1 = fromTop.y + fromTop.h;
+                const y2 = toTop.y;
+                return (
+                  <g key={`inter-${si}`}>
+                    <line x1={x} y1={y1} x2={x} y2={y2 - ARROW + 1}
+                      stroke={EDGE_COLOR} strokeWidth="1.1" />
+                    <polygon points={`${x},${y2} ${x - ARROW / 2},${y2 - ARROW} ${x + ARROW / 2},${y2 - ARROW}`}
+                      fill={EDGE_COLOR} />
+                  </g>
+                );
+              })}
 
               {/* ── 연결선 */}
               {layout.edgeGroups.map(({ from, targets }) => {

@@ -4,46 +4,20 @@ import { useState, useRef, useEffect, useCallback } from "react";
    DATA
    ═══════════════════════════════════════════ */
 const DEMO_PRD = {
-  overview: { one_liner: "크몽 문의 자동 감지 및 맞춤 응대 시스템", product_goal: "문의 응대 자동화를 통해 응답 시간을 4시간에서 5분으로 단축하고, 자동 응대 비율 70% 이상을 달성한다.", background: "클라이언트는 크몽에서 디자인 서비스를 판매 중이며, 하루 평균 30건의 문의가 들어오나 수동으로 응대하여 평균 응답 시간이 4시간을 초과함." },
-  core_value: { problem: "문의 응대 지연으로 전환율이 낮고, 반복적인 질문(가격, 작업기간, 수정횟수)에 매번 동일한 답변을 수동 작성해야 함.", solution: "크몽 문의를 자동 감지하고, 문의 유형을 분류하여 사전 정의된 템플릿 기반 자동 응답을 발송.", differentiator: "단순 자동응답이 아닌, 문의 내용을 AI로 분석하여 맥락에 맞는 맞춤 응대를 생성하고 견적까지 자동 산출." },
-  target: { users: "크몽에서 서비스를 판매하며 문의 응대에 하루 2시간 이상을 소모하는 프리랜서/소규모 팀", scenario: "1. 구매자가 크몽 메시지로 가격 문의 → 2. 시스템이 AI로 유형 분류 → 3. 맞춤 응답 자동 생성 → 4. 크몽 메시지로 자동 발송 → 5. 로그 기록" },
-  metrics: { kpis: "평균 응답 시간 5분 이내 / 자동 응대 비율 70%+ / 문의 전환율 15%+", risks: "크몽 UI 변경 시 스크래핑 로직 수정 필요 / AI 자동 응답 부적절 내용 생성 가능성" },
-  settings: { category: "고객관리/CS", roles: ["시스템", "크몽 구매자", "담당자"], devices: ["Desktop"] }
+  overview: { one_liner: "AI 기반 바이럴 콘텐츠 예측 플랫폼", product_goal: "콘텐츠 바이럴 가능성을 사전에 예측하고 트렌드를 분석하여 성과를 극대화한다.", background: "콘텐츠 크리에이터와 마케터들이 어떤 콘텐츠가 성공할지 미리 예측하고 기획하는 데 전문적인 데이터 분석이 필요함." },
+  core_value: { problem: "트렌드 파악의 어려움, 콘텐츠 성과 예측 불가 및 반복적인 리서치 업무", solution: "AI 모델을 통한 바이럴 예측, 실시간 트렌드 및 키워드 분석, 아이디어 자동 생성 자동화", differentiator: "단순 트렌드 제공이 아닌, 사용자의 텍스트/이미지를 분석해 실제 바이럴 지수 점수와 예상 성과를 예측." },
+  target: { users: "콘텐츠를 주기적으로 제작하는 크리에이터, 마케터, 소셜 미디어 관리자", scenario: "1. 타겟 도메인/키워드 분석 → 2. AI가 뜨는 아이디어 추천 → 3. 콘텐츠 초안 작성 → 4. 바이럴 예측 지수 확인 → 5. 성과 리포트 출력" },
+  metrics: { kpis: "예측 정확도 85% 이상 / 콘텐츠 기획 시간 60% 단축 / 활성 사용자 주 3회 이상 사용", risks: "플랫폼별 알고리즘 변화에 따른 예측 모델 오차 발생 가능성" },
+  settings: { category: "마케팅/AI 예측", roles: ["크리에이터", "마케터", "시스템"], devices: ["Desktop", "Mobile Web"] }
 };
 
 const SPEC_TREE = {
-  id: "root", label: "크몽 자동 응대", type: "root", children: [
-    { id: "R-001", label: "문의 수집 및 감지", type: "requirement", priority: "critical", children: [
-      { id: "F-001", label: "크몽 메시지 자동 감지", type: "feature", priority: "critical", specId: "SPEC-001", children: [
-        { id: "S-001-1", label: "메시지함 폴링 (5분 주기)", type: "sub", priority: "high" },
-        { id: "S-001-2", label: "읽지 않은 메시지 필터링", type: "sub", priority: "high" },
-        { id: "S-001-3", label: "세션 만료 자동 재로그인", type: "sub", priority: "medium" },
-      ]},
-    ]},
-    { id: "R-002", label: "문의 분석 및 분류", type: "requirement", priority: "critical", children: [
-      { id: "F-002", label: "문의 유형 AI 분류", type: "feature", priority: "critical", specId: "SPEC-002", children: [
-        { id: "S-002-1", label: "5개 유형 분류 (price/timeline/revision/custom/other)", type: "sub", priority: "critical" },
-        { id: "S-002-2", label: "confidence score 기반 분기", type: "sub", priority: "high" },
-      ]},
-    ]},
-    { id: "R-003", label: "자동 응대 및 발송", type: "requirement", priority: "critical", children: [
-      { id: "F-003", label: "맞춤 응답 생성 및 발송", type: "feature", priority: "critical", specId: "SPEC-003", children: [
-        { id: "S-003-1", label: "유형별 응답 템플릿 로드", type: "sub", priority: "high" },
-        { id: "S-003-2", label: "LLM 맞춤 응답 생성", type: "sub", priority: "critical" },
-        { id: "S-003-3", label: "금칙어 필터 + 길이 검증", type: "sub", priority: "high" },
-        { id: "S-003-4", label: "크몽 메시지 자동 발송", type: "sub", priority: "critical" },
-      ]},
-      { id: "F-004", label: "담당자 알림 발송", type: "feature", priority: "high", specId: "SPEC-004", children: [
-        { id: "S-004-1", label: "슬랙 Webhook 알림", type: "sub", priority: "high" },
-        { id: "S-004-2", label: "접수 확인 자동 응답", type: "sub", priority: "medium" },
-      ]},
-    ]},
-    { id: "R-004", label: "기록 및 관리", type: "requirement", priority: "medium", children: [
-      { id: "F-005", label: "응대 로그 기록", type: "feature", priority: "medium", specId: "SPEC-005", children: [
-        { id: "S-005-1", label: "Google Sheets API 연동", type: "sub", priority: "medium" },
-        { id: "S-005-2", label: "일별/주별 통계 시트", type: "sub", priority: "low" },
-      ]},
-    ]},
+  id: "root", label: "AI 기반 바이럴 콘텐츠 예측 플랫폼", type: "root", children: [
+    { id: "R-001", label: "AI 기반 콘텐츠 아이디어 추천 및 생성", type: "requirement", priority: "critical", desc: "사용자가 설정한 관심사, 타겟 분석, 특정 브랜드 및 지역 트렌드를 기반으로 타겟팅 가능성이 높은 콘텐츠 아이디어를 추천하고, 텍스트 기반 아이디어 예시를 생성하여 제공합니다.", children: [] },
+    { id: "R-002", label: "AI 바이럴 예측 모델", type: "requirement", priority: "critical", desc: "콘텐츠 데이터가 들어간 텍스트, 이미지, 영상 형태의 예측 시 모델이 학습결과를 조회하고, 예상 달성 가능성을 시각적 그래프 또는 점수로 제시합니다. 예측 정확성을 고도화합니다.", children: [] },
+    { id: "R-003", label: "실시간 트렌드 및 키워드 분석", type: "requirement", priority: "high", desc: "주요 소셜 미디어 플랫폼, 검색 엔진, 커뮤니티 등에서 실시간으로 급상승 하는 인기 트렌드와 키워드를 분석하여 사용자에게 제공합니다. 수집 데이터를 기반으로 트렌드 상세 정보 제공.", children: [] },
+    { id: "R-004", label: "경쟁사 콘텐츠 성과 분석", type: "requirement", priority: "high", desc: "사용자가 등록한 경쟁 채널 혹은 타겟/예시 콘텐츠 URL에 대한 성과 데이터를 분석하고, 어떤 콘텐츠가 높은 반응을 얻었는지 전략적 차이를 비교 인덱스로 제공합니다.", children: [] },
+    { id: "R-005", label: "개인화된 대시보드 및 리포트", type: "requirement", priority: "medium", desc: "사용자의 콘텐츠 기획 활동, 예측 결과, 경쟁사 분석 리포트 확인 등 요약을 확인할 수 있는 개인화된 전체 대시보드를 제공하며 주/월간 등 자동 리포트를 생성합니다.", children: [] },
   ]
 };
 
@@ -281,47 +255,134 @@ function SpecPanel() {
   );
 }
 
-/* Graph View - visual mindmap */
+/* Graph View - visual mindmap (Light UI Refined) */
 function SpecGraphView({ onSelect, selectedId }) {
-  const flat = [];
-  const flatten = (node, depth = 0, parentIdx = -1) => {
-    const idx = flat.length;
-    flat.push({ ...node, depth, parentIdx, idx });
-    (node.children || []).forEach(c => flatten(c, depth + 1, idx));
-  };
-  flatten(SPEC_TREE);
-
-  const rowH = 36;
-  const colW = 200;
-  const padL = 40;
-  const svgW = 900;
-  const svgH = flat.length * rowH + 40;
+  const root = SPEC_TREE;
+  const children = root.children || [];
+  
+  const rootW = 220, rootH = 74;
+  const childW = 360, childH = 90;
+  const placeholderW = 180, placeholderH = 34;
+  
+  const gapY = 16;
+  const startX = 40;
+  const childX = startX + rootW + 60;
+  const placeholderX = childX + childW + 60;
+  
+  const totalH = children.length * (childH + gapY) - gapY;
+  const rootY = Math.max(0, (totalH - rootH) / 2) + 20;
+  
+  const svgW = Math.max(1000, placeholderX + placeholderW + 120);
+  const svgH = Math.max(totalH + 80, rootY + rootH + 40);
 
   return (
-    <svg width="100%" height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} className="p-2">
-      {flat.map((n, i) => {
-        const x = padL + n.depth * colW;
-        const y = 20 + i * rowH;
-        const color = typeColors[n.type] || '#555';
-        // line to parent
-        let line = null;
-        if (n.parentIdx >= 0) {
-          const px = padL + flat[n.parentIdx].depth * colW + 80;
-          const py = 20 + n.parentIdx * rowH + 14;
-          line = <path d={`M${px},${py} C${px + 30},${py} ${x - 10},${y + 14} ${x},${y + 14}`} stroke={color} strokeWidth="1" fill="none" opacity="0.3" />;
-        }
-        const isSel = selectedId === n.id;
-        return (
-          <g key={n.id} onClick={() => onSelect(n)} className="cursor-pointer">
-            {line}
-            <rect x={x} y={y} width={160} height={28} rx={6} fill={isSel ? '#151a30' : '#0c1020'} stroke={isSel ? color : '#141830'} strokeWidth={isSel ? 1.5 : 0.5} />
-            <circle cx={x + 12} cy={y + 14} r={4} fill={color} opacity={0.7} />
-            <text x={x + 22} y={y + 18} fill="#c0c8e0" fontSize="11" fontFamily="'Noto Sans KR', sans-serif">{n.label.length > 18 ? n.label.slice(0, 18) + '…' : n.label}</text>
-            {n.priority && <text x={x + 148} y={y + 18} fill={priorityColors[n.priority]} fontSize="8" fontFamily="monospace" textAnchor="end">{n.priority[0].toUpperCase()}</text>}
-          </g>
-        );
-      })}
-    </svg>
+    <div className="w-full h-full overflow-auto bg-[#fafbfc]" style={{ minHeight: '100%' }}>
+      <svg width={svgW} height={svgH} className="min-w-full">
+        {/* Edges from root to children */}
+        {children.map((c, i) => {
+          const cy = 20 + i * (childH + gapY);
+          const fromX = startX + rootW;
+          const fromY = rootY + rootH / 2;
+          const toX = childX;
+          const toY = cy + childH / 2;
+          
+          return (
+            <g key={`edge-${i}`}>
+              <path d={`M${fromX},${fromY} C${fromX + 30},${fromY} ${toX - 30},${toY} ${toX},${toY}`} 
+                fill="none" stroke="#e4e7ed" strokeWidth="1.5" />
+              <g transform={`translate(${startX + rootW + 30}, ${fromY - 8})`}>
+                 <rect x="0" y="0" width="16" height="16" rx="8" fill="#fff" stroke="#e4e7ed" strokeWidth="1.5"/>
+                 <text x="8" y="12" fontSize="13" fill="#a0aab8" textAnchor="middle">+</text>
+              </g>
+            </g>
+          );
+        })}
+        
+        {/* Edges from children to placeholders */}
+        {children.map((c, i) => {
+          const cy = 20 + i * (childH + gapY);
+          const fromX = childX + childW;
+          const fromY = cy + childH / 2;
+          const toX = placeholderX;
+          const toY = fromY;
+          
+          return (
+             <g key={`edge-p-${i}`}>
+               <path d={`M${fromX},${fromY} L${toX},${toY}`} stroke="#e4e7ed" strokeWidth="1.5" strokeDasharray="4 3"/>
+               <g transform={`translate(${fromX + 24}, ${fromY - 8})`}>
+                 <rect x="0" y="0" width="16" height="16" rx="8" fill="#fff" stroke="#e4e7ed" strokeWidth="1.5"/>
+                 <text x="8" y="12" fontSize="13" fill="#a0aab8" textAnchor="middle">+</text>
+              </g>
+             </g>
+          );
+        })}
+
+        {/* Root Node */}
+        <foreignObject x={startX} y={rootY} width={rootW} height={rootH}>
+          <div className="w-full h-full bg-white rounded-xl border border-gray-200/60 p-3.5 flex flex-col justify-center gap-1.5" style={{boxShadow: '0 4px 16px rgba(0,0,0,0.03)'}}>
+            <div className="flex items-center gap-2">
+              <div className="text-gray-400 text-sm">📄</div>
+              <div className="text-[12px] font-bold text-gray-800 tracking-tight leading-tight">{root.label} <span className="text-[10px] text-gray-400 font-normal ml-0.5">↗ PRD</span></div>
+            </div>
+            <button className="mt-0.5 text-[10px] text-indigo-500 font-medium bg-indigo-50/50 py-1 rounded-md border border-indigo-100 flex items-center justify-center gap-1 hover:bg-indigo-50 transition-colors">
+              ✨ 모든 하위 항목 생성
+            </button>
+          </div>
+        </foreignObject>
+        
+        {/* Children Nodes */}
+        {children.map((c, i) => {
+          const cy = 20 + i * (childH + gapY);
+          return (
+            <foreignObject key={c.id} x={childX} y={cy} width={childW} height={childH}>
+               <div className="w-full h-full bg-white rounded-xl border border-gray-200/60 p-4 flex flex-col" style={{boxShadow: '0 2px 10px rgba(0,0,0,0.02)'}}>
+                 <div className="flex items-center justify-between mb-1.5">
+                   <div className="flex items-center gap-2">
+                     <span className="text-red-400 text-[13px]">📊</span>
+                     <span className="text-[12px] font-bold text-gray-800 tracking-tight">{c.label}</span>
+                   </div>
+                   <span className="text-yellow-400 text-xs">⭐</span>
+                 </div>
+                 <div className="text-[10px] text-gray-500/90 leading-relaxed font-medium break-keep h-full overflow-hidden">
+                   {c.desc}
+                 </div>
+               </div>
+            </foreignObject>
+          );
+        })}
+        
+        {/* Placeholder Node 1 */}
+        {children.map((c, i) => {
+          const cy = 20 + i * (childH + gapY);
+          return (
+             <foreignObject key={`p1-${i}`} x={placeholderX} y={cy + childH/2 - placeholderH/2} width={placeholderW} height={placeholderH}>
+               <div className="w-full h-full bg-white/80 rounded-lg border border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:bg-white transition-colors">
+                 <span className="text-[10.5px] text-gray-400 font-medium">상세 기능 추가</span>
+               </div>
+             </foreignObject>
+          );
+        })}
+
+        {/* Placeholder Nodes 2 (Detailed functions placeholders mapping to image right-most) */}
+        {children.map((c, i) => {
+          const cy = 20 + i * (childH + gapY);
+          const fromX2 = placeholderX + placeholderW;
+          const fromY2 = cy + childH / 2;
+          const toX2 = fromX2 + 80;
+          return (
+             <g key={`p2-${i}`}>
+               <path d={`M${fromX2},${fromY2} L${toX2},${fromY2}`} stroke="#e4e7ed" strokeWidth="1.5" strokeDasharray="4 3"/>
+               <foreignObject x={toX2} y={cy + childH/2 - placeholderH/2} width={placeholderW} height={placeholderH}>
+                 <div className="w-full h-full bg-white/80 rounded-lg border border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:bg-white transition-colors">
+                   <span className="text-[10.5px] text-gray-400 font-medium">상세 기능 추가</span>
+                 </div>
+               </foreignObject>
+             </g>
+          );
+        })}
+
+      </svg>
+    </div>
   );
 }
 
@@ -480,8 +541,8 @@ function ChatMessage({ msg }) {
    MAIN APP
    ═══════════════════════════════════════════ */
 export default function PlanForgeEditor() {
-  const [activeTab, setActiveTab] = useState('prd');
-  const [projectTitle, setProjectTitle] = useState('크몽 문의 자동 응대 시스템');
+  const [activeTab, setActiveTab] = useState('spec');
+  const [projectTitle, setProjectTitle] = useState('AI 기반 바이럴 콘텐츠 예측 플랫폼');
   const [prd, setPrd] = useState(DEMO_PRD);
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState([{ role: 'assistant', content: '안녕하세요! PlanForge AI입니다. PRD, 기능명세서, 유저플로우에 대해 질문하거나 수정을 요청해주세요.' }]);
