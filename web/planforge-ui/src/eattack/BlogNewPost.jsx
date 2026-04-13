@@ -1,83 +1,321 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
+import { callGemini } from "../utils/gemini";
 
-// ─── 추천 주제 ───
-const SUGGESTED_TOPICS = [
-  "AI 콘텐츠 자동화의 미래",
-  "SaaS 성장 전략 가이드",
-  "스타트업 마케팅 실전 노하우",
-  "개인 브랜딩으로 커리어 성장하기",
-  "원격 근무 생산성 높이는 법",
-  "2026 SEO 완벽 가이드",
+// ─── 콘텐츠 타입 정의 ───
+const CONTENT_TYPES = [
+  {
+    key: "pulling",
+    label: "풀링 콘텐츠",
+    desc: "공감형 유입 콘텐츠",
+    funnel: ["노출", "클릭"],
+    color: "blue",
+    gradient: "from-blue-500 to-cyan-500",
+    detail: "독자의 불편함·결핍·고민을 건드려 자연스럽게 유입시키는 콘텐츠입니다. SEO 최적화된 정보형 글로 노출을 극대화합니다.",
+    titleHints: ["왜 ~할까?", "~하면 생기는 문제", "~하는 사람들의 공통점", "솔직히 말하는 ~의 현실"],
+  },
+  {
+    key: "key",
+    label: "키 콘텐츠",
+    desc: "전환 유도 콘텐츠",
+    funnel: ["유입", "전환"],
+    color: "purple",
+    gradient: "from-purple-500 to-violet-500",
+    detail: "풀링 콘텐츠로 유입된 독자를 구매·상담·신청으로 전환시키는 콘텐츠입니다. 솔루션 제시와 CTA가 핵심입니다.",
+    titleHints: ["~를 해결하는 3가지 방법", "~하고 싶다면 지금 당장", "~의 진짜 해결책", "전문가가 알려주는 ~"],
+  },
 ];
 
-// ─── 언어 옵션 ───
-const LANGUAGES = [
-  { value: "auto", label: "입력 내용 따라 자동 감지" },
-  { value: "ko", label: "한국어" },
-  { value: "en", label: "English" },
-  { value: "ja", label: "日本語" },
-  { value: "zh", label: "中文" },
-  { value: "es", label: "Español" },
-  { value: "fr", label: "Français" },
-  { value: "de", label: "Deutsch" },
-  { value: "pt", label: "Português" },
-];
+// ─── 퍼널 단계 ───
+const FUNNEL_STAGES = ["노출", "클릭", "유입", "전환"];
 
+
+// HTML 태그 제거
+function stripHtml(str) {
+  return str.replace(/<[^>]*>/g, "").replace(/&[a-z]+;/gi, " ").trim();
+}
+
+// 블로그 검색 결과에서 키워드 추출 (빈도 기반)
+function extractKeywordsFromTitles(titles) {
+  const STOP_WORDS = new Set([
+    "이", "가", "은", "는", "을", "를", "의", "에", "에서", "로", "으로", "와", "과",
+    "도", "만", "이나", "이고", "하고", "하여", "하는", "있는", "없는", "한", "하기",
+    "위한", "대한", "통한", "위해", "때문에", "그리고", "하지만", "그러나", "또한",
+    "등", "및", "할", "수", "있", "없", "것", "때", "후", "전", "더", "가장",
+    "이것", "저것", "어떻게", "무엇", "왜", "어디", "언제", "누가",
+  ]);
+
+  const freq = {};
+  for (const title of titles) {
+    // 한국어 단어 (2글자 이상) 및 영문 단어 추출
+    const words = title.match(/[가-힣]{2,}|[A-Za-z]{3,}/g) || [];
+    for (const w of words) {
+      if (STOP_WORDS.has(w)) continue;
+      freq[w] = (freq[w] || 0) + 1;
+    }
+  }
+
+  return Object.entries(freq)
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([word]) => word);
+}
+
+
+// ─── 메인 컴포넌트 ───
 export default function BlogNewPost({ onBack, onGenerate }) {
+  const [contentType, setContentType] = useState("pulling");
+  const [serviceDesc, setServiceDesc] = useState("");
+  const [targetAudience, setTargetAudience] = useState("");
   const [topic, setTopic] = useState("");
-  const [language, setLanguage] = useState("auto");
-  const [showLangDropdown, setShowLangDropdown] = useState(false);
-  const [images, setImages] = useState([]);
-  const [showSettings, setShowSettings] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef(null);
+  const [keywords, setKeywords] = useState([]);
+  const [selectedKeywords, setSelectedKeywords] = useState([]);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [isLoadingKeywords, setIsLoadingKeywords] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingStep, setGeneratingStep] = useState("");
+  const [error, setError] = useState("");
+  const [naverKeywords, setNaverKeywords] = useState([]);
+  const [isNaverLoading, setIsNaverLoading] = useState(false);
+  const [naverStatus, setNaverStatus] = useState(""); // 'ok' | 'fallback' | 'error'
 
-  const selectedLangLabel = LANGUAGES.find((l) => l.value === language)?.label;
-  const canSubmit = topic.trim().length > 0;
+  const selectedType = CONTENT_TYPES.find((t) => t.key === contentType);
+  const canGenerate = serviceDesc.trim().length > 0 && selectedKeywords.length > 0;
 
-  // 이미지 업로드 처리
-  const handleFiles = (files) => {
-    const newImages = Array.from(files)
-      .filter((f) => f.type.startsWith("image/"))
-      .slice(0, 12 - images.length);
-    if (newImages.length === 0) return;
+  // ─── 네이버 블로그 검색 API (Vercel Serverless Function 경유) ───
+  const handleNaverKeywords = async () => {
+    if (!serviceDesc.trim()) {
+      setError("서비스/상품 설명을 먼저 입력해 주세요.");
+      return;
+    }
+    setError("");
+    setIsNaverLoading(true);
+    setNaverStatus("");
+    setNaverKeywords([]);
 
-    const readers = newImages.map(
-      (file) =>
-        new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve({ name: file.name, url: e.target.result, file });
-          reader.readAsDataURL(file);
-        })
+    const query = serviceDesc.trim().split(/\s+/).slice(0, 3).join(" ");
+
+    try {
+      // Vercel Serverless Function 호출 (/api/naver-search)
+      const resp = await fetch(`/api/naver-search?query=${encodeURIComponent(query)}&display=40&sort=sim`);
+      const data = await resp.json();
+
+      // 서버에 환경변수 미설정 시 → AI 대체
+      if (data.error === "NAVER_NOT_CONFIGURED") {
+        const aiKeywords = await enrichWithAI(query, []);
+        setNaverKeywords(aiKeywords);
+        setNaverStatus("fallback");
+        return;
+      }
+
+      if (!resp.ok) throw new Error(data.error || `API 오류 ${resp.status}`);
+
+      const titles = (data.items || []).map((item) => stripHtml(item.title));
+      const extracted = extractKeywordsFromTitles(titles);
+
+      if (extracted.length < 5) {
+        const aiKeywords = await enrichWithAI(query, titles.slice(0, 10));
+        setNaverKeywords([...new Set([...extracted, ...aiKeywords])].slice(0, 15));
+      } else {
+        setNaverKeywords(extracted);
+      }
+      setNaverStatus("ok");
+
+    } catch (e) {
+      // 네트워크 오류 등 → AI 대체
+      try {
+        const aiKeywords = await enrichWithAI(query, []);
+        setNaverKeywords(aiKeywords);
+        setNaverStatus("fallback");
+      } catch {
+        setError("키워드 추천에 실패했습니다: " + e.message);
+        setNaverStatus("error");
+      }
+    } finally {
+      setIsNaverLoading(false);
+    }
+  };
+
+  // AI 기반 연관 키워드 보완 (블로그 제목 분석 or 서비스 기반 추천)
+  const enrichWithAI = async (query, blogTitles) => {
+    const context = blogTitles.length > 0
+      ? `다음은 네이버 블로그 검색 결과 제목들입니다:\n${blogTitles.join("\n")}\n\n위 제목들에서 중요한 검색 키워드를 추출하고,`
+      : `"${query}" 서비스/상품을 검색할 때 네이버에서 실제로 사용될 법한 키워드를`;
+    const prompt = `${context} 15개를 추천해줘. JSON 배열로만 반환: ["키워드1", "키워드2", ...]`;
+    const result = await callGemini(
+      [{ role: "user", content: prompt }],
+      "네이버 블로그 SEO 전문가로서 실제 검색량이 높은 키워드를 추천합니다."
     );
-    Promise.all(readers).then((results) => {
-      setImages((prev) => [...prev, ...results].slice(0, 12));
-    });
+    const arrMatch = result.match(/\[[\s\S]*?\]/);
+    if (!arrMatch) return [];
+    return JSON.parse(arrMatch[0]).filter((v) => typeof v === "string").slice(0, 15);
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    handleFiles(e.dataTransfer.files);
+  // ─── AI 키워드 추천 (분류형) ───
+  const handleAIKeywords = async () => {
+    if (!serviceDesc.trim()) {
+      setError("서비스/상품 설명을 먼저 입력해 주세요.");
+      return;
+    }
+    setError("");
+    setIsLoadingKeywords(true);
+    try {
+      const prompt = `다음 서비스/상품에 대한 네이버 블로그 SEO 최적화 키워드를 추천해줘.
+
+서비스/상품: ${serviceDesc}
+타겟 고객: ${targetAudience || "미입력"}
+콘텐츠 목적: ${contentType === "pulling" ? "공감형 유입 (노출·클릭 극대화)" : "전환 유도 (유입→전환 최적화)"}
+
+다음 JSON 형식으로 정확히 반환해. 설명 없이 JSON만:
+{
+  "primary": ["핵심 키워드 4개"],
+  "long_tail": ["롱테일 키워드 6개"],
+  "pain_point": ["고통 포인트 키워드 4개"]
+}`;
+
+      const result = await callGemini(
+        [{ role: "user", content: prompt }],
+        "당신은 네이버 블로그 SEO 전문가입니다. 검색량이 높고 경쟁도가 적절한 키워드를 추천합니다."
+      );
+
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("키워드 파싱 실패");
+      const data = JSON.parse(jsonMatch[0]);
+      const all = [
+        ...(data.primary || []).map((k) => ({ keyword: k, type: "primary" })),
+        ...(data.long_tail || []).map((k) => ({ keyword: k, type: "long_tail" })),
+        ...(data.pain_point || []).map((k) => ({ keyword: k, type: "pain_point" })),
+      ];
+      setKeywords(all);
+    } catch (e) {
+      setError("키워드 추천 중 오류가 발생했습니다: " + e.message);
+    } finally {
+      setIsLoadingKeywords(false);
+    }
   };
 
-  const removeImage = (index) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
+  // ─── 키워드 토글 ───
+  const toggleKeyword = (kw) => {
+    setSelectedKeywords((prev) =>
+      prev.includes(kw) ? prev.filter((k) => k !== kw) : [...prev, kw]
+    );
   };
 
-  // 글 생성
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!canSubmit) return;
-    if (onGenerate) {
-      onGenerate({ topic, language, images });
+  // ─── 키워드 직접 추가 ───
+  const addManualKeyword = () => {
+    const kw = keywordInput.trim();
+    if (!kw) return;
+    if (!keywords.find((k) => k.keyword === kw)) {
+      setKeywords((prev) => [...prev, { keyword: kw, type: "manual" }]);
+    }
+    if (!selectedKeywords.includes(kw)) {
+      setSelectedKeywords((prev) => [...prev, kw]);
+    }
+    setKeywordInput("");
+  };
+
+  // ─── 블로그 글 생성 ───
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
+    setError("");
+    setIsGenerating(true);
+
+    try {
+      setGeneratingStep("주제 분석 중...");
+      const typeInfo = contentType === "pulling"
+        ? "공감형 유입 콘텐츠 (독자 고통/결핍 공감 → 정보 제공 → 자연스러운 서비스 언급)"
+        : "전환 유도 콘텐츠 (유입 독자에게 솔루션 제시 → 서비스 가치 증명 → 강력한 CTA)";
+
+      const systemPrompt = `당신은 퍼널 마케팅 전문 블로그 작가입니다.
+콘텐츠 타입: ${typeInfo}
+퍼널 목표: ${selectedType.funnel.join(" → ")} 전환 극대화
+글쓰기 원칙:
+- 독자의 관점에서 공감하며 시작
+- 정보는 구체적이고 실용적으로
+- 자연스러운 서비스 언급 (광고처럼 보이지 않게)
+- 네이버 블로그 SEO에 최적화된 구조`;
+
+      const prompt = `다음 정보를 바탕으로 네이버 블로그 글을 작성해주세요.
+
+[서비스/상품 정보]
+${serviceDesc}
+
+[타겟 독자]
+${targetAudience || "서비스와 관련된 잠재 고객"}
+
+[선택된 키워드]
+${selectedKeywords.join(", ")}
+
+[글 주제/각도]
+${topic || "키워드와 서비스에 맞는 최적의 주제로 작성"}
+
+[콘텐츠 타입]
+${typeInfo}
+
+다음 JSON 형식으로 반환해. 마크다운 코드블록 없이 JSON만:
+{
+  "title": "SEO 최적화된 제목 (키워드 포함, 30자 내외)",
+  "sections": [
+    {
+      "heading": "도입부",
+      "content": "독자의 공감을 이끄는 도입 문단 (3-4문장, 헤딩 없음)"
+    },
+    {
+      "heading": "소제목 1",
+      "content": "본문 내용 (4-6문장)"
+    },
+    {
+      "heading": "소제목 2",
+      "content": "본문 내용 (4-6문장)"
+    },
+    {
+      "heading": "소제목 3",
+      "content": "본문 내용 (4-6문장)"
+    },
+    {
+      "heading": "${contentType === "key" ? "지금 바로 시작하세요" : "마무리"}",
+      "content": "${contentType === "key" ? "강력한 CTA와 함께 마무리 (3-4문장)" : "정보 요약과 자연스러운 다음 행동 유도 (3-4문장)"}"
+    }
+  ]
+}`;
+
+      setGeneratingStep("글 생성 중...");
+      const result = await callGemini(
+        [{ role: "user", content: prompt }],
+        systemPrompt
+      );
+
+      setGeneratingStep("결과 처리 중...");
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("글 생성 결과를 파싱할 수 없습니다.");
+      const postData = JSON.parse(jsonMatch[0]);
+
+      if (postData.sections?.[0]?.heading === "도입부") {
+        postData.sections[0].heading = "";
+      }
+
+      onGenerate({
+        ...postData,
+        contentType,
+        funnelStages: selectedType.funnel,
+        keywords: selectedKeywords,
+        serviceDesc,
+        status: "draft",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      setError("글 생성 중 오류가 발생했습니다: " + e.message);
+    } finally {
+      setIsGenerating(false);
+      setGeneratingStep("");
     }
   };
 
   return (
     <div className="flex-1 overflow-y-auto bg-white h-full">
       {/* 헤더 */}
-      <header className="px-4 sm:px-6 py-4 sm:py-6">
+      <header className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
@@ -87,231 +325,397 @@ export default function BlogNewPost({ onBack, onGenerate }) {
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">새 글 작성</h1>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">전문 퍼널 블로그 글 작성</h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-0.5">AI가 퍼널 구조에 맞춘 전환 최적화 글을 작성합니다</p>
+          </div>
         </div>
       </header>
 
-      {/* 폼 */}
-      <form onSubmit={handleSubmit} className="max-w-2xl mx-auto px-4 sm:px-6 pb-24 sm:pb-8 space-y-5 sm:space-y-6">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 pb-32 sm:pb-12 pt-5 sm:pt-6 space-y-6 sm:space-y-8">
 
-        {/* 주제 입력 */}
-        <div className="space-y-2 sm:space-y-3">
+        {/* ─── 퍼널 시각화 ─── */}
+        <div className="bg-gray-50 rounded-xl p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">블로그 마케팅 퍼널</p>
+          <div className="flex items-center gap-1 sm:gap-2">
+            {FUNNEL_STAGES.map((stage, idx) => {
+              const isActive = selectedType.funnel.includes(stage);
+              return (
+                <div key={stage} className="flex items-center gap-1 sm:gap-2 flex-1">
+                  <div className={`flex-1 rounded-lg py-2 text-center text-xs sm:text-sm font-semibold transition-all ${
+                    isActive
+                      ? contentType === "pulling"
+                        ? "bg-blue-500 text-white shadow-sm"
+                        : "bg-purple-500 text-white shadow-sm"
+                      : "bg-white border border-gray-200 text-gray-300"
+                  }`}>
+                    {stage}
+                  </div>
+                  {idx < FUNNEL_STAGES.length - 1 && (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 flex-shrink-0">
+                      <path d="m9 18 6-6-6-6"/>
+                    </svg>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ─── 콘텐츠 타입 선택 ─── */}
+        <div className="space-y-3">
           <div>
-            <h2 className="text-lg sm:text-xl font-semibold tracking-tight text-gray-900">어떤 주제로 글을 쓸까요?</h2>
-            <p className="text-sm text-gray-500 mt-1">주제만 입력하면 AI가 리서치부터 글 작성까지 알아서 해드려요</p>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">콘텐츠 타입 선택</h2>
+            <p className="text-xs text-gray-400 mt-0.5">퍼널 단계에 맞는 콘텐츠를 선택하세요</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {CONTENT_TYPES.map((type) => (
+              <button
+                key={type.key}
+                type="button"
+                onClick={() => setContentType(type.key)}
+                className={`text-left rounded-xl border p-4 transition-all ${
+                  contentType === type.key
+                    ? type.key === "pulling"
+                      ? "border-blue-300 bg-blue-50 ring-1 ring-blue-200"
+                      : "border-purple-300 bg-purple-50 ring-1 ring-purple-200"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-sm font-bold ${
+                    contentType === type.key
+                      ? type.key === "pulling" ? "text-blue-700" : "text-purple-700"
+                      : "text-gray-800"
+                  }`}>
+                    {type.label}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    contentType === type.key
+                      ? type.key === "pulling"
+                        ? "bg-blue-100 text-blue-600"
+                        : "bg-purple-100 text-purple-600"
+                      : "bg-gray-100 text-gray-500"
+                  }`}>
+                    {type.funnel.join("→")}
+                  </span>
+                </div>
+                <p className={`text-xs leading-relaxed ${
+                  contentType === type.key ? "text-gray-600" : "text-gray-400"
+                }`}>
+                  {type.detail}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ─── 서비스/상품 정보 ─── */}
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">서비스 · 상품 정보</h2>
+            <p className="text-xs text-gray-400 mt-0.5">AI가 키워드와 글을 생성할 기반 정보입니다</p>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">
+                서비스/상품 설명 <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={serviceDesc}
+                onChange={(e) => setServiceDesc(e.target.value)}
+                placeholder="예: 1인 기업가와 소상공인을 위한 AI 마케팅 자동화 솔루션. SNS 콘텐츠를 AI가 자동으로 기획·작성·배포합니다."
+                className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 resize-none min-h-[100px] focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">
+                타겟 독자 <span className="text-gray-300 font-normal">(선택)</span>
+              </label>
+              <input
+                value={targetAudience}
+                onChange={(e) => setTargetAudience(e.target.value)}
+                placeholder="예: 하루에 콘텐츠 만드는 데 2시간 이상 쓰는 소상공인"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 transition-all"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ─── 키워드 리서치 ─── */}
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900">키워드 리서치</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                글에 사용할 키워드를 선택하세요 <span className="text-red-400">*</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {/* 네이버 연관검색 버튼 */}
+              <button
+                type="button"
+                onClick={handleNaverKeywords}
+                disabled={isNaverLoading || !serviceDesc.trim()}
+                className={`h-8 px-3 text-xs font-medium rounded-lg border flex items-center gap-1.5 transition-all ${
+                  !serviceDesc.trim()
+                    ? "border-gray-200 text-gray-300 cursor-not-allowed"
+                    : "border-green-200 text-green-700 bg-green-50 hover:bg-green-100"
+                }`}
+              >
+                {isNaverLoading ? (
+                  <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <span className="font-bold text-green-600">N</span>
+                )}
+                네이버 연관검색
+              </button>
+
+              {/* AI 키워드 추천 버튼 */}
+              <button
+                type="button"
+                onClick={handleAIKeywords}
+                disabled={isLoadingKeywords || !serviceDesc.trim()}
+                className={`h-8 px-3 text-xs font-medium rounded-lg border flex items-center gap-1.5 transition-all ${
+                  !serviceDesc.trim()
+                    ? "border-gray-200 text-gray-300 cursor-not-allowed"
+                    : "border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100"
+                }`}
+              >
+                {isLoadingKeywords ? (
+                  <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                  </svg>
+                )}
+                AI 키워드 추천
+              </button>
+            </div>
           </div>
 
-          {/* 추천 주제 */}
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-500">
-                <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
-                <path d="M9 18h6" /><path d="M10 22h4" />
-              </svg>
-              <span className="text-xs font-medium text-gray-500">이런 주제는 어때요?</span>
-            </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-              {SUGGESTED_TOPICS.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTopic(t)}
-                  className={`shrink-0 whitespace-nowrap inline-flex items-center rounded-full border px-3 py-1 text-xs transition-colors
-                    ${topic === t
-                      ? "border-purple-300 bg-purple-50 text-purple-700"
-                      : "border-gray-200 bg-white text-gray-500 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200"
+          {/* 네이버 키워드 결과 */}
+          {naverKeywords.length > 0 && (
+            <div className={`rounded-xl border p-3.5 space-y-2 ${
+              naverStatus === "ok"
+                ? "border-green-200 bg-green-50/50"
+                : "border-yellow-200 bg-yellow-50/50"
+            }`}>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-green-600 text-xs">N</span>
+                <span className={`text-xs font-semibold ${
+                  naverStatus === "ok" ? "text-green-700" : "text-yellow-700"
+                }`}>
+                  {naverStatus === "ok"
+                    ? "네이버 블로그 연관 키워드"
+                    : "AI 기반 연관 키워드 (네이버 API 미등록)"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {naverKeywords.map((kw) => (
+                  <button
+                    key={kw}
+                    type="button"
+                    onClick={() => toggleKeyword(kw)}
+                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-all border ${
+                      selectedKeywords.includes(kw)
+                        ? "bg-green-600 text-white border-green-600"
+                        : naverStatus === "ok"
+                          ? "bg-white text-green-700 border-green-200 hover:bg-green-100"
+                          : "bg-white text-yellow-700 border-yellow-200 hover:bg-yellow-100"
                     }`}
-                >
-                  {t}
-                </button>
+                  >
+                    {kw}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* AI 분류형 키워드 결과 */}
+          {keywords.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-3.5 space-y-3">
+              {[
+                { type: "primary", label: "핵심 키워드", color: "text-purple-600" },
+                { type: "long_tail", label: "롱테일 키워드", color: "text-blue-600" },
+                { type: "pain_point", label: "페인포인트 키워드", color: "text-orange-600" },
+              ].map(({ type, label, color }) => {
+                const typeKeywords = keywords.filter((k) => k.type === type);
+                if (typeKeywords.length === 0) return null;
+                return (
+                  <div key={type} className="space-y-1.5">
+                    <span className={`text-xs font-semibold ${color}`}>{label}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {typeKeywords.map(({ keyword: kw }) => (
+                        <button
+                          key={kw}
+                          type="button"
+                          onClick={() => toggleKeyword(kw)}
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-all border ${
+                            selectedKeywords.includes(kw)
+                              ? "bg-purple-600 text-white border-purple-600"
+                              : "bg-white text-gray-700 border-gray-200 hover:border-purple-300 hover:text-purple-700"
+                          }`}
+                        >
+                          {kw}
+                          {selectedKeywords.includes(kw) && (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-1">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 선택된 키워드 요약 */}
+          {selectedKeywords.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 p-3 bg-purple-50 rounded-xl border border-purple-100">
+              <span className="text-xs font-semibold text-purple-600 w-full mb-1">
+                선택된 키워드 ({selectedKeywords.length}개)
+              </span>
+              {selectedKeywords.map((kw) => (
+                <span key={kw} className="inline-flex items-center gap-1 rounded-full bg-purple-600 text-white text-xs px-3 py-1 font-medium">
+                  {kw}
+                  <button type="button" onClick={() => toggleKeyword(kw)} className="ml-0.5 opacity-70 hover:opacity-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                    </svg>
+                  </button>
+                </span>
               ))}
             </div>
-          </div>
+          )}
 
-          {/* 텍스트 입력 */}
+          {/* 직접 입력 */}
+          <div className="flex gap-2">
+            <input
+              value={keywordInput}
+              onChange={(e) => setKeywordInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addManualKeyword())}
+              placeholder="직접 키워드 추가..."
+              className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 transition-all"
+            />
+            <button
+              type="button"
+              onClick={addManualKeyword}
+              className="h-10 px-4 text-sm font-medium rounded-xl border border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all"
+            >
+              추가
+            </button>
+          </div>
+        </div>
+
+        {/* ─── 글 주제/각도 ─── */}
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+              글 주제 · 각도 <span className="text-gray-300 text-sm font-normal">(선택)</span>
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">비워두면 AI가 최적의 주제를 자동 선택합니다</p>
+          </div>
           <textarea
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="블로그 주제를 입력하세요 (예: AI 콘텐츠 자동화의 미래)"
-            maxLength={500}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm sm:text-base text-gray-800 placeholder-gray-400 shadow-sm resize-none min-h-[120px] sm:min-h-[160px] focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400 transition-colors"
+            placeholder={selectedType.titleHints.map((h, i) => `예시 ${i + 1}: ${h}`).join("\n")}
+            className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-3 text-sm text-gray-800 placeholder-gray-400 resize-none min-h-[90px] focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 transition-all"
           />
-        </div>
-
-        {/* 언어 + 이미지 */}
-        <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-[minmax(0,220px)_1fr]">
-
-          {/* 글 작성 언어 */}
-          <div className="space-y-1.5 rounded-lg sm:rounded-xl border border-gray-200 bg-gray-50/50 p-2.5 sm:p-4">
-            <label className="text-xs sm:text-sm font-medium text-gray-700">글 작성 언어</label>
-            <div className="relative">
+          <div className="flex flex-wrap gap-1.5">
+            {selectedType.titleHints.map((hint) => (
               <button
+                key={hint}
                 type="button"
-                onClick={() => setShowLangDropdown(!showLangDropdown)}
-                className="flex min-h-[44px] w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+                onClick={() => setTopic(hint)}
+                className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-500 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-colors"
               >
-                <span className="text-gray-700">{selectedLangLabel}</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 transition-transform ${showLangDropdown ? "rotate-180" : ""}`}>
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
+                {hint}
               </button>
-
-              {/* 드롭다운 */}
-              {showLangDropdown && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowLangDropdown(false)} />
-                  <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 max-h-60 overflow-y-auto">
-                    {LANGUAGES.map((lang) => (
-                      <button
-                        key={lang.value}
-                        type="button"
-                        onClick={() => { setLanguage(lang.value); setShowLangDropdown(false); }}
-                        className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between
-                          ${language === lang.value ? "bg-purple-50 text-purple-700" : "text-gray-700 hover:bg-gray-50"}`}
-                      >
-                        {lang.label}
-                        {language === lang.value && (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-600">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-            <p className="text-[11px] sm:text-xs text-gray-400">
-              보통 주제 입력 언어를 따라갑니다. 다른 언어로 강제하고 싶을 때만 직접 선택하세요.
-            </p>
-          </div>
-
-          {/* 참고 이미지 */}
-          <div className="space-y-1.5 rounded-lg sm:rounded-xl border border-gray-200 bg-gray-50/50 p-2.5 sm:p-4">
-            <div>
-              <label className="text-xs sm:text-sm font-medium text-gray-700">참고 이미지</label>
-              <p className="mt-0.5 text-[11px] sm:text-xs text-gray-400">
-                이미지를 업로드하면 글 생성 AI가 먼저 반영하고, 부족한 경우에만 자동 이미지를 찾습니다.
-              </p>
-            </div>
-
-            {/* 업로드 영역 */}
-            <div
-              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-              onDragLeave={() => setIsDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`rounded-xl border border-dashed p-5 transition-colors cursor-pointer
-                ${isDragOver ? "border-purple-400 bg-purple-50" : "border-gray-200 bg-gray-50/50 hover:border-gray-300"}`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,.png,.jpg,.jpeg,.webp"
-                multiple
-                onChange={(e) => handleFiles(e.target.files)}
-                className="hidden"
-              />
-              <div className="flex flex-col items-center justify-center gap-2 text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" x2="12" y1="3" y2="15" />
-                </svg>
-                <div>
-                  <p className="text-sm font-medium text-gray-700">이미지를 드래그하거나 클릭하여 업로드</p>
-                  <p className="text-xs text-gray-400 mt-1">최대 12장. 업로드한 이미지를 자동 이미지 검색보다 우선 사용합니다.</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 업로드된 이미지 미리보기 */}
-            {images.length > 0 && (
-              <div className="flex gap-2 flex-wrap mt-2">
-                {images.map((img, i) => (
-                  <div key={i} className="relative group w-16 h-16 rounded-lg overflow-hidden border border-gray-200">
-                    <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); removeImage(i); }}
-                      className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            ))}
           </div>
         </div>
 
-        {/* 세부 설정 (접이식) */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowSettings(!showSettings)}
-            className="w-full flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50/50 hover:bg-gray-100 hover:border-gray-300 px-4 py-3 transition-colors text-left"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 shrink-0">
-              <path d="M20 7h-9" /><path d="M14 17H5" />
-              <circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" />
+        {/* 에러 메시지 */}
+        {error && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500 mt-0.5 flex-shrink-0">
+              <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
             </svg>
-            <div className="flex-1 min-w-0">
-              <span className="text-sm font-medium text-gray-700">세부 설정</span>
-              <p className="text-xs text-gray-400">언어, 분위기, 키워드 등을 커스터마이즈</p>
-            </div>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`text-gray-400 shrink-0 transition-transform duration-200 ${showSettings ? "rotate-90" : ""}`}>
-              <path d="m9 18 6-6-6-6" />
-            </svg>
-          </button>
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
 
-          {/* 세부 설정 내용 (추후 추가) */}
-          {showSettings && (
-            <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50/50 p-4">
-              <p className="text-sm text-gray-400 text-center py-4">세부 설정 항목이 여기에 추가됩니다.</p>
-            </div>
-          )}
-        </div>
-
-        {/* 글 생성 시작 버튼 (데스크톱) */}
+        {/* 글 생성 버튼 (데스크톱) */}
         <button
-          type="submit"
-          disabled={!canSubmit}
-          className={`hidden sm:inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium rounded-lg h-11 min-h-[48px] px-8 transition-colors
-            ${canSubmit
-              ? "bg-purple-600 text-white shadow hover:bg-purple-700"
-              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-            }`}
+          type="button"
+          onClick={handleGenerate}
+          disabled={!canGenerate || isGenerating}
+          className={`hidden sm:inline-flex items-center justify-center gap-2.5 text-sm font-semibold rounded-xl h-12 px-8 transition-all w-full ${
+            canGenerate && !isGenerating
+              ? contentType === "pulling"
+                ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200"
+                : "bg-purple-600 hover:bg-purple-700 text-white shadow-sm shadow-purple-200"
+              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+          }`}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-            <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-            <path d="M20 3v4" /><path d="M22 5h-4" />
-            <path d="M4 17v2" /><path d="M5 18H3" />
-          </svg>
-          글 생성 시작
+          {isGenerating ? (
+            <>
+              <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              {generatingStep || "생성 중..."}
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+              </svg>
+              {selectedType.label} 글 생성 시작
+            </>
+          )}
         </button>
-      </form>
+      </div>
 
-      {/* 글 생성 시작 버튼 (모바일 하단 고정) */}
+      {/* 모바일 하단 고정 버튼 */}
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-white/95 backdrop-blur-sm border-t border-gray-200 sm:hidden z-50">
         <button
           type="button"
-          disabled={!canSubmit}
-          onClick={handleSubmit}
-          className={`inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium rounded-lg w-full h-12 text-base transition-colors
-            ${canSubmit
-              ? "bg-purple-600 text-white shadow hover:bg-purple-700"
-              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-            }`}
+          onClick={handleGenerate}
+          disabled={!canGenerate || isGenerating}
+          className={`inline-flex items-center justify-center gap-2.5 whitespace-nowrap font-semibold rounded-xl w-full h-12 text-sm transition-all ${
+            canGenerate && !isGenerating
+              ? contentType === "pulling"
+                ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                : "bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
+              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+          }`}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-            <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-            <path d="M20 3v4" /><path d="M22 5h-4" />
-            <path d="M4 17v2" /><path d="M5 18H3" />
-          </svg>
-          글 생성 시작
+          {isGenerating ? (
+            <>
+              <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              {generatingStep || "생성 중..."}
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+              </svg>
+              {selectedType.label} 글 생성 시작
+            </>
+          )}
         </button>
       </div>
     </div>
