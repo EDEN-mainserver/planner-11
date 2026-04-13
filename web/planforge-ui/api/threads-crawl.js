@@ -85,7 +85,7 @@ export default async function handler(req, res) {
     browser = await pw.launch({
       args: chromium.args,
       executablePath: execPath,
-      headless: chromium.headless,
+      headless: true,
     });
 
     const ctx = await browser.newContext({
