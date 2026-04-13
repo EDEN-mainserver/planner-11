@@ -84,7 +84,8 @@ export default function BlogNewPost({ onBack, onGenerate }) {
   const selectedType = CONTENT_TYPES.find((t) => t.key === contentType);
   const canGenerate = serviceDesc.trim().length > 0 && selectedKeywords.length > 0;
 
-  // ─── 네이버 블로그 검색 API (Vercel Serverless Function 경유) ───
+  // ─── 네이버 데이터랩 기반 키워드 리서치 ───
+  // ① AI로 후보 키워드 생성 → ② DataLab으로 실제 검색량 검증 → ③ 점수순 정렬
   const handleNaverKeywords = async () => {
     if (!serviceDesc.trim()) {
       setError("서비스/상품 설명을 먼저 입력해 주세요.");
@@ -94,65 +95,59 @@ export default function BlogNewPost({ onBack, onGenerate }) {
     setIsNaverLoading(true);
     setNaverStatus("");
     setNaverKeywords([]);
-
-    const query = serviceDesc.trim().split(/\s+/).slice(0, 3).join(" ");
+    setTrendScores({});
 
     try {
-      // Vercel Serverless Function 호출 (/api/naver-search)
-      const resp = await fetch(`/api/naver-search?query=${encodeURIComponent(query)}&display=40&sort=sim`);
+      // Step 1: AI로 후보 키워드 15개 생성
+      const prompt = `"${serviceDesc}" 서비스/상품을 네이버에서 검색할 때 실제로 사용할 법한 키워드 15개를 추천해줘.
+타겟: ${targetAudience || "잠재 고객"}
+조건: 2~6글자, 검색량 높을 것, 한국어 위주
+JSON 배열만 반환: ["키워드1", "키워드2", ...]`;
+
+      const result = await callGemini(
+        [{ role: "user", content: prompt }],
+        "네이버 SEO 전문가로서 실제 검색량이 높은 키워드를 추천합니다."
+      );
+      const arrMatch = result.match(/\[[\s\S]*?\]/);
+      if (!arrMatch) throw new Error("키워드 생성 실패");
+      const candidates = JSON.parse(arrMatch[0]).filter((v) => typeof v === "string").slice(0, 15);
+
+      // Step 2: DataLab으로 실제 검색량 점수 조회
+      const resp = await fetch('/api/naver-datalab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: candidates }),
+      });
       const data = await resp.json();
 
-      // 서버에 환경변수 미설정 시 → AI 대체
-      if (data.error === "NAVER_NOT_CONFIGURED") {
-        const aiKeywords = await enrichWithAI(query, []);
-        setNaverKeywords(aiKeywords);
+      if (data.error === 'NAVER_NOT_CONFIGURED') {
+        // DataLab 미설정 시 → AI 후보만 표시
+        setNaverKeywords(candidates);
         setNaverStatus("fallback");
         return;
       }
 
-      if (!resp.ok) throw new Error(data.error || `API 오류 ${resp.status}`);
+      if (!resp.ok) throw new Error(data.error);
 
-      const titles = (data.items || []).map((item) => stripHtml(item.title));
-      const extracted = extractKeywordsFromTitles(titles);
+      // Step 3: 점수순 정렬된 키워드 + 점수맵 저장
+      const scoreMap = {};
+      const sorted = (data.results || []).map(({ keyword, score }) => {
+        scoreMap[keyword] = score;
+        return keyword;
+      });
 
-      if (extracted.length < 5) {
-        const aiKeywords = await enrichWithAI(query, titles.slice(0, 10));
-        setNaverKeywords([...new Set([...extracted, ...aiKeywords])].slice(0, 15));
-      } else {
-        setNaverKeywords(extracted);
-      }
+      // 점수 0인 키워드도 포함 (검색량 낮아도 후보로 제공)
+      const finalList = sorted.length > 0 ? sorted : candidates;
+      setNaverKeywords(finalList);
+      setTrendScores(scoreMap);
       setNaverStatus("ok");
-      // 검색량 트렌드 자동 조회
-      fetchTrendScores(extracted.length >= 5 ? extracted : [...new Set([...extracted])]);
 
     } catch (e) {
-      // 네트워크 오류 등 → AI 대체
-      try {
-        const aiKeywords = await enrichWithAI(query, []);
-        setNaverKeywords(aiKeywords);
-        setNaverStatus("fallback");
-      } catch {
-        setError("키워드 추천에 실패했습니다: " + e.message);
-        setNaverStatus("error");
-      }
+      setError("키워드 리서치 중 오류가 발생했습니다: " + e.message);
+      setNaverStatus("error");
     } finally {
       setIsNaverLoading(false);
     }
-  };
-
-  // AI 기반 연관 키워드 보완 (블로그 제목 분석 or 서비스 기반 추천)
-  const enrichWithAI = async (query, blogTitles) => {
-    const context = blogTitles.length > 0
-      ? `다음은 네이버 블로그 검색 결과 제목들입니다:\n${blogTitles.join("\n")}\n\n위 제목들에서 중요한 검색 키워드를 추출하고,`
-      : `"${query}" 서비스/상품을 검색할 때 네이버에서 실제로 사용될 법한 키워드를`;
-    const prompt = `${context} 15개를 추천해줘. JSON 배열로만 반환: ["키워드1", "키워드2", ...]`;
-    const result = await callGemini(
-      [{ role: "user", content: prompt }],
-      "네이버 블로그 SEO 전문가로서 실제 검색량이 높은 키워드를 추천합니다."
-    );
-    const arrMatch = result.match(/\[[\s\S]*?\]/);
-    if (!arrMatch) return [];
-    return JSON.parse(arrMatch[0]).filter((v) => typeof v === "string").slice(0, 15);
   };
 
   // ─── 데이터랩 검색량 트렌드 조회 ───
@@ -546,8 +541,8 @@ ${typeInfo}
                     naverStatus === "ok" ? "text-green-700" : "text-yellow-700"
                   }`}>
                     {naverStatus === "ok"
-                      ? "네이버 블로그 연관 키워드"
-                      : "AI 기반 연관 키워드 (네이버 API 미등록)"}
+                      ? "네이버 검색량 기반 키워드 (높은 순)"
+                      : "AI 기반 키워드 추천 (데이터랩 미연동)"}
                   </span>
                 </div>
                 {isLoadingTrends && (
