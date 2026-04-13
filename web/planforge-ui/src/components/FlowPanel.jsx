@@ -30,6 +30,9 @@ const CROSS_EDGE_COLOR = '#a78bfa'; // 크로스 섹션 엣지 색상 (보라)
 
 export default function FlowPanel({ prd, specData, flowData, setFlowData }) {
   const [loading, setLoading] = useState(false);
+  const [elapsed, setElapsed]   = useState(0);   // 경과 시간(초)
+  const [stepMsg, setStepMsg]   = useState('');   // 현재 단계 메시지
+  const timerRef = useRef(null);
   const containerRef = useRef(null);
   const [tx, setTx] = useState(0), [ty, setTy] = useState(0), [scale, setScale] = useState(1);
   const drag = useRef({ active: false, sx: 0, sy: 0, ox: 0, oy: 0 });
@@ -96,63 +99,159 @@ export default function FlowPanel({ prd, specData, flowData, setFlowData }) {
     return { featureId: f.id, featureTitle: f.title, nodes, edges };
   };
 
-  // ── 섹션별 AI 생성 (한 번에 1개씩 → JSON 잘림 방지)
+  // ── 섹션별 AI 생성 (UX 화면 여정 중심)
   const generate = async () => {
     if (!specData?.features?.length) { alert('먼저 기능명세서를 생성해주세요.'); return; }
     setLoading(true);
+    setElapsed(0);
+    setStepMsg('유저플로우 생성 준비 중...');
+    // 1초마다 경과 시간 업데이트
+    const startTime = Date.now();
+    timerRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
 
     const allSections = [];
+    const total = specData.features.length;
 
     for (let fi = 0; fi < specData.features.length; fi++) {
       const f = specData.features[fi];
       const isFirst = fi === 0;
+      setStepMsg(`섹션 생성 중 (${fi + 1}/${total}) — ${f.title}`);
 
-      // AI에 넘길 최소 입력 (제목+ID만, detail 제외 → 프롬프트 최소화)
-      const secInput = {
-        id: f.id, title: f.title,
-        subs: (f.sub_features || []).map(s => ({
-          id: s.id, title: s.title,
-          subs: (s.sub_features || []).map(ss => ({ id: ss.id, title: ss.title }))
-        }))
-      };
+      // 기능명세서 구조: 그룹(depth-2)과 항목(depth-3)으로 정리해 AI에 전달
+      const specGroups = (f.sub_features || []).map(s => ({
+        group: s.title,
+        items: (s.sub_features || []).map(ss => ss.title),
+      }));
+      const specJson = JSON.stringify(specGroups, null, 2);
 
-      const prompt = `UX 플로우 설계 전문가입니다. 아래 기능 1개의 유저 플로우를 JSON으로 설계하세요.
+      const prompt = `당신은 시니어 UX 설계자입니다. 아래 기능명세서를 바탕으로 실제 사용자 경험 흐름을 JSON으로 설계하세요.
 
-기능 데이터:
-${JSON.stringify(secInput)}
+## 기능명: ${f.title}
+## 기능 설명: ${f.description || ''}
 
-출력(JSON 오브젝트만, 다른 텍스트 절대 금지):
-{"nodes":[{"id":"...","type":"start|section_top|page|action","label":"10자이내","col":0,"row":0}],"edges":[{"from":"...","to":"..."}]}
+## 기능명세서 (구현 참고):
+${specJson}
 
-규칙:
-1. ${isFirst ? `start 노드(id:"start",col:0,row:중앙) → section_top(id:"${f.id}",col:1)` : `section_top(id:"${f.id}",col:1)부터 시작, start 노드 없음`}
-2. sub_features → col:2 type:"page", 각 sub의 sub_features → col:3 type:"action"
-3. 모든 id는 입력 데이터의 id 그대로 사용 (임의 생성 금지)
-4. row는 0부터 순서대로, 같은 col 안에서 중복 금지
-5. section_top의 row = 직계 자식(col:2)들의 중앙 row
-6. edges: 이 섹션 내부 연결만 포함
-7. 유저가 실제 이동하는 화면/행동 순서로 연결 (기능 목록 나열 X, 흐름 O)`;
+## 핵심 변환 규칙: 명세서 → UX 화면
+명세서의 "group"(구현 역할 그룹) → page 노드 (사용자가 보는 화면으로 번역)
+명세서의 "item"(구현 항목) → action 노드 (사용자 행동/시스템 응답으로 번역)
+
+번역 예시:
+  group "사진 업로드 및 검증" → page: "사진 선택 화면"
+  item  "사진 업로드 UI"     → action: "사진 선택"
+  item  "이미지 유효성 검사"  → action: "유효성 오류 안내"
+  item  "이미지 전송 API"    → action: "업로드 중"
+  item  "업로드 실패 처리"   → action: "업로드 실패 안내"
+
+  group "적합도 계산 및 시각화" → page: "적합도 결과 화면"
+  item  "부위별 오차 계산"      → action: "부위별 수치 확인"
+  item  "최종 적합도 산출"      → action: "적합도 점수 표시"
+  item  "계산 오류 처리"        → action: "계산 오류 안내"
+
+## 금지 사항 (반드시 준수)
+❌ page label: API, DB, 큐잉, 전처리, 정규화, 검증 등 기술 용어 사용 금지
+❌ action label: "~처리", "~로직", "~큐잉", "~API" 등 개발자 언어 금지
+❌ 명세서 group/item 이름을 그대로 복사 금지 (반드시 사용자 언어로 번역)
+❌ action 노드는 page당 최대 4개 (초과 금지)
+
+## 출력 형식 (JSON만, 다른 텍스트 절대 금지):
+{"nodes":[{"id":"string","type":"section_top|page|action","label":"10자이내","col":1,"row":0}],"edges":[{"from":"id","to":"id"}]}
+
+## 노드 규칙:
+1. section_top: id="${f.id}", col:1, label=이 기능의 메인 화면명
+   ✅ 형식: "~화면" (예: "AI 분석 화면", "사이즈 결과 화면", "설정 화면")
+2. page(col:2): 명세서 group 수에 맞게 2~4개
+   ✅ 형식: 반드시 명사형 화면명 — "~화면", "~결과", "~로딩", "~안내 화면"
+   ❌ 금지: "~하기", "~올리기", "~중", "~확인하기" 등 동사형/진행형 절대 금지
+   ✅ 좋은 예: "사진 업로드 화면", "분석 로딩 화면", "결과 화면", "오류 안내 화면"
+   ❌ 나쁜 예: "사진 올리기", "분석 중", "체형 확인하기", "다시 분석하기"
+3. action(col:3): 명세서 item 번역, page당 2~4개, 성공+실패 포함
+   ✅ 동사형/상태형 허용: "사진 선택", "분석 완료", "업로드 실패 안내"
+4. row: 0부터, 같은 col 내 중복 없음, section_top row = col:2 중앙값
+5. id: section_top="${f.id}", page="${f.id}_p1"~, action="${f.id}_p1_a1"~
+${isFirst
+  ? `6. start 노드: {"id":"start","type":"start","label":"시작","col":0,"row":section_top과 동일} + edge start→${f.id}`
+  : `6. start 노드 없음`}
+7. edges: section_top→page, page→action (섹션 내부만)`;
 
       let section = null;
       try {
         const text = await callGemini([{ role: 'user', content: prompt }], '');
-        // 마크다운 코드블록 제거 후 JSON 추출
         const cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
         const m = cleaned.match(/\{[\s\S]*\}/);
         if (m) {
           const parsed = JSON.parse(m[0]);
           if (Array.isArray(parsed.nodes) && parsed.nodes.length) {
-            section = { featureId: f.id, featureTitle: f.title, nodes: parsed.nodes, edges: parsed.edges || [] };
+            // page 노드 동사형 label 자동 교정: "~하기" / "~올리기" / "~중" → "~화면"
+            const fixPageLabel = (label) => {
+              if (!label) return label;
+              if (label.endsWith('하기') || label.endsWith('올리기') || label.endsWith('보기'))
+                return label.replace(/(하기|올리기|보기)$/, ' 화면');
+              if (/중$/.test(label) && !label.endsWith('화면'))
+                return label + ' 화면';
+              return label;
+            };
+            // section_top id가 f.id와 다르면 강제 교정
+            const nodes = parsed.nodes.map(n =>
+              n.type === 'section_top' ? { ...n, id: f.id } :
+              n.type === 'page'        ? { ...n, label: fixPageLabel(n.label) } : n
+            );
+            const edges = (parsed.edges || []).map(e => ({
+              from: e.from === parsed.nodes.find(n => n.type === 'section_top')?.id ? f.id : e.from,
+              to:   e.to   === parsed.nodes.find(n => n.type === 'section_top')?.id ? f.id : e.to,
+            }));
+            section = { featureId: f.id, featureTitle: f.title, nodes, edges };
           }
         }
       } catch (_) { /* 파싱 실패 → 폴백 */ }
 
-      // AI 실패 시 결정론적 레이아웃으로 대체 (에러 알림 없음)
       allSections.push(section ?? buildSectionFromSpec(f, isFirst));
     }
 
-    setFlowData({ sections: allSections });
+    // ── 섹션 간 크로스 연결: AI가 각 섹션의 "완료 action → 다음 섹션 진입" 결정
+    setStepMsg('섹션 간 흐름 연결 중...');
+    let crossEdges = [];
+    if (allSections.length > 1) {
+      try {
+        const sectionSummary = allSections.map(sec => ({
+          featureId: sec.featureId,
+          title: sec.featureTitle,
+          actions: (sec.nodes || [])
+            .filter(n => n.type === 'action')
+            .map(n => ({ id: n.id, label: n.label })),
+        }));
+        const crossPrompt = `유저플로우의 섹션 간 화면 이동 경로를 결정하세요.
+
+섹션 목록 (사용자가 경험하는 순서):
+${JSON.stringify(sectionSummary, null, 2)}
+
+각 섹션(마지막 제외)에서 다음 섹션으로 자연스럽게 이동하게 만드는 핵심 "완료/확인" action 1개를 선택하세요.
+예: "분석 결과 확인" → 다음 섹션 시작, "추천 사이즈 표시" → 다음 섹션 시작
+
+출력(JSON 배열만, 다른 텍스트 절대 금지):
+[{"from":"actionId","to":"다음섹션featureId","label":"이동이유10자이내"}]
+
+규칙:
+- 반드시 현재 섹션의 action id 중에서 선택 (임의 id 생성 금지)
+- to는 반드시 다음 섹션의 featureId
+- 마지막 섹션은 포함하지 않음`;
+
+        const crossText = await callGemini([{ role: 'user', content: crossPrompt }], '');
+        const cleanedCross = crossText.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+        const crossMatch = cleanedCross.match(/\[[\s\S]*\]/);
+        if (crossMatch) {
+          const parsed = JSON.parse(crossMatch[0]);
+          if (Array.isArray(parsed)) crossEdges = parsed.filter(e => e.from && e.to);
+        }
+      } catch (_) { /* 크로스 엣지 생성 실패 → 조용히 무시 */ }
+    }
+
+    clearInterval(timerRef.current);
+    setFlowData({ sections: allSections, crossEdges });
     setLoading(false);
+    setStepMsg('');
   };
 
   // ── 레이아웃 계산
@@ -198,7 +297,47 @@ ${JSON.stringify(secInput)}
       }
     }
 
-    // ── leads_to 기반 크로스 섹션 엣지 자동 생성
+    // ── specData 계층 구조 기반 누락 엣지 자동 보완
+    // (AI가 section_top→page, page→action 엣지를 빠뜨릴 경우 강제 추가)
+    if (specData?.features) {
+      for (const f of specData.features) {
+        for (const s of (f.sub_features || [])) {
+          const fromNode = allNodeMap[f.id];
+          const toNode = allNodeMap[s.id];
+          if (fromNode && toNode) {
+            if (!bySource[fromNode.id]) bySource[fromNode.id] = { from: fromNode, targets: [] };
+            if (!bySource[fromNode.id].targets.some(t => t.id === toNode.id)) {
+              bySource[fromNode.id].targets.push({ ...toNode, isCross: false });
+            }
+          }
+          for (const ss of (s.sub_features || [])) {
+            const fromNode2 = allNodeMap[s.id];
+            const toNode2 = allNodeMap[ss.id];
+            if (fromNode2 && toNode2) {
+              if (!bySource[fromNode2.id]) bySource[fromNode2.id] = { from: fromNode2, targets: [] };
+              if (!bySource[fromNode2.id].targets.some(t => t.id === toNode2.id)) {
+                bySource[fromNode2.id].targets.push({ ...toNode2, isCross: false });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ── flowData.crossEdges 기반 크로스 섹션 엣지 (AI 생성)
+    if (flowData?.crossEdges?.length) {
+      for (const e of flowData.crossEdges) {
+        const fromNode = allNodeMap[e.from];
+        const toNode   = allNodeMap[e.to];
+        if (!fromNode || !toNode) continue;
+        if (!bySource[fromNode.id]) bySource[fromNode.id] = { from: fromNode, targets: [] };
+        if (!bySource[fromNode.id].targets.some(t => t.id === toNode.id)) {
+          bySource[fromNode.id].targets.push({ ...toNode, isCross: true });
+        }
+      }
+    }
+
+    // ── leads_to 기반 크로스 섹션 엣지 자동 생성 (specData 기반 폴백)
     if (specData?.features) {
       const collectSubs = (subs) => {
         const result = [];
@@ -253,14 +392,42 @@ ${JSON.stringify(secInput)}
         <span className="font-semibold text-gray-800 text-sm">유저플로우</span>
       </div>
       <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
-        <p className="text-gray-800 text-lg font-medium text-center">기능명세서 기반 유저플로우를 생성합니다</p>
-        <p className="text-gray-500 text-sm text-center">AI가 기능별 사용자 흐름을 자동으로 시각화해드려요</p>
-        <button onClick={generate} disabled={loading}
-          className="px-6 py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
-          {loading ? '생성 중...' : '✨ 유저플로우 생성하기'}
-        </button>
-        {!specData?.features?.length && (
-          <p className="text-xs text-amber-500">기능명세서 탭에서 먼저 기능명세서를 생성해주세요.</p>
+        {loading ? (
+          /* ── 생성 중 로딩 UI */
+          <div className="flex flex-col items-center gap-4">
+            {/* 경과 시간 */}
+            <div className="flex items-center gap-2">
+              <span className="text-3xl font-bold tabular-nums text-purple-600">
+                {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
+              </span>
+              <span className="text-sm text-gray-400">경과</span>
+            </div>
+            {/* 스피너 + 단계 메시지 */}
+            <div className="flex items-center gap-2">
+              <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="#e9d5ff" strokeWidth="3"/>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="#7c3aed" strokeWidth="3" strokeLinecap="round"/>
+              </svg>
+              <span className="text-sm text-gray-600 font-medium">{stepMsg}</span>
+            </div>
+            {/* 진행 힌트 */}
+            <p className="text-xs text-gray-400 text-center max-w-xs">
+              기능 수에 따라 30초~2분 정도 소요됩니다
+            </p>
+          </div>
+        ) : (
+          /* ── 초기 상태 */
+          <>
+            <p className="text-gray-800 text-lg font-medium text-center">기능명세서 기반 유저플로우를 생성합니다</p>
+            <p className="text-gray-500 text-sm text-center">AI가 기능별 사용자 흐름을 자동으로 시각화해드려요</p>
+            <button onClick={generate}
+              className="px-6 py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors shadow-sm">
+              ✨ 유저플로우 생성하기
+            </button>
+            {!specData?.features?.length && (
+              <p className="text-xs text-amber-500">기능명세서 탭에서 먼저 기능명세서를 생성해주세요.</p>
+            )}
+          </>
         )}
       </div>
     </div>

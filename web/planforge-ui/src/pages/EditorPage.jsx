@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { callGemini, deepMergePrd } from "../utils/gemini";
 import { IconSend } from "../components/Icons";
 import PRDPanel from "../components/PRDPanel";
@@ -471,58 +471,266 @@ function SpecTreePreview({ specData }) {
 }
 
 // ── 유저플로우 섹션 SVG
-function FlowPreview({ specData }) {
-  const features = specData?.features || [];
-  const SW = 160, SH_HEAD = 32, NODE_H = 26, GAP = 6, PAD = 12, COL_GAP = 28;
-  const cols = [];
-  let cx = 10;
-  for (const f of features) {
-    const subs = f.sub_features || [];
-    const height = SH_HEAD + (subs.length * (NODE_H + GAP)) + PAD * 2;
-    cols.push({ f, subs, x: cx, height });
-    cx += SW + COL_GAP;
+// ── FlowPanel 레이아웃 상수 (FlowPanel.jsx와 동일)
+const FP_LABEL_W = 110, FP_PAD_L = 20, FP_PAD_TOP = 44;
+const FP_NODE_H = 28, FP_ROW_H = 54, FP_SEC_PAD = 16, FP_COL_GAP = 84, FP_ARROW = 6;
+const FP_CW = [80, 140, 120, 120, 120, 120];
+const fpCw  = col => FP_CW[Math.min(col, FP_CW.length - 1)];
+const fpCx  = col => { let x = FP_LABEL_W + FP_PAD_L; for (let i = 0; i < col; i++) x += fpCw(i) + FP_COL_GAP; return x; };
+const FP_NS = {
+  start:       { fill: '#111827', text: '#ffffff', stroke: null,                   rx: 5  },
+  section_top: { fill: '#7c3aed', text: '#ffffff', stroke: null,                   rx: 6  },
+  page:        { fill: 'rgba(124,58,237,0.13)', text: '#5b21b6', stroke: 'rgba(124,58,237,0.4)', rx: 6 },
+  action:      { fill: '#ffffff', text: '#374151', stroke: '#d4d4d4',              rx: 14 },
+};
+const FP_EDGE = '#c8c8c8';
+
+// specData 계층으로 섹션 결정론적 빌드 (FlowPanel.buildSectionFromSpec 복사)
+function fpBuildSection(f, isFirst) {
+  const nodes = [], edges = [], subs = f.sub_features || [];
+  let rowCursor = 0;
+  const lbl = t => t.length > 10 ? t.slice(0, 10) + '…' : t;
+  const subLayout = subs.map(s => {
+    const ssubs = s.sub_features || [];
+    const height = Math.max(1, ssubs.length);
+    const pageRow = rowCursor + Math.floor((height - 1) / 2);
+    const startRow = rowCursor;
+    rowCursor += height;
+    return { s, ssubs, pageRow, startRow };
+  });
+  const secTopRow = Math.floor((Math.max(rowCursor, 1) - 1) / 2);
+  if (isFirst) {
+    nodes.push({ id: 'start', type: 'start', label: '시작', col: 0, row: secTopRow });
+    edges.push({ from: 'start', to: f.id });
   }
-  const W = cx + 10;
-  const H = Math.max(...cols.map(c => c.height), 200) + 20;
-  const colors = ['#f0fdf4', '#eff6ff', '#fef3c7', '#fdf4ff', '#fff7ed'];
-  const strokes = ['#86efac', '#93c5fd', '#fcd34d', '#d8b4fe', '#fdba74'];
+  nodes.push({ id: f.id, type: 'section_top', label: lbl(f.title), col: 1, row: secTopRow });
+  subLayout.forEach(({ s, ssubs, pageRow, startRow }) => {
+    nodes.push({ id: s.id, type: 'page', label: lbl(s.title), col: 2, row: pageRow });
+    edges.push({ from: f.id, to: s.id });
+    ssubs.forEach((ss, ssi) => {
+      nodes.push({ id: ss.id, type: 'action', label: lbl(ss.title), col: 3, row: startRow + ssi });
+      edges.push({ from: s.id, to: ss.id });
+    });
+  });
+  return { featureId: f.id, featureTitle: f.title, nodes, edges };
+}
+
+function FlowPreview({ specData, flowData }) {
+  const layout = useMemo(() => {
+    // flowData가 있으면 사용, 없으면 specData로 결정론적 빌드
+    const rawSections = flowData?.sections?.length
+      ? flowData.sections
+      : (specData?.features || []).map((f, fi) => fpBuildSection(f, fi === 0));
+
+    if (!rawSections.length) return null;
+
+    const allNodeMap = {};
+    const positionedSections = [];
+    let yOffset = FP_PAD_TOP;
+    let maxColGlobal = 1;
+
+    for (const sec of rawSections) {
+      const nodes = sec.nodes || [];
+      if (!nodes.length) continue;
+      const maxRow = Math.max(...nodes.map(n => n.row || 0));
+      const maxCol = Math.max(...nodes.map(n => n.col || 0));
+      maxColGlobal = Math.max(maxColGlobal, maxCol);
+      const contentH = (maxRow + 1) * FP_ROW_H;
+      const sectionH = Math.max(contentH + FP_SEC_PAD * 2, 76);
+      const extraPad = (sectionH - contentH - FP_SEC_PAD * 2) / 2;
+
+      const positioned = nodes.map(n => {
+        const col = n.col || 0, row = n.row || 0;
+        const nw = fpCw(col), nx = fpCx(col);
+        const ny = yOffset + FP_SEC_PAD + extraPad + row * FP_ROW_H;
+        const node = { ...n, x: nx, y: ny, cx: nx + nw / 2, cy: ny + FP_NODE_H / 2, w: nw, h: FP_NODE_H };
+        allNodeMap[n.id] = node;
+        return node;
+      });
+      positionedSections.push({ ...sec, positioned, yOffset, sectionH });
+      yOffset += sectionH;
+    }
+
+    // 엣지 수집
+    const bySource = {};
+    for (const sec of positionedSections) {
+      for (const e of (sec.edges || [])) {
+        const from = allNodeMap[e.from], to = allNodeMap[e.to];
+        if (!from || !to) continue;
+        if (!bySource[from.id]) bySource[from.id] = { from, targets: [] };
+        bySource[from.id].targets.push(to);
+      }
+    }
+    // specData 계층 기반 누락 엣지 보완
+    if (specData?.features) {
+      for (const f of specData.features) {
+        for (const s of (f.sub_features || [])) {
+          const fn = allNodeMap[f.id], tn = allNodeMap[s.id];
+          if (fn && tn) {
+            if (!bySource[fn.id]) bySource[fn.id] = { from: fn, targets: [] };
+            if (!bySource[fn.id].targets.some(t => t.id === tn.id)) bySource[fn.id].targets.push({ ...tn, isCross: false });
+          }
+          for (const ss of (s.sub_features || [])) {
+            const fn2 = allNodeMap[s.id], tn2 = allNodeMap[ss.id];
+            if (fn2 && tn2) {
+              if (!bySource[fn2.id]) bySource[fn2.id] = { from: fn2, targets: [] };
+              if (!bySource[fn2.id].targets.some(t => t.id === tn2.id)) bySource[fn2.id].targets.push({ ...tn2, isCross: false });
+            }
+          }
+        }
+      }
+    }
+
+    // flowData.crossEdges 기반 섹션 간 연결 (보라 점선)
+    if (flowData?.crossEdges?.length) {
+      let crossIdx = 0;
+      for (const e of flowData.crossEdges) {
+        const fromNode = allNodeMap[e.from];
+        const toNode   = allNodeMap[e.to];
+        if (!fromNode || !toNode) continue;
+        if (!bySource[fromNode.id]) bySource[fromNode.id] = { from: fromNode, targets: [] };
+        if (!bySource[fromNode.id].targets.some(t => t.id === toNode.id)) {
+          bySource[fromNode.id].targets.push({ ...toNode, isCross: true, bypassIdx: crossIdx++ });
+        }
+      }
+    }
+
+    const CROSS_COLOR = '#a78bfa';
+    const BYPASS_BASE = fpCx(maxColGlobal) + fpCw(maxColGlobal) + 24;
+    const BYPASS_STEP = 16;
+    const svgW = BYPASS_BASE + 80;
+    return { sections: positionedSections, edgeGroups: Object.values(bySource), svgW, svgH: yOffset + FP_PAD_TOP, BYPASS_BASE, BYPASS_STEP, CROSS_COLOR };
+  }, [flowData, specData]);
+
+  if (!layout) return (
+    <div className="text-gray-400 text-sm text-center py-8">유저플로우 데이터가 없습니다.</div>
+  );
+
+  const { sections, edgeGroups, svgW, svgH, BYPASS_BASE, BYPASS_STEP, CROSS_COLOR } = layout;
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ background: '#f9fafb', borderRadius: 8 }}>
-      {cols.map(({ f, subs, x, height }, ci) => (
-        <g key={f.id}>
-          <rect x={x} y={10} width={SW} height={height} rx="8" fill={colors[ci % 5]} stroke={strokes[ci % 5]} strokeWidth="1.5" />
-          <rect x={x} y={10} width={SW} height={SH_HEAD} rx="8" fill={strokes[ci % 5]} />
-          <rect x={x} y={10 + SH_HEAD - 8} width={SW} height={8} fill={strokes[ci % 5]} />
-          <text x={x + 10} y={10 + SH_HEAD / 2 + 5} fontSize="10" fontWeight="bold" fill="#1f2937" fontFamily="sans-serif">
-            {f.title.length > 16 ? f.title.slice(0, 16) + '…' : f.title}
-          </text>
-          {subs.map((s, si) => {
-            const ny = 10 + SH_HEAD + PAD + si * (NODE_H + GAP);
-            return (
-              <g key={s.id}>
-                <rect x={x + 8} y={ny} width={SW - 16} height={NODE_H} rx="5" fill="white" stroke={strokes[ci % 5]} strokeWidth="1" />
-                <text x={x + 16} y={ny + NODE_H / 2 + 4} fontSize="9" fill="#374151" fontFamily="sans-serif">
-                  {s.title.length > 15 ? s.title.slice(0, 15) + '…' : s.title}
-                </text>
-              </g>
-            );
-          })}
-        </g>
+    <svg width={svgW} height={svgH}
+      style={{ background: 'white', fontFamily: "'Noto Sans KR', system-ui, sans-serif", display: 'block' }}>
+      {/* 전체 흰 배경 */}
+      <rect x={0} y={0} width={svgW} height={svgH} fill="white" />
+
+      {/* 섹션 배경 */}
+      {sections.map((sec, si) => (
+        <rect key={`bg-${sec.featureId}`}
+          x={FP_LABEL_W} y={sec.yOffset}
+          width={svgW - FP_LABEL_W - 10} height={sec.sectionH}
+          fill={si % 2 === 0 ? '#ffffff' : 'rgba(248,246,255,0.9)'}
+          stroke="rgba(209,213,219,0.5)" strokeWidth="0.8" />
       ))}
-      {/* 섹션 간 leads_to 화살표 */}
-      {cols.map(({ f, subs, x }, ci) => {
-        if (ci >= cols.length - 1) return null;
-        const nextCol = cols[ci + 1];
+
+      {/* 섹션 라벨 */}
+      {sections.map(sec => (
+        <text key={`lbl-${sec.featureId}`}
+          x={FP_LABEL_W - 10} y={sec.yOffset + sec.sectionH / 2}
+          textAnchor="end" dominantBaseline="middle"
+          fill="#6b7280" fontSize="10.5" fontWeight="500">
+          {(sec.featureTitle || '').slice(0, 13)}
+        </text>
+      ))}
+
+      {/* 섹션 간 수직 연결선 */}
+      {sections.slice(0, -1).map((sec, si) => {
+        const nextSec = sections[si + 1];
+        const fromTop = sec.positioned.find(n => n.type === 'section_top');
+        const toTop   = nextSec?.positioned?.find(n => n.type === 'section_top');
+        if (!fromTop || !toTop) return null;
+        const x = fromTop.cx;
         return (
-          <line key={`arr-${ci}`} x1={x + SW} y1={10 + H / 2} x2={nextCol.x} y2={10 + H / 2}
-            stroke="#9ca3af" strokeWidth="1.5" markerEnd="url(#arr)" />
+          <g key={`inter-${si}`}>
+            <line x1={x} y1={fromTop.y + fromTop.h} x2={x} y2={toTop.y - FP_ARROW + 1}
+              stroke={FP_EDGE} strokeWidth="1.1" />
+            <polygon points={`${x},${toTop.y} ${x-FP_ARROW/2},${toTop.y-FP_ARROW} ${x+FP_ARROW/2},${toTop.y-FP_ARROW}`}
+              fill={FP_EDGE} />
+          </g>
         );
       })}
-      <defs>
-        <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="#9ca3af" />
-        </marker>
-      </defs>
+
+      {/* 연결선 (normal + cross) */}
+      {edgeGroups.map(({ from, targets }) => {
+        if (!targets.length) return null;
+        const normalTargets = targets.filter(t => !t.isCross);
+        const crossTargets  = targets.filter(t =>  t.isCross);
+        const x1 = from.x + from.w, y1 = from.cy;
+        const jx = x1 + FP_COL_GAP / 2;
+
+        const renderNormal = () => {
+          if (!normalTargets.length) return null;
+          if (normalTargets.length === 1) {
+            const t = normalTargets[0];
+            return (
+              <g>
+                <polyline points={`${x1},${y1} ${jx},${y1} ${jx},${t.cy} ${t.x},${t.cy}`}
+                  fill="none" stroke={FP_EDGE} strokeWidth="1.1" />
+                <polygon points={`${t.x},${t.cy} ${t.x-FP_ARROW},${t.cy-FP_ARROW/2} ${t.x-FP_ARROW},${t.cy+FP_ARROW/2}`}
+                  fill={FP_EDGE} />
+              </g>
+            );
+          }
+          const minCY = Math.min(...normalTargets.map(t => t.cy));
+          const maxCY = Math.max(...normalTargets.map(t => t.cy));
+          return (
+            <g>
+              <line x1={x1} y1={y1} x2={jx} y2={y1} stroke={FP_EDGE} strokeWidth="1.1" />
+              <line x1={jx} y1={Math.min(y1, minCY)} x2={jx} y2={Math.max(y1, maxCY)} stroke={FP_EDGE} strokeWidth="1.1" />
+              {normalTargets.map((t, ti) => (
+                <g key={`nb-${ti}`}>
+                  <line x1={jx} y1={t.cy} x2={t.x} y2={t.cy} stroke={FP_EDGE} strokeWidth="1.1" />
+                  <polygon points={`${t.x},${t.cy} ${t.x-FP_ARROW},${t.cy-FP_ARROW/2} ${t.x-FP_ARROW},${t.cy+FP_ARROW/2}`}
+                    fill={FP_EDGE} />
+                </g>
+              ))}
+            </g>
+          );
+        };
+
+        const renderCross = () => crossTargets.map((t, ti) => {
+          const bx = (BYPASS_BASE || svgW - 40) + (t.bypassIdx ?? ti) * (BYPASS_STEP || 16);
+          return (
+            <g key={`cx-${ti}`}>
+              <polyline
+                points={`${x1},${y1} ${bx},${y1} ${bx},${t.cy} ${t.x},${t.cy}`}
+                fill="none" stroke={CROSS_COLOR || '#a78bfa'} strokeWidth="1.5"
+                strokeDasharray="6,3" strokeLinejoin="round" />
+              <polygon
+                points={`${t.x},${t.cy} ${t.x-FP_ARROW},${t.cy-FP_ARROW/2} ${t.x-FP_ARROW},${t.cy+FP_ARROW/2}`}
+                fill={CROSS_COLOR || '#a78bfa'} />
+              <circle cx={bx} cy={y1} r="2.5" fill={CROSS_COLOR || '#a78bfa'} />
+            </g>
+          );
+        });
+
+        return (
+          <g key={`eg-${from.id}`}>
+            {renderNormal()}
+            {renderCross()}
+          </g>
+        );
+      })}
+
+      {/* 노드 */}
+      {sections.map(sec =>
+        sec.positioned.map(n => {
+          const s = FP_NS[n.type] || FP_NS.action;
+          return (
+            <g key={`n-${n.id}`}>
+              <rect x={n.x} y={n.y} width={n.w} height={n.h}
+                rx={s.rx} fill={s.fill}
+                stroke={s.stroke || 'none'} strokeWidth={s.stroke ? 0.9 : 0} />
+              <text x={n.cx} y={n.cy + 0.5}
+                textAnchor="middle" dominantBaseline="middle"
+                fill={s.text} fontSize="10.5"
+                fontWeight={n.type === 'start' || n.type === 'section_top' ? '600' : '400'}>
+                {(n.label || '').slice(0, 12)}
+              </text>
+            </g>
+          );
+        })
+      )}
     </svg>
   );
 }
@@ -1052,7 +1260,7 @@ __END_SUGGESTIONS__`;
           if (fmt === 'xlsx') return <XlsxPreview />;
           if (fmt === 'png') return (
             <div ref={svgPreviewRef}>
-              {isSpec ? <SpecTreePreview specData={specData} /> : <FlowPreview specData={specData} />}
+              {isSpec ? <SpecTreePreview specData={specData} /> : <FlowPreview specData={specData} flowData={flowData} />}
             </div>
           );
           const content = fmt === 'md'
