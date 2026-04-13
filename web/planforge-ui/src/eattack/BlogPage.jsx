@@ -415,6 +415,10 @@ export default function BlogPage({ onBack }) {
         post={currentPost}
         onBack={handleEditorBack}
         onSave={handleSave}
+        onDone={() => {
+          setCurrentPost(null);
+          setView("list");
+        }}
       />
     );
   }

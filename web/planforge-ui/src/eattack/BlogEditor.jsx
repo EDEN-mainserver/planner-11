@@ -1,16 +1,101 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
+
+// ─── **볼드** 마크다운을 <strong>으로 렌더링 ───
+function RichText({ text }) {
+  if (!text) return null;
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={i} className="font-bold text-gray-900">
+            {part.slice(2, -2)}
+          </strong>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
+// ─── 이미지 플레이스홀더 ───
+function ImagePlaceholder({ prompt, imageUrl, onGenerate, isGenerating }) {
+  return (
+    <div className="my-4 rounded-xl overflow-hidden border border-gray-200">
+      {imageUrl ? (
+        <img src={imageUrl} alt={prompt} className="w-full h-52 object-cover" />
+      ) : (
+        <div className="bg-gradient-to-br from-gray-50 to-gray-100 h-44 flex flex-col items-center justify-center gap-3 px-4">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21,15 16,10 5,21"/>
+          </svg>
+          <p className="text-xs text-gray-400 text-center leading-relaxed max-w-xs">{prompt}</p>
+          <button
+            onClick={() => onGenerate(prompt)}
+            disabled={isGenerating}
+            className="h-8 px-4 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+          >
+            {isGenerating ? (
+              <>
+                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                생성 중...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                </svg>
+                이미지 생성
+              </>
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── 블로그 에디터 컴포넌트 ───
-export default function BlogEditor({ post, onBack, onSave }) {
+export default function BlogEditor({ post, onBack, onSave, onDone }) {
   const [editMode, setEditMode] = useState(false);
   const [title, setTitle] = useState(post.title || "");
   const [sections, setSections] = useState(post.sections || []);
   const [copied, setCopied] = useState(false);
+  const [savedStatus, setSavedStatus] = useState(""); // "" | "draft" | "done"
+  const [generatingImageIdx, setGeneratingImageIdx] = useState(null);
+  const [sectionImages, setSectionImages] = useState({}); // { idx: imageUrl }
 
   // 섹션 내용 수정
   const updateSection = (idx, field, value) => {
     setSections((prev) => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   };
+
+  // 이미지 생성 (나노바나나 or 플레이스홀더)
+  const handleGenerateImage = async (idx, prompt) => {
+    setGeneratingImageIdx(idx);
+    try {
+      const resp = await fetch('/api/image-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      if (!resp.ok) throw new Error('이미지 생성 실패');
+      const data = await resp.json();
+      if (data.imageUrl) {
+        setSectionImages((prev) => ({ ...prev, [idx]: data.imageUrl }));
+      }
+    } catch {
+      // API 미연동 시 무시 (플레이스홀더 유지)
+    } finally {
+      setGeneratingImageIdx(null);
+    }
+  };
+
+  // **볼드** 마크다운 제거 후 순수 텍스트 반환
+  const stripBold = (text) => (text || "").replace(/\*\*([^*]+)\*\*/g, "$1");
 
   // 전체 텍스트 복사
   const handleCopy = () => {
@@ -18,8 +103,9 @@ export default function BlogEditor({ post, onBack, onSave }) {
       title,
       "",
       ...sections.flatMap((s) => [
-        s.heading ? `## ${s.heading}` : "",
-        s.content || "",
+        s.heading ? `[${s.heading}]` : "",
+        stripBold(s.content) || "",
+        s.quote ? `\n"${s.quote}"` : "",
         "",
       ]),
     ].join("\n");
@@ -32,6 +118,11 @@ export default function BlogEditor({ post, onBack, onSave }) {
   // 저장
   const handleSave = (status) => {
     onSave({ ...post, title, sections, status, updatedAt: new Date().toISOString() });
+    setSavedStatus(status);
+    if (status === "done") {
+      // 완료 저장 시 1.2초 후 목록으로 이동
+      setTimeout(() => onDone?.(), 1200);
+    }
   };
 
   return (
@@ -86,6 +177,20 @@ export default function BlogEditor({ post, onBack, onSave }) {
         </div>
       </header>
 
+      {/* 저장 피드백 배너 */}
+      {savedStatus && (
+        <div className={`px-4 sm:px-6 py-2.5 flex items-center gap-2 text-sm font-medium transition-all ${
+          savedStatus === "done"
+            ? "bg-green-50 text-green-700 border-b border-green-100"
+            : "bg-blue-50 text-blue-700 border-b border-blue-100"
+        }`}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          {savedStatus === "done" ? "완료로 저장됐습니다. 목록으로 돌아갑니다..." : "초안으로 저장됐습니다."}
+        </div>
+      )}
+
       {/* 본문 */}
       <div className="max-w-3xl mx-auto w-full px-4 sm:px-8 py-6 sm:py-10 space-y-6">
         {/* 메타 정보 */}
@@ -129,7 +234,8 @@ export default function BlogEditor({ post, onBack, onSave }) {
 
         {/* 섹션들 */}
         {sections.map((section, idx) => (
-          <div key={idx} className="space-y-2">
+          <div key={idx} className="space-y-3">
+            {/* 소제목 */}
             {section.heading && (
               editMode ? (
                 <input
@@ -141,6 +247,18 @@ export default function BlogEditor({ post, onBack, onSave }) {
                 <h3 className="text-lg sm:text-xl font-bold text-gray-800">{section.heading}</h3>
               )
             )}
+
+            {/* 이미지 영역 */}
+            {section.image_prompt && (
+              <ImagePlaceholder
+                prompt={section.image_prompt}
+                imageUrl={sectionImages[idx]}
+                onGenerate={(p) => handleGenerateImage(idx, p)}
+                isGenerating={generatingImageIdx === idx}
+              />
+            )}
+
+            {/* 본문 */}
             {section.content && (
               editMode ? (
                 <textarea
@@ -151,9 +269,26 @@ export default function BlogEditor({ post, onBack, onSave }) {
                 />
               ) : (
                 <div className="text-sm sm:text-base text-gray-700 leading-relaxed whitespace-pre-wrap">
-                  {section.content}
+                  <RichText text={section.content} />
                 </div>
               )
+            )}
+
+            {/* 인용구 */}
+            {section.quote && !editMode && (
+              <blockquote className="border-l-4 border-purple-400 bg-purple-50 pl-4 py-3 pr-3 rounded-r-xl my-1">
+                <p className="text-sm sm:text-base text-purple-800 font-medium leading-relaxed italic">
+                  "{section.quote}"
+                </p>
+              </blockquote>
+            )}
+            {section.quote && editMode && (
+              <input
+                value={section.quote}
+                onChange={(e) => updateSection(idx, "quote", e.target.value)}
+                placeholder="인용구 (비워두면 숨김)"
+                className="w-full text-sm text-purple-700 italic border border-purple-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-purple-50/50"
+              />
             )}
           </div>
         ))}

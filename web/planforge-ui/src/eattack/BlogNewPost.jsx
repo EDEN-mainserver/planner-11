@@ -249,89 +249,113 @@ JSON 배열만 반환: ["키워드1", "키워드2", ...]`;
     setIsGenerating(true);
 
     try {
-      setGeneratingStep("주제 분석 중...");
+      // ── 공통 정보 ──
       const typeInfo = contentType === "pulling"
         ? "공감형 유입 콘텐츠 (독자 고통/결핍 공감 → 정보 제공 → 자연스러운 서비스 언급)"
         : "전환 유도 콘텐츠 (유입 독자에게 솔루션 제시 → 서비스 가치 증명 → 강력한 CTA)";
 
-      // 저장된 글쓰기 스타일 로드
       const savedStyle = loadBlogStyle();
       const styleGuide = savedStyle ? `
-[적용할 글쓰기 스타일: ${savedStyle.blogger}]
-- 톤앤매너: ${savedStyle.tone}
-- 제목 패턴: ${savedStyle.title_pattern}
-- 도입부: ${savedStyle.intro_style}
-- 글 구조: ${savedStyle.content_structure}
-- 문단 스타일: ${savedStyle.paragraph_style}
-- 마무리: ${savedStyle.cta_style}
-- 작성 규칙: ${savedStyle.writing_rules?.join(' / ')}
-- 피할 것: ${savedStyle.avoid?.join(' / ')}
-위 스타일을 최대한 반영하여 작성하세요.` : '';
+[글쓰기 스타일: ${savedStyle.blogger}]
+톤앤매너: ${savedStyle.tone} / 제목 패턴: ${savedStyle.title_pattern}
+도입부: ${savedStyle.intro_style} / 구조: ${savedStyle.content_structure}
+규칙: ${savedStyle.writing_rules?.join(' / ')} / 피할것: ${savedStyle.avoid?.join(' / ')}` : '';
 
-      const systemPrompt = `당신은 퍼널 마케팅 전문 블로그 작가입니다.
-콘텐츠 타입: ${typeInfo}
-퍼널 목표: ${selectedType.funnel.join(" → ")} 전환 극대화
-글쓰기 원칙:
-- 독자의 관점에서 공감하며 시작
-- 정보는 구체적이고 실용적으로
-- 자연스러운 서비스 언급 (광고처럼 보이지 않게)
-- 네이버 블로그 SEO에 최적화된 구조
-${styleGuide}`;
+      // ══ STEP 1: 블로그 내용 생성 ══
+      setGeneratingStep("✍️ 블로그 내용 작성 중...");
 
-      const prompt = `다음 정보를 바탕으로 네이버 블로그 글을 작성해주세요.
+      const step1Prompt = `다음 정보로 네이버 블로그 글을 작성해줘. JSON만 반환, 코드블록 없이.
 
-[서비스/상품 정보]
-${serviceDesc}
+서비스: ${serviceDesc}
+타겟: ${targetAudience || "잠재 고객"}
+키워드: ${selectedKeywords.join(", ")}
+주제: ${topic || "최적 주제"}
+타입: ${typeInfo}
+${styleGuide}
 
-[타겟 독자]
-${targetAudience || "서비스와 관련된 잠재 고객"}
+JSON 형식:
+{"title":"제목","sections":[{"heading":"","content":"도입부 (3-4문장)"},{"heading":"소제목1","content":"내용 (4-6문장)"},{"heading":"소제목2","content":"내용 (4-6문장)"},{"heading":"소제목3","content":"내용 (4-6문장)"},{"heading":"${contentType === "key" ? "지금 바로 시작하세요" : "마무리"}","content":"마무리 (3-4문장)"}]}`;
 
-[선택된 키워드]
-${selectedKeywords.join(", ")}
-
-[글 주제/각도]
-${topic || "키워드와 서비스에 맞는 최적의 주제로 작성"}
-
-[콘텐츠 타입]
-${typeInfo}
-
-다음 JSON 형식으로 반환해. 마크다운 코드블록 없이 JSON만:
-{
-  "title": "SEO 최적화된 제목 (키워드 포함, 30자 내외)",
-  "sections": [
-    {
-      "heading": "도입부",
-      "content": "독자의 공감을 이끄는 도입 문단 (3-4문장, 헤딩 없음)"
-    },
-    {
-      "heading": "소제목 1",
-      "content": "본문 내용 (4-6문장)"
-    },
-    {
-      "heading": "소제목 2",
-      "content": "본문 내용 (4-6문장)"
-    },
-    {
-      "heading": "소제목 3",
-      "content": "본문 내용 (4-6문장)"
-    },
-    {
-      "heading": "${contentType === "key" ? "지금 바로 시작하세요" : "마무리"}",
-      "content": "${contentType === "key" ? "강력한 CTA와 함께 마무리 (3-4문장)" : "정보 요약과 자연스러운 다음 행동 유도 (3-4문장)"}"
-    }
-  ]
-}`;
-
-      setGeneratingStep("글 생성 중...");
-      const result = await callGemini(
-        [{ role: "user", content: prompt }],
-        systemPrompt
+      const step1Result = await callGemini(
+        [{ role: "user", content: step1Prompt }],
+        `퍼널 마케팅 전문 블로그 작가. 콘텐츠 타입: ${typeInfo}. 퍼널 목표: ${selectedType.funnel.join(" → ")} 전환 극대화.`
       );
 
-      setGeneratingStep("결과 처리 중...");
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("글 생성 결과를 파싱할 수 없습니다.");
-      const postData = JSON.parse(jsonMatch[0]);
+      const step1Match = step1Result.match(/\{[\s\S]*\}/);
+      if (!step1Match) throw new Error("1단계 글 생성 실패");
+      const rawPost = JSON.parse(step1Match[0]);
+
+      // ══ STEP 2: 볼드·인용구·이미지 서식 추가 ══
+      setGeneratingStep("✨ 볼드·인용구·이미지 서식 적용 중...");
+
+      const sectionsText = (rawPost.sections || [])
+        .map((s, i) => `섹션${i}(${s.heading || "도입부"}): ${s.content}`)
+        .join("\n\n");
+
+      const step2Prompt = `아래 블로그 섹션들에 서식을 추가해서 JSON 배열로 반환해줘. 코드블록 없이 JSON 배열만.
+
+규칙:
+1. content: 원문 그대로 유지하되, 독자가 반드시 기억할 핵심 문구를 **별표두개**로 감싸기 (섹션당 2-3개 필수)
+   예시) "지금 **월 50시간을 낭비**하고 있다면, **이 한 가지**만 바꿔도 됩니다."
+2. quote: 해당 섹션의 핵심을 압축한 임팩트 있는 한 문장 (반드시 채울 것)
+3. image_prompt: 해당 섹션 내용을 시각화하는 영어 이미지 생성 프롬프트
+
+섹션 원문:
+${sectionsText}
+
+반환 형식 (배열):
+[
+  {"bold_content": "**볼드** 적용된 도입부 내용", "quote": "인용구", "image_prompt": "영어 이미지 프롬프트"},
+  {"bold_content": "**볼드** 적용된 섹션1 내용", "quote": "인용구", "image_prompt": "영어 이미지 프롬프트"},
+  {"bold_content": "**볼드** 적용된 섹션2 내용", "quote": "인용구", "image_prompt": "영어 이미지 프롬프트"},
+  {"bold_content": "**볼드** 적용된 섹션3 내용", "quote": "인용구", "image_prompt": "영어 이미지 프롬프트"},
+  {"bold_content": "**볼드** 적용된 마무리 내용", "quote": "인용구", "image_prompt": "영어 이미지 프롬프트"}
+]`;
+
+      const step2Result = await callGemini(
+        [{ role: "user", content: step2Prompt }],
+        "당신은 블로그 서식 전문가입니다. 주어진 텍스트에 볼드 마크다운과 인용구를 추가하는 작업만 합니다."
+      );
+
+      setGeneratingStep("📋 결과 처리 중...");
+
+      // Step2 결과 파싱 (배열)
+      const arrMatch = step2Result.match(/\[[\s\S]*\]/);
+      const fallbackImagePrompts = [
+        "professional business scene, modern office, warm lighting, people working",
+        "hands on laptop with data charts, professional business photography",
+        "team collaboration in bright modern workspace, success concept",
+        "confident professional achieving goals, inspiring atmosphere",
+        "call to action moment, person making positive decision",
+      ];
+
+      let formattedSections = rawPost.sections || [];
+      if (arrMatch) {
+        try {
+          const fmtArr = JSON.parse(arrMatch[0]);
+          formattedSections = rawPost.sections.map((s, idx) => {
+            const fmt = fmtArr[idx] || {};
+            return {
+              ...s,
+              content: fmt.bold_content || s.content,
+              quote: fmt.quote || null,
+              image_prompt: fmt.image_prompt || fallbackImagePrompts[idx] || fallbackImagePrompts[0],
+            };
+          });
+        } catch {
+          // Step2 파싱 실패 시 원본 + 폴백 이미지 사용
+          formattedSections = rawPost.sections.map((s, idx) => ({
+            ...s,
+            quote: null,
+            image_prompt: fallbackImagePrompts[idx] || fallbackImagePrompts[0],
+          }));
+        }
+      }
+
+      const postData = {
+        ...rawPost,
+        sections: formattedSections,
+      };
 
       if (postData.sections?.[0]?.heading === "도입부") {
         postData.sections[0].heading = "";
