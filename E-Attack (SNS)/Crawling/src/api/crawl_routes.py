@@ -1,10 +1,13 @@
 """
 크롤링 API 라우터
 """
+import base64
+import json
 from fastapi import APIRouter
 from src.models.post import CrawlResponse
 from src.crawlers.iboss_crawler import crawl_iboss, crawl_iboss_detail
 from src.crawlers.x_crawler import crawl_x_trends
+from src.crawlers.threads_crawler import crawl_threads
 
 router = APIRouter()
 
@@ -36,6 +39,32 @@ async def get_iboss_detail(url: str) -> dict:
         return {"content": content, "error": ""}
     except Exception as e:
         return {"content": "", "error": str(e)}
+
+
+@router.get("/threads", response_model=CrawlResponse)
+async def get_threads_posts(
+    keyword: str = "",
+    limit: int = 20,
+    cookies: str = "",  # Base64 인코딩된 쿠키 JSON (선택적)
+) -> CrawlResponse:
+    """쓰레드 검색 결과 크롤링 (keyword: 검색어, cookies: base64 쿠키 JSON)"""
+    if not keyword.strip():
+        return CrawlResponse(platform="threads", total=0, posts=[], error="keyword가 필요합니다.")
+    try:
+        parsed_cookies: list[dict] = []
+        if cookies:
+            try:
+                parsed_cookies = json.loads(base64.b64decode(cookies).decode("utf-8"))
+            except Exception:
+                try:
+                    parsed_cookies = json.loads(cookies)
+                except Exception:
+                    pass
+
+        posts = await crawl_threads(keyword=keyword, max_posts=limit, cookies=parsed_cookies or None)
+        return CrawlResponse(platform="threads", total=len(posts), posts=posts)
+    except Exception as e:
+        return CrawlResponse(platform="threads", total=0, posts=[], error=str(e))
 
 
 @router.get("/x", response_model=CrawlResponse)
