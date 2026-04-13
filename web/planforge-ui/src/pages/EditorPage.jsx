@@ -123,7 +123,15 @@ function specToMarkdown(specData, prd, title) {
     const subs = f.sub_features || [];
     if (subs.length) {
       md += `**수용 기준:**\n\`\`\`\n`;
-      subs.forEach((s, si) => { md += `${si + 1}. ○ ${s.detail || s.title}\n`; });
+      subs.forEach((s, si) => {
+        md += `${si + 1}. ${s.title}${s.detail ? `  — ${s.detail}` : ''}\n`;
+        (s.sub_features || []).forEach((ss, ssi) => {
+          md += `   ${si + 1}.${ssi + 1}. ○ ${ss.title}${ss.detail ? `  — ${ss.detail}` : ''}\n`;
+          (ss.sub_features || []).forEach((sss, sssi) => {
+            md += `      ${si + 1}.${ssi + 1}.${sssi + 1}. ○ ${sss.title}${sss.detail ? `  — ${sss.detail}` : ''}\n`;
+          });
+        });
+      });
       md += `\`\`\`\n\n\n---\n\n\n`;
     } else {
       md += `\n---\n\n\n`;
@@ -165,7 +173,15 @@ function specToText(specData, prd, title) {
     const subs = f.sub_features || [];
     if (subs.length) {
       txt += `[수용 기준]\n`;
-      subs.forEach((s, si) => { txt += `  ${si + 1}. ○ ${s.detail || s.title}\n`; });
+      subs.forEach((s, si) => {
+        txt += `  ${si + 1}. ○ ${s.title}${s.detail ? `  — ${s.detail}` : ''}\n`;
+        (s.sub_features || []).forEach((ss, ssi) => {
+          txt += `    ${si + 1}.${ssi + 1}. ◦ ${ss.title}${ss.detail ? `  — ${ss.detail}` : ''}\n`;
+          (ss.sub_features || []).forEach((sss, sssi) => {
+            txt += `      ${si + 1}.${ssi + 1}.${sssi + 1}. · ${sss.title}${sss.detail ? `  — ${sss.detail}` : ''}\n`;
+          });
+        });
+      });
     }
     txt += `\n\n${SEP50}\n\n`;
     i++;
@@ -201,15 +217,18 @@ function specToExcelHtml(specData, prd, title) {
 
   // 기능 목록 테이블
   body += `<table style="border-collapse:collapse;width:100%">`;
-  body += `<tr><td style="${THS}">요구사항 Requirement</td><td style="${THS}">기능 Feature</td><td style="${THS}">상세 기능 Detailed Spec</td><td style="${THS}">설명 및 상세 요구사항 Description</td></tr>`;
+  body += `<tr><td style="${THS}">요구사항 Requirement</td><td style="${THS}">기능 Feature</td><td style="${THS}">상세 기능 Detailed Spec</td><td style="${THS}">세부 구현 항목</td><td style="${THS}">설명 및 상세 요구사항 Description</td></tr>`;
   let i = 1;
   for (const f of (specData?.features || [])) {
     const subs = f.sub_features || [];
-    body += `<tr><td style="${CS}font-weight:600;">${i} ${f.title}</td><td style="${CS}"></td><td style="${CS}"></td><td style="${CS}">${f.description || ''}</td></tr>`;
+    body += `<tr><td style="${CS}font-weight:600;">${i} ${f.title}</td><td style="${CS}"></td><td style="${CS}"></td><td style="${CS}"></td><td style="${CS}">${f.description || ''}</td></tr>`;
     subs.forEach((s, si) => {
-      body += `<tr><td style="${CS}"></td><td style="${CS}">${i}.${si + 1} ${s.title}</td><td style="${CS}"></td><td style="${CS}">${s.detail || ''}</td></tr>`;
+      body += `<tr><td style="${CS}"></td><td style="${CS}">${i}.${si + 1} ${s.title}</td><td style="${CS}"></td><td style="${CS}"></td><td style="${CS}">${s.detail || ''}</td></tr>`;
       (s.sub_features || []).forEach((ss, ssi) => {
-        body += `<tr><td style="${CS}"></td><td style="${CS}"></td><td style="${CS}">${i}.${si + 1}.${ssi + 1} ${ss.title}</td><td style="${CS}">${ss.detail || ''}</td></tr>`;
+        body += `<tr><td style="${CS}"></td><td style="${CS}"></td><td style="${CS}">${i}.${si + 1}.${ssi + 1} ${ss.title}</td><td style="${CS}"></td><td style="${CS}">${ss.detail || ''}</td></tr>`;
+        (ss.sub_features || []).forEach((sss, sssi) => {
+          body += `<tr><td style="${CS}"></td><td style="${CS}"></td><td style="${CS}"></td><td style="${CS}">${i}.${si + 1}.${ssi + 1}.${sssi + 1} ${sss.title}</td><td style="${CS}">${sss.detail || ''}</td></tr>`;
+        });
       });
     });
     i++;
@@ -375,49 +394,75 @@ async function downloadSvgAsPng(svgEl, filename) {
   a.click();
 }
 
-// ── 기능명세서 트리 SVG
+// ── 기능명세서 트리 SVG (3단계 완전 지원)
 function SpecTreePreview({ specData }) {
   const features = specData?.features || [];
-  const NW = 150, NH = 30, GAP = 10, COL1 = 10, COL2 = 200, COL3 = 380;
+  const NW = 138, NH = 24, GAP = 6, F_GAP = 14;
+  const COL1 = 10, COL2 = COL1 + NW + 24, COL3 = COL2 + NW + 24, COL4 = COL3 + NW + 24;
   const nodes = [], lines = [];
   let y = 20;
+
   for (const f of features) {
     const subs = f.sub_features || [];
-    const subCount = Math.max(1, subs.length);
-    const fy = y + ((subCount * (NH + GAP)) - GAP) / 2 - NH / 2;
-    nodes.push({ id: f.id, label: f.title, x: COL2, y: fy, color: '#ede9fe', stroke: '#7c3aed', text: '#5b21b6' });
+    // depth-1 피처의 세로 중심: depth-3 리프 총 개수 기준으로 계산
+    const leafCount = subs.length === 0 ? 1
+      : subs.reduce((acc, s) => acc + Math.max(1, (s.sub_features || []).length), 0);
+    const fy = y + (leafCount * (NH + GAP) - GAP) / 2 - NH / 2;
+
+    nodes.push({ id: f.id, label: f.title, x: COL1, y: fy,
+      color: '#ede9fe', stroke: '#7c3aed', text: '#5b21b6', bold: true });
+
+    let subY = y;
     for (const s of subs) {
-      nodes.push({ id: s.id, label: s.title, x: COL3, y, color: '#e0e7ff', stroke: '#6366f1', text: '#3730a3' });
-      lines.push({ x1: COL2 + NW, y1: fy + NH / 2, x2: COL3, y2: y + NH / 2 });
-      y += NH + GAP;
+      const ssubs = s.sub_features || [];
+      const ssCount = Math.max(1, ssubs.length);
+      const sy = subY + (ssCount * (NH + GAP) - GAP) / 2 - NH / 2;
+
+      nodes.push({ id: s.id, label: s.title, x: COL2, y: sy,
+        color: '#e0e7ff', stroke: '#6366f1', text: '#3730a3', bold: false });
+      lines.push({ x1: COL1 + NW, y1: fy + NH / 2, x2: COL2, y2: sy + NH / 2 });
+
+      for (const ss of ssubs) {
+        nodes.push({ id: ss.id, label: ss.title, x: COL3, y: subY,
+          color: '#f0fdf4', stroke: '#4ade80', text: '#166534', bold: false });
+        lines.push({ x1: COL2 + NW, y1: sy + NH / 2, x2: COL3, y2: subY + NH / 2 });
+        // depth-4 (서서서브) 있으면 추가
+        for (const sss of (ss.sub_features || [])) {
+          nodes.push({ id: sss.id, label: sss.title, x: COL4, y: subY,
+            color: '#fff7ed', stroke: '#fb923c', text: '#9a3412', bold: false });
+          lines.push({ x1: COL3 + NW, y1: subY + NH / 2, x2: COL4, y2: subY + NH / 2 });
+          subY += NH + GAP;
+        }
+        if ((ss.sub_features || []).length === 0) subY += NH + GAP;
+      }
+      if (ssubs.length === 0) subY += NH + GAP;
     }
-    if (subs.length === 0) y += NH + GAP;
+    if (subs.length === 0) subY += NH + GAP;
+    y = subY + F_GAP;
   }
+
+  const maxX = nodes.length ? Math.max(...nodes.map(n => n.x)) : COL3;
+  const W = maxX + NW + 20;
   const H = Math.max(y + 20, 200);
-  const W = COL3 + NW + 20;
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ background: '#f9fafb', borderRadius: 8 }}>
       {/* 연결선 */}
       {lines.map((l, i) => (
-        <path key={i} d={`M${l.x1},${l.y1} C${l.x1 + 30},${l.y1} ${l.x2 - 30},${l.y2} ${l.x2},${l.y2}`}
-          fill="none" stroke="#d1d5db" strokeWidth="1.5" />
+        <path key={i}
+          d={`M${l.x1},${l.y1} C${l.x1 + 20},${l.y1} ${l.x2 - 20},${l.y2} ${l.x2},${l.y2}`}
+          fill="none" stroke="#d1d5db" strokeWidth="1.2" />
       ))}
-      {/* 피처→서브 연결 */}
-      {features.map((f, fi) => {
-        const fn = nodes.find(n => n.id === f.id);
-        if (!fn) return null;
-        const sns = (f.sub_features || []).map(s => nodes.find(n => n.id === s.id)).filter(Boolean);
-        return sns.map((sn, si) => (
-          <path key={`${fi}-${si}`} d={`M${fn.x + NW},${fn.y + NH/2} C${fn.x + NW + 30},${fn.y + NH/2} ${sn.x - 30},${sn.y + NH/2} ${sn.x},${sn.y + NH/2}`}
-            fill="none" stroke="#c4b5fd" strokeWidth="1.5" />
-        ));
-      })}
       {/* 노드 */}
       {nodes.map(n => (
         <g key={n.id}>
-          <rect x={n.x} y={n.y} width={NW} height={NH} rx="6" fill={n.color} stroke={n.stroke} strokeWidth="1" />
-          <text x={n.x + 8} y={n.y + NH / 2 + 4} fontSize="9.5" fill={n.text} fontFamily="sans-serif">
-            {n.label.length > 17 ? n.label.slice(0, 17) + '…' : n.label}
+          <rect x={n.x} y={n.y} width={NW} height={NH} rx="5"
+            fill={n.color} stroke={n.stroke} strokeWidth="1" />
+          <text x={n.x + 7} y={n.y + NH / 2 + 4}
+            fontSize="8.5" fill={n.text}
+            fontFamily="'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif"
+            fontWeight={n.bold ? '700' : '400'}>
+            {n.label.length > 19 ? n.label.slice(0, 19) + '…' : n.label}
           </text>
         </g>
       ))}
