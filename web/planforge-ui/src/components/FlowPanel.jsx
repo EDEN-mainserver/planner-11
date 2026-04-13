@@ -30,9 +30,11 @@ const CROSS_EDGE_COLOR = '#a78bfa'; // 크로스 섹션 엣지 색상 (보라)
 
 export default function FlowPanel({ prd, specData, flowData, setFlowData }) {
   const [loading, setLoading] = useState(false);
-  const [elapsed, setElapsed]   = useState(0);   // 경과 시간(초)
-  const [stepMsg, setStepMsg]   = useState('');   // 현재 단계 메시지
+  const [elapsed, setElapsed]   = useState(0);
+  const [stepMsg, setStepMsg]   = useState('');
   const timerRef = useRef(null);
+  const [simOpen, setSimOpen]   = useState(false); // 시뮬레이터 모달
+  const [simIdx, setSimIdx]     = useState(0);      // 현재 화면 인덱스
   const containerRef = useRef(null);
   const [tx, setTx] = useState(0), [ty, setTy] = useState(0), [scale, setScale] = useState(1);
   const drag = useRef({ active: false, sx: 0, sy: 0, ox: 0, oy: 0 });
@@ -448,6 +450,11 @@ ${JSON.stringify(sectionSummary, null, 2)}
           <button onClick={() => { setTx(0); setTy(0); setScale(1); }}
             className="text-xs text-gray-400 hover:text-purple-600 ml-1">↺</button>
           <div className="w-px h-4 bg-gray-200 mx-1" />
+          <button onClick={() => { setSimIdx(0); setSimOpen(true); }}
+            className="text-xs font-medium text-purple-600 hover:text-purple-800 border border-purple-300 rounded-md px-2.5 py-0.5 hover:bg-purple-50 transition-colors flex items-center gap-1">
+            ▶ 워크플로우 체험
+          </button>
+          <div className="w-px h-4 bg-gray-200 mx-1" />
           <button onClick={() => { setFlowData(null); }}
             className="text-xs font-medium text-purple-500 hover:text-purple-700 border border-purple-200 rounded-md px-2 py-0.5 hover:bg-purple-50 transition-colors">↺ 재생성</button>
         </div>
@@ -634,6 +641,159 @@ ${JSON.stringify(sectionSummary, null, 2)}
           </div>
         </div>
       </div>
+
+      {/* ── 워크플로우 시뮬레이터 모달 */}
+      {simOpen && (() => {
+        // 모든 page 노드를 순서대로 평탄화
+        const screens = (flowData?.sections || []).flatMap(sec =>
+          (sec.nodes || [])
+            .filter(n => n.type === 'page')
+            .map(page => {
+              const actionIds = new Set(
+                (sec.edges || []).filter(e => e.from === page.id).map(e => e.to)
+              );
+              const actions = (sec.nodes || [])
+                .filter(n => actionIds.has(n.id))
+                .map(n => {
+                  const cross = (flowData?.crossEdges || []).find(c => c.from === n.id);
+                  return { label: n.label, isCross: !!cross };
+                });
+              return { sectionTitle: sec.featureTitle, pageLabel: page.label, actions };
+            })
+        );
+        const total  = screens.length;
+        const cur    = screens[simIdx] || {};
+        const pct    = total > 0 ? Math.round(((simIdx + 1) / total) * 100) : 0;
+
+        // 섹션별 색상 (최대 8개)
+        const SEC_COLORS = ['#7c3aed','#6d28d9','#5b21b6','#4c1d95','#7c3aed','#6d28d9','#5b21b6','#4c1d95'];
+        // 어느 섹션에 속하는지
+        const allSectionTitles = [...new Set(screens.map(s => s.sectionTitle))];
+        const secColor = SEC_COLORS[allSectionTitles.indexOf(cur.sectionTitle) % SEC_COLORS.length];
+
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6"
+            onClick={e => e.target === e.currentTarget && setSimOpen(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-[520px] flex flex-col overflow-hidden"
+              style={{ maxHeight: '80vh' }}>
+
+              {/* 헤더 */}
+              <div className="px-6 pt-5 pb-4 flex items-center justify-between border-b border-gray-100">
+                <div>
+                  <p className="text-xs font-semibold text-purple-500 uppercase tracking-wide">워크플로우 체험</p>
+                  <h2 className="text-base font-bold text-gray-900 mt-0.5">실제 사용자 흐름 미리보기</h2>
+                </div>
+                <button onClick={() => setSimOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+              </div>
+
+              {/* 진행 바 */}
+              <div className="px-6 py-3 border-b border-gray-50">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-gray-400 font-medium">진행률</span>
+                  <span className="text-xs text-purple-600 font-semibold">{simIdx + 1} / {total} 화면</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5">
+                  <div className="h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${pct}%`, backgroundColor: secColor }} />
+                </div>
+                {/* 섹션 탭 */}
+                <div className="flex gap-1.5 mt-2 flex-wrap">
+                  {allSectionTitles.map((t, ti) => (
+                    <span key={t}
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                        t === cur.sectionTitle
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-gray-100 text-gray-400'
+                      }`}>
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* 본문 */}
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                {/* 섹션 태그 */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[11px] font-semibold text-white px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: secColor }}>
+                    {cur.sectionTitle}
+                  </span>
+                  {simIdx > 0 && screens[simIdx - 1].sectionTitle !== cur.sectionTitle && (
+                    <span className="text-[10px] text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                      ↗ 화면 이동
+                    </span>
+                  )}
+                </div>
+
+                {/* 현재 화면명 */}
+                <div className="bg-purple-50 border border-purple-200 rounded-xl px-5 py-4 mb-5">
+                  <p className="text-[11px] text-purple-400 font-medium mb-1">현재 화면</p>
+                  <p className="text-lg font-bold text-purple-800">{cur.pageLabel}</p>
+                </div>
+
+                {/* 이 화면에서 할 수 있는 것 */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 mb-2.5">이 화면에서 발생하는 행동</p>
+                  <div className="flex flex-col gap-2">
+                    {(cur.actions || []).map((a, ai) => (
+                      <div key={ai}
+                        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border text-sm ${
+                          a.isCross
+                            ? 'bg-purple-50 border-purple-300 text-purple-700'
+                            : 'bg-gray-50 border-gray-200 text-gray-700'
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                          a.isCross ? 'bg-purple-500' : 'bg-gray-400'
+                        }`} />
+                        <span className="font-medium">{a.label}</span>
+                        {a.isCross && (
+                          <span className="ml-auto text-[10px] text-purple-500 bg-purple-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                            다음 섹션으로 이동 →
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {(!cur.actions || cur.actions.length === 0) && (
+                      <p className="text-xs text-gray-400 italic">등록된 행동 없음</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 푸터 (네비게이션) */}
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                <button
+                  onClick={() => setSimIdx(i => Math.max(0, i - 1))}
+                  disabled={simIdx === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  ← 이전
+                </button>
+
+                <button onClick={() => { setSimIdx(0); }}
+                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                  처음으로
+                </button>
+
+                {simIdx < total - 1 ? (
+                  <button
+                    onClick={() => setSimIdx(i => Math.min(total - 1, i + 1))}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors"
+                    style={{ backgroundColor: secColor }}>
+                    다음 →
+                  </button>
+                ) : (
+                  <button onClick={() => setSimOpen(false)}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors">
+                    완료 ✓
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
