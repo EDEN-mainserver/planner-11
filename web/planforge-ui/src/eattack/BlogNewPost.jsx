@@ -78,6 +78,8 @@ export default function BlogNewPost({ onBack, onGenerate }) {
   const [naverKeywords, setNaverKeywords] = useState([]);
   const [isNaverLoading, setIsNaverLoading] = useState(false);
   const [naverStatus, setNaverStatus] = useState(""); // 'ok' | 'fallback' | 'error'
+  const [trendScores, setTrendScores] = useState({}); // { 키워드: 점수(0~100) }
+  const [isLoadingTrends, setIsLoadingTrends] = useState(false);
 
   const selectedType = CONTENT_TYPES.find((t) => t.key === contentType);
   const canGenerate = serviceDesc.trim().length > 0 && selectedKeywords.length > 0;
@@ -120,6 +122,8 @@ export default function BlogNewPost({ onBack, onGenerate }) {
         setNaverKeywords(extracted);
       }
       setNaverStatus("ok");
+      // 검색량 트렌드 자동 조회
+      fetchTrendScores(extracted.length >= 5 ? extracted : [...new Set([...extracted])]);
 
     } catch (e) {
       // 네트워크 오류 등 → AI 대체
@@ -149,6 +153,32 @@ export default function BlogNewPost({ onBack, onGenerate }) {
     const arrMatch = result.match(/\[[\s\S]*?\]/);
     if (!arrMatch) return [];
     return JSON.parse(arrMatch[0]).filter((v) => typeof v === "string").slice(0, 15);
+  };
+
+  // ─── 데이터랩 검색량 트렌드 조회 ───
+  const fetchTrendScores = async (kwList) => {
+    if (!kwList || kwList.length === 0) return;
+    setIsLoadingTrends(true);
+    try {
+      const resp = await fetch('/api/naver-datalab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: kwList }),
+      });
+      const data = await resp.json();
+      if (data.error === 'NAVER_NOT_CONFIGURED') return;
+      if (!resp.ok) throw new Error(data.error);
+
+      const scoreMap = {};
+      for (const { keyword, score } of (data.results || [])) {
+        scoreMap[keyword] = score;
+      }
+      setTrendScores((prev) => ({ ...prev, ...scoreMap }));
+    } catch {
+      // 트렌드 조회 실패 시 무시 (선택 기능)
+    } finally {
+      setIsLoadingTrends(false);
+    }
   };
 
   // ─── AI 키워드 추천 (분류형) ───
@@ -187,6 +217,8 @@ export default function BlogNewPost({ onBack, onGenerate }) {
         ...(data.pain_point || []).map((k) => ({ keyword: k, type: "pain_point" })),
       ];
       setKeywords(all);
+      // 검색량 트렌드 자동 조회
+      fetchTrendScores(all.map((k) => k.keyword));
     } catch (e) {
       setError("키워드 추천 중 오류가 발생했습니다: " + e.message);
     } finally {
@@ -502,39 +534,79 @@ ${typeInfo}
 
           {/* 네이버 키워드 결과 */}
           {naverKeywords.length > 0 && (
-            <div className={`rounded-xl border p-3.5 space-y-2 ${
+            <div className={`rounded-xl border p-3.5 space-y-2.5 ${
               naverStatus === "ok"
                 ? "border-green-200 bg-green-50/50"
                 : "border-yellow-200 bg-yellow-50/50"
             }`}>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-green-600 text-xs">N</span>
-                <span className={`text-xs font-semibold ${
-                  naverStatus === "ok" ? "text-green-700" : "text-yellow-700"
-                }`}>
-                  {naverStatus === "ok"
-                    ? "네이버 블로그 연관 키워드"
-                    : "AI 기반 연관 키워드 (네이버 API 미등록)"}
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-green-600 text-xs">N</span>
+                  <span className={`text-xs font-semibold ${
+                    naverStatus === "ok" ? "text-green-700" : "text-yellow-700"
+                  }`}>
+                    {naverStatus === "ok"
+                      ? "네이버 블로그 연관 키워드"
+                      : "AI 기반 연관 키워드 (네이버 API 미등록)"}
+                  </span>
+                </div>
+                {isLoadingTrends && (
+                  <div className="flex items-center gap-1 text-[10px] text-green-500">
+                    <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    검색량 분석 중...
+                  </div>
+                )}
+                {!isLoadingTrends && Object.keys(trendScores).length > 0 && (
+                  <span className="text-[10px] text-green-500 font-medium">검색량 반영됨</span>
+                )}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {naverKeywords.map((kw) => (
-                  <button
-                    key={kw}
-                    type="button"
-                    onClick={() => toggleKeyword(kw)}
-                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-all border ${
-                      selectedKeywords.includes(kw)
-                        ? "bg-green-600 text-white border-green-600"
-                        : naverStatus === "ok"
-                          ? "bg-white text-green-700 border-green-200 hover:bg-green-100"
-                          : "bg-white text-yellow-700 border-yellow-200 hover:bg-yellow-100"
-                    }`}
-                  >
-                    {kw}
-                  </button>
-                ))}
+                {/* 검색량 점수 높은 순 정렬 */}
+                {[...naverKeywords]
+                  .sort((a, b) => (trendScores[b] || 0) - (trendScores[a] || 0))
+                  .map((kw) => {
+                    const score = trendScores[kw];
+                    const isSelected = selectedKeywords.includes(kw);
+                    return (
+                      <button
+                        key={kw}
+                        type="button"
+                        onClick={() => toggleKeyword(kw)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all border ${
+                          isSelected
+                            ? "bg-green-600 text-white border-green-600"
+                            : naverStatus === "ok"
+                              ? "bg-white text-green-700 border-green-200 hover:bg-green-100"
+                              : "bg-white text-yellow-700 border-yellow-200 hover:bg-yellow-100"
+                        }`}
+                      >
+                        {kw}
+                        {score !== undefined && (
+                          <span className={`text-[10px] font-bold rounded-full px-1 ${
+                            isSelected
+                              ? "bg-white/20 text-white"
+                              : score >= 70 ? "text-red-500"
+                              : score >= 40 ? "text-orange-500"
+                              : "text-gray-400"
+                          }`}>
+                            {score}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
               </div>
+              {Object.keys(trendScores).length > 0 && (
+                <div className="flex items-center gap-3 pt-1 border-t border-green-100">
+                  <span className="text-[10px] text-gray-400">검색량 지수:</span>
+                  <span className="text-[10px] font-semibold text-red-500">70+ 높음</span>
+                  <span className="text-[10px] font-semibold text-orange-500">40~69 보통</span>
+                  <span className="text-[10px] font-semibold text-gray-400">~39 낮음</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -552,25 +624,36 @@ ${typeInfo}
                   <div key={type} className="space-y-1.5">
                     <span className={`text-xs font-semibold ${color}`}>{label}</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {typeKeywords.map(({ keyword: kw }) => (
-                        <button
-                          key={kw}
-                          type="button"
-                          onClick={() => toggleKeyword(kw)}
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-all border ${
-                            selectedKeywords.includes(kw)
-                              ? "bg-purple-600 text-white border-purple-600"
-                              : "bg-white text-gray-700 border-gray-200 hover:border-purple-300 hover:text-purple-700"
-                          }`}
-                        >
-                          {kw}
-                          {selectedKeywords.includes(kw) && (
-                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="ml-1">
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                          )}
-                        </button>
-                      ))}
+                      {[...typeKeywords]
+                        .sort((a, b) => (trendScores[b.keyword] || 0) - (trendScores[a.keyword] || 0))
+                        .map(({ keyword: kw }) => {
+                          const score = trendScores[kw];
+                          const isSelected = selectedKeywords.includes(kw);
+                          return (
+                            <button
+                              key={kw}
+                              type="button"
+                              onClick={() => toggleKeyword(kw)}
+                              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all border ${
+                                isSelected
+                                  ? "bg-purple-600 text-white border-purple-600"
+                                  : "bg-white text-gray-700 border-gray-200 hover:border-purple-300 hover:text-purple-700"
+                              }`}
+                            >
+                              {kw}
+                              {score !== undefined && (
+                                <span className={`text-[10px] font-bold ${
+                                  isSelected ? "text-white/70"
+                                  : score >= 70 ? "text-red-500"
+                                  : score >= 40 ? "text-orange-500"
+                                  : "text-gray-300"
+                                }`}>
+                                  {score}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
                 );
