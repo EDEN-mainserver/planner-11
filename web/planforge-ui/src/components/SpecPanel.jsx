@@ -2,11 +2,11 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { callGemini } from "../utils/gemini";
 
 // ── 레이아웃 상수
-const ROOT_W = 140, ROOT_H = 56;
-const FEAT_W = 240, FEAT_H = 96;
-const SUB_W  = 180, SUB_H  = 40;
+const ROOT_W = 160, ROOT_H = 56;
+const FEAT_W = 260, FEAT_H = 140;
+const SUB_W  = 260, SUB_H  = 36;
 const H_GAP  = 60;
-const V_GAP  = 8;
+const V_GAP  = 6;
 const F_GAP  = 24;
 const PAD    = 48;
 
@@ -144,6 +144,21 @@ export default function SpecPanel({ prd, specData, setSpecData }) {
     return items;
   }, [features]);
 
+  // ── 번호 라벨 맵 (1, 1.1, 1.1.1 ...)
+  const numMap = useMemo(() => {
+    const map = {};
+    features.forEach((f, fi) => {
+      map[f.id] = `${fi + 1}`;
+      (f.sub_features || []).forEach((s, si) => {
+        map[s.id] = `${fi + 1}.${si + 1}`;
+        (s.sub_features || []).forEach((ss, ssi) => {
+          map[ss.id] = `${fi + 1}.${si + 1}.${ssi + 1}`;
+        });
+      });
+    });
+    return map;
+  }, [features]);
+
   const maxDepth = useMemo(() => allItems.length ? Math.max(...allItems.map(i => i.depth)) : 1, [allItems]);
   const totalH   = useMemo(() => allItems.length ? Math.max(...allItems.map(i => i.y + i.h)) + PAD : 400, [allItems]);
   const totalW   = useMemo(() => colRX(maxDepth) + 280, [maxDepth]); // 280 = context menu space
@@ -162,12 +177,18 @@ export default function SpecPanel({ prd, specData, setSpecData }) {
     setSuggesting(true);
     const parentItem = allItems.find(i => i.path.join(',') === parentPath.join(','));
     const pn = parentItem?.node;
-    const prompt = `기능 "${pn?.title}"에 추가할 새 하위 기능 1개를 JSON으로 생성하세요.
-설명: ${pn?.description || pn?.detail || ''}
-기존 하위 기능: ${(pn?.sub_features||[]).map(s=>s.title).join(', ')||'없음'}
-PRD 핵심 가치: ${JSON.stringify(prd?.core_value||{})}
-형식(JSON만): {"title":"기능명(10자 이내)","detail":"2~3문장 설명"}
-한국어, 중복 없이.`;
+    const prompt = `당신은 시니어 개발자입니다. 기능 "${pn?.title}"에 추가할 구현 단위 하위 태스크 1개를 JSON으로 생성하세요.
+상위 기능 설명: ${pn?.description || pn?.detail || ''}
+이미 있는 하위 항목: ${(pn?.sub_features||[]).map(s=>s.title).join(', ')||'없음'}
+PRD 컨텍스트: ${JSON.stringify(prd?.core_value||{})}
+
+규칙:
+- 제목은 개발자가 직접 구현할 수 있는 단일 작업 단위 (예: "메시지 수신 웹훅", "로그인 API 연동", "전송 실패 재시도 처리")
+- 추상적/마케팅 언어 금지 ("최적화", "강화", "활성화" 등 모호한 표현 사용 금지)
+- API 엔드포인트, DB 저장, 웹훅, 에러 처리, 폼 검증 등 구체적 기술 작업으로 표현
+- detail은 실제 구현 내용을 1~2문장으로 (어떤 기술/방식으로 구현하는지 포함)
+형식(JSON만): {"title":"구현 태스크명","detail":"구현 방법 1~2문장"}
+한국어, 중복 없이. 중요: title은 공백 포함 10자 이내로 반드시 지킬 것. 예) "API 인증 처리"(7자) O, "사용자 입력 데이터 유효성 검증"(16자) X`;
     try {
       const text = await callGemini([{role:'user',content:prompt}], '');
       const m = text.match(/\{[\s\S]*?\}/);
@@ -187,38 +208,46 @@ PRD 핵심 가치: ${JSON.stringify(prd?.core_value||{})}
     setSuggesting(false);
   }, [prd, allItems]);
 
-  // ── AI: 모든 피처에 하위 기능 일괄 생성
+  // ── AI: 모든 피처에 하위 기능 일괄 생성 (직접 적용)
   const generateAllSubs = useCallback(async () => {
     setRootMenuOpen(false);
     setSuggesting(true);
-    const prompt = `다음 기능 목록에 각각 추가할 하위 기능 2개씩을 JSON으로 생성하세요.
-기능 목록: ${JSON.stringify(features.map(f=>({id:f.id,title:f.title,existing:(f.sub_features||[]).map(s=>s.title)})))}
-형식(JSON만): {"results":[{"featId":"F-001","subs":[{"title":"기능명","detail":"설명"}]}]}
-한국어, 기존과 중복 없이.`;
+    const prompt = `당신은 시니어 소프트웨어 아키텍트입니다. 아래 기능 목록에 각각 필요한 구현 태스크를 완전하게 생성하세요.
+PRD 컨텍스트: ${JSON.stringify(prd?.core_value || {})}
+기능 목록: ${JSON.stringify(features.map(f=>({id:f.id,title:f.title,desc:f.description,existing:(f.sub_features||[]).map(s=>s.title)})))}
+
+규칙:
+- 각 기능당 3~5개 태스크 생성 (이미 있는 항목 제외하고 부족한 것만 채울 것)
+- 각 태스크는 개발자가 단독 구현 가능한 최소 단위 작업
+- 좋은 예: "카카오톡 API 인증", "메시지 수신 웹훅", "전송 실패 재시도 처리", "채널 정보 DB 저장", "연동 상태 모니터링"
+- 나쁜 예: "채널 연동 최적화", "기능 강화", "사용자 경험 개선" (모호, 추상적 금지)
+- 에러/실패 시나리오 태스크 반드시 포함 (기능당 최소 1개)
+- detail은 구체적 구현 방법 1~2문장 (어떤 기술/방식 사용하는지 포함)
+형식(JSON만): {"results":[{"featId":"F-001","subs":[{"title":"구현 태스크명","detail":"구현 방법 1~2문장"}]}]}
+한국어, 기존과 중복 없이. 중요: title은 공백 포함 10자 이내 엄수. 예) "웹훅 수신 처리"(7자) O, "메시지 수신 웹훅 엔드포인트 구현"(16자) X`;
     try {
       const text = await callGemini([{role:'user',content:prompt}], '');
       const m = text.match(/\{[\s\S]*\}/);
       if (m) {
         const { results } = JSON.parse(m[0]);
-        const newSugs = [];
-        for (const r of (results||[])) {
-          const feat = features.find(f => f.id === r.featId);
-          if (!feat) continue;
-          for (const sub of (r.subs||[])) {
-            newSugs.push({ parentPath:[feat.id], data:{ ...sub, id:`SF-${uid()}`, sub_features:[], isNew:true } });
+        // 승인 큐 없이 직접 트리에 적용
+        setSpecData(prev => {
+          let feats = prev.features;
+          for (const r of (results||[])) {
+            const feat = feats.find(f => f.id === r.featId);
+            if (!feat) continue;
+            for (const sub of (r.subs||[])) {
+              const newNode = { ...sub, id:`SF-${uid()}`, sub_features:[], isNew:false };
+              feats = addChildAtPath(feats, [feat.id], newNode);
+            }
           }
-        }
-        setSuggestions(prev => {
-          const startIdx = prev.length;
-          const next = [...prev, ...newSugs];
-          setSuggestionIdx(startIdx);
-          if (newSugs.length > 0) setDetail({ node:newSugs[0].data, path:[...newSugs[0].parentPath, newSugs[0].data.id], isSuggestion:true });
-          return next;
+          return { ...prev, features: feats };
         });
+        setDetail(null);
       }
     } catch(e) { alert('생성 실패: '+e.message); }
     setSuggesting(false);
-  }, [features]);
+  }, [features, prd, setSpecData]);
 
   // ── 승인
   const approveCurrent = useCallback(() => {
@@ -259,29 +288,34 @@ PRD 핵심 가치: ${JSON.stringify(prd?.core_value||{})}
     setDirectTitle(''); setDirectPath(null);
   }, [directTitle, directPath, setSpecData]);
 
-  // ── 초기 생성
+  // ── 초기 생성 (메인 피처만, 서브피처는 버튼으로 별도 생성)
   const generate = async () => {
     setLoading(true);
-    const prompt = `다음 PRD를 분석하여 기능명세서와 유저 여정 흐름을 JSON으로 생성하세요.
+    const prompt = `당신은 시니어 소프트웨어 아키텍트입니다. 아래 PRD를 분석하여 핵심 기능 목록만 생성하세요. 서브피처는 생성하지 마세요.
 PRD: ${JSON.stringify(prd)}
 
 형식(JSON만):
-{"features":[{"id":"F-001","title":"기능 제목","description":"2~3문장 설명","priority":"high|medium|low","sub_features":[{"id":"SF-001-1","title":"하위 기능","detail":"상세 설명","leads_to":null,"sub_features":[]}]}]}
+{"features":[{"id":"F-001","title":"기능 제목(15자 이내)","description":"이 기능이 무엇을 하는지 2~3문장으로 설명","priority":"high|medium|low","sub_features":[]}]}
 
 규칙:
-1. features 3~6개, sub_features 2~4개, 한국어
-2. leads_to: 이 서브피처를 완료하면 사용자가 다음으로 이동하는 feature의 id (예: "F-002") 또는 null
-3. 유저 여정 설계: 실제 사용자 흐름에 따라 각 기능의 마지막 단계(게이트웨이) 서브피처에 leads_to를 설정하세요.
-   - 첫 번째 기능의 마지막 서브피처 → 두 번째 기능 (leads_to: "F-002")
-   - 두 번째 기능의 마지막 서브피처 → 세 번째 기능 (leads_to: "F-003")
-   - 마지막 기능의 서브피처는 leads_to: null
-4. 단, 분기가 자연스러운 경우 여러 서브피처에서 동일한 기능을 leads_to로 지정 가능
-5. 첫 번째 feature(F-001)은 어떤 features도 leads_to로 지정하지 않음 (진입점)
-6. 반드시 모든 기능(F-001 제외)은 최소 1개의 서브피처로부터 leads_to로 연결되어야 함`;
+1. features 3~6개, 한국어
+2. sub_features는 반드시 빈 배열 [] 로 고정 (서브피처 절대 생성 금지)
+3. 각 기능은 독립적으로 구현 가능한 핵심 기능 단위
+4. description은 사용자 관점에서 이 기능이 왜 필요한지, 어떤 역할을 하는지 설명
+5. priority: 서비스 핵심 기능 → high, 보조 기능 → medium, 부가 기능 → low`;
     try {
       const text = await callGemini([{role:'user',content:prompt}], '');
       const m = text.match(/\{[\s\S]*\}/);
-      if (m) { setSpecData(JSON.parse(m[0])); setModal(true); }
+      if (m) {
+        const parsed = JSON.parse(m[0]);
+        // AI가 규칙을 어기고 sub_features를 생성했을 경우 강제로 비움
+        const cleaned = {
+          ...parsed,
+          features: (parsed.features || []).map(f => ({ ...f, sub_features: [] }))
+        };
+        setSpecData(cleaned);
+        setModal(true);
+      }
     } catch(e) { alert('생성 실패: '+e.message); }
     setLoading(false);
   };
@@ -371,22 +405,59 @@ PRD: ${JSON.stringify(prd)}
           </svg>
 
           {/* 루트 노드 */}
-          <div style={{ position:'absolute', top:rootCY-ROOT_H/2, left:colLX(0), width:ROOT_W, height:ROOT_H }}
-            className="bg-white rounded-xl border border-gray-200 shadow-sm px-3 py-2 flex flex-col justify-between"
+          <div style={{ position:'absolute', top:rootCY-ROOT_H/2, left:colLX(0), width:ROOT_W+20 }}
+            className="flex flex-col gap-1.5"
             onClick={e=>e.stopPropagation()}>
-            <div className="flex items-center gap-1.5">
-              <span className="text-gray-400 text-xs">📄</span>
-              <span className="text-xs font-semibold text-gray-700 truncate">{(prd?.overview?.one_liner||'기능명세서').slice(0,16)}</span>
+            {/* 루트 카드 */}
+            <div style={{ width:ROOT_W, height:ROOT_H }}
+              className="bg-white rounded-xl border border-gray-200 shadow-sm px-3 py-2 flex flex-col justify-between relative">
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400 text-xs">📄</span>
+                <span className="text-xs font-semibold text-gray-700 truncate">{(prd?.overview?.one_liner||'기능명세서').slice(0,16)}</span>
+              </div>
+              <span className="text-xs text-teal-500 font-medium">↗ PRD</span>
+              {/* 루트 "+" */}
+              <div style={{ position:'absolute', top:ROOT_H/2-12, left:ROOT_W+10 }} onClick={e=>e.stopPropagation()}>
+                <button className="w-6 h-6 rounded-full bg-white border border-gray-300 flex items-center justify-center text-gray-400 hover:border-purple-400 hover:text-purple-600 shadow-sm text-sm"
+                  onClick={e => { e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setRootMenuPos({x:r.right+4,y:r.top}); setRootMenuOpen(o=>!o); setMenuPath(null); }}>
+                  +
+                </button>
+              </div>
             </div>
-            <span className="text-xs text-teal-500 font-medium">↗ PRD</span>
-            {/* 루트 "+" */}
-            <div style={{ position:'absolute', top:ROOT_H/2-12, left:ROOT_W+10 }} onClick={e=>e.stopPropagation()}>
-              <button className="w-6 h-6 rounded-full bg-white border border-gray-300 flex items-center justify-center text-gray-400 hover:border-purple-400 hover:text-purple-600 shadow-sm text-sm"
-                onClick={e => { e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setRootMenuPos({x:r.right+4,y:r.top}); setRootMenuOpen(o=>!o); setMenuPath(null); }}>
-                +
-              </button>
-            </div>
+            {/* 모든 하위 항목 생성 버튼 — 루트 카드 바로 아래 */}
+            <button
+              onClick={e => { e.stopPropagation(); generateAllSubs(); }}
+              disabled={suggesting}
+              style={{ width:ROOT_W }}
+              className="flex items-center justify-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm">
+              <svg className="w-3.5 h-3.5 shrink-0 fill-purple-500" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7.027 13.21a1.19 1.19 0 0 0 1.375-.003 1.26 1.26 0 0 0 .443-.592l.51-1.57a2.67 2.67 0 0 1 1.688-1.69l1.59-.514a1.194 1.194 0 0 0-.05-2.262l-1.572-.512a2.67 2.67 0 0 1-1.69-1.688l-.517-1.586a1.193 1.193 0 0 0-2.255.02l-.522 1.6A2.67 2.67 0 0 1 4.38 6.068l-1.588.511a1.194 1.194 0 0 0 .018 2.256l1.57.508a2.66 2.66 0 0 1 1.693 1.7l.516 1.59c.082.233.236.434.437.576m7.013 4.619a.92.92 0 0 0 1.4-.455l.284-.87a1.25 1.25 0 0 1 .777-.778l.882-.288a.914.914 0 0 0-.026-1.737l-.873-.285a1.24 1.24 0 0 1-.777-.775l-.288-.883a.915.915 0 0 0-1.735.011l-.282.87a1.22 1.22 0 0 1-.76.777l-.883.288a.914.914 0 0 0 .009 1.734l.872.283a1.23 1.23 0 0 1 .777.78l.289.885c.063.178.18.333.334.443"/>
+              </svg>
+              {suggesting ? '생성 중...' : '모든 하위 항목 생성'}
+            </button>
           </div>
+
+          {/* 서브피처 없는 피처 → 플레이스홀더 박스 (HTML div) */}
+          {features.map(feat => {
+            if ((feat.sub_features || []).length > 0) return null;
+            const featItem = allItems.find(i => i.node.id === feat.id);
+            if (!featItem) return null;
+            const { cy } = featItem;
+            const ph1X = colLX(2), ph2X = colLX(3);
+            const phY = cy - SUB_H / 2;
+            return (
+              <div key={`ph-${feat.id}`} onClick={e=>e.stopPropagation()}>
+                <div style={{ position:'absolute', top:phY, left:ph1X, width:SUB_W, height:SUB_H }}
+                  className="rounded-lg border border-dashed border-gray-300 flex items-center justify-center">
+                  <span className="text-xs text-gray-400">핵심 기능 추가</span>
+                </div>
+                <div style={{ position:'absolute', top:phY, left:ph2X, width:SUB_W, height:SUB_H }}
+                  className="rounded-lg border border-dashed border-gray-200 flex items-center justify-center">
+                  <span className="text-xs text-gray-300">상세 기능 추가</span>
+                </div>
+              </div>
+            );
+          })}
 
           {/* 모든 노드 */}
           {allItems.map(item => {
@@ -410,23 +481,27 @@ PRD: ${JSON.stringify(prd)}
                         <span className="font-semibold text-gray-900 text-sm truncate">{node.title}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs text-gray-300 font-mono">{numMap[node.id] || ''}</span>
                         <button className="text-gray-300 hover:text-yellow-400 text-sm">☆</button>
                         <button className="w-6 h-6 shrink-0 rounded-md bg-teal-500 hover:bg-teal-600 text-white flex items-center justify-center text-xs"
                           onClick={e=>{e.stopPropagation();setDetail({node,path,isSuggestion:false});}}>↗</button>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">{node.description}</p>
+                    <p className="text-xs text-gray-500 leading-relaxed line-clamp-4">{node.description}</p>
                   </div>
                 ) : (
-                  // ── 서브피처 카드 (depth >= 2, 무한)
+                  // ── 서브피처 카드 (depth >= 2)
                   <div style={{ position:'absolute', top:y, left:colLX(depth), width:SUB_W, height:SUB_H }}
-                    className={`bg-white rounded-lg flex items-center gap-2 px-3 shadow-sm border cursor-default ${isNew?'border-teal-400':'border-gray-200'}`}
+                    className={`group bg-white rounded-lg flex items-center gap-2 px-3 shadow-sm border cursor-default ${isNew?'border-teal-300 bg-teal-50/30':'border-gray-200'}`}
                     onClick={e=>e.stopPropagation()}>
                     <PriBars level={priority}/>
-                    <span className="flex-1 text-xs font-medium text-gray-800 truncate">{node.title}</span>
-                    {isNew && <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-teal-100 text-teal-600 shrink-0">신규</span>}
-                    <button className="w-6 h-6 shrink-0 rounded-md bg-teal-500 hover:bg-teal-600 text-white flex items-center justify-center text-xs"
+                    <span className="flex-1 text-xs font-medium text-gray-800 truncate min-w-0" title={node.title}>{node.title}</span>
+                    {/* 번호 라벨 — hover 시 ↗ 버튼으로 교체 */}
+                    <span className="text-xs text-gray-300 font-mono shrink-0 group-hover:hidden">{numMap[node.id] || ''}</span>
+                    <button
+                      className="hidden group-hover:flex w-5 h-5 shrink-0 items-center justify-center text-gray-400 hover:text-teal-600 text-xs"
                       onClick={e=>{e.stopPropagation();setDetail({node,path,isSuggestion:false});}}>↗</button>
+                    <button className="text-gray-200 hover:text-yellow-400 text-xs shrink-0">☆</button>
                   </div>
                 )}
 
@@ -473,9 +548,9 @@ PRD: ${JSON.stringify(prd)}
         <div style={{ position:'fixed', top:rootMenuPos.y, left:rootMenuPos.x, zIndex:9999 }}
           className="bg-gray-800 text-white rounded-xl shadow-2xl py-1.5 w-48"
           onClick={e=>e.stopPropagation()}>
-          <button onClick={generateAllSubs}
+          <button onClick={() => { setRootMenuOpen(false); setDirectPath(['root']); setDirectTitle(''); }}
             className="w-full flex items-center gap-2.5 px-4 py-2 text-xs hover:bg-white/10 text-left">
-            <span className="text-purple-300">✦</span> 모든 하위 항목 생성
+            <span>✏</span> 새 핵심 기능 추가
           </button>
         </div>
       )}

@@ -8,7 +8,10 @@
       "Bash(npx tailwindcss:*)",
       "Bash(node_modules/.bin/tailwindcss init:*)",
       "Bash(npm run:*)",
-      "Bash(wc -l App.jsx components/*.jsx pages/*.jsx utils/*.js data/*.js)"
+      "Bash(npx vite:*)",
+      "Bash(vercel:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
     ]
   }
 }

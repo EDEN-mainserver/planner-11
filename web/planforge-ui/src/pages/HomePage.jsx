@@ -3,11 +3,14 @@ import { callGemini } from "../utils/gemini";
 import { relativeTime } from "../utils/storage";
 import { IconArrowUp } from "../components/Icons";
 
-export default function HomePage({ onStart, projects, onDelete, onLoad }) {
+export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [idea, setIdea] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
   const [suggestedTopics, setSuggestedTopics] = useState([]);
+  const [activePage, setActivePage] = useState('home'); // 'home' | 'projects' | 'trash' | 'admin'
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [permDeleteId, setPermDeleteId] = useState(null);
 
   const handleSuggest = async () => {
     setIsLoading(true);
@@ -47,10 +50,30 @@ export default function HomePage({ onStart, projects, onDelete, onLoad }) {
           </div>
         </div>
         <nav className="px-2 space-y-0.5">
-          {['홈', '모든 프로젝트', '휴지통', '관리자', '플랜 및 결제', '알림함'].map((item, i) => (
-            <div key={item} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors ${i === 0 ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
-              <span className="text-base">{['🏠','📋','🗑️','⚙️','💳','🔔'][i]}</span>
-              {item}
+          {[
+            { key: 'home',     label: '홈',          icon: '🏠' },
+            { key: 'projects', label: '모든 프로젝트', icon: '📋' },
+            { key: 'trash',    label: '휴지통',       icon: '🗑️', badge: trash.length },
+            { key: 'admin',    label: '관리자',       icon: '⚙️' },
+            { key: 'billing',  label: '플랜 및 결제', icon: '💳' },
+            { key: 'notif',    label: '알림함',       icon: '🔔' },
+          ].map(item => (
+            <div key={item.key}
+              onClick={() => ['home','projects','trash','admin'].includes(item.key) && setActivePage(item.key)}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+                ${activePage === item.key ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
+              <span className="text-base">{item.icon}</span>
+              {item.label}
+              {item.badge > 0 && (
+                <span className="ml-auto text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium">
+                  {item.badge}
+                </span>
+              )}
+              {item.key === 'projects' && projects.length > 0 && !item.badge && (
+                <span className="ml-auto text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium">
+                  {projects.length}
+                </span>
+              )}
             </div>
           ))}
         </nav>
@@ -67,7 +90,218 @@ export default function HomePage({ onStart, projects, onDelete, onLoad }) {
       </aside>
 
       {/* 메인 */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col overflow-hidden">
+
+        {/* ════ 모든 프로젝트 화면 ════ */}
+        {activePage === 'projects' && (
+          <div className="flex-1 overflow-y-auto px-10 py-8 bg-gray-50">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">모든 프로젝트</h2>
+                <p className="text-sm text-gray-400 mt-0.5">총 {projects.length}개의 프로젝트</p>
+              </div>
+              <button onClick={() => setActivePage('home')}
+                className="px-4 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors">
+                + 새 프로젝트
+              </button>
+            </div>
+
+            {projects.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 gap-3">
+                <div className="text-4xl">📋</div>
+                <p className="text-gray-500 text-sm">아직 프로젝트가 없습니다.</p>
+                <button onClick={() => setActivePage('home')}
+                  className="mt-2 px-5 py-2 text-sm font-semibold text-purple-600 border border-purple-200 rounded-xl hover:bg-purple-50 transition-colors">
+                  첫 번째 프로젝트 시작하기
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-5">
+                {projects.map(p => (
+                  <div key={p.id}
+                    className="relative bg-white border border-gray-200 rounded-2xl p-5 cursor-pointer hover:border-purple-300 hover:shadow-lg transition-all group"
+                    onMouseEnter={() => setHoveredId(p.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    onClick={() => onLoad(p)}>
+
+                    {/* 썸네일 */}
+                    <div className="w-full h-28 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl mb-4 flex items-center justify-center overflow-hidden">
+                      {p.prd?.overview?.one_liner ? (
+                        <p className="text-xs text-purple-400 font-medium px-4 text-center leading-relaxed line-clamp-3">
+                          {p.prd.overview.one_liner}
+                        </p>
+                      ) : (
+                        <div className="text-3xl opacity-30">📄</div>
+                      )}
+                    </div>
+
+                    {/* 정보 */}
+                    <p className="text-sm font-semibold text-gray-800 truncate">{p.title}</p>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <p className="text-xs text-gray-400">{relativeTime(p.updatedAt)}</p>
+                      <div className="flex items-center gap-1 text-xs text-gray-300">
+                        {p.specData && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-400 rounded-md font-medium">명세서</span>}
+                        {p.flowData && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-400 rounded-md font-medium">플로우</span>}
+                      </div>
+                    </div>
+
+                    {/* 삭제 버튼 */}
+                    {deleteConfirmId === p.id ? (
+                      <div className="absolute inset-0 bg-white/95 rounded-2xl flex flex-col items-center justify-center gap-3 z-10"
+                        onClick={e => e.stopPropagation()}>
+                        <p className="text-sm font-medium text-gray-700">프로젝트를 삭제할까요?</p>
+                        <div className="flex gap-2">
+                          <button onClick={e => { e.stopPropagation(); onDelete(p.id); setDeleteConfirmId(null); }}
+                            className="px-4 py-1.5 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">
+                            삭제
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); setDeleteConfirmId(null); }}
+                            className="px-4 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={e => { e.stopPropagation(); setDeleteConfirmId(p.id); }}
+                        className={`absolute top-3 right-3 w-7 h-7 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center text-xs transition-all hover:bg-red-100 hover:text-red-500 z-10 ${hoveredId === p.id ? 'opacity-100' : 'opacity-0'}`}>
+                        🗑
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════ 휴지통 화면 ════ */}
+        {activePage === 'trash' && (
+          <div className="flex-1 overflow-y-auto px-10 py-8 bg-gray-50">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">휴지통</h2>
+                <p className="text-sm text-gray-400 mt-0.5">삭제된 프로젝트는 30일 후 자동 영구 삭제됩니다.</p>
+              </div>
+              {trash.length > 0 && (
+                <button onClick={onEmptyTrash}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors">
+                  휴지통 비우기
+                </button>
+              )}
+            </div>
+
+            {trash.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 gap-3">
+                <div className="text-4xl">🗑️</div>
+                <p className="text-gray-400 text-sm">휴지통이 비어 있습니다.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-5">
+                {trash.map(p => (
+                  <div key={p.id} className="relative bg-white border border-gray-200 rounded-2xl p-5 opacity-80 group"
+                    onMouseEnter={() => setHoveredId(p.id)}
+                    onMouseLeave={() => setHoveredId(null)}>
+                    <div className="w-full h-24 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl mb-4 flex items-center justify-center">
+                      <div className="text-3xl opacity-20">📄</div>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-600 truncate">{p.title}</p>
+                    <p className="text-xs text-gray-400 mt-1">{relativeTime(p.deletedAt)} 삭제됨</p>
+
+                    {/* 액션 버튼 */}
+                    <div className={`absolute inset-0 bg-white/90 rounded-2xl flex items-center justify-center gap-2 transition-opacity ${hoveredId === p.id ? 'opacity-100' : 'opacity-0'}`}>
+                      <button onClick={() => onRestore(p.id)}
+                        className="px-3 py-1.5 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors">
+                        복원
+                      </button>
+                      {permDeleteId === p.id ? (
+                        <div className="flex gap-1.5">
+                          <button onClick={() => { onPermanentDelete(p.id); setPermDeleteId(null); }}
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg">확인</button>
+                          <button onClick={() => setPermDeleteId(null)}
+                            className="px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">취소</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setPermDeleteId(p.id)}
+                          className="px-3 py-1.5 text-xs font-semibold text-red-500 border border-red-200 hover:bg-red-50 rounded-lg transition-colors">
+                          영구 삭제
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════ 관리자 화면 ════ */}
+        {activePage === 'admin' && (
+          <div className="flex-1 overflow-y-auto px-10 py-8 bg-gray-50">
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-gray-800">관리자</h2>
+              <p className="text-sm text-gray-400 mt-0.5">프로젝트 현황 및 사용 통계</p>
+            </div>
+
+            {/* 통계 카드 */}
+            <div className="grid grid-cols-4 gap-4 mb-8">
+              {[
+                { label: '전체 프로젝트', value: projects.length, icon: '📋', color: 'purple' },
+                { label: '기능명세서 생성', value: projects.filter(p => p.specData).length, icon: '📄', color: 'indigo' },
+                { label: '유저플로우 생성', value: projects.filter(p => p.flowData).length, icon: '🔀', color: 'blue' },
+                { label: '휴지통', value: trash.length, icon: '🗑️', color: 'red' },
+              ].map(stat => (
+                <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-200">
+                  <div className="text-2xl mb-2">{stat.icon}</div>
+                  <div className="text-2xl font-bold text-gray-800">{stat.value}</div>
+                  <div className="text-xs text-gray-400 mt-1">{stat.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* 프로젝트 목록 테이블 */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-700">프로젝트 목록</h3>
+              </div>
+              {projects.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-10">프로젝트가 없습니다.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {['프로젝트명', '한 줄 설명', '기능명세서', '유저플로우', '마지막 수정'].map(h => (
+                        <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {projects.map(p => (
+                      <tr key={p.id} className="hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => onLoad(p)}>
+                        <td className="px-6 py-3.5 font-medium text-gray-800 max-w-[180px] truncate">{p.title}</td>
+                        <td className="px-6 py-3.5 text-gray-500 max-w-[220px] truncate">{p.prd?.overview?.one_liner || '-'}</td>
+                        <td className="px-6 py-3.5">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.specData ? 'bg-purple-50 text-purple-600' : 'bg-gray-100 text-gray-400'}`}>
+                            {p.specData ? '완료' : '미생성'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.flowData ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
+                            {p.flowData ? '완료' : '미생성'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3.5 text-gray-400">{relativeTime(p.updatedAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ════ 홈 화면 ════ */}
+        {activePage === 'home' && (
         <div className="flex-1 flex flex-col items-center justify-center px-8"
           style={{ background: 'radial-gradient(ellipse at 50% 0%, #ede9fe 0%, #f9fafb 60%)' }}>
           <div className="text-center mb-8">
@@ -130,19 +364,37 @@ export default function HomePage({ onStart, projects, onDelete, onLoad }) {
           {/* 최근 프로젝트 */}
           {projects.length > 0 && (
             <div className="w-full max-w-2xl mt-12">
-              <p className="text-sm text-gray-400 text-center mb-4">최근 사용한 프로젝트</p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-400">최근 사용한 프로젝트</p>
+                <button onClick={() => setActivePage('projects')}
+                  className="text-xs text-purple-500 hover:text-purple-700 font-medium transition-colors">
+                  모두 보기 →
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-4">
-                {projects.slice(0, 6).map(p => (
+                {projects.slice(0, 4).map(p => (
                   <div key={p.id}
                     className="relative bg-white border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-purple-300 hover:shadow-md transition-all group"
                     onMouseEnter={() => setHoveredId(p.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     onClick={() => onLoad(p)}>
                     <button
-                      onClick={e => { e.stopPropagation(); onDelete(p.id); }}
-                      className={`absolute top-2 left-2 w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center text-xs font-bold transition-all hover:bg-red-500 hover:text-white z-10 ${hoveredId === p.id ? 'opacity-100' : 'opacity-0'}`}>
-                      ✕
+                      onClick={e => { e.stopPropagation(); setDeleteConfirmId(p.id); }}
+                      className={`absolute top-2 right-2 w-6 h-6 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center text-xs transition-all hover:bg-red-100 hover:text-red-500 z-10 ${hoveredId === p.id ? 'opacity-100' : 'opacity-0'}`}>
+                      🗑
                     </button>
+                    {deleteConfirmId === p.id && (
+                      <div className="absolute inset-0 bg-white/95 rounded-xl flex flex-col items-center justify-center gap-2 z-10"
+                        onClick={e => e.stopPropagation()}>
+                        <p className="text-xs font-medium text-gray-700">삭제할까요?</p>
+                        <div className="flex gap-1.5">
+                          <button onClick={e => { e.stopPropagation(); onDelete(p.id); setDeleteConfirmId(null); }}
+                            className="px-3 py-1 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg">삭제</button>
+                          <button onClick={e => { e.stopPropagation(); setDeleteConfirmId(null); }}
+                            className="px-3 py-1 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">취소</button>
+                        </div>
+                      </div>
+                    )}
                     <div className="w-full h-24 bg-gradient-to-br from-purple-50 to-gray-100 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
                       {p.prd?.overview?.one_liner ? (
                         <p className="text-xs text-purple-400 font-medium px-3 text-center leading-relaxed line-clamp-3">
@@ -162,6 +414,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad }) {
             </div>
           )}
         </div>
+        )}
       </main>
     </div>
   );
