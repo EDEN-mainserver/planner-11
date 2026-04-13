@@ -780,7 +780,7 @@ export default function EditorPage({ prd, setPrd, specData, setSpecData, flowDat
   // ── 내보내기 액션
   const handleExport = useCallback((type) => {
     setExportOpen(false);
-    const safe = projectTitle.replace(/[/\\?%*:|"<>]/g, '-') || 'planforge';
+    const safe = projectTitle.replace(/[/\\?%*:|"<>]/g, '-') || 'eden-dashboard';
     if (type === 'prd_md')   downloadText(prdToMarkdown(prd, projectTitle), `${safe}_PRD.md`);
     if (type === 'prd_json') downloadJSON({ prd }, `${safe}_PRD.json`);
     if (type === 'spec_json') downloadJSON({ specData }, `${safe}_기능명세서.json`);
@@ -825,7 +825,7 @@ export default function EditorPage({ prd, setPrd, specData, setSpecData, flowDat
     if (!overrideText) setChatInput('');
     setIsLoading(true);
 
-    const systemPrompt = `당신은 PlanForge AI 어시스턴트입니다. 기존 PRD를 개선하고 보완합니다.
+    const systemPrompt = `당신은 EDEN DASHBOARD AI 어시스턴트입니다. 기존 PRD를 개선하고 보완합니다.
 
 현재 PRD: ${JSON.stringify(prd, null, 2)}
 
@@ -872,7 +872,7 @@ __END_SUGGESTIONS__`;
       <nav className="flex items-center px-4 h-12 border-b border-gray-200 bg-white shrink-0 gap-3 shadow-sm">
         <button onClick={onHome}
           className="w-7 h-7 bg-purple-600 rounded-lg flex items-center justify-center text-white text-xs font-bold hover:bg-purple-700 transition-colors">
-          PF
+          ED
         </button>
         <div className="w-px h-5 bg-gray-200" />
         <input value={projectTitle} onChange={e => setProjectTitle(e.target.value)}
@@ -1146,7 +1146,7 @@ __END_SUGGESTIONS__`;
       {exportModal && (() => {
         const isSpec = exportModal.docType === 'spec';
         const docLabel = isSpec ? '기능명세서' : '유저 플로우';
-        const safe = projectTitle.replace(/[/\\?%*:|"<>]/g, '-') || 'planforge';
+        const safe = projectTitle.replace(/[/\\?%*:|"<>]/g, '-') || 'eden-dashboard';
         const fmt = exportModal.format;
 
         const formats = [

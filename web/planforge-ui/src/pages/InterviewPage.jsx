@@ -19,7 +19,7 @@ export default function InterviewPage({ initialIdea, prd, setPrd, onComplete, on
   const isMidScore  = aiScore >= 40;
   const isTired     = qCount >= 7;
 
-  const INTERVIEW_SYSTEM = `당신은 PlanForge AI 어시스턴트입니다. 사용자의 아이디어를 듣고 PRD에 필요한 정보를 체계적으로 수집하고, 전문적인 PRD 문서를 작성합니다.
+  const INTERVIEW_SYSTEM = `당신은 EDEN DASHBOARD AI 어시스턴트입니다. 사용자의 아이디어를 듣고 PRD에 필요한 정보를 체계적으로 수집하고, 전문적인 PRD 문서를 작성합니다.
 
 사용자 초기 아이디어: "${initialIdea}"
 현재 PRD: ${JSON.stringify(prd)}
@@ -139,7 +139,7 @@ __END_PRD_UPDATE__`;
     initialized.current = true;
     const init = async () => {
       setIsLoading(true);
-      const greeting = `안녕하세요! 저는 기획 작업을 도와드릴 PlanForge AI입니다.\n프로젝트를 명확히 이해할 수 있도록, 몇 가지 질문에 답해주세요!\n\n서비스 아이디어: "${initialIdea}"`;
+      const greeting = `안녕하세요! 저는 기획 작업을 도와드릴 EDEN DASHBOARD AI입니다.\n프로젝트를 명확히 이해할 수 있도록, 몇 가지 질문에 답해주세요!\n\n서비스 아이디어: "${initialIdea}"`;
       const initHistory = [{ role: 'user', content: `프로젝트 아이디어: ${initialIdea}. 지금부터 인터뷰를 시작해줘.` }];
       try {
         const text = await callGemini(initHistory, INTERVIEW_SYSTEM);

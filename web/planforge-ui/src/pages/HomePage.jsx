@@ -42,9 +42,9 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
       <aside className="w-52 shrink-0 bg-white border-r border-gray-200 flex flex-col py-4">
         <div className="px-4 mb-6">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-purple-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">PF</div>
+            <div className="w-7 h-7 bg-purple-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">ED</div>
             <div>
-              <div className="text-xs font-bold text-gray-800">EDEN TEAM</div>
+              <div className="text-xs font-bold text-gray-800">EDEN DASHBOARD</div>
               <div className="text-xs text-purple-500 font-medium">STARTER</div>
             </div>
           </div>
