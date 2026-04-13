@@ -55,8 +55,8 @@ const CONTENT_TYPES = [
 const TEXT_CHANNELS = [
   {
     key: "blog",
-    label: "블로그 글 작성",
-    description: "AI가 자료 조사부터 SEO 최적화까지 고품질 블로그 글을 만들어드려요",
+    label: "전문 퍼널 블로그 글 셋팅",
+    description: "AI가 구매 전환을 유도하는 퍼널 구조의 전문 블로그 글을 세팅해드려요",
     gradient: "from-blue-500 to-cyan-600",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

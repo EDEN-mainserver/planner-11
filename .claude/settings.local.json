@@ -18,7 +18,13 @@
       "Read(//c/Users/gram/.config/vercel/**)",
       "Read(//c/Users/gram/AppData/Local/vercel/**)",
       "Read(//c/Users/gram/.vercel/**)",
-      "Bash(git commit --allow-empty -m ':*)"
+      "Bash(git commit --allow-empty -m ':*)",
+      "Bash(npx eslint:*)",
+      "Bash(git pull:*)",
+      "Bash(xargs grep:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(curl:*)",
+      "Bash(ls \"/c/Users/gram/Desktop/planforge_complete/web/planforge-ui/.env\"*)"
     ]
   }
 }
