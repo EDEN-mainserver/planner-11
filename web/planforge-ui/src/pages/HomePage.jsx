@@ -2,6 +2,7 @@ import { useState } from "react";
 import { callGemini } from "../utils/gemini";
 import { relativeTime } from "../utils/storage";
 import { IconArrowUp } from "../components/Icons";
+import EAttackPage from "../eattack/EAttackPage";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [idea, setIdea] = useState('');
@@ -80,6 +81,19 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
         <div className="px-4 mt-4">
           <div className="text-xs text-gray-400 font-medium mb-2">즐겨찾기</div>
           <p className="text-xs text-gray-300">즐겨찾기한 프로젝트가 없습니다.</p>
+        </div>
+        {/* E-Attack 섹션 — PlanForge와 구분 */}
+        <div className="px-2 mt-6 pt-4 border-t border-gray-200">
+          <div className="px-2 mb-2">
+            <div className="text-xs text-gray-400 font-medium">자동화</div>
+          </div>
+          <div
+            onClick={() => setActivePage('eattack')}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+              ${activePage === 'eattack' ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
+            <span className="text-base">🚀</span>
+            E-Attack
+          </div>
         </div>
         <div className="mt-auto px-4 py-3 border-t border-gray-100">
           <div className="flex items-center gap-2">
@@ -298,6 +312,11 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
               )}
             </div>
           </div>
+        )}
+
+        {/* ════ E-Attack 화면 ════ */}
+        {activePage === 'eattack' && (
+          <EAttackPage />
         )}
 
         {/* ════ 홈 화면 ════ */}
