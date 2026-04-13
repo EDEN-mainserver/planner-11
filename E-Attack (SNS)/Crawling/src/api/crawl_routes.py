@@ -4,7 +4,7 @@
 from fastapi import APIRouter
 from src.models.post import CrawlResponse
 from src.crawlers.iboss_crawler import crawl_iboss, crawl_iboss_detail
-from src.crawlers.x_crawler import crawl_x
+from src.crawlers.x_crawler import crawl_x_trends
 
 router = APIRouter()
 
@@ -39,10 +39,10 @@ async def get_iboss_detail(url: str) -> dict:
 
 
 @router.get("/x", response_model=CrawlResponse)
-async def get_x_posts(keyword: str, limit: int = 20) -> CrawlResponse:
-    """X(Twitter) 키워드 검색 크롤링"""
+async def get_x_trends(keyword: str = "") -> CrawlResponse:
+    """X 한국 실시간 트렌드 (keyword 입력 시 필터링)"""
     try:
-        posts = await crawl_x(keyword=keyword, max_posts=limit)
+        posts = crawl_x_trends(keyword_filter=keyword)
         return CrawlResponse(
             platform="x",
             total=len(posts),

@@ -21,23 +21,33 @@ const AVAILABLE_MONTHS = [
   { value: "202604", label: "26년 04월" },
 ];
 
-// ─── API ───
-const API_BASE = "http://localhost:8001";
+// ─── API (로컬: FastAPI / 배포: Vercel Serverless) ───
+const IS_LOCAL = window.location.hostname === "localhost";
 
 async function fetchIbossPosts(month) {
-  const res = await fetch(`${API_BASE}/api/crawl/iboss?limit=50&month=${month}`);
+  const url = IS_LOCAL
+    ? `http://localhost:8001/api/crawl/iboss?limit=50&month=${month}`
+    : `/api/iboss-crawl?limit=50&month=${month}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error("크롤링 API 호출 실패");
   return res.json();
 }
 
-async function fetchXPosts(keyword) {
-  const res = await fetch(`${API_BASE}/api/crawl/x?keyword=${encodeURIComponent(keyword)}&limit=20`);
-  if (!res.ok) throw new Error("X 크롤링 API 호출 실패");
+async function fetchXTrends(keyword = "") {
+  const params = keyword ? `?keyword=${encodeURIComponent(keyword)}` : "";
+  const url = IS_LOCAL
+    ? `http://localhost:8001/api/crawl/x${params}`
+    : `/api/x-trends${params}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("X 트렌드 API 호출 실패");
   return res.json();
 }
 
-async function fetchPostDetail(url) {
-  const res = await fetch(`${API_BASE}/api/crawl/iboss/detail?url=${encodeURIComponent(url)}`);
+async function fetchPostDetail(sourceUrl) {
+  const url = IS_LOCAL
+    ? `http://localhost:8001/api/crawl/iboss/detail?url=${encodeURIComponent(sourceUrl)}`
+    : `/api/iboss-crawl?detail=true&url=${encodeURIComponent(sourceUrl)}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error("상세 크롤링 실패");
   return res.json();
 }
@@ -176,11 +186,7 @@ export default function CrawlingPage({ onBack }) {
         const top50 = allPosts.slice(0, 50).map((p, i) => ({ ...p, rank: i + 1 }));
         setCurrentData((prev) => ({ ...prev, loading: false, posts: top50 }));
       } else if (activeTab === "x") {
-        if (!xKeyword.trim()) {
-          setCurrentData((prev) => ({ ...prev, loading: false, error: "검색 키워드를 입력해주세요." }));
-          return;
-        }
-        const data = await fetchXPosts(xKeyword.trim());
+        const data = await fetchXTrends(xKeyword.trim());
         if (data.error) {
           setCurrentData((prev) => ({ ...prev, loading: false, error: data.error }));
         } else {
@@ -338,7 +344,7 @@ export default function CrawlingPage({ onBack }) {
                   value={xKeyword}
                   onChange={(e) => setXKeyword(e.target.value)}
                   onKeyDown={handleXKeyDown}
-                  placeholder="키워드를 입력하고 Enter"
+                  placeholder="트렌드 필터 (빈칸=전체)"
                   disabled={loading}
                   className="pl-9 pr-4 py-2 w-56 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 transition-all shadow-sm"
                 />
@@ -391,7 +397,7 @@ export default function CrawlingPage({ onBack }) {
             <p className="text-xs text-gray-400">
               {activeTab === "iboss"
                 ? "기간을 선택하고 '+ 새로고침' 버튼을 클릭하여 인기글을 수집하세요"
-                : "키워드를 입력하고 Enter를 누르면 X에서 인기 트윗을 검색합니다"}
+                : "'+ 새로고침'을 눌러 X 한국 실시간 트렌드를 확인하세요"}
             </p>
           </div>
         )}
@@ -407,7 +413,7 @@ export default function CrawlingPage({ onBack }) {
             <p className="text-gray-400 text-xs mt-1">
               {activeTab === "iboss"
                 ? `${rangeMonths.length}개월 범위에서 인기글을 수집합니다`
-                : `"${xKeyword}" 키워드로 X에서 검색 중입니다`}
+                : "X 한국 실시간 트렌드를 불러오고 있습니다"}
             </p>
           </div>
         )}
@@ -417,9 +423,7 @@ export default function CrawlingPage({ onBack }) {
           <>
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs text-gray-500">
-                총 <span className="text-blue-600 font-semibold">{posts.length}</span>개{" "}
-                {activeTab === "x" ? "트윗" : "인기글"}{" "}
-                {activeTab === "iboss" ? "(조회수 순)" : `"${xKeyword}" 검색 결과`}
+                총 <span className="text-blue-600 font-semibold">{posts.length}</span>개 {activeTab === "x" ? "실시간 트렌드" : "인기글"} {activeTab === "iboss" ? "(조회수 순)" : xKeyword ? `"${xKeyword}" 필터` : ""}
               </p>
               <button
                 onClick={handleDownloadCSV}
