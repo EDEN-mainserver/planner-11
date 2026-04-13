@@ -1,7 +1,29 @@
+# 환경 변수 (절대 커밋 금지)
 .env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+
+# IDE
 .vscode/
 .idea/
+
+# 의존성
 node_modules/
+
+# 인증 정보
 config/google_credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+*.crt
+
+# 기타 민감 파일
+secrets/
+credentials/
