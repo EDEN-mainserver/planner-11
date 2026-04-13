@@ -31,12 +31,12 @@ const FUNNEL_STAGES = ["노출", "클릭", "유입", "전환"];
 
 
 // HTML 태그 제거
-function stripHtml(str) {
+function stripHtml(str) { // eslint-disable-line no-unused-vars
   return str.replace(/<[^>]*>/g, "").replace(/&[a-z]+;/gi, " ").trim();
 }
 
 // 블로그 검색 결과에서 키워드 추출 (빈도 기반)
-function extractKeywordsFromTitles(titles) {
+function extractKeywordsFromTitles(titles) { // eslint-disable-line no-unused-vars
   const STOP_WORDS = new Set([
     "이", "가", "은", "는", "을", "를", "의", "에", "에서", "로", "으로", "와", "과",
     "도", "만", "이나", "이고", "하고", "하여", "하는", "있는", "없는", "한", "하기",
