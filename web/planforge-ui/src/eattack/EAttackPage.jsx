@@ -1,5 +1,6 @@
 import { useState } from "react";
 import BlogPage from "./BlogPage";
+import CrawlingPage from "./crawling/CrawlingPage";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -37,6 +38,17 @@ const CONTENT_TYPES = [
     gradient: "from-purple-500 to-violet-600",
     description: "숏폼, 릴스 등 영상 콘텐츠를 자동으로 만들어냅니다",
     disabled: true,
+  },
+  {
+    key: "crawling",
+    label: "크롤링",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+      </svg>
+    ),
+    gradient: "from-blue-500 to-cyan-600",
+    description: "웹사이트를 크롤링하여 콘텐츠 소스를 자동으로 수집합니다",
   },
 ];
 
@@ -127,6 +139,8 @@ export default function EAttackPage() {
   const handleTypeClick = (type) => {
     if (type.key === "text") {
       setDepth("text");
+    } else if (type.key === "crawling") {
+      setDepth("crawling");
     }
   };
 
@@ -136,6 +150,13 @@ export default function EAttackPage() {
       setDepth("blog");
     }
   };
+
+  // 크롤링 대시보드
+  if (depth === "crawling") {
+    return (
+      <CrawlingPage onBack={() => setDepth("root")} />
+    );
+  }
 
   // 블로그 대시보드
   if (depth === "blog") {
@@ -184,7 +205,7 @@ export default function EAttackPage() {
           <>
             <h3 className="text-lg font-bold text-gray-800 mb-1">콘텐츠 유형 선택</h3>
             <p className="text-sm text-gray-400 mb-6">제작할 콘텐츠 유형을 선택하세요</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
               {CONTENT_TYPES.map((type) => (
                 <ChannelCard
                   key={type.key}
