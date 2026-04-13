@@ -144,18 +144,17 @@ export default function SpecPanel({ prd, specData, setSpecData }) {
     return items;
   }, [features]);
 
-  // ── 번호 라벨 맵 (1, 1.1, 1.1.1 ...)
+  // ── 번호 라벨 맵 — 재귀로 무한 깊이 지원 (1, 1.1, 1.1.1, 1.1.1.1 ...)
   const numMap = useMemo(() => {
     const map = {};
-    features.forEach((f, fi) => {
-      map[f.id] = `${fi + 1}`;
-      (f.sub_features || []).forEach((s, si) => {
-        map[s.id] = `${fi + 1}.${si + 1}`;
-        (s.sub_features || []).forEach((ss, ssi) => {
-          map[ss.id] = `${fi + 1}.${si + 1}.${ssi + 1}`;
-        });
+    const traverse = (nodes, prefix) => {
+      nodes.forEach((node, i) => {
+        const num = prefix ? `${prefix}.${i + 1}` : `${i + 1}`;
+        map[node.id] = num;
+        if (node.sub_features?.length) traverse(node.sub_features, num);
       });
-    });
+    };
+    traverse(features, '');
     return map;
   }, [features]);
 
@@ -177,18 +176,33 @@ export default function SpecPanel({ prd, specData, setSpecData }) {
     setSuggesting(true);
     const parentItem = allItems.find(i => i.path.join(',') === parentPath.join(','));
     const pn = parentItem?.node;
-    const prompt = `당신은 시니어 개발자입니다. 기능 "${pn?.title}"에 추가할 구현 단위 하위 태스크 1개를 JSON으로 생성하세요.
-상위 기능 설명: ${pn?.description || pn?.detail || ''}
-이미 있는 하위 항목: ${(pn?.sub_features||[]).map(s=>s.title).join(', ')||'없음'}
-PRD 컨텍스트: ${JSON.stringify(prd?.core_value||{})}
+    const parentDepth = parentPath.length; // 1=피처, 2=서브피처그룹, 3+=리프
+    const isGroupLevel = parentDepth === 1; // 피처 바로 아래 → 기능 역할 그룹 추가
+    const prompt = isGroupLevel
+      ? `당신은 시니어 소프트웨어 아키텍트입니다. 핵심 기능 "${pn?.title}"에 추가할 기능 역할 그룹 1개를 JSON으로 생성하세요.
+기능 설명: ${pn?.description || ''}
+이미 있는 그룹: ${(pn?.sub_features||[]).map(s=>s.title).join(', ')||'없음'}
+PRD: ${JSON.stringify(prd?.core_value||{})}
 
 규칙:
-- 제목은 개발자가 직접 구현할 수 있는 단일 작업 단위 (예: "메시지 수신 웹훅", "로그인 API 연동", "전송 실패 재시도 처리")
-- 추상적/마케팅 언어 금지 ("최적화", "강화", "활성화" 등 모호한 표현 사용 금지)
-- API 엔드포인트, DB 저장, 웹훅, 에러 처리, 폼 검증 등 구체적 기술 작업으로 표현
-- detail은 실제 구현 내용을 1~2문장으로 (어떤 기술/방식으로 구현하는지 포함)
+- title은 이 기능 안에서 사용자가 경험하는 흐름의 단계 또는 독립적 기능 역할 이름
+- 기술 레이어 이름 금지 ("프론트엔드", "백엔드", "서버" 등)
+- 올바른 예: "메시지 송수신", "계정 연동", "실패 복구 처리"
+- 10자 이내
+형식(JSON만): {"title":"기능 역할명","detail":"이 그룹이 담당하는 기능 1~2문장"}
+한국어, 중복 없이.`
+      : `당신은 시니어 개발자입니다. "${pn?.title}" 그룹에 추가할 구현 태스크 1개를 JSON으로 생성하세요.
+그룹 설명: ${pn?.detail || ''}
+이미 있는 태스크: ${(pn?.sub_features||[]).map(s=>s.title).join(', ')||'없음'}
+PRD: ${JSON.stringify(prd?.core_value||{})}
+
+규칙:
+- 단일 API, 단일 UI 컴포넌트, 단일 DB 쿼리 수준의 구현 태스크
+- 기술 레이어 이름 금지 ("프론트엔드", "백엔드" 등)
+- 에러/실패 처리도 별도 태스크로
+- 10자 이내
 형식(JSON만): {"title":"구현 태스크명","detail":"구현 방법 1~2문장"}
-한국어, 중복 없이. 중요: title은 공백 포함 10자 이내로 반드시 지킬 것. 예) "API 인증 처리"(7자) O, "사용자 입력 데이터 유효성 검증"(16자) X`;
+한국어, 중복 없이.`;
     try {
       const text = await callGemini([{role:'user',content:prompt}], '');
       const m = text.match(/\{[\s\S]*?\}/);
@@ -208,44 +222,68 @@ PRD 컨텍스트: ${JSON.stringify(prd?.core_value||{})}
     setSuggesting(false);
   }, [prd, allItems]);
 
-  // ── AI: 모든 피처에 하위 기능 일괄 생성 (직접 적용)
+  // ── AI: 계층 트리 완전 분해 (단일 호출, 직접 적용)
   const generateAllSubs = useCallback(async () => {
     setRootMenuOpen(false);
     setSuggesting(true);
-    const prompt = `당신은 시니어 소프트웨어 아키텍트입니다. 아래 기능 목록에 각각 필요한 구현 태스크를 완전하게 생성하세요.
-PRD 컨텍스트: ${JSON.stringify(prd?.core_value || {})}
-기능 목록: ${JSON.stringify(features.map(f=>({id:f.id,title:f.title,desc:f.description,existing:(f.sub_features||[]).map(s=>s.title)})))}
 
-규칙:
-- 각 기능당 3~5개 태스크 생성 (이미 있는 항목 제외하고 부족한 것만 채울 것)
-- 각 태스크는 개발자가 단독 구현 가능한 최소 단위 작업
-- 좋은 예: "카카오톡 API 인증", "메시지 수신 웹훅", "전송 실패 재시도 처리", "채널 정보 DB 저장", "연동 상태 모니터링"
-- 나쁜 예: "채널 연동 최적화", "기능 강화", "사용자 경험 개선" (모호, 추상적 금지)
-- 에러/실패 시나리오 태스크 반드시 포함 (기능당 최소 1개)
-- detail은 구체적 구현 방법 1~2문장 (어떤 기술/방식 사용하는지 포함)
-형식(JSON만): {"results":[{"featId":"F-001","subs":[{"title":"구현 태스크명","detail":"구현 방법 1~2문장"}]}]}
-한국어, 기존과 중복 없이. 중요: title은 공백 포함 10자 이내 엄수. 예) "웹훅 수신 처리"(7자) O, "메시지 수신 웹훅 엔드포인트 구현"(16자) X`;
+    // ID 재귀 부여
+    const assignIds = (nodes, prefix) =>
+      (nodes || []).map((n, i) => {
+        const id = `${prefix}-${i + 1}`;
+        return { ...n, id, isNew: false, sub_features: assignIds(n.sub_features, id) };
+      });
+
+    const prompt = `당신은 시니어 소프트웨어 아키텍트입니다. 아래 PRD와 핵심 기능 목록을 분석하여 각 기능을 계층적으로 분해하세요.
+
+PRD: ${JSON.stringify(prd)}
+핵심 기능 목록: ${JSON.stringify(features.map(f => ({ id: f.id, title: f.title, description: f.description })))}
+
+━━━ 분해 기준 (매우 중요) ━━━
+
+[depth-2: 서브피처 그룹 — 기능 역할/시나리오 단위]
+- "이 핵심 기능 안에서 사용자가 경험하는 흐름의 단계" 또는 "독립적인 기능 역할"로 그룹핑
+- 절대 금지: "프론트엔드", "백엔드", "서버", "클라이언트" 같은 기술 레이어 이름 사용 금지
+- 올바른 예시:
+  * "자동 응대 및 상담원 연계" 기능 → "AI 기반 자동 응답", "재시도 및 상담원 연결", "대화 기록 연계"
+  * "카카오톡 채널 연동" 기능 → "비즈니스 계정 연동", "메시지 송수신", "상담 시작 버튼"
+  * "FAQ 관리" 기능 → "FAQ 항목 관리", "자동 응답 시나리오", "안내 메시지 설정"
+- 각 핵심 기능당 2~3개 서브피처 그룹 생성
+
+[depth-3: 리프 노드 — 구현 태스크 단위]
+- 각 서브피처 그룹 안에서 실제로 구현할 단위 태스크
+- "단일 API 하나", "단일 UI 컴포넌트 하나", "단일 DB 쿼리 하나" 수준
+- FE/BE 구현 태스크가 같은 그룹 안에 함께 존재해도 됨
+- 에러/실패 처리 태스크 반드시 포함 (그룹당 최소 1개)
+- 각 서브피처 그룹당 3~4개 리프 생성
+
+━━━ 작성 규칙 ━━━
+- 모든 title: 공백 포함 10자 이내
+- detail: 구체적 구현 방법 1~2문장
+- 나쁜 title 예: "기능 강화", "최적화", "개선" (모호·추상 금지)
+- 좋은 title 예: "API 인증"(5자), "웹훅 수신"(5자), "DB 저장"(4자), "실패 처리"(5자)
+
+형식(JSON만):
+{"results":[{"featId":"F-001","sub_features":[{"title":"기능 역할명","detail":"이 그룹이 담당하는 기능 설명","sub_features":[{"title":"구현 태스크","detail":"구현 방법 1~2문장","sub_features":[]}]}]}]}
+
+한국어로 작성.`;
+
     try {
-      const text = await callGemini([{role:'user',content:prompt}], '');
+      const text = await callGemini([{ role: 'user', content: prompt }], '');
       const m = text.match(/\{[\s\S]*\}/);
       if (m) {
         const { results } = JSON.parse(m[0]);
-        // 승인 큐 없이 직접 트리에 적용
-        setSpecData(prev => {
-          let feats = prev.features;
-          for (const r of (results||[])) {
-            const feat = feats.find(f => f.id === r.featId);
-            if (!feat) continue;
-            for (const sub of (r.subs||[])) {
-              const newNode = { ...sub, id:`SF-${uid()}`, sub_features:[], isNew:false };
-              feats = addChildAtPath(feats, [feat.id], newNode);
-            }
-          }
-          return { ...prev, features: feats };
-        });
+        setSpecData(prev => ({
+          ...prev,
+          features: prev.features.map(f => {
+            const r = results?.find(r => r.featId === f.id);
+            if (!r) return f;
+            return { ...f, sub_features: assignIds(r.sub_features, f.id) };
+          })
+        }));
         setDetail(null);
       }
-    } catch(e) { alert('생성 실패: '+e.message); }
+    } catch (e) { alert('생성 실패: ' + e.message); }
     setSuggesting(false);
   }, [features, prd, setSpecData]);
 
