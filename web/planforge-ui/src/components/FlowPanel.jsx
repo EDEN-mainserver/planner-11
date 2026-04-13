@@ -15,7 +15,6 @@ const ARROW      = 6;    // 화살촉 크기
 const CW = [80, 140, 120, 120, 120, 120];
 function cw(col)    { return CW[Math.min(col, CW.length - 1)]; }
 function cx(col)    { let x = LABEL_W + PAD_L; for (let i = 0; i < col; i++) x += cw(i) + COL_GAP; return x; }
-function cright(col){ return cx(col) + cw(col); }
 
 // 노드 타입별 스타일
 const NS = {
@@ -28,7 +27,7 @@ const NS = {
 const EDGE_COLOR = '#c8c8c8';
 const CROSS_EDGE_COLOR = '#a78bfa'; // 크로스 섹션 엣지 색상 (보라)
 
-export default function FlowPanel({ prd, specData, flowData, setFlowData }) {
+export default function FlowPanel({ specData, flowData, setFlowData }) {
   const [loading, setLoading] = useState(false);
   const [elapsed, setElapsed]   = useState(0);
   const [stepMsg, setStepMsg]   = useState('');
@@ -207,7 +206,7 @@ ${isFirst
             section = { featureId: f.id, featureTitle: f.title, nodes, edges };
           }
         }
-      } catch (_) { /* 파싱 실패 → 폴백 */ }
+      } catch { /* 파싱 실패 → 폴백 */ }
 
       allSections.push(section ?? buildSectionFromSpec(f, isFirst));
     }
@@ -247,7 +246,7 @@ ${JSON.stringify(sectionSummary, null, 2)}
           const parsed = JSON.parse(crossMatch[0]);
           if (Array.isArray(parsed)) crossEdges = parsed.filter(e => e.from && e.to);
         }
-      } catch (_) { /* 크로스 엣지 생성 실패 → 조용히 무시 */ }
+      } catch { /* 크로스 엣지 생성 실패 → 조용히 무시 */ }
     }
 
     clearInterval(timerRef.current);
@@ -699,7 +698,7 @@ ${JSON.stringify(sectionSummary, null, 2)}
                 </div>
                 {/* 섹션 탭 */}
                 <div className="flex gap-1.5 mt-2 flex-wrap">
-                  {allSectionTitles.map((t, ti) => (
+                  {allSectionTitles.map((t) => (
                     <span key={t}
                       className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
                         t === cur.sectionTitle

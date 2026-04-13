@@ -316,7 +316,7 @@ PRD: ${JSON.stringify(prd)}
     setSuggestions([]); setSuggestionIdx(0); setDetail(null);
   }, [suggestions, setSpecData]);
 
-  const rejectAll = useCallback(() => { setSuggestions([]); setSuggestionIdx(0); setDetail(null); }, []);
+  const _rejectAll = useCallback(() => { setSuggestions([]); setSuggestionIdx(0); setDetail(null); }, []);
 
   // ── 직접 추가
   const addDirect = useCallback(() => {
@@ -362,9 +362,9 @@ PRD: ${JSON.stringify(prd)}
   const currentSug = suggestions[suggestionIdx];
   useEffect(() => {
     if (currentSug && detail?.isSuggestion) {
-      setDetail({ node:currentSug.data, path:[...currentSug.parentPath, currentSug.data.id], isSuggestion:true });
+      setDetail({ node:currentSug.data, path:[...currentSug.parentPath, currentSug.data.id], isSuggestion:true }); // eslint-disable-line react-hooks/set-state-in-effect
     }
-  }, [suggestionIdx]); // eslint-disable-line
+  }, [suggestionIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 빈 상태
   if (!specData) return (

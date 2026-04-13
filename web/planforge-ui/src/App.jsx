@@ -57,7 +57,7 @@ export default function App() {
     setTrash(prev => {
       const target = prev.find(p => p.id === id);
       if (target) {
-        const { deletedAt, ...restored } = target;
+        const { deletedAt: _deletedAt, ...restored } = target;
         setProjects(ps => {
           const updated = [{ ...restored, updatedAt: new Date().toISOString() }, ...ps];
           saveProjects(updated);

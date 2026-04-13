@@ -102,10 +102,10 @@ __END_PRD_UPDATE__`;
 
     let question = null;
     if (qMatch) {
-      try { question = JSON.parse(qMatch[1].trim()); } catch (e) {}
+      try { question = JSON.parse(qMatch[1].trim()); } catch { /* ignore */ }
     }
     if (prdMatch) {
-      try { setPrd(prev => deepMergePrd(prev, JSON.parse(prdMatch[1].trim()))); } catch (e) {}
+      try { setPrd(prev => deepMergePrd(prev, JSON.parse(prdMatch[1].trim()))); } catch { /* ignore */ }
     }
     if (scoreMatch) {
       const s = parseInt(scoreMatch[1], 10);

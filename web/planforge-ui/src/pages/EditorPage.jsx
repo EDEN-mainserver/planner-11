@@ -191,7 +191,7 @@ function specToText(specData, prd, title) {
 
 function specToExcelHtml(specData, prd, title) {
   const date = new Date().toISOString().split('T')[0];
-  const { ov, cv, tg, mt, st, roles, devices } = prdFields(prd, title, date);
+  const { ov, tg, mt, roles, devices } = prdFields(prd, title, date);
   const MS = 'border:1px solid #e5e7eb;padding:8px 12px;font-size:11px;font-family:sans-serif;';
 
   // 메타 헤더
@@ -329,7 +329,7 @@ function flowToText(specData, prd, title) {
 
 function flowToExcelHtml(specData, prd, title) {
   const date = new Date().toISOString().split('T')[0];
-  const { ov, tg, st, roles, devices } = prdFields(prd, title, date);
+  const { ov, tg, roles, devices } = prdFields(prd, title, date);
   const MS = 'border:1px solid #e5e7eb;padding:8px 12px;font-size:11px;font-family:sans-serif;';
 
   let body = `<table style="border-collapse:collapse;width:100%;margin-bottom:16px">`;
@@ -778,7 +778,7 @@ export default function EditorPage({ prd, setPrd, specData, setSpecData, flowDat
   }, [prd]);
 
   // ── 내보내기 액션
-  const handleExport = useCallback((type) => {
+  const _handleExport = useCallback((type) => {
     setExportOpen(false);
     const safe = projectTitle.replace(/[/\\?%*:|"<>]/g, '-') || 'eden-dashboard';
     if (type === 'prd_md')   downloadText(prdToMarkdown(prd, projectTitle), `${safe}_PRD.md`);
@@ -856,8 +856,8 @@ __END_SUGGESTIONS__`;
         .replace(/__PRD_UPDATE__[\s\S]*?__END_PRD_UPDATE__/, '')
         .replace(/__SUGGESTIONS__[\s\S]*?__END_SUGGESTIONS__/, '')
         .trim();
-      if (prdMatch) { try { setPrd(prev => deepMergePrd(prev, JSON.parse(prdMatch[1].trim()))); } catch (e) {} }
-      if (sugMatch) { try { const s = JSON.parse(sugMatch[1].trim()); if (Array.isArray(s)) setSuggestions(s.slice(0, 4)); } catch (e) {} }
+      if (prdMatch) { try { setPrd(prev => deepMergePrd(prev, JSON.parse(prdMatch[1].trim()))); } catch { /* ignore */ } }
+      if (sugMatch) { try { const s = JSON.parse(sugMatch[1].trim()); if (Array.isArray(s)) setSuggestions(s.slice(0, 4)); } catch { /* ignore */ } }
       setMessages(prev => [...prev, { role: 'assistant', content: displayText || '업데이트되었습니다.' }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `오류: ${err.message}` }]);

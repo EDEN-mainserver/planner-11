@@ -34,7 +34,7 @@ PRD: ${JSON.stringify(prd)}`;
         const s = Math.min(100, Math.max(0, parseInt(match[0], 10)));
         setAiScore(s);
       }
-    } catch (e) {}
+    } catch { /* ignore */ }
     setIsRescoring(false);
   };
 
