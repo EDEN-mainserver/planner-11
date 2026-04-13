@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { callGemini } from "../utils/gemini";
+import { loadBlogStyle } from "./BlogPage";
 
 // ─── 콘텐츠 타입 정의 ───
 const CONTENT_TYPES = [
@@ -253,6 +254,20 @@ JSON 배열만 반환: ["키워드1", "키워드2", ...]`;
         ? "공감형 유입 콘텐츠 (독자 고통/결핍 공감 → 정보 제공 → 자연스러운 서비스 언급)"
         : "전환 유도 콘텐츠 (유입 독자에게 솔루션 제시 → 서비스 가치 증명 → 강력한 CTA)";
 
+      // 저장된 글쓰기 스타일 로드
+      const savedStyle = loadBlogStyle();
+      const styleGuide = savedStyle ? `
+[적용할 글쓰기 스타일: ${savedStyle.blogger}]
+- 톤앤매너: ${savedStyle.tone}
+- 제목 패턴: ${savedStyle.title_pattern}
+- 도입부: ${savedStyle.intro_style}
+- 글 구조: ${savedStyle.content_structure}
+- 문단 스타일: ${savedStyle.paragraph_style}
+- 마무리: ${savedStyle.cta_style}
+- 작성 규칙: ${savedStyle.writing_rules?.join(' / ')}
+- 피할 것: ${savedStyle.avoid?.join(' / ')}
+위 스타일을 최대한 반영하여 작성하세요.` : '';
+
       const systemPrompt = `당신은 퍼널 마케팅 전문 블로그 작가입니다.
 콘텐츠 타입: ${typeInfo}
 퍼널 목표: ${selectedType.funnel.join(" → ")} 전환 극대화
@@ -260,7 +275,8 @@ JSON 배열만 반환: ["키워드1", "키워드2", ...]`;
 - 독자의 관점에서 공감하며 시작
 - 정보는 구체적이고 실용적으로
 - 자연스러운 서비스 언급 (광고처럼 보이지 않게)
-- 네이버 블로그 SEO에 최적화된 구조`;
+- 네이버 블로그 SEO에 최적화된 구조
+${styleGuide}`;
 
       const prompt = `다음 정보를 바탕으로 네이버 블로그 글을 작성해주세요.
 

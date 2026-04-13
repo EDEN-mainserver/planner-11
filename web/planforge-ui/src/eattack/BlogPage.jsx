@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import BlogNewPost from "./BlogNewPost";
 import BlogEditor from "./BlogEditor";
+import { callGemini } from "../utils/gemini";
+
+const STYLE_STORAGE_KEY = "eattack_blog_style";
 
 const BLOG_STORAGE_KEY = "eattack_blog_posts";
 
@@ -39,6 +42,304 @@ const CTYPE_COLORS = {
   pulling: "bg-blue-50 text-blue-600",
   key: "bg-purple-50 text-purple-700",
 };
+
+// ─── 스타일 저장/불러오기 ───
+export function loadBlogStyle() {
+  try { return JSON.parse(localStorage.getItem(STYLE_STORAGE_KEY) || "null"); }
+  catch { return null; }
+}
+function saveBlogStyle(style) {
+  localStorage.setItem(STYLE_STORAGE_KEY, JSON.stringify(style));
+}
+
+// ─── 글쓰기 스타일 분석 탭 ───
+function StyleAnalysisTab() {
+  const [blogUrl, setBlogUrl]         = useState("");
+  const [step, setStep]               = useState("idle"); // idle | crawling | analyzing | done | error
+  const [stepMsg, setStepMsg]         = useState("");
+  const [savedStyle, setSavedStyle]   = useState(loadBlogStyle);
+  const [previewStyle, setPreviewStyle] = useState(null);
+  const [error, setError]             = useState("");
+
+  const blogIdFromUrl = (url) => {
+    const m = url.match(/blog\.naver\.com\/([a-zA-Z0-9_]+)/);
+    return m ? m[1] : url.trim();
+  };
+
+  const handleAnalyze = async () => {
+    if (!blogUrl.trim()) return;
+    setError("");
+    setStep("crawling");
+    setStepMsg("블로그 글 수집 중...");
+    setPreviewStyle(null);
+
+    try {
+      const blogId = blogIdFromUrl(blogUrl);
+
+      // Step 1: 크롤링
+      const crawlResp = await fetch(`/api/naver-blog-crawl?blogId=${encodeURIComponent(blogId)}`);
+      const crawlData = await crawlResp.json();
+      if (!crawlResp.ok) throw new Error(crawlData.error || "크롤링 실패");
+
+      const { posts, total } = crawlData;
+      setStepMsg(`${posts.length}개 글 분석 중... (총 ${total}개)`);
+      setStep("analyzing");
+
+      // Step 2: Gemini로 스타일 분석
+      const postsText = posts.map((p, i) =>
+        `[글 ${i + 1}] 제목: ${p.title}\n${p.content}`
+      ).join("\n\n---\n\n");
+
+      const prompt = `다음은 네이버 블로그 "${blogId}"의 최근 글들입니다. 이 블로거의 글쓰기 스타일을 철저히 분석해주세요.
+
+${postsText}
+
+다음 JSON 형식으로 정확히 반환해. 설명 없이 JSON만:
+{
+  "blogger": "${blogId}",
+  "analyzed_count": ${posts.length},
+  "tone": "한 문장으로 표현한 전체적인 톤앤매너",
+  "title_pattern": "제목 작성 패턴 설명",
+  "title_examples": ["실제 제목 패턴 예시 2개"],
+  "intro_style": "도입부 작성 방식",
+  "heading_style": "소제목 스타일",
+  "content_structure": "글 전체 구조 (단계별)",
+  "avg_length": "글 평균 길이 (짧음/보통/김)",
+  "paragraph_style": "문단 구성 방식",
+  "cta_style": "마무리 및 CTA 방식",
+  "special_features": ["이 블로거만의 특징 3~5가지"],
+  "writing_rules": ["글 작성 시 반드시 지킬 규칙 5가지"],
+  "avoid": ["이 스타일에서 피해야 할 것 3가지"]
+}`;
+
+      const result = await callGemini(
+        [{ role: "user", content: prompt }],
+        "당신은 콘텐츠 마케팅 전문가로서 블로그 글쓰기 스타일을 정밀하게 분석합니다."
+      );
+
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("분석 결과 파싱 실패");
+      const styleData = JSON.parse(jsonMatch[0]);
+      styleData.savedAt = new Date().toISOString();
+      styleData.blogUrl = `https://blog.naver.com/${blogId}`;
+
+      setPreviewStyle(styleData);
+      setStep("done");
+      setStepMsg("");
+
+    } catch (e) {
+      setError(e.message);
+      setStep("error");
+      setStepMsg("");
+    }
+  };
+
+  const handleSave = () => {
+    if (!previewStyle) return;
+    saveBlogStyle(previewStyle);
+    setSavedStyle(previewStyle);
+    setPreviewStyle(null);
+    setBlogUrl("");
+    setStep("idle");
+  };
+
+  const handleDelete = () => {
+    localStorage.removeItem(STYLE_STORAGE_KEY);
+    setSavedStyle(null);
+  };
+
+  const isLoading = step === "crawling" || step === "analyzing";
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+
+      {/* 저장된 스타일 있으면 표시 */}
+      {savedStyle && (
+        <div className="rounded-2xl border border-purple-200 bg-purple-50/50 p-4 sm:p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-purple-500" />
+                <span className="text-xs font-bold text-purple-600 uppercase tracking-wider">적용 중인 스타일</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">{savedStyle.blogger} 스타일</p>
+              <a href={savedStyle.blogUrl} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-gray-400 hover:text-purple-600 transition-colors">
+                {savedStyle.blogUrl}
+              </a>
+            </div>
+            <button onClick={handleDelete}
+              className="h-7 px-2.5 text-xs font-medium rounded-lg border border-red-200 text-red-400 hover:bg-red-50 transition-colors flex-shrink-0">
+              삭제
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-white rounded-xl p-3 border border-purple-100">
+              <p className="text-[10px] font-bold text-purple-500 uppercase mb-1.5">톤앤매너</p>
+              <p className="text-xs text-gray-700">{savedStyle.tone}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 border border-purple-100">
+              <p className="text-[10px] font-bold text-purple-500 uppercase mb-1.5">제목 패턴</p>
+              <p className="text-xs text-gray-700">{savedStyle.title_pattern}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 border border-purple-100">
+              <p className="text-[10px] font-bold text-purple-500 uppercase mb-1.5">글 구조</p>
+              <p className="text-xs text-gray-700">{savedStyle.content_structure}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 border border-purple-100">
+              <p className="text-[10px] font-bold text-purple-500 uppercase mb-1.5">마무리 방식</p>
+              <p className="text-xs text-gray-700">{savedStyle.cta_style}</p>
+            </div>
+          </div>
+
+          {savedStyle.special_features?.length > 0 && (
+            <div className="bg-white rounded-xl p-3 border border-purple-100">
+              <p className="text-[10px] font-bold text-purple-500 uppercase mb-2">이 블로거만의 특징</p>
+              <ul className="space-y-1">
+                {savedStyle.special_features.map((f, i) => (
+                  <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
+                    <span className="text-purple-400 mt-0.5">•</span>{f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {savedStyle.writing_rules?.length > 0 && (
+            <div className="bg-white rounded-xl p-3 border border-purple-100">
+              <p className="text-[10px] font-bold text-purple-500 uppercase mb-2">글 작성 규칙</p>
+              <ul className="space-y-1">
+                {savedStyle.writing_rules.map((r, i) => (
+                  <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
+                    <span className="text-purple-400 font-bold">{i + 1}.</span>{r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <p className="text-[10px] text-gray-400 text-right">
+            {savedStyle.analyzed_count}개 글 분석 · {new Date(savedStyle.savedAt).toLocaleDateString('ko-KR')}
+          </p>
+        </div>
+      )}
+
+      {/* 분석 입력 섹션 */}
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-base font-bold text-gray-900">
+            {savedStyle ? "다른 블로그 분석" : "레퍼런스 블로그 분석"}
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            잘 쓴 블로그 URL을 입력하면 AI가 글쓰기 구조를 학습합니다
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            value={blogUrl}
+            onChange={(e) => setBlogUrl(e.target.value)}
+            placeholder="https://blog.naver.com/블로그ID"
+            disabled={isLoading}
+            className="flex-1 rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 transition-all disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={handleAnalyze}
+            disabled={!blogUrl.trim() || isLoading}
+            className={`h-10 px-4 text-sm font-semibold rounded-xl transition-all flex-shrink-0 flex items-center gap-2 ${
+              blogUrl.trim() && !isLoading
+                ? "bg-purple-600 text-white hover:bg-purple-700"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+            }`}
+          >
+            {isLoading ? (
+              <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+              </svg>
+            )}
+            {isLoading ? stepMsg : "분석 시작"}
+          </button>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-400 mt-0.5 flex-shrink-0">
+              <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
+            </svg>
+            <p className="text-xs text-red-600">{error}</p>
+          </div>
+        )}
+      </div>
+
+      {/* 분석 결과 미리보기 */}
+      {previewStyle && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">{previewStyle.blogger} 스타일 분석 완료</h3>
+              <p className="text-xs text-gray-400">{previewStyle.analyzed_count}개 글 기반</p>
+            </div>
+            <button
+              onClick={handleSave}
+              className="h-9 px-4 text-sm font-semibold rounded-xl bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+            >
+              스타일 저장 · 적용
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { label: "톤앤매너", value: previewStyle.tone },
+              { label: "제목 패턴", value: previewStyle.title_pattern },
+              { label: "도입부 방식", value: previewStyle.intro_style },
+              { label: "글 구조", value: previewStyle.content_structure },
+              { label: "문단 스타일", value: previewStyle.paragraph_style },
+              { label: "마무리/CTA", value: previewStyle.cta_style },
+            ].map(({ label, value }) => value && (
+              <div key={label} className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">{label}</p>
+                <p className="text-xs text-gray-700">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {previewStyle.special_features?.length > 0 && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">특징</p>
+              <ul className="space-y-1">
+                {previewStyle.special_features.map((f, i) => (
+                  <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
+                    <span className="text-gray-400">•</span>{f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {previewStyle.writing_rules?.length > 0 && (
+            <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3">
+              <p className="text-[10px] font-bold text-yellow-600 uppercase mb-2">글 작성 규칙</p>
+              <ul className="space-y-1">
+                {previewStyle.writing_rules.map((r, i) => (
+                  <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
+                    <span className="text-yellow-500 font-bold">{i + 1}.</span>{r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function BlogPage({ onBack }) {
   const [activeTab, setActiveTab] = useState("articles");
@@ -270,19 +571,7 @@ export default function BlogPage({ onBack }) {
 
       {/* 글쓰기 스타일 탭 */}
       {activeTab === "styles" && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-200 flex items-center justify-center mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300">
-              <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
-            </svg>
-          </div>
-          <h3 className="text-sm sm:text-base font-semibold text-gray-800 mb-2">글쓰기 스타일 설정</h3>
-          <p className="text-xs sm:text-sm text-gray-400 max-w-sm leading-relaxed">
-            AI가 브랜드 톤앤매너를 학습하여<br />일관된 스타일로 글을 작성합니다.
-            <br /><span className="text-gray-300">곧 제공될 예정입니다.</span>
-          </p>
-        </div>
+        <StyleAnalysisTab />
       )}
     </div>
   );
