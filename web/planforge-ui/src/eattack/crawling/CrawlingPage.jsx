@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import ThreadPage from "./ThreadPage";
 
 // ─── 탭 데이터 ───
 const PLATFORM_TABS = [
@@ -367,7 +368,7 @@ export default function CrawlingPage({ onBack }) {
         </div>
 
         {/* ── 에러 ── */}
-        {error && (
+        {error && activeTab !== "thread" && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>
@@ -377,14 +378,8 @@ export default function CrawlingPage({ onBack }) {
           </div>
         )}
 
-        {/* ── 빈 상태 (쓰레드) ── */}
-        {activeTab === "thread" && (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <span className="text-5xl mb-4">🧵</span>
-            <p className="text-sm font-medium text-gray-500 mb-1">쓰레드 크롤링 기능 준비 중</p>
-            <p className="text-xs text-gray-400">순차적으로 기능이 추가될 예정입니다</p>
-          </div>
-        )}
+        {/* ── 쓰레드 대시보드 ── */}
+        {activeTab === "thread" && <ThreadPage />}
 
         {/* ── 빈 상태 ── */}
         {!loading && posts.length === 0 && !error && activeTab !== "thread" && (

@@ -24,7 +24,16 @@
       "Bash(xargs grep:*)",
       "Bash(git check-ignore:*)",
       "Bash(curl:*)",
-      "Bash(ls \"/c/Users/gram/Desktop/planforge_complete/web/planforge-ui/.env\"*)"
+      "Bash(ls \"/c/Users/gram/Desktop/planforge_complete/web/planforge-ui/.env\"*)",
+      "Bash(unzip -l \"Thread 크롤링_배포.zip\")",
+      "Read(//c/Users/gram/AppData/Local/Python/**)",
+      "Bash(py -0)",
+      "Bash(\"C:/Users/gram/AppData/Local/Python/bin/python.exe\" -m uvicorn --version)",
+      "Bash(\"C:/Users/gram/AppData/Local/Python/bin/python.exe\" -c \"import fastapi; print\\('fastapi ok'\\)\")",
+      "Bash(py -3.14 -m pip show uvicorn)",
+      "Bash(\"C:/Users/gram/AppData/Local/Python/bin/python.exe\" -m pip install uvicorn fastapi pydantic httpx playwright)",
+      "Bash(\"C:/Users/gram/AppData/Local/Python/bin/python.exe\" -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload)",
+      "Bash(curl -s http://localhost:8001/)"
     ]
   }
 }

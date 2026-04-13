@@ -27,3 +27,5 @@ config/google_credentials.json
 # 기타 민감 파일
 secrets/
 credentials/
+
+.vercel
