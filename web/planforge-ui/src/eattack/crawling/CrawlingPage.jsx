@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 const PLATFORM_TABS = [
   { key: "iboss", label: "아이보스", icon: "🅱" },
   { key: "x", label: "X", icon: "𝕏" },
+  { key: "thread", label: "쓰레드", icon: "🧵" },
 ];
 
 // ─── 월 목록 (25년 8월 ~ 26년 4월, YYYYMM 수열) ───
@@ -53,7 +54,7 @@ function getMonthsInRange(startMonth, endMonth) {
 // ─── 월 범위 선택 캘린더 ───
 function MonthRangePicker({ startMonth, endMonth, onChangeStart, onChangeEnd, disabled }) {
   const [open, setOpen] = useState(false);
-  const [picking, setPicking] = useState(null); // "start" | "end" | null
+  const [picking, setPicking] = useState(null);
   const ref = useRef(null);
 
   const startLabel = AVAILABLE_MONTHS.find((m) => m.value === startMonth)?.label || "";
@@ -62,11 +63,9 @@ function MonthRangePicker({ startMonth, endMonth, onChangeStart, onChangeEnd, di
   const handleMonthClick = (value) => {
     if (picking === "start") {
       onChangeStart(value);
-      // end가 start보다 앞이면 자동 보정
       if (value > endMonth) onChangeEnd(value);
       setPicking("end");
     } else {
-      // end 선택 — start보다 앞이면 swap
       if (value < startMonth) {
         onChangeStart(value);
         onChangeEnd(startMonth);
@@ -103,24 +102,19 @@ function MonthRangePicker({ startMonth, endMonth, onChangeStart, onChangeEnd, di
         <>
           <div className="fixed inset-0 z-10" onClick={() => { setOpen(false); setPicking(null); }} />
           <div className="absolute top-full left-0 mt-2 z-20 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden w-[280px]">
-            {/* 안내 */}
             <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
               <p className="text-xs text-gray-500 font-medium">
                 {picking === "start" ? "시작 월을 선택하세요" : "종료 월을 선택하세요"}
               </p>
             </div>
-
-            {/* 월 그리드 */}
             <div className="p-3 grid grid-cols-3 gap-1.5">
               {AVAILABLE_MONTHS.map((m, idx) => {
                 const isStart = m.value === startMonth;
                 const isEnd = m.value === endMonth;
                 const isInRange = idx >= startIdx && idx <= endIdx;
-
                 let cls = "text-gray-600 hover:bg-blue-50";
                 if (isStart || isEnd) cls = "bg-blue-600 text-white font-semibold";
                 else if (isInRange) cls = "bg-blue-100 text-blue-700";
-
                 return (
                   <button
                     key={m.value}
@@ -144,7 +138,6 @@ export default function CrawlingPage({ onBack }) {
   const [activeTab, setActiveTab] = useState("iboss");
   const [startMonth, setStartMonth] = useState("202604");
   const [endMonth, setEndMonth] = useState("202604");
-
   const [xKeyword, setXKeyword] = useState("");
 
   // 플랫폼별 데이터 분리 (탭 전환해도 유지)
@@ -157,6 +150,9 @@ export default function CrawlingPage({ onBack }) {
   const currentData = activeTab === "iboss" ? ibossData : xData;
   const setCurrentData = activeTab === "iboss" ? setIbossData : setXData;
 
+  const { posts, loading, error, selectedRow } = currentData;
+  const rangeMonths = getMonthsInRange(startMonth, endMonth);
+
   // 크롤링 실행
   const handleRefresh = useCallback(async () => {
     setCurrentData((prev) => ({ ...prev, loading: true, error: "", selectedRow: null }));
@@ -167,7 +163,6 @@ export default function CrawlingPage({ onBack }) {
         const months = getMonthsInRange(startMonth, endMonth);
         const allPosts = [];
         let rank = 1;
-
         for (const month of months) {
           const data = await fetchIbossPosts(month);
           if (data.posts) {
@@ -176,11 +171,8 @@ export default function CrawlingPage({ onBack }) {
             }
           }
         }
-
-        // 조회수 기준 정렬 후 상위 50개
         allPosts.sort((a, b) => b.views - a.views);
         const top50 = allPosts.slice(0, 50).map((p, i) => ({ ...p, rank: i + 1 }));
-
         setCurrentData((prev) => ({ ...prev, loading: false, posts: top50 }));
       } else if (activeTab === "x") {
         if (!xKeyword.trim()) {
@@ -199,12 +191,10 @@ export default function CrawlingPage({ onBack }) {
     }
   }, [activeTab, startMonth, endMonth, xKeyword, setCurrentData]);
 
-  // X 키워드 엔터 입력 시 즉시 검색
+  // 키워드 엔터
   const handleXKeyDown = useCallback((e) => {
-    if (e.key === "Enter" && xKeyword.trim() && !currentData.loading) {
-      handleRefresh();
-    }
-  }, [xKeyword, currentData.loading, handleRefresh]);
+    if (e.key === "Enter" && xKeyword.trim() && !loading) handleRefresh();
+  }, [xKeyword, loading, handleRefresh]);
 
   // 행 클릭
   const handleRowClick = useCallback(async (post, idx) => {
@@ -216,7 +206,6 @@ export default function CrawlingPage({ onBack }) {
     setCurrentData((prev) => ({ ...prev, selectedRow: idx }));
     setDetailContent("");
 
-    // X는 content_raw에 본문이 이미 있으므로 API 호출 불필요
     if (activeTab === "x") {
       setDetailContent(post.content_raw || "(본문 없음)");
       return;
@@ -242,14 +231,39 @@ export default function CrawlingPage({ onBack }) {
     alert(`"${post.title}" 레퍼런스로 재구성을 시작합니다.\n(Step 4 — AI 키워드 추천 모달은 다음 단계에서 구현)`);
   }, [currentData]);
 
-  // 탭 전환 (데이터 유지)
+  // CSV 다운로드
+  const handleDownloadCSV = useCallback(() => {
+    const data = activeTab === "iboss" ? ibossData : xData;
+    if (!data.posts.length) return;
+    const headers = ["순위", "제목", "작성자", "조회수", "좋아요", "댓글", "날짜", "URL"];
+    const rows = data.posts.map((p) => [
+      p.rank,
+      `"${(p.title || "").replace(/"/g, '""')}"`,
+      `"${(p.author || "").replace(/"/g, '""')}"`,
+      p.views,
+      p.likes,
+      p.comments,
+      p.created_at || "",
+      p.source_url || "",
+    ]);
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const bom = "\uFEFF";
+    const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const ts = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+    const keyword = activeTab === "iboss" ? `iboss_${startMonth}-${endMonth}` : `x_${xKeyword}`;
+    a.href = url;
+    a.download = `crawl_${keyword}_${ts}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [activeTab, ibossData, xData, startMonth, endMonth, xKeyword]);
+
+  // 탭 전환
   const handleTabClick = (tabKey) => {
     setActiveTab(tabKey);
     setDetailContent("");
   };
-
-  const { posts, loading, error, selectedRow } = currentData;
-  const rangeMonths = getMonthsInRange(startMonth, endMonth);
 
   return (
     <div className="flex-1 overflow-y-auto bg-white min-h-screen">
@@ -305,6 +319,11 @@ export default function CrawlingPage({ onBack }) {
               />
             )}
 
+            {/* 키워드 검색창 (쓰레드) */}
+            {activeTab === "thread" && (
+              <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1.5 rounded-lg">기능 준비 중</span>
+            )}
+
             {/* 키워드 검색창 (X) */}
             {activeTab === "x" && (
               <div className="relative">
@@ -329,7 +348,7 @@ export default function CrawlingPage({ onBack }) {
           {/* 새로고침 */}
           <button
             onClick={handleRefresh}
-            disabled={loading}
+            disabled={loading || activeTab === "thread"}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-all shadow-sm"
           >
             {loading ? (
@@ -358,8 +377,17 @@ export default function CrawlingPage({ onBack }) {
           </div>
         )}
 
+        {/* ── 빈 상태 (쓰레드) ── */}
+        {activeTab === "thread" && (
+          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <span className="text-5xl mb-4">🧵</span>
+            <p className="text-sm font-medium text-gray-500 mb-1">쓰레드 크롤링 기능 준비 중</p>
+            <p className="text-xs text-gray-400">순차적으로 기능이 추가될 예정입니다</p>
+          </div>
+        )}
+
         {/* ── 빈 상태 ── */}
-        {!loading && posts.length === 0 && !error && (
+        {!loading && posts.length === 0 && !error && activeTab !== "thread" && (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-4 text-gray-300">
               <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
@@ -394,8 +422,19 @@ export default function CrawlingPage({ onBack }) {
           <>
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs text-gray-500">
-                총 <span className="text-blue-600 font-semibold">{posts.length}</span>개 {activeTab === "x" ? "트윗" : "인기글"} {activeTab === "iboss" ? "(조회수 순)" : `"${xKeyword}" 검색 결과`}
+                총 <span className="text-blue-600 font-semibold">{posts.length}</span>개{" "}
+                {activeTab === "x" ? "트윗" : "인기글"}{" "}
+                {activeTab === "iboss" ? "(조회수 순)" : `"${xKeyword}" 검색 결과`}
               </p>
+              <button
+                onClick={handleDownloadCSV}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
+                </svg>
+                CSV 다운로드
+              </button>
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -407,7 +446,7 @@ export default function CrawlingPage({ onBack }) {
                       <th className="text-left px-4 py-3 text-gray-500 font-medium">제목</th>
                       <th className="text-left px-4 py-3 text-gray-500 font-medium w-24">아이디</th>
                       <th className="text-center px-4 py-3 text-gray-500 font-medium w-28">조회/좋아요/댓글</th>
-                      <th className="text-center px-4 py-3 text-gray-500 font-medium w-24">활동시간</th>
+                      <th className="text-center px-4 py-3 text-gray-500 font-medium w-24">날짜</th>
                       <th className="text-center px-4 py-3 text-gray-500 font-medium w-20">링크</th>
                     </tr>
                   </thead>
@@ -417,9 +456,7 @@ export default function CrawlingPage({ onBack }) {
                         key={idx}
                         onClick={() => handleRowClick(post, idx)}
                         className={`border-b border-gray-100 cursor-pointer transition-all ${
-                          selectedRow === idx
-                            ? "bg-blue-50 border-blue-200"
-                            : "hover:bg-gray-50"
+                          selectedRow === idx ? "bg-blue-50 border-blue-200" : "hover:bg-gray-50"
                         }`}
                       >
                         <td className="px-4 py-3 text-gray-400 font-mono text-xs">{post.rank}</td>
