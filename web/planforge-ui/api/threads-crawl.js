@@ -3,13 +3,10 @@
  * POST /api/threads-crawl  Body: { keyword, cookies[] }
  * GET  /api/threads-crawl?keyword=...&cookies=<base64>
  */
-import chromium from "@sparticuz/chromium-min";
+import chromium from "@sparticuz/chromium";
 import { chromium as pw } from "playwright-core";
 
 export const config = { maxDuration: 60, memory: 1024 };
-
-const CHROMIUM_PACK_URL =
-  "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar";
 
 // ── Cookie-Editor 값 → Playwright SameSite 변환 ──
 function toSameSite(raw) {
@@ -78,9 +75,7 @@ export default async function handler(req, res) {
 
   let browser;
   try {
-    const execPath = await chromium.executablePath(
-      process.env.CHROMIUM_URL || CHROMIUM_PACK_URL
-    );
+    const execPath = await chromium.executablePath();
 
     browser = await pw.launch({
       args: chromium.args,
