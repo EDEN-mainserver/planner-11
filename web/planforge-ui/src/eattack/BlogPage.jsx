@@ -44,6 +44,7 @@ const CTYPE_COLORS = {
 };
 
 // ─── 스타일 저장/불러오기 ───
+// eslint-disable-next-line react-refresh/only-export-components
 export function loadBlogStyle() {
   try { return JSON.parse(localStorage.getItem(STYLE_STORAGE_KEY) || "null"); }
   catch { return null; }
