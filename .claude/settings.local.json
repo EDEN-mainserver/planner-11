@@ -33,7 +33,8 @@
       "Bash(py -3.14 -m pip show uvicorn)",
       "Bash(\"C:/Users/gram/AppData/Local/Python/bin/python.exe\" -m pip install uvicorn fastapi pydantic httpx playwright)",
       "Bash(\"C:/Users/gram/AppData/Local/Python/bin/python.exe\" -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload)",
-      "Bash(curl -s http://localhost:8001/)"
+      "Bash(curl -s http://localhost:8001/)",
+      "Bash(node -e \"import\\('@sparticuz/chromium'\\).then\\(m => console.log\\('headless:', m.default.headless, typeof m.default.headless\\)\\).catch\\(e => console.error\\(e.message\\)\\)\")"
     ]
   }
 }
