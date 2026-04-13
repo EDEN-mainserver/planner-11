@@ -19,24 +19,33 @@ const AVAILABLE_MONTHS = [
   { value: "202604", label: "26년 04월" },
 ];
 
-// ─── API ───
-const API_BASE = "http://localhost:8001";
+// ─── API (로컬: FastAPI / 배포: Vercel Serverless) ───
+const IS_LOCAL = window.location.hostname === "localhost";
 
 async function fetchIbossPosts(month) {
-  const res = await fetch(`${API_BASE}/api/crawl/iboss?limit=50&month=${month}`);
+  const url = IS_LOCAL
+    ? `http://localhost:8001/api/crawl/iboss?limit=50&month=${month}`
+    : `/api/iboss-crawl?limit=50&month=${month}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error("크롤링 API 호출 실패");
   return res.json();
 }
 
 async function fetchXTrends(keyword = "") {
   const params = keyword ? `?keyword=${encodeURIComponent(keyword)}` : "";
-  const res = await fetch(`${API_BASE}/api/crawl/x${params}`);
+  const url = IS_LOCAL
+    ? `http://localhost:8001/api/crawl/x${params}`
+    : `/api/x-trends${params}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error("X 트렌드 API 호출 실패");
   return res.json();
 }
 
-async function fetchPostDetail(url) {
-  const res = await fetch(`${API_BASE}/api/crawl/iboss/detail?url=${encodeURIComponent(url)}`);
+async function fetchPostDetail(sourceUrl) {
+  const url = IS_LOCAL
+    ? `http://localhost:8001/api/crawl/iboss/detail?url=${encodeURIComponent(sourceUrl)}`
+    : `/api/iboss-crawl?detail=true&url=${encodeURIComponent(sourceUrl)}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error("상세 크롤링 실패");
   return res.json();
 }
