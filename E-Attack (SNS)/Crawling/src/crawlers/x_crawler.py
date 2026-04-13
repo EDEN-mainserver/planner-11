@@ -1,157 +1,88 @@
 """
-X(Twitter) 키워드 기반 크롤러 (Playwright 기반)
-로그인 없이 X 검색 페이지를 크롤링합니다.
-Target: https://x.com/search?q={keyword}&src=typed_query&f=top
+X(Twitter) 실시간 트렌드 크롤러
+게스트 토큰 + v1.1 trends/place API 활용 (로그인 불필요)
+한국 WOEID: 23424868
 """
-import asyncio
-import re
-from playwright.async_api import async_playwright
+import httpx
 from src.models.post import CrawledPost
 
-
-def _parse_int(text: str) -> int:
-    """문자열에서 숫자만 추출 (1.2K → 1200, 3.5M → 3500000)"""
-    text = text.strip().upper()
-    if not text:
-        return 0
-    if "K" in text:
-        num = float(re.sub(r"[^\d.]", "", text))
-        return int(num * 1000)
-    if "M" in text:
-        num = float(re.sub(r"[^\d.]", "", text))
-        return int(num * 1_000_000)
-    digits = re.sub(r"[^\d]", "", text)
-    return int(digits) if digits else 0
+BEARER_TOKEN = (
+    "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs"
+    "=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
+)
+KOREA_WOEID = 23424868
 
 
-async def crawl_x(keyword: str, max_posts: int = 20) -> list[CrawledPost]:
+def _get_guest_token() -> str:
+    """X 게스트 토큰 발급"""
+    headers = {
+        "Authorization": f"Bearer {BEARER_TOKEN}",
+        "User-Agent": "Mozilla/5.0",
+    }
+    resp = httpx.post("https://api.x.com/1.1/guest/activate.json", headers=headers)
+    resp.raise_for_status()
+    return resp.json()["guest_token"]
+
+
+def crawl_x_trends(keyword_filter: str = "") -> list[CrawledPost]:
     """
-    X에서 키워드 검색 후 인기 트윗을 크롤링합니다.
+    X 한국 실시간 트렌드를 가져옵니다.
 
     Args:
-        keyword: 검색 키워드
-        max_posts: 최대 크롤링 개수
+        keyword_filter: 비어있으면 전체, 입력하면 해당 키워드 포함 트렌드만 필터
     """
+    gt = _get_guest_token()
+
+    headers = {
+        "Authorization": f"Bearer {BEARER_TOKEN}",
+        "User-Agent": "Mozilla/5.0",
+        "x-guest-token": gt,
+    }
+
+    resp = httpx.get(
+        f"https://api.x.com/1.1/trends/place.json?id={KOREA_WOEID}",
+        headers=headers,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    trends = data[0].get("trends", [])
     posts: list[CrawledPost] = []
+    rank = 1
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1920, "height": 1080},
-            locale="ko-KR",
-        )
-        page = await context.new_page()
+    for t in trends:
+        name = t.get("name", "")
+        tweet_volume = t.get("tweet_volume") or 0
+        query = t.get("query", "")
+        url = t.get("url", "")
 
-        try:
-            # X 검색 페이지 (인기순)
-            search_url = f"https://x.com/search?q={keyword}&src=typed_query&f=top"
-            await page.goto(search_url, wait_until="domcontentloaded", timeout=20000)
-            await page.wait_for_timeout(4000)
+        # 키워드 필터 적용
+        if keyword_filter and keyword_filter.lower() not in name.lower():
+            continue
 
-            # 스크롤하여 더 많은 트윗 로드
-            for _ in range(3):
-                await page.evaluate("window.scrollBy(0, 1000)")
-                await page.wait_for_timeout(1500)
-
-            # 트윗 article 요소 선택
-            articles = await page.query_selector_all('article[data-testid="tweet"]')
-
-            for idx, article in enumerate(articles[:max_posts], start=1):
-                try:
-                    # 작성자 (@handle)
-                    author = ""
-                    handle_els = await article.query_selector_all('a[role="link"] span')
-                    for el in handle_els:
-                        text = (await el.inner_text()).strip()
-                        if text.startswith("@"):
-                            author = text
-                            break
-
-                    # 트윗 본문
-                    content = ""
-                    content_el = await article.query_selector('div[data-testid="tweetText"]')
-                    if content_el:
-                        content = (await content_el.inner_text()).strip()
-
-                    if not content:
-                        continue
-
-                    # 제목 (본문의 첫 줄 또는 50자)
-                    title = content.split("\n")[0][:80]
-
-                    # 트윗 링크
-                    source_url = ""
-                    time_el = await article.query_selector("time")
-                    if time_el:
-                        link_el = await time_el.evaluate_handle("el => el.closest('a')")
-                        if link_el:
-                            href = await link_el.get_property("href")
-                            source_url = await href.json_value() if href else ""
-
-                    # 날짜
-                    created_at = ""
-                    if time_el:
-                        created_at = await time_el.get_attribute("datetime") or ""
-                        # datetime 속성에서 날짜만 추출
-                        if created_at:
-                            created_at = created_at[:10]
-
-                    # 통계 (좋아요, 리트윗, 답글, 조회수)
-                    likes = 0
-                    comments = 0
-                    shares = 0
-                    views = 0
-
-                    # 통계 그룹에서 추출
-                    stat_groups = await article.query_selector_all('[role="group"] button')
-                    for i, btn in enumerate(stat_groups):
-                        aria = await btn.get_attribute("aria-label") or ""
-                        aria_lower = aria.lower()
-                        # 숫자 추출
-                        num_match = re.search(r"[\d,.]+[KkMm]?", aria)
-                        num = _parse_int(num_match.group()) if num_match else 0
-
-                        if "repl" in aria_lower or "답글" in aria_lower:
-                            comments = num
-                        elif "repost" in aria_lower or "retweet" in aria_lower or "리포스트" in aria_lower:
-                            shares = num
-                        elif "like" in aria_lower or "좋아요" in aria_lower:
-                            likes = num
-                        elif "view" in aria_lower or "조회" in aria_lower:
-                            views = num
-
-                    posts.append(CrawledPost(
-                        rank=idx,
-                        title=title,
-                        content_raw=content,
-                        author=author,
-                        views=views,
-                        likes=likes,
-                        comments=comments,
-                        shares=shares,
-                        image_url="",
-                        source_url=source_url,
-                        created_at=created_at,
-                        platform="x",
-                    ))
-                except Exception:
-                    continue
-
-        except Exception as e:
-            print(f"[x_crawler] 크롤링 오류: {e}")
-        finally:
-            await browser.close()
+        posts.append(CrawledPost(
+            rank=rank,
+            title=name,
+            content_raw=f"트렌드 키워드: {name}",
+            author="X Korea Trends",
+            views=tweet_volume,
+            likes=0,
+            comments=0,
+            shares=0,
+            image_url="",
+            source_url=url if url.startswith("http") else f"https://x.com/search?q={query}",
+            created_at="실시간",
+            platform="x",
+        ))
+        rank += 1
 
     return posts
 
 
 # 단독 테스트
 if __name__ == "__main__":
-    results = asyncio.run(crawl_x("마케팅", max_posts=5))
+    results = crawl_x_trends()
+    print(f"총 {len(results)}개 트렌드")
     for post in results:
-        print(f"[{post.rank}] {post.author}: {post.title} | 좋아요:{post.likes} 조회:{post.views}")
+        vol = f"{post.views:,}" if post.views else "-"
+        print(f"[{post.rank:2d}] {post.title:40s} | 트윗수: {vol}")
