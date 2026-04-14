@@ -46,7 +46,21 @@ window.addEventListener('message', (event) => {
   if (type === 'EDEN_START_CRAWL') {
     if (!keyword) return;
     console.log('[Eden Crawl] 웹앱 수집 요청 수신 → background 전달:', keyword, count);
-    chrome.runtime.sendMessage({ type: 'EDEN_START_CRAWL', keyword, count: count || 30 });
+    chrome.runtime.sendMessage(
+      { type: 'EDEN_START_CRAWL', keyword, count: count || 30 },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('[Eden Crawl] background 전달 실패:', chrome.runtime.lastError.message);
+          // 에러를 웹앱에 전달
+          window.postMessage({
+            type: 'EDEN_CRAWL_STATUS',
+            payload: { msg: '확장 프로그램 오류: ' + chrome.runtime.lastError.message, done: true, error: true }
+          }, '*');
+        } else {
+          console.log('[Eden Crawl] background 수신 확인:', response);
+        }
+      }
+    );
     return;
   }
 

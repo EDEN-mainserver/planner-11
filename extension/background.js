@@ -10,6 +10,7 @@ let isCrawling = false; // 중복 실행 방지
 
 // ── 상태 저장 (content_webapp.js가 감지해서 웹앱으로 브릿지) ──
 function setStatus(msg, done = false, error = false) {
+  console.log('[Eden Crawl BG] 상태:', msg);
   chrome.storage.local.set({ [STATUS_KEY]: { msg, done, error, ts: Date.now() } });
 }
 
@@ -27,6 +28,27 @@ function waitForTabLoad(tabId) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ── 새 콘텐츠 로딩 대기 ──
+// 스크롤 후 컨테이너 수가 prevCount보다 증가할 때까지 기다림
+// Threads 배치 로딩 패턴 대응: 즉시 2개 → 로딩 → 쭉 나옴
+async function waitForNewContent(tabId, prevContainerCount, timeout = 7000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    await sleep(700);
+    try {
+      const [r] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => document.querySelectorAll('div[data-pressable-container="true"]').length,
+      });
+      if (r.result > prevContainerCount) {
+        await sleep(600); // 배치 완전 로딩 여유
+        return true;
+      }
+    } catch (_) {}
+  }
+  return false; // timeout
+}
 
 // ── 키워드 파싱 ──
 // "AI마케팅:20, 숏폼:30" → [{keyword:"AI마케팅",count:20},...]
@@ -148,16 +170,24 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
     const url = `https://www.threads.com/search?q=${encodeURIComponent(keyword)}&serp_type=default`;
     tab = await chrome.tabs.create({ url, active: false });
     await waitForTabLoad(tab.id);
+    // 초기 렌더링 대기 — 컨테이너가 나타날 때까지 기다림 (최대 10초)
     setStatus(`${prefix} 렌더링 대기 중...`);
-    await sleep(3000);
+    await waitForNewContent(tab.id, 0, 10000);
 
     let noNewCount = 0;
-    const MAX_NO_NEW = 8;
+    const MAX_NO_NEW = 5;
     let lastDebug   = { url: '', containerCount: 0 };
 
-    setStatus(`${prefix} 0 / ${targetCount}개 수집 중`);
+    setStatus(`(0/${targetCount}) ${prefix} 수집 시작`);
 
     while (allPosts.length < targetCount && noNewCount < MAX_NO_NEW) {
+      // 현재 컨테이너 수 기록 (스크롤 후 증가 감지용)
+      const [countRes] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => document.querySelectorAll('div[data-pressable-container="true"]').length,
+      });
+      const prevContainerCount = countRes.result;
+
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func:   scrapeOnce,
@@ -166,7 +196,10 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
       const { newPosts, debug } = result.result;
       lastDebug = debug;
 
-      if (debug.url.includes('/login') || debug.url.includes('accounts/login')) break;
+      if (debug.url.includes('/login') || debug.url.includes('accounts/login')) {
+        setStatus('Threads 로그인이 필요합니다', true, true);
+        break;
+      }
 
       if (newPosts.length > 0) {
         newPosts.forEach(p => {
@@ -175,15 +208,16 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
           if (p.postUrl) seenUrls.add(p.postUrl);
         });
         noNewCount = 0;
-        setStatus(`${prefix} ${allPosts.length} / ${targetCount}개 수집 중`);
+        setStatus(`(${allPosts.length}/${targetCount}) ${prefix} 수집 중`);
       } else {
         noNewCount++;
-        setStatus(`${prefix} ${allPosts.length} / ${targetCount}개 수집 중 (대기 ${noNewCount}/${MAX_NO_NEW})`);
+        setStatus(`(${allPosts.length}/${targetCount}) ${prefix} 로딩 대기 중... [${noNewCount}/${MAX_NO_NEW}]`);
       }
 
       if (allPosts.length < targetCount) {
-        await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => window.scrollBy(0, 900) });
-        await sleep(1800);
+        // 스크롤 후 새 콘텐츠 나타날 때까지 대기 (최대 7초)
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => window.scrollBy(0, 1000) });
+        await waitForNewContent(tab.id, prevContainerCount, 7000);
       }
     }
 
@@ -193,13 +227,13 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
     // 조회수 수집
     const postsWithUrl = allPosts.filter(p => p.postUrl);
     if (postsWithUrl.length > 0) {
-      setStatus(`${prefix} 조회수 수집 중... 0 / ${postsWithUrl.length}개`);
+      setStatus(`조회수 수집 중... (0/${postsWithUrl.length})`);
       let detailTab = null;
       try {
         detailTab = await chrome.tabs.create({ url: 'about:blank', active: false });
         for (let i = 0; i < postsWithUrl.length; i++) {
           const post = postsWithUrl[i];
-          setStatus(`${prefix} 조회수 수집 중... ${i + 1} / ${postsWithUrl.length}개`);
+          setStatus(`조회수 수집 중... (${i + 1}/${postsWithUrl.length})`);
           await chrome.tabs.update(detailTab.id, { url: post.postUrl });
           await waitForTabLoad(detailTab.id);
           await sleep(2500);
@@ -253,7 +287,7 @@ async function runCrawl(rawKeyword, defaultCount) {
       }
 
       allPosts.push(...posts);
-      if (isMulti) setStatus(`${prefix} 완료 — ${posts.length}개 (누적 ${allPosts.length}개)`);
+      if (isMulti) setStatus(`[${i + 1}/${keywords.length}] ${keyword} 완료 — ${posts.length}개 수집 (누적 ${allPosts.length}개)`);
     }
 
     if (allPosts.length === 0) {
@@ -281,14 +315,24 @@ async function runCrawl(rawKeyword, defaultCount) {
 
 // ── 메시지 리스너 (content_webapp.js → background) ──
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[Eden Crawl BG] 메시지 수신:', message.type, message);
+
   if (message.type === 'EDEN_START_CRAWL') {
     const { keyword, count = 30 } = message;
-    sendResponse({ ok: true });
-    runCrawl(keyword, count);
+    sendResponse({ ok: true, crawling: isCrawling });
+    if (!isCrawling) {
+      runCrawl(keyword, count).catch(err => {
+        console.error('[Eden Crawl BG] runCrawl 오류:', err);
+        setStatus(`오류: ${err.message}`, true, true);
+      });
+    }
     return false;
   }
+
   if (message.type === 'EDEN_CRAWL_STATUS_CHECK') {
     sendResponse({ crawling: isCrawling });
     return false;
   }
 });
+
+console.log('[Eden Crawl BG] background.js 로드 완료');
