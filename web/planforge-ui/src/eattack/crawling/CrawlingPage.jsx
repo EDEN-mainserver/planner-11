@@ -284,15 +284,17 @@ export default function CrawlingPage({ onBack }) {
   const [ibossData, setIbossData] = useState({ posts: [], loading: false, error: "", selectedRow: null });
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailContent, setDetailContent] = useState("");
-  const [detailSource, setDetailSource] = useState(""); // "server" | "extension" | ""
+  const [detailImages, setDetailImages] = useState([]);
+  const [detailSource, setDetailSource] = useState(""); // "extension" | ""
 
   // 확장 프로그램 아이보스 본문 수신
   useEffect(() => {
     const handler = (event) => {
       if (event.source !== window) return;
       if (event.data?.type !== 'EDEN_IBOSS_CONTENT') return;
-      const { content, error } = event.data.payload || {};
+      const { content, images = [], error } = event.data.payload || {};
       setDetailContent(content || (error ? `(확장 오류: ${error})` : "(본문을 불러올 수 없습니다)"));
+      setDetailImages(images);
       setDetailSource(content ? "extension" : "");
       setDetailLoading(false);
     };
@@ -364,11 +366,13 @@ export default function CrawlingPage({ onBack }) {
     if (ibossData.selectedRow === idx) {
       setIbossData((prev) => ({ ...prev, selectedRow: null }));
       setDetailContent("");
+      setDetailImages([]);
       setDetailSource("");
       return;
     }
     setIbossData((prev) => ({ ...prev, selectedRow: idx }));
     setDetailContent("");
+    setDetailImages([]);
     setDetailSource("");
 
     if (post.source_url) {
@@ -678,9 +682,26 @@ export default function CrawlingPage({ onBack }) {
                           본문을 불러오는 중...
                         </div>
                       ) : (
-                        <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
-                          {detailContent || posts[selectedRow]?.content_raw || "(본문을 불러오려면 잠시 기다려주세요)"}
-                        </p>
+                        <div className="space-y-3">
+                          {/* 이미지 */}
+                          {detailImages.length > 0 && (
+                            <div className="flex flex-col gap-2">
+                              {detailImages.map((src, i) => (
+                                <img
+                                  key={i}
+                                  src={src}
+                                  alt={`본문 이미지 ${i + 1}`}
+                                  className="max-w-full rounded-lg border border-gray-100"
+                                  onError={e => { e.target.style.display = 'none'; }}
+                                />
+                              ))}
+                            </div>
+                          )}
+                          {/* 텍스트 */}
+                          <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
+                            {detailContent || posts[selectedRow]?.content_raw || "(본문을 불러오려면 잠시 기다려주세요)"}
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}

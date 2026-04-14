@@ -548,42 +548,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const [result] = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           func: () => {
+            // 아이보스 본문 영역 셀렉터 (우선순위순)
             const SELECTORS = [
+              '.ABA-view-body',
+              '.ABA-article-contents',
+              '[class*="ABA-view"]',
+              '[class*="view-body"]',
               '.fr-view', '.fr-element',
               '#article_content', '#bo_v_con',
-              '.wr_content', '.post_content',
-              '.view_content', '.content_view',
-              '.ab-body', '[class*="view_body"]',
             ];
-            let el = null, matchedSel = '';
+            let el = null;
             for (const sel of SELECTORS) {
               try {
                 const found = document.querySelector(sel);
-                if (found && (found.innerText || '').trim().length > 30) {
-                  el = found; matchedSel = sel; break;
-                }
+                if (found && (found.innerText || '').trim().length > 10) { el = found; break; }
               } catch (_) {}
             }
-            // 최후 수단: 텍스트가 가장 긴 div
-            if (!el) {
-              let best = null, bestLen = 100;
-              document.querySelectorAll('div, article, section').forEach(d => {
-                const t = (d.innerText || '').trim();
-                if (t.length > bestLen && t.length < 20000) { best = d; bestLen = t.length; }
-              });
-              el = best; matchedSel = 'auto';
-            }
-            if (!el) return { content: '', selector: 'none', url: location.href };
+            if (!el) return { content: '', images: [], url: location.href };
+
+            // 텍스트 추출
             const content = (el.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
-            return { content, selector: matchedSel, url: location.href };
+
+            // 이미지 URL 추출 (cdn.ibos.kr 등 본문 이미지만)
+            const images = [];
+            el.querySelectorAll('img[src]').forEach(img => {
+              const src = img.getAttribute('src') || '';
+              if (src && !images.includes(src)) images.push(src);
+            });
+
+            return { content, images, url: location.href };
           },
         });
 
         await chrome.tabs.remove(tab.id);
         tab = null;
-        const { content = '', selector = '', url = '' } = result?.result || {};
-        console.log('[Eden Crawl BG] 아이보스 본문:', { selector, len: content.length, url });
-        chrome.storage.local.set({ eden_iboss_content: { sourceUrl, content, ts: Date.now() } });
+        const { content = '', images = [], url: pageUrl = '' } = result?.result || {};
+        console.log('[Eden Crawl BG] 아이보스 본문:', { len: content.length, images: images.length, pageUrl });
+        chrome.storage.local.set({ eden_iboss_content: { sourceUrl, content, images, ts: Date.now() } });
       } catch (err) {
         if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
         console.error('[Eden Crawl BG] 아이보스 본문 오류:', err.message);
