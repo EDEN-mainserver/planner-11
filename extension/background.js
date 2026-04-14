@@ -159,6 +159,22 @@ function scrapeOnce(seenUrlsArray) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// 탭 포커스 → 클릭 → 원래 탭 복귀 (로딩 정체 해소용)
+// ──────────────────────────────────────────────────────────────
+async function activateAndClick(tabId, returnTabId) {
+  try {
+    await chrome.tabs.update(tabId, { active: true });
+    await sleep(300);
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    });
+    await sleep(300);
+    if (returnTabId) await chrome.tabs.update(returnTabId, { active: true }).catch(() => {});
+  } catch (_) {}
+}
+
+// ──────────────────────────────────────────────────────────────
 // 단일 키워드 크롤
 // ──────────────────────────────────────────────────────────────
 async function crawlSingleKeyword(keyword, targetCount, prefix) {
@@ -227,6 +243,8 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
       } else {
         noNewCount++;
         setStatus(`(${allPosts.length}/${targetCount}) ${prefix} 로딩 대기 중... [${noNewCount}/${MAX_NO_NEW}]`);
+        // 새 게시물이 없을 때마다 탭 포커스 → 클릭 → 복귀로 Threads 로딩 유도
+        await activateAndClick(tab.id, originTab?.id);
       }
 
       if (allPosts.length < targetCount) {
