@@ -221,20 +221,27 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
     });
   }, []);
 
-  // ── 3. AI 바이럴 분석 ──
+  // ── 3. AI 바이럴 분석 (이미지 로드 시 멀티모달 분석) ──
   const handleAnalyze = useCallback(async (origIdx) => {
     const post = posts[origIdx];
     setAnalysisMap(prev => ({ ...prev, [origIdx]: { loading: true, data: null, error: null } }));
     setIdeasMap(prev => { const n = { ...prev }; delete n[origIdx]; return n; });
 
     try {
-      const res = await callGemini(
-        [{ role: "user", content:
+      const imgUrls = post.postUrl ? imageMap[post.postUrl]?.urls : null;
+      const hasImages = Array.isArray(imgUrls) && imgUrls.length > 0;
+      const imageNote = hasImages
+        ? `\n첨부 이미지: ${imgUrls.length}장 (이미지 내용도 텍스트와 함께 종합적으로 분석해주세요)`
+        : '';
+
+      const message = {
+        role: "user",
+        content:
 `다음 쓰레드 게시물의 바이럴 성공 요인을 심층 분석해주세요.
 
 작성자: ${post.author}
 내용: ${post.content}
-좋아요: ${post.likes} | 댓글: ${post.comments} | 공유: ${post.shares}
+좋아요: ${post.likes} | 댓글: ${post.comments} | 공유: ${post.shares}${imageNote}
 
 JSON 형식으로만 반환:
 {
@@ -248,8 +255,12 @@ JSON 형식으로만 반환:
   ],
   "hook": "이 게시물의 첫 문장이 독자를 끌어당기는 방식",
   "meme_elements": ["사용된 밈/문화적 요소 (없으면 빈 배열)"]
-}`
-        }],
+}`,
+        ...(hasImages ? { images: imgUrls } : {}),
+      };
+
+      const res = await callGemini(
+        [message],
         "당신은 소셜미디어 바이럴 콘텐츠 분석 전문가입니다. JSON 형식으로만 응답하세요."
       );
       const data = parseJSON(res);
@@ -261,7 +272,7 @@ JSON 형식으로만 반환:
         [origIdx]: { loading: false, data: null, error: e.message || "분석 실패" },
       }));
     }
-  }, [posts]);
+  }, [posts, imageMap]);
 
   // ── 4. 콘텐츠 아이디어 생성 ──
   const handleGenerateIdeas = useCallback(async (origIdx) => {
@@ -638,6 +649,12 @@ JSON 배열 형식으로만 반환:
                               <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
                             </svg>
                             AI 바이럴 분석
+                            {imgState?.urls?.length > 0 && (
+                              <span className="flex items-center gap-0.5 ml-0.5 px-1.5 py-0.5 bg-purple-400 rounded text-[10px] font-medium">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                                이미지
+                              </span>
+                            )}
                           </button>
                         )}
 

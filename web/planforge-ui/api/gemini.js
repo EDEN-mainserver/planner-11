@@ -17,6 +17,20 @@ async function callModel(modelName, body, apiKey) {
   return resp;
 }
 
+// 이미지 URL을 서버 사이드에서 base64로 변환
+async function fetchImageAsBase64(url) {
+  try {
+    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!resp.ok) return null;
+    const buffer = await resp.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    const mimeType = (resp.headers.get('content-type') || 'image/jpeg').split(';')[0];
+    return { base64, mimeType };
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -28,10 +42,26 @@ export default async function handler(req, res) {
   }
 
   const { history, systemPrompt } = req.body;
-  const contents = history.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
+
+  // 멀티모달 지원: 메시지에 images 배열이 있으면 서버 사이드에서 base64 변환
+  const contents = await Promise.all(history.map(async m => {
+    const parts = [{ text: m.content }];
+    if (Array.isArray(m.images) && m.images.length > 0) {
+      const imgParts = await Promise.all(
+        m.images.slice(0, 4).map(async (imgUrl) => {
+          const result = await fetchImageAsBase64(imgUrl);
+          if (!result) return null;
+          return { inlineData: { mimeType: result.mimeType, data: result.base64 } };
+        })
+      );
+      parts.push(...imgParts.filter(Boolean));
+    }
+    return {
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts,
+    };
   }));
+
   const requestBody = {
     systemInstruction: { parts: [{ text: systemPrompt }] },
     contents,

@@ -2,13 +2,44 @@
 const IS_LOCAL = import.meta.env.DEV;
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
+// 브라우저 사이드 이미지 → base64 변환 (CORS 허용 이미지에만 동작)
+async function fetchImageB64Client(url) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result?.split(',')[1] || null;
+        resolve(base64 ? { base64, mimeType: blob.type || 'image/jpeg' } : null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+}
+
 export async function callGemini(history, systemPrompt) {
   // 로컬 개발환경: 직접 Google API 호출
   if (IS_LOCAL && GEMINI_KEY) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
-    const contents = history.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
+    const contents = await Promise.all(history.map(async m => {
+      const parts = [{ text: m.content }];
+      if (Array.isArray(m.images) && m.images.length > 0) {
+        const imgParts = await Promise.all(
+          m.images.slice(0, 4).map(async (imgUrl) => {
+            const result = await fetchImageB64Client(imgUrl);
+            if (!result) return null;
+            return { inlineData: { mimeType: result.mimeType, data: result.base64 } };
+          })
+        );
+        parts.push(...imgParts.filter(Boolean));
+      }
+      return {
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts,
+      };
     }));
     const resp = await fetch(url, {
       method: 'POST',
