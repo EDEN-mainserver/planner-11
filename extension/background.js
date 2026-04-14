@@ -547,14 +547,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const [result] = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          func: () => {
-            // 아이보스 본문 영역 셀렉터 (우선순위순)
+          func: async () => {
+            // 본문 영역 탐색
             const SELECTORS = [
-              '.ABA-view-body',
-              '.ABA-article-contents',
-              '[class*="ABA-view"]',
-              '[class*="view-body"]',
-              '.fr-view', '.fr-element',
+              '.ABA-view-body', '.ABA-article-contents',
+              '[class*="ABA-view"]', '.fr-view', '.fr-element',
               '#article_content', '#bo_v_con',
             ];
             let el = null;
@@ -569,12 +566,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // 텍스트 추출
             const content = (el.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
 
-            // 이미지 URL 추출 (cdn.ibos.kr 등 본문 이미지만)
-            const images = [];
+            // 이미지를 탭 내부에서 fetch → base64 변환 (hotlink 우회)
+            const rawSrcs = [];
             el.querySelectorAll('img[src]').forEach(img => {
               const src = img.getAttribute('src') || '';
-              if (src && !images.includes(src)) images.push(src);
+              if (src && !rawSrcs.includes(src)) rawSrcs.push(src);
             });
+
+            const images = [];
+            for (const src of rawSrcs.slice(0, 6)) {
+              try {
+                const resp = await fetch(src);
+                if (!resp.ok) continue;
+                const blob = await resp.blob();
+                const dataUrl = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+                images.push(dataUrl);
+              } catch (_) {}
+            }
 
             return { content, images, url: location.href };
           },
