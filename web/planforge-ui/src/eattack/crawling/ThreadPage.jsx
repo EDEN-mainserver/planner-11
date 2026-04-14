@@ -39,9 +39,8 @@ function parseJSON(text) {
   return null;
 }
 
-// ── 확장 프로그램 수집 버튼 + 진행 상태 표시 ──
-// 웹앱에서 직접 Eden Crawl 백그라운드 크롤러를 실행
-// postMessage → content_webapp.js → chrome.runtime.sendMessage → background.js
+// ── 메인 수집 버튼 (확장 프로그램 기반) ──
+// 기존 "실시간 수집" 버튼 대체 — Eden Crawl 백그라운드 크롤러 직접 실행
 function ExtensionCrawlButton({ keyword, count = 30 }) {
   const [status, setStatus] = useState(null); // null | { msg, done, error }
 
@@ -62,33 +61,36 @@ function ExtensionCrawlButton({ keyword, count = 30 }) {
   };
 
   const isCrawling = status && !status.done;
+  const isDone     = status?.done && !status?.error;
+  const isError    = status?.error;
 
   return (
     <div className="flex flex-col gap-1">
       <button
         onClick={handleStart}
         disabled={!keyword.trim() || isCrawling}
-        title="Eden Crawl 확장 프로그램으로 자동 수집"
-        className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
           isCrawling
-            ? "bg-purple-50 border-purple-300 text-purple-700"
-            : status?.done && !status?.error
-            ? "bg-green-50 border-green-300 text-green-700"
-            : status?.error
-            ? "bg-red-50 border-red-300 text-red-600"
-            : "bg-white border-gray-300 text-gray-600 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700"
+            ? "bg-purple-400 text-white cursor-not-allowed"
+            : isDone
+            ? "bg-green-500 hover:bg-green-400 text-white"
+            : isError
+            ? "bg-red-500 hover:bg-red-400 text-white"
+            : "bg-purple-600 hover:bg-purple-500 text-white"
         }`}
       >
         {isCrawling
-          ? <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-          : "🧩"
+          ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          : isDone
+          ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         }
-        {isCrawling ? "수집 중..." : status?.done && !status?.error ? "수집 완료!" : "확장 수집"}
+        {isCrawling ? "수집 중..." : isDone ? "수집 완료!" : "수집"}
       </button>
       {status && (
-        <p className={`text-[10px] px-1 leading-tight max-w-[140px] ${
-          status.error ? "text-red-500" : status.done ? "text-green-600" : "text-purple-600"
-        }`}>
+        <p className={`text-[10px] px-0.5 leading-tight max-w-[160px] truncate ${
+          isError ? "text-red-500" : isDone ? "text-green-600" : "text-purple-600"
+        }`} title={status.msg}>
           {status.msg}
         </p>
       )}
@@ -456,26 +458,14 @@ JSON 배열 형식으로만 반환:
             type="text"
             value={keyword}
             onChange={e => setKeyword(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && !collectLoading && keyword.trim() && handleCollect()}
+            onKeyDown={e => e.key === "Enter" && keyword.trim() && window.postMessage({ type: 'EDEN_START_CRAWL', keyword: keyword.trim(), count: 30 }, '*')}
             placeholder="키워드 입력 (예: 숏폼, AI 마케팅)"
             disabled={collectLoading}
             className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 shadow-sm"
           />
         </div>
 
-        <button
-          onClick={handleCollect}
-          disabled={collectLoading || !keyword.trim()}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg shadow-sm transition-all"
-        >
-          {collectLoading
-            ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-            : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          }
-          {collectLoading ? "수집 중..." : "실시간 수집"}
-        </button>
-
-        {/* 확장 프로그램 수집 버튼 */}
+        {/* 메인 수집 버튼 (확장 프로그램 기반) */}
         <ExtensionCrawlButton keyword={keyword} />
 
         {/* 쿠키 설정 버튼 */}
