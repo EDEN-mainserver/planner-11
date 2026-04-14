@@ -6,7 +6,8 @@ const RESULT_KEY = 'eden_threads_results';
 const STATUS_KEY = 'eden_crawl_status';
 const VERCEL_URL_KEY = 'eden_vercel_url';
 
-let isCrawling = false; // 중복 실행 방지
+let isCrawling    = false; // 중복 실행 방지
+let stopRequested = false; // 중지 요청 플래그
 
 // ── 상태 저장 (content_webapp.js가 감지해서 웹앱으로 브릿지) ──
 function setStatus(msg, done = false, error = false) {
@@ -242,7 +243,7 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
 
     setStatus(`(0/${targetCount}) ${prefix} 수집 시작`);
 
-    while (allPosts.length < targetCount && noNewCount < MAX_NO_NEW) {
+    while (allPosts.length < targetCount && noNewCount < MAX_NO_NEW && !stopRequested) {
       // 현재 컨테이너 수 기록 (스크롤 후 증가 감지용)
       const [countRes] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -288,14 +289,15 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
     await chrome.tabs.remove(tab.id);
     tab = null;
 
-    // 조회수 수집
+    // 조회수 수집 (중지 요청 시 건너뜀)
     const postsWithUrl = allPosts.filter(p => p.postUrl);
-    if (postsWithUrl.length > 0) {
+    if (postsWithUrl.length > 0 && !stopRequested) {
       setStatus(`조회수 수집 중... (0/${postsWithUrl.length})`);
       let detailTab = null;
       try {
         detailTab = await chrome.tabs.create({ url: 'about:blank', active: false });
         for (let i = 0; i < postsWithUrl.length; i++) {
+          if (stopRequested) break; // 중지 요청 시 조회수 수집 중단
           const post = postsWithUrl[i];
           setStatus(`조회수 수집 중... (${i + 1}/${postsWithUrl.length})`);
           await chrome.tabs.update(detailTab.id, { url: post.postUrl });
@@ -331,7 +333,8 @@ async function runCrawl(rawKeyword, defaultCount) {
     setStatus('이미 수집이 진행 중입니다.', true, true);
     return;
   }
-  isCrawling = true;
+  isCrawling    = true;
+  stopRequested = false; // 새 수집 시 중지 플래그 초기화
 
   try {
     const keywords = parseKeywords(rawKeyword, defaultCount);
@@ -341,13 +344,15 @@ async function runCrawl(rawKeyword, defaultCount) {
     const allPosts = [];
 
     for (let i = 0; i < keywords.length; i++) {
+      if (stopRequested) break;
+
       const { keyword, count } = keywords[i];
       const prefix = isMulti ? `[${i + 1}/${keywords.length}] ${keyword}` : `"${keyword}"`;
 
       setStatus(`${prefix} 검색 탭 열기 중...`);
       const { posts, lastDebug } = await crawlSingleKeyword(keyword, count, prefix);
 
-      if (posts.length === 0) {
+      if (posts.length === 0 && !stopRequested) {
         if (lastDebug.url.includes('/login') || lastDebug.url.includes('accounts/login')) {
           setStatus('Threads 로그인이 필요합니다. 브라우저에서 로그인해주세요.', true, true);
           return;
@@ -356,11 +361,16 @@ async function runCrawl(rawKeyword, defaultCount) {
       }
 
       allPosts.push(...posts);
-      if (isMulti) setStatus(`[${i + 1}/${keywords.length}] ${keyword} 완료 — ${posts.length}개 수집 (누적 ${allPosts.length}개)`);
+      if (isMulti && !stopRequested) setStatus(`[${i + 1}/${keywords.length}] ${keyword} 완료 — ${posts.length}개 수집 (누적 ${allPosts.length}개)`);
     }
 
+    // 중지됐거나 정상 완료 — 수집된 데이터가 있으면 저장
     if (allPosts.length === 0) {
-      setStatus('게시물을 수집하지 못했습니다. Threads 로그인 후 재시도하세요.', true, true);
+      if (stopRequested) {
+        setStatus('수집이 중지됐습니다. (수집된 게시물 없음)', true);
+      } else {
+        setStatus('게시물을 수집하지 못했습니다. Threads 로그인 후 재시도하세요.', true, true);
+      }
       return;
     }
 
@@ -371,14 +381,20 @@ async function runCrawl(rawKeyword, defaultCount) {
       [RESULT_KEY]: { keyword: combinedKeyword, posts: allPosts, timestamp: Date.now() },
     });
 
-    setStatus(`완료 — ${allPosts.length}개 수집됨`, true);
-    console.log('[Eden Crawl BG] 수집 완료:', { combinedKeyword, total: allPosts.length });
+    if (stopRequested) {
+      setStatus(`중지됨 — ${allPosts.length}개 수집됨`, true);
+      console.log('[Eden Crawl BG] 수집 중지:', { combinedKeyword, total: allPosts.length });
+    } else {
+      setStatus(`완료 — ${allPosts.length}개 수집됨`, true);
+      console.log('[Eden Crawl BG] 수집 완료:', { combinedKeyword, total: allPosts.length });
+    }
 
   } catch (err) {
     setStatus(`오류: ${err.message}`, true, true);
     console.error('[Eden Crawl BG] 오류:', err);
   } finally {
-    isCrawling = false;
+    isCrawling    = false;
+    stopRequested = false;
   }
 }
 
@@ -445,6 +461,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'EDEN_CRAWL_STATUS_CHECK') {
     sendResponse({ crawling: isCrawling });
+    return false;
+  }
+
+  if (message.type === 'EDEN_STOP_CRAWL') {
+    if (isCrawling) {
+      stopRequested = true;
+      setStatus('중지 요청됨... 현재 단계 완료 후 중지합니다.');
+      console.log('[Eden Crawl BG] 수집 중지 요청');
+    }
+    sendResponse({ ok: true });
     return false;
   }
 

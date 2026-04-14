@@ -55,6 +55,13 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (type === 'EDEN_STOP_CRAWL') {
+    chrome.runtime.sendMessage({ type: 'EDEN_STOP_CRAWL' }, () => {
+      if (chrome.runtime.lastError) console.error('[Eden Crawl] 중지 요청 실패:', chrome.runtime.lastError.message);
+    });
+    return;
+  }
+
   if (type === 'EDEN_START_CRAWL') {
     if (!keyword) return;
     console.log('[Eden Crawl] 웹앱 수집 요청 수신 → background 전달:', keyword, count);

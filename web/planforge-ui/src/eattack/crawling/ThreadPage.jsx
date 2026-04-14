@@ -44,36 +44,57 @@ function ExtensionCrawlButton({ keyword, count = 30 }) {
     window.postMessage({ type: 'EDEN_START_CRAWL', keyword: keyword.trim(), count }, '*');
   };
 
+  const handleStop = () => {
+    window.postMessage({ type: 'EDEN_STOP_CRAWL' }, '*');
+    setStatus(prev => ({ ...(prev || {}), msg: '중지 요청 중...', done: false, error: false }));
+  };
+
   const isCrawling = status && !status.done;
   const isDone     = status?.done && !status?.error;
   const isError    = status?.error;
 
   return (
     <div className="flex flex-col gap-1">
-      <button
-        onClick={handleStart}
-        disabled={!keyword.trim() || isCrawling}
-        className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-          isCrawling
-            ? "bg-purple-400 text-white cursor-not-allowed"
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={handleStart}
+          disabled={!keyword.trim() || isCrawling}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            isCrawling
+              ? "bg-purple-400 text-white cursor-not-allowed"
+              : isDone
+              ? "bg-green-500 hover:bg-green-400 text-white"
+              : isError
+              ? "bg-red-500 hover:bg-red-400 text-white"
+              : "bg-purple-600 hover:bg-purple-500 text-white"
+          }`}
+        >
+          {isCrawling
+            ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             : isDone
-            ? "bg-green-500 hover:bg-green-400 text-white"
-            : isError
-            ? "bg-red-500 hover:bg-red-400 text-white"
-            : "bg-purple-600 hover:bg-purple-500 text-white"
-        }`}
-      >
-        {isCrawling
-          ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-          : isDone
-          ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-          : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        }
-        {isCrawling ? "수집 중..." : isDone ? "수집 완료!" : "수집"}
-      </button>
+            ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          }
+          {isCrawling ? "수집 중..." : isDone ? "수집 완료!" : "수집"}
+        </button>
+
+        {/* 중지 버튼 — 수집 중일 때만 표시 */}
+        {isCrawling && (
+          <button
+            onClick={handleStop}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-red-500 hover:bg-red-400 active:bg-red-600 text-white rounded-lg shadow-sm transition-all"
+            title="수집 중지 — 지금까지 수집된 결과를 표시합니다"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+            중지
+          </button>
+        )}
+      </div>
       {status && (
-        <p className={`text-[10px] px-0.5 leading-tight max-w-[160px] truncate ${
-          isError ? "text-red-500" : isDone ? "text-green-600" : "text-purple-600"
+        <p className={`text-[10px] px-0.5 leading-tight max-w-[200px] truncate ${
+          isError ? "text-red-500" : isDone ? "text-green-600" : isCrawling ? "text-purple-600" : "text-orange-500"
         }`} title={status.msg}>
           {status.msg}
         </p>
