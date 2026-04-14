@@ -192,8 +192,28 @@ export default function ThreadPage() {
 
   const [showBrandModal,  setShowBrandModal]  = useState(false);
   const [showCookieModal, setShowCookieModal] = useState(false);
+  const [fromExtension,   setFromExtension]   = useState(false);
 
-  // ── 1. 실제 크롤링 ──
+  // ── 1. Eden Crawl 확장 프로그램 연동 ──
+  // content_webapp.js가 chrome.storage 변경을 감지해 postMessage로 전달
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== 'EDEN_THREADS_RESULTS') return;
+      const { keyword: kw, posts: p } = event.data.payload;
+      setKeyword(kw);
+      setPosts(p);
+      setCollectError("");
+      setExpandedRows(new Set());
+      setAnalysisMap({});
+      setIdeasMap({});
+      setFromExtension(true);
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  // ── 2. 실제 크롤링 ──
   const handleCollect = useCallback(async () => {
     if (!keyword.trim()) return;
     setCollectLoading(true);
@@ -425,7 +445,21 @@ JSON 배열 형식으로만 반환:
         </button>
       </div>
 
-      {/* ── 쿠키 미설정 안내 ── */}
+      {/* ── 확장 프로그램 수신 안내 ── */}
+      {fromExtension && posts.length > 0 && (
+        <div className="flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-xl">
+          <span className="text-purple-600 text-sm">🧩</span>
+          <p className="text-xs text-purple-700 font-medium">
+            Eden Crawl 확장 프로그램에서 데이터가 수신됐습니다.
+          </p>
+          <button
+            onClick={() => setFromExtension(false)}
+            className="ml-auto text-purple-400 hover:text-purple-600 text-xs"
+          >✕</button>
+        </div>
+      )}
+
+      {/* ── 확장 프로그램 설치 안내 (게시물 없을 때) ── */}
       {!hasCookies && !collectLoading && posts.length === 0 && !collectError && (
         <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-600 flex-shrink-0 mt-0.5">

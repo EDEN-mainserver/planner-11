@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Eden Crawl v2",
+  "version": "2.0.0",
+  "description": "에덴 전용 v2 — Threads SNS 인기글 수집 및 AI 바이럴 분석 + 웹앱 연동",
+  "permissions": ["tabs", "scripting", "storage"],
+  "host_permissions": [
+    "https://www.threads.com/*",
+    "https://*.vercel.app/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Eden Crawl"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.vercel.app/*"],
+      "js": ["content_webapp.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
