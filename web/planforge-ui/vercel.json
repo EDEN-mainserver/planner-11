@@ -7,6 +7,14 @@
     "api/threads-crawl.js": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "api/x-crawl.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/x-trends.js": {
+      "maxDuration": 60,
+      "memory": 1024
     }
   }
 }
