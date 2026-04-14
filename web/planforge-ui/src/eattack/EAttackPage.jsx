@@ -1,6 +1,9 @@
 import { useState } from "react";
 import BlogPage from "./BlogPage";
 import CrawlingPage from "./crawling/CrawlingPage";
+import ImagePage from "./ImagePage";
+import VideoPage from "./VideoPage";
+import MoneyPage from "./MoneyPage";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -25,7 +28,6 @@ const CONTENT_TYPES = [
     ),
     gradient: "from-pink-500 to-rose-600",
     description: "카드뉴스, 인스타그램 피드 등 이미지 콘텐츠를 제작합니다",
-    disabled: true,
   },
   {
     key: "video",
@@ -37,7 +39,6 @@ const CONTENT_TYPES = [
     ),
     gradient: "from-purple-500 to-violet-600",
     description: "숏폼, 릴스 등 영상 콘텐츠를 자동으로 만들어냅니다",
-    disabled: true,
   },
   {
     key: "crawling",
@@ -49,6 +50,17 @@ const CONTENT_TYPES = [
     ),
     gradient: "from-blue-500 to-cyan-600",
     description: "웹사이트를 크롤링하여 콘텐츠 소스를 자동으로 수집합니다",
+  },
+  {
+    key: "money",
+    label: "이걸 돈내고 써?",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/>
+      </svg>
+    ),
+    gradient: "from-amber-400 to-orange-500",
+    description: "유료 SaaS 툴과 AI 자동화 비용을 비교하여 최적의 선택을 도와드립니다",
   },
 ];
 
@@ -141,6 +153,12 @@ export default function EAttackPage() {
       setDepth("text");
     } else if (type.key === "crawling") {
       setDepth("crawling");
+    } else if (type.key === "money") {
+      setDepth("money");
+    } else if (type.key === "image") {
+      setDepth("image");
+    } else if (type.key === "video") {
+      setDepth("video");
     }
   };
 
@@ -153,16 +171,22 @@ export default function EAttackPage() {
 
   // 크롤링 대시보드
   if (depth === "crawling") {
-    return (
-      <CrawlingPage onBack={() => setDepth("root")} />
-    );
+    return <CrawlingPage onBack={() => setDepth("root")} />;
   }
 
   // 블로그 대시보드
   if (depth === "blog") {
-    return (
-      <BlogPage onBack={() => setDepth("text")} />
-    );
+    return <BlogPage onBack={() => setDepth("text")} />;
+  }
+
+  // 이미지 대시보드
+  if (depth === "image") {
+    return <ImagePage onBack={() => setDepth("root")} />;
+  }
+
+  // 영상 대시보드
+  if (depth === "video") {
+    return <VideoPage onBack={() => setDepth("root")} />;
   }
 
   return (
