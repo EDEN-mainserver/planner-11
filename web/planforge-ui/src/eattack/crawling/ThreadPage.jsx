@@ -1,28 +1,12 @@
 /**
- * 쓰레드 실시간 크롤링 대시보드
- * - 실제 Threads.com 검색 결과를 크롤링
- * - 쿠키 설정으로 로그인 세션 주입 (더 많은 결과)
+ * 쓰레드 인기글 크롤링 대시보드
+ * - Eden Crawl 확장 프로그램 기반 수집
  * - 행 클릭 → 원문 펼치기/접기 + 원본 링크
  * - [AI 분석] 버튼 → 바이럴 분석 (Gemini)
  * - [아이디어 생성] 버튼 → 콘텐츠 아이디어 5개 생성
  */
 import { useState, useCallback, useEffect } from "react";
 import { callGemini } from "../../utils/gemini";
-
-// ── API 엔드포인트 ──
-const IS_LOCAL = window.location.hostname === "localhost";
-const API_URL = IS_LOCAL
-  ? "http://localhost:8001/api/crawl/threads"
-  : "/api/threads-crawl";
-
-// ── 쿠키 관리 (localStorage) ──
-const COOKIES_KEY = "threads_cookies_json";
-function loadCookies() {
-  try { return JSON.parse(localStorage.getItem(COOKIES_KEY) || "[]"); }
-  catch { return []; }
-}
-function saveCookies(arr) { localStorage.setItem(COOKIES_KEY, JSON.stringify(arr)); }
-function clearCookies() { localStorage.removeItem(COOKIES_KEY); }
 
 // ── 브랜드 프로필 ──
 const BRAND_KEY = "eattack_brand_profile";
@@ -112,86 +96,6 @@ function ToneBadge({ tone }) {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{tone}</span>;
 }
 
-// ── 쿠키 설정 모달 ──
-function CookieModal({ onClose }) {
-  const [raw, setRaw] = useState(() => {
-    const c = loadCookies();
-    return c.length ? JSON.stringify(c, null, 2) : "";
-  });
-  const [error, setError] = useState("");
-
-  const handleSave = () => {
-    setError("");
-    if (!raw.trim()) { clearCookies(); onClose(); return; }
-    try {
-      const parsed = JSON.parse(raw.trim());
-      if (!Array.isArray(parsed)) throw new Error("JSON 배열 형식이어야 합니다");
-      saveCookies(parsed);
-      onClose();
-    } catch (e) {
-      setError("JSON 형식 오류: " + e.message);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-bold text-gray-800">쓰레드 쿠키 설정</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-
-        {/* 안내 */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-          <p className="text-xs font-bold text-blue-800 mb-2">쿠키 추출 방법 (Chrome)</p>
-          <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
-            <li>Chrome에서 <strong>threads.com</strong>에 로그인</li>
-            <li>Chrome 웹스토어에서 <strong>&quot;Cookie-Editor&quot;</strong> 확장 설치</li>
-            <li>Threads 탭에서 Cookie-Editor 아이콘 클릭</li>
-            <li>우측 상단 <strong>Export → Export as JSON</strong> 클릭</li>
-            <li>복사된 JSON을 아래 입력창에 붙여넣기</li>
-          </ol>
-          <p className="text-[11px] text-blue-500 mt-2">
-            쿠키는 이 브라우저 로컬에만 저장되며 크롤링 요청 시 서버에 전달됩니다.
-          </p>
-        </div>
-
-        <textarea
-          value={raw}
-          onChange={e => { setRaw(e.target.value); setError(""); }}
-          placeholder={'[{"name": "sessionid", "value": "...", "domain": ".threads.com", ...}]'}
-          rows={8}
-          className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400 resize-none"
-        />
-        {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
-
-        <div className="flex gap-2 mt-4">
-          <button
-            onClick={() => { clearCookies(); setRaw(""); }}
-            className="px-3 py-2 text-xs text-red-500 border border-red-200 rounded-xl hover:bg-red-50"
-          >
-            초기화
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50"
-          >
-            취소
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl"
-          >
-            저장
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── 브랜드 모달 ──
 function BrandModal({ onClose }) {
   const [brand, setBrand] = useState(loadBrand);
@@ -242,10 +146,8 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   const [keyword, setKeyword]               = useState("");
   const [keywordCounts, setKeywordCounts]   = useState({}); // { "마케팅": 30, "숏폼": 30 }
   const [keywordFilter, setKeywordFilter]   = useState(null); // null = 전체
-  const [posts, setPosts]                   = useState([]);
-  const [collectLoading, setCollectLoading] = useState(false);
-  const [collectError, setCollectError]     = useState("");
-  const [sortBy, setSortBy]                 = useState("likes");
+  const [posts, setPosts]   = useState([]);
+  const [sortBy, setSortBy] = useState("likes");
 
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [analysisMap, setAnalysisMap]   = useState({});
@@ -269,9 +171,8 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   // 총 수집 개수
   const totalCount = parsedKeywords.reduce((sum, k) => sum + (keywordCounts[k] ?? 30), 0);
 
-  const [showBrandModal,  setShowBrandModal]  = useState(false);
-  const [showCookieModal, setShowCookieModal] = useState(false);
-  const [fromExtension,   setFromExtension]   = useState(false);
+  const [showBrandModal, setShowBrandModal] = useState(false);
+  const [fromExtension,  setFromExtension]  = useState(false);
 
   // ── 1. Eden Crawl 확장 프로그램 연동 ──
   // CrawlingPage에서 수신한 extensionData prop이 바뀌면 적용
@@ -279,7 +180,6 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
     if (!extensionData?.posts?.length) return;
     setKeyword(extensionData.keyword || "");
     setPosts(extensionData.posts);
-    setCollectError("");
     setExpandedRows(new Set());
     setAnalysisMap({});
     setIdeasMap({});
@@ -287,65 +187,6 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
     setFromExtension(true);
     if (onExtensionDataConsumed) onExtensionDataConsumed();
   }, [extensionData]);
-
-  // ── 2. 실제 크롤링 ──
-  const handleCollect = useCallback(async () => {
-    if (!keyword.trim()) return;
-    setCollectLoading(true);
-    setCollectError("");
-    setPosts([]);
-    setExpandedRows(new Set());
-    setAnalysisMap({});
-    setIdeasMap({});
-
-    try {
-      const cookies = loadCookies();
-      let res;
-
-      if (IS_LOCAL) {
-        // 로컬 Python 백엔드 (GET)
-        const qs = new URLSearchParams({ keyword: keyword.trim(), limit: "20" });
-        if (cookies.length) qs.set("cookies", btoa(JSON.stringify(cookies)));
-        res = await fetch(`${API_URL}?${qs}`);
-      } else {
-        // Vercel 서버리스 (POST)
-        res = await fetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keyword: keyword.trim(), cookies }),
-        });
-      }
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `서버 오류 (${res.status})`);
-      }
-
-      const data = await res.json();
-      if (data.error && (!data.posts || data.posts.length === 0)) {
-        throw new Error(data.error);
-      }
-      if (!Array.isArray(data.posts)) throw new Error("데이터 형식 오류");
-      if (data.posts.length === 0) {
-        const dbg = data.debug;
-        let msg = cookies.length === 0
-          ? "게시물을 찾을 수 없습니다. 쿠키를 설정하면 더 많은 결과를 볼 수 있습니다."
-          : "게시물을 찾을 수 없습니다. 쿠키를 갱신해주세요.";
-        // 디버그 정보가 있으면 추가
-        if (dbg) {
-          if (dbg.containerCount === 0) msg += " (검색 결과 없음 — 로그인이 필요할 수 있습니다)";
-          else msg += ` (컨테이너 ${dbg.containerCount}개 감지됐으나 본문 추출 실패)`;
-        }
-        throw new Error(msg);
-      }
-
-      setPosts(data.posts);
-    } catch (e) {
-      setCollectError(e.message || "인기글 수집에 실패했습니다.");
-    } finally {
-      setCollectLoading(false);
-    }
-  }, [keyword]);
 
   // ── 2. 원문 펼치기/접기 ──
   const toggleExpand = useCallback((origIdx) => {
@@ -463,7 +304,6 @@ JSON 배열 형식으로만 반환:
 
   const brand    = loadBrand();
   const hasBrand = brand.name || brand.target || brand.tone;
-  const hasCookies = loadCookies().length > 0;
 
   return (
     <div className="space-y-5">
@@ -482,8 +322,7 @@ JSON 배열 형식으로만 반환:
             onChange={e => setKeyword(e.target.value)}
             onKeyDown={e => e.key === "Enter" && keyword.trim() && window.postMessage({ type: 'EDEN_START_CRAWL', keyword: buildKeywordString(), count: totalCount }, '*')}
             placeholder="키워드 입력 (예: 숏폼, AI 마케팅)"
-            disabled={collectLoading}
-            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 shadow-sm"
+            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 shadow-sm"
           />
         </div>
 
@@ -521,22 +360,6 @@ JSON 배열 형식으로만 반환:
         {/* 메인 수집 버튼 (확장 프로그램 기반) */}
         <ExtensionCrawlButton keyword={buildKeywordString()} count={totalCount} />
 
-        {/* 쿠키 설정 버튼 */}
-        <button
-          onClick={() => setShowCookieModal(true)}
-          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all ${
-            hasCookies
-              ? "bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-              : "bg-yellow-50 border-yellow-200 text-yellow-700 hover:bg-yellow-100"
-          }`}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          {hasCookies ? "쿠키 설정됨 ✓" : "쿠키 설정"}
-        </button>
-
         {/* 브랜드 설정 버튼 */}
         <button
           onClick={() => setShowBrandModal(true)}
@@ -568,47 +391,8 @@ JSON 배열 형식으로만 반환:
         </div>
       )}
 
-      {/* ── 확장 프로그램 설치 안내 (게시물 없을 때) ── */}
-      {!hasCookies && !collectLoading && posts.length === 0 && !collectError && (
-        <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
-          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-600 flex-shrink-0 mt-0.5">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <div>
-            <p className="text-xs font-semibold text-yellow-800">쿠키 설정 권장</p>
-            <p className="text-xs text-yellow-700 mt-0.5">
-              Threads 로그인 쿠키를 설정하면 실제 검색 결과를 더 많이 가져올 수 있습니다.{" "}
-              <button onClick={() => setShowCookieModal(true)} className="underline font-semibold">지금 설정하기</button>
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ── 에러 메시지 ── */}
-      {collectError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-500 flex-shrink-0">
-            <circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>
-          </svg>
-          <span className="text-red-600 text-sm flex-1">{collectError}</span>
-          <button onClick={handleCollect} className="text-red-500 underline text-xs flex-shrink-0">재시도</button>
-        </div>
-      )}
-
-      {/* ── 로딩 ── */}
-      {collectLoading && (
-        <div className="flex flex-col items-center justify-center py-16">
-          <svg className="animate-spin w-8 h-8 text-purple-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-          <p className="text-gray-600 text-sm font-medium">"{keyword}" 실시간 수집 중...</p>
-          <p className="text-gray-400 text-xs mt-1">Threads에서 실제 게시물을 가져오고 있습니다 (최대 30초)</p>
-        </div>
-      )}
-
       {/* ── 빈 상태 ── */}
-      {!collectLoading && posts.length === 0 && !collectError && (
+      {posts.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-gray-400">
           <span className="text-5xl mb-4">🧵</span>
           <p className="text-sm font-medium text-gray-500 mb-1">쓰레드 인기글을 실시간으로 수집합니다</p>
@@ -620,7 +404,7 @@ JSON 배열 형식으로만 반환:
       )}
 
       {/* ── 게시물 목록 ── */}
-      {!collectLoading && posts.length > 0 && (
+      {posts.length > 0 && (
         <div className="space-y-4">
 
           {/* ── 키워드 필터 탭 (멀티키워드인 경우) ── */}
@@ -1005,8 +789,7 @@ JSON 배열 형식으로만 반환:
         </div>
       )}
 
-      {showBrandModal  && <BrandModal  onClose={() => setShowBrandModal(false)}  />}
-      {showCookieModal && <CookieModal onClose={() => setShowCookieModal(false)} />}
+      {showBrandModal && <BrandModal onClose={() => setShowBrandModal(false)} />}
     </div>
   );
 }
