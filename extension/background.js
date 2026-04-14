@@ -113,16 +113,27 @@ function scrapeOnce(seenUrlsArray) {
     const svg = el.querySelector(`svg[aria-label="${label}"]`);
     if (!svg) return 0;
     const sibling = svg.nextElementSibling;
-    if (sibling) return parseCount(sibling.textContent);
+    if (sibling) { const v = parseCount(sibling.textContent); if (v > 0) return v; }
     const btn = svg.closest('div[role="button"], button');
-    if (btn) { const span = btn.querySelector('span'); if (span) return parseCount(span.textContent); }
+    if (btn) { const span = btn.querySelector('span'); if (span) { const v = parseCount(span.textContent); if (v > 0) return v; } }
     let node = svg.parentElement;
-    for (let i = 0; i < 4 && node && node !== el; i++) {
+    for (let i = 0; i < 6 && node; i++) {
       const span = node.querySelector('span.x1o0tod') || node.querySelector('span[class]');
-      if (span) { const n = parseInt(span.textContent.replace(/[^0-9]/g, '')); if (!isNaN(n)) return n; }
+      if (span) { const n = parseInt(span.textContent.replace(/[^0-9]/g, '')); if (!isNaN(n) && n > 0) return n; }
       node = node.parentElement;
     }
     return 0;
+  }
+  // 공유하기는 data-pressable-container 밖에 있을 수 있으므로 상위 DOM까지 탐색
+  function findShare(el) {
+    let node = el;
+    for (let i = 0; i < 6; i++) {
+      if (node.querySelector('svg[aria-label="공유하기"]')) return getCount(node, '공유하기');
+      if (!node.parentElement) break;
+      node = node.parentElement;
+    }
+    // fallback: 리포스트 라벨
+    return getCount(el, '리포스트');
   }
   const seenSet  = new Set(seenUrlsArray);
   const newPosts = [];
@@ -151,7 +162,7 @@ function scrapeOnce(seenUrlsArray) {
         time:     timeText || datetime.slice(0, 10),
         likes:    getCount(el, '좋아요'),
         comments: getCount(el, '답글'),
-        shares:   getCount(el, '공유하기') || getCount(el, '리포스트'),
+        shares:   findShare(el),
       });
     } catch (_) {}
   });

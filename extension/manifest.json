@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Eden Crawl v2",
-  "version": "2.6.7",
+  "version": "2.6.8",
   "description": "에덴 전용 v2 — Threads SNS 인기글 수집 및 AI 바이럴 분석 + 웹앱 연동 (백그라운드 수집)",
   "background": {
     "service_worker": "background.js"
