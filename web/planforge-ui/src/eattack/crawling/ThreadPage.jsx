@@ -240,7 +240,8 @@ function BrandModal({ onClose }) {
 // ─────────────────────── 메인 컴포넌트 ───────────────────────
 export default function ThreadPage({ extensionData = null, onExtensionDataConsumed = null }) {
   const [keyword, setKeyword]               = useState("");
-  const [collectCount, setCollectCount]     = useState(30);
+  const [keywordCounts, setKeywordCounts]   = useState({}); // { "마케팅": 30, "숏폼": 30 }
+  const [keywordFilter, setKeywordFilter]   = useState(null); // null = 전체
   const [posts, setPosts]                   = useState([]);
   const [collectLoading, setCollectLoading] = useState(false);
   const [collectError, setCollectError]     = useState("");
@@ -250,6 +251,23 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   const [analysisMap, setAnalysisMap]   = useState({});
   const [ideasMap, setIdeasMap]         = useState({});
   const [filterMin, setFilterMin]       = useState(0);
+
+  // 키워드 입력 변경 시 키워드별 개수 자동 동기화
+  const parsedKeywords = keyword.split(',').map(k => k.trim()).filter(Boolean);
+  useEffect(() => {
+    setKeywordCounts(prev => {
+      const next = {};
+      parsedKeywords.forEach(k => { next[k] = prev[k] ?? 30; });
+      return next;
+    });
+  }, [keyword]); // eslint-disable-line
+
+  // 수집 시 전송할 키워드 문자열 ("마케팅:20, 숏폼:30")
+  const buildKeywordString = () =>
+    parsedKeywords.map(k => `${k}:${keywordCounts[k] ?? 30}`).join(', ');
+
+  // 총 수집 개수
+  const totalCount = parsedKeywords.reduce((sum, k) => sum + (keywordCounts[k] ?? 30), 0);
 
   const [showBrandModal,  setShowBrandModal]  = useState(false);
   const [showCookieModal, setShowCookieModal] = useState(false);
@@ -435,8 +453,11 @@ JSON 배열 형식으로만 반환:
     { key: "views",    label: "조회수" },
   ];
   const sortField = sortBy === "latest" ? "rank" : sortBy;
+  // 키워드 필터 적용 후 정렬
+  const uniqueKeywords = [...new Set(posts.map(p => p.keyword).filter(Boolean))];
   const sortedPosts = [...posts]
     .filter(p => (p[sortField] || 0) >= filterMin)
+    .filter(p => keywordFilter === null || p.keyword === keywordFilter)
     .sort((a, b) => sortField === "rank" ? a.rank - b.rank : (b[sortField] || 0) - (a[sortField] || 0))
     .map((p, i) => ({ ...p, origIdx: posts.indexOf(p), displayRank: i + 1 }));
 
@@ -459,29 +480,46 @@ JSON 배열 형식으로만 반환:
             type="text"
             value={keyword}
             onChange={e => setKeyword(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && keyword.trim() && window.postMessage({ type: 'EDEN_START_CRAWL', keyword: keyword.trim(), count: collectCount }, '*')}
+            onKeyDown={e => e.key === "Enter" && keyword.trim() && window.postMessage({ type: 'EDEN_START_CRAWL', keyword: buildKeywordString(), count: totalCount }, '*')}
             placeholder="키워드 입력 (예: 숏폼, AI 마케팅)"
             disabled={collectLoading}
             className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 shadow-sm"
           />
         </div>
 
-        {/* 수집 개수 입력 */}
-        <div className="flex flex-col items-center gap-0.5">
-          <input
-            type="number"
-            min={5}
-            max={200}
-            value={collectCount}
-            onChange={e => setCollectCount(Math.min(200, Math.max(5, parseInt(e.target.value) || 30)))}
-            className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-sm text-center font-medium text-gray-700 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 shadow-sm"
-            title="수집 개수 (5~200)"
-          />
-          <span className="text-[10px] text-gray-400">개</span>
-        </div>
+        {/* 키워드별 개수 설정 */}
+        {parsedKeywords.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {parsedKeywords.map(kw => (
+              <div key={kw} className="flex items-center gap-1 bg-purple-50 border border-purple-200 rounded-lg px-2 py-1">
+                <span className="text-xs text-purple-700 font-medium max-w-[80px] truncate">{kw}</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={200}
+                  value={keywordCounts[kw] ?? 30}
+                  onChange={e => setKeywordCounts(prev => ({
+                    ...prev,
+                    [kw]: Math.min(200, Math.max(5, parseInt(e.target.value) || 30))
+                  }))}
+                  className="w-12 px-1 py-0.5 border border-purple-300 rounded text-xs text-center font-medium text-purple-800 focus:outline-none focus:border-purple-500 bg-white"
+                  title={`"${kw}" 수집 개수 (5~200)`}
+                />
+                <span className="text-[10px] text-purple-500">개</span>
+              </div>
+            ))}
+            {parsedKeywords.length > 1 && (
+              <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+                <span className="text-[10px] text-gray-500">합계</span>
+                <span className="text-xs font-bold text-gray-700">{totalCount}</span>
+                <span className="text-[10px] text-gray-500">개</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 메인 수집 버튼 (확장 프로그램 기반) */}
-        <ExtensionCrawlButton keyword={keyword} count={collectCount} />
+        <ExtensionCrawlButton keyword={buildKeywordString()} count={totalCount} />
 
         {/* 쿠키 설정 버튼 */}
         <button
@@ -585,6 +623,35 @@ JSON 배열 형식으로만 반환:
       {!collectLoading && posts.length > 0 && (
         <div className="space-y-4">
 
+          {/* ── 키워드 필터 탭 (멀티키워드인 경우) ── */}
+          {uniqueKeywords.length > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => setKeywordFilter(null)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  keywordFilter === null
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                전체 ({posts.length})
+              </button>
+              {uniqueKeywords.map(kw => (
+                <button
+                  key={kw}
+                  onClick={() => setKeywordFilter(kw)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    keywordFilter === kw
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "bg-violet-50 text-violet-700 hover:bg-violet-100"
+                  }`}
+                >
+                  {kw} ({posts.filter(p => p.keyword === kw).length})
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* ── 필터 + 정렬 바 ── */}
           <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
             {/* 상단: 건수 + 필터 최솟값 */}
@@ -592,7 +659,10 @@ JSON 배열 형식으로만 반환:
               <p className="text-xs text-gray-500 flex-shrink-0">
                 <span className="text-purple-600 font-semibold">{sortedPosts.length}</span>
                 <span className="text-gray-400">/{posts.length}개</span>
-                {" "}— <span className="text-gray-400">"{keyword}"</span>
+                {keywordFilter
+                  ? <>{" "}— <span className="text-violet-600 font-medium">"{keywordFilter}"</span></>
+                  : <>{" "}— <span className="text-gray-400">"{keyword}"</span></>
+                }
               </p>
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-gray-400 flex-shrink-0">최솟값</span>
