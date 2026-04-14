@@ -328,7 +328,10 @@ export default function CrawlingPage({ onBack }) {
   }, [startMonth, endMonth]);
 
   // 행 클릭 (아이보스 전용)
-  const handleRowClick = useCallback(async (post, idx) => {
+  const detailTimeoutRef = useRef(null);
+  const handleRowClick = useCallback((post, idx) => {
+    if (detailTimeoutRef.current) clearTimeout(detailTimeoutRef.current);
+
     if (ibossData.selectedRow === idx) {
       setIbossData((prev) => ({ ...prev, selectedRow: null }));
       setDetailContent("");
@@ -341,35 +344,17 @@ export default function CrawlingPage({ onBack }) {
 
     if (post.source_url) {
       setDetailLoading(true);
-      try {
-        // 1차: 서버 사이드 크롤링 시도
-        const data = await fetchPostDetail(post.source_url);
-        if (data.content && data.content.length > 10) {
-          setDetailContent(data.content);
-          setDetailSource("server");
-          setDetailLoading(false);
-        } else {
-          // 2차 폴백: 확장 프로그램으로 본문 추출 (브라우저 세션 활용)
-          // EDEN_IBOSS_CONTENT 이벤트로 비동기 수신 (useEffect에서 처리)
-          window.postMessage({ type: 'EDEN_GET_IBOSS_CONTENT', sourceUrl: post.source_url }, '*');
-          // 확장 미설치 시 10초 후 타임아웃
-          setTimeout(() => {
-            setDetailLoading(prev => {
-              if (prev) setDetailContent("(본문을 불러올 수 없습니다 — 확장 프로그램 미설치 또는 로딩 실패)");
-              return false;
-            });
-          }, 10000);
-        }
-      } catch {
-        // 서버 실패 → 확장 프로그램 시도
-        window.postMessage({ type: 'EDEN_GET_IBOSS_CONTENT', sourceUrl: post.source_url }, '*');
-        setTimeout(() => {
-          setDetailLoading(prev => {
-            if (prev) setDetailContent("(본문을 불러올 수 없습니다)");
-            return false;
-          });
-        }, 10000);
-      }
+      // 확장 프로그램으로 직접 추출 (브라우저 세션 활용)
+      window.postMessage({ type: 'EDEN_GET_IBOSS_CONTENT', sourceUrl: post.source_url }, '*');
+      // 확장 미설치/타임아웃 시 15초 후 안내
+      detailTimeoutRef.current = setTimeout(() => {
+        setDetailLoading((prev) => {
+          if (prev) {
+            setDetailContent("(본문을 불러올 수 없습니다 — 확장 프로그램이 설치되어 있는지 확인해주세요)");
+          }
+          return false;
+        });
+      }, 15000);
     }
   }, [ibossData.selectedRow]);
 
