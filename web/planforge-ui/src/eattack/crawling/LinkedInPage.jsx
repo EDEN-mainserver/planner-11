@@ -1,19 +1,20 @@
 /**
  * LinkedIn 인기글 크롤링 대시보드
- * - Eden Crawl 확장 프로그램 기반 수집 (EDEN_START_LINKEDIN_CRAWL)
- * - 행 클릭 → 전문 펼치기/접기
- * - [AI 분석] 버튼 → 바이럴 분석 (Gemini)
- * - CSV 다운로드
+ * - Eden Crawl 확장 프로그램 기반 수집
+ * - 멀티 키워드 + 키워드별 개수 설정
+ * - 정렬 5종 (순서/좋아요/댓글/공유/조회수) + 최솟값 필터
+ * - 이미지 가져오기 + AI 바이럴 분석 (이미지 포함 멀티모달)
  */
 import { useState, useCallback, useEffect } from "react";
 import { callGemini } from "../../utils/gemini";
 
-// ── 브랜드 프로필 (ThreadPage와 공유) ──
+// ── 브랜드 프로필 (Threads/X와 공유) ──
 const BRAND_KEY = "eattack_brand_profile";
 function loadBrand() {
   try { return JSON.parse(localStorage.getItem(BRAND_KEY)) || { name: "", target: "", tone: "" }; }
   catch { return { name: "", target: "", tone: "" }; }
 }
+function saveBrand(data) { localStorage.setItem(BRAND_KEY, JSON.stringify(data)); }
 
 // ── JSON 파싱 헬퍼 ──
 function parseJSON(text) {
@@ -22,8 +23,8 @@ function parseJSON(text) {
   return null;
 }
 
-// ── LinkedIn 수집 버튼 ──
-function LinkedInCrawlButton({ keyword, count }) {
+// ── 수집 버튼 (Eden Crawl 확장 프로그램 기반) ──
+function ExtensionLinkedInCrawlButton({ keyword, count = 20 }) {
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
@@ -58,20 +59,22 @@ function LinkedInCrawlButton({ keyword, count }) {
           onClick={handleStart}
           disabled={!keyword.trim() || isCrawling}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-            isCrawling
-              ? "bg-blue-700 text-white cursor-not-allowed"
-              : isDone
-              ? "bg-green-500 hover:bg-green-400 text-white"
-              : isError
-              ? "bg-red-500 hover:bg-red-400 text-white"
-              : "bg-blue-700 hover:bg-blue-600 text-white"
+            isCrawling ? "bg-blue-400 text-white cursor-not-allowed"
+            : isDone    ? "bg-green-500 hover:bg-green-400 text-white"
+            : isError   ? "bg-red-500 hover:bg-red-400 text-white"
+            : "bg-[#0077B5] hover:bg-[#006097] text-white"
           }`}
         >
           {isCrawling
-            ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
             : isDone
-            ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            : <span className="font-bold text-sm leading-none">in</span>
           }
           {isCrawling ? "수집 중..." : isDone ? "수집 완료!" : "수집"}
         </button>
@@ -79,7 +82,7 @@ function LinkedInCrawlButton({ keyword, count }) {
         {isCrawling && (
           <button
             onClick={handleStop}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-red-500 hover:bg-red-400 text-white rounded-lg shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-red-500 hover:bg-red-400 active:bg-red-600 text-white rounded-lg shadow-sm transition-all"
             title="수집 중지 — 지금까지 수집된 결과를 표시합니다"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
@@ -89,14 +92,10 @@ function LinkedInCrawlButton({ keyword, count }) {
           </button>
         )}
       </div>
-
       {status && (
-        <p
-          className={`text-[10px] px-0.5 leading-tight max-w-[220px] truncate ${
-            isError ? "text-red-500" : isDone ? "text-green-600" : isCrawling ? "text-blue-700" : "text-orange-500"
-          }`}
-          title={status.msg}
-        >
+        <p className={`text-[10px] px-0.5 leading-tight max-w-[200px] truncate ${
+          isError ? "text-red-500" : isDone ? "text-green-600" : isCrawling ? "text-blue-600" : "text-orange-500"
+        }`} title={status.msg}>
           {status.msg}
         </p>
       )}
@@ -104,342 +103,758 @@ function LinkedInCrawlButton({ keyword, count }) {
   );
 }
 
-// ── 분석 결과 카드 ──
-function AnalysisCard({ analysis }) {
-  if (!analysis) return null;
-  if (analysis.error) return <p className="text-xs text-red-500 mt-1">분석 실패: {analysis.error}</p>;
-  if (analysis.raw) return <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{analysis.raw}</p>;
+// ── 톤 배지 ──
+const TONE_MAP = {
+  "유머러스": "bg-yellow-100 text-yellow-700",
+  "정보성":   "bg-blue-100 text-blue-700",
+  "감성적":   "bg-pink-100 text-pink-700",
+  "솔직한":   "bg-orange-100 text-orange-700",
+  "도발적":   "bg-red-100 text-red-700",
+  "공감형":   "bg-green-100 text-green-700",
+};
+function ToneBadge({ tone }) {
+  const cls = TONE_MAP[tone] || "bg-gray-100 text-gray-600";
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{tone}</span>;
+}
 
+// ── 브랜드 모달 ──
+function BrandModal({ onClose }) {
+  const [brand, setBrand] = useState(loadBrand);
   return (
-    <div className="mt-2 p-3 bg-white rounded-lg border border-blue-200 text-xs space-y-1.5">
-      {analysis.viral_factors && (
-        <div>
-          <span className="font-semibold text-blue-700">바이럴 요인: </span>
-          <span className="text-gray-600">{analysis.viral_factors.join(", ")}</span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-bold text-gray-800">브랜드 프로필 설정</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
-      )}
-      {analysis.keywords && (
-        <div className="flex flex-wrap gap-1 items-center">
-          <span className="font-semibold text-blue-700 mr-0.5">핵심 키워드:</span>
-          {analysis.keywords.map((k, i) => (
-            <span key={i} className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{k}</span>
+        <p className="text-xs text-gray-400 mb-4">브랜드 정보를 입력하면 AI가 더 맞춤화된 콘텐츠 아이디어를 제안합니다.</p>
+        <div className="space-y-3">
+          {[
+            { key: "name",   label: "브랜드명 / 직업",  placeholder: "예: 마케팅 컨설턴트, IT 스타트업" },
+            { key: "target", label: "타겟 고객",         placeholder: "예: B2B 담당자, 스타트업 창업자" },
+            { key: "tone",   label: "브랜드 톤앤매너",   placeholder: "예: 전문적이고 신뢰감 있는, 인사이트 중심" },
+          ].map(f => (
+            <div key={f.key}>
+              <label className="text-xs font-medium text-gray-600 block mb-1">{f.label}</label>
+              <input
+                type="text"
+                value={brand[f.key]}
+                onChange={e => setBrand(p => ({ ...p, [f.key]: e.target.value }))}
+                placeholder={f.placeholder}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
           ))}
         </div>
-      )}
-      {analysis.tone && (
-        <div>
-          <span className="font-semibold text-blue-700">톤: </span>
-          <span className="text-gray-600">{analysis.tone}</span>
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">취소</button>
+          <button
+            onClick={() => { saveBrand(brand); onClose(); }}
+            className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-[#0077B5] hover:bg-[#006097] rounded-xl"
+          >
+            저장
+          </button>
         </div>
-      )}
-      {analysis.target_audience && (
-        <div>
-          <span className="font-semibold text-blue-700">타겟: </span>
-          <span className="text-gray-600">{analysis.target_audience}</span>
-        </div>
-      )}
-      {analysis.content_ideas && (
-        <div>
-          <span className="font-semibold text-blue-700">콘텐츠 아이디어:</span>
-          <ul className="mt-0.5 space-y-0.5">
-            {analysis.content_ideas.map((idea, i) => (
-              <li key={i} className="text-gray-600">• {idea}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ── 메인 LinkedIn 페이지 ──
+// ─────────────────────── 메인 컴포넌트 ───────────────────────
 export default function LinkedInPage() {
-  const [posts, setPosts] = useState([]);
-  const [keyword, setKeyword] = useState("");
-  const [count, setCount] = useState(20);
-  const [expandedRows, setExpandedRows] = useState(new Set());
-  const [analysisMap, setAnalysisMap] = useState({});
-  const [analyzingIdx, setAnalyzingIdx] = useState(null);
+  const [keyword, setKeyword]             = useState("");
+  const [keywordCounts, setKeywordCounts] = useState({});
+  const [keywordFilter, setKeywordFilter] = useState(null);
+  const [posts, setPosts]                 = useState([]);
+  const [sortBy, setSortBy]               = useState("likes");
+  const [filterMin, setFilterMin]         = useState(0);
 
-  // 확장 프로그램 결과 수신
+  const [expandedRows, setExpandedRows] = useState(new Set());
+  const [analysisMap, setAnalysisMap]   = useState({});
+  const [ideasMap, setIdeasMap]         = useState({});
+  const [imageMap, setImageMap]         = useState({});
+  const [showBrandModal, setShowBrandModal] = useState(false);
+
+  // 키워드 입력 → keywordCounts 동기화
+  const parsedKeywords = [...new Set(keyword.split(',').map(k => k.trim()).filter(Boolean))];
+  useEffect(() => {
+    setKeywordCounts(prev => {
+      const next = {};
+      parsedKeywords.forEach(k => { next[k] = prev[k] ?? 20; });
+      return next;
+    });
+  }, [keyword]); // eslint-disable-line
+
+  const buildKeywordString = () =>
+    parsedKeywords.map(k => `${k}:${keywordCounts[k] ?? 20}`).join(', ');
+  const totalCount = parsedKeywords.reduce((sum, k) => sum + (keywordCounts[k] ?? 20), 0);
+
+  // ── EDEN_LINKEDIN_RESULTS 수신 ──
   useEffect(() => {
     const handler = (event) => {
       if (event.source !== window) return;
       if (event.data?.type !== 'EDEN_LINKEDIN_RESULTS') return;
-      const { posts: newPosts = [], keyword: kw = "" } = event.data.payload || {};
-      setPosts(newPosts.map((p, i) => ({ ...p, rank: i + 1 })));
-      if (kw) setKeyword(kw);
+      const payload = event.data.payload;
+      if (!payload?.posts?.length) return;
+      setKeyword(payload.keyword || "");
+      setPosts(payload.posts);
       setExpandedRows(new Set());
       setAnalysisMap({});
+      setIdeasMap({});
+      setFilterMin(0);
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, []);
 
-  // 행 펼침 토글
-  const toggleExpand = useCallback((idx) => {
+  // ── 이미지 수집 ──
+  const handleFetchImages = useCallback((postUrl) => {
+    if (!postUrl) return;
+    setImageMap(prev => ({ ...prev, [postUrl]: { loading: true, urls: [], error: null } }));
+    window.postMessage({ type: 'EDEN_GET_POST_IMAGES', postUrl }, '*');
+  }, []);
+
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== 'EDEN_POST_IMAGES') return;
+      const { postUrl, urls } = event.data.payload || {};
+      if (!postUrl) return;
+      setImageMap(prev => ({
+        ...prev,
+        [postUrl]: { loading: false, urls: urls || [], error: urls?.length === 0 ? '이미지가 없습니다' : null }
+      }));
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  // ── 원문 펼치기/접기 ──
+  const toggleExpand = useCallback((origIdx) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
-      next.has(idx) ? next.delete(idx) : next.add(idx);
+      next.has(origIdx) ? next.delete(origIdx) : next.add(origIdx);
       return next;
     });
   }, []);
 
-  // AI 분석
-  const handleAnalyze = useCallback(async (post, idx) => {
-    if (analyzingIdx !== null) return;
-    setAnalyzingIdx(idx);
+  // ── AI 바이럴 분석 ──
+  const handleAnalyze = useCallback(async (origIdx) => {
+    const post = posts[origIdx];
+    setAnalysisMap(prev => ({ ...prev, [origIdx]: { loading: true, data: null, error: null } }));
+    setIdeasMap(prev => { const n = { ...prev }; delete n[origIdx]; return n; });
 
     try {
-      const brand = loadBrand();
-      const brandCtx = brand.name
-        ? `\n브랜드 정보: 이름="${brand.name}", 타겟="${brand.target}", 톤="${brand.tone}"`
+      const imgUrls = post.postUrl ? imageMap[post.postUrl]?.urls : null;
+      const hasImages = Array.isArray(imgUrls) && imgUrls.length > 0;
+      const imageNote = hasImages
+        ? `\n첨부 이미지: ${imgUrls.length}장 (이미지 내용도 텍스트와 함께 종합적으로 분석해주세요)`
         : '';
 
-      const prompt = `다음 LinkedIn 게시물을 마케팅 관점에서 분석해줘.${brandCtx}
+      const message = {
+        role: "user",
+        content:
+`다음 LinkedIn 게시물의 바이럴 성공 요인을 심층 분석해주세요.
 
 작성자: ${post.author}
-내용:
-${post.content}
-반응수: ${(post.likes || 0).toLocaleString()}, 댓글수: ${(post.comments || 0).toLocaleString()}
+내용: ${post.content}
+좋아요: ${post.likes} | 댓글: ${post.comments} | 공유: ${post.shares || 0} | 조회수: ${post.views || 0}${imageNote}
 
-반드시 JSON만 반환 (markdown 블록 포함):
-\`\`\`json
+JSON 형식으로만 반환:
 {
-  "viral_factors": ["요인1", "요인2", "요인3"],
-  "keywords": ["키워드1", "키워드2", "키워드3"],
-  "tone": "톤 한 줄 설명",
-  "target_audience": "주요 타겟 독자",
-  "content_ideas": ["이 게시물 스타일 기반 아이디어1", "아이디어2", "아이디어3"]
-}
-\`\`\``;
+  "summary": "이 LinkedIn 게시물이 확산된 이유 한 줄 요약",
+  "keywords": ["핵심 키워드1", "키워드2", "키워드3"],
+  "tone": "유머러스|정보성|감성적|솔직한|도발적|공감형 중 하나",
+  "viral_factors": [
+    {"factor": "요인명", "desc": "설명 한 문장"},
+    {"factor": "요인명", "desc": "설명 한 문장"},
+    {"factor": "요인명", "desc": "설명 한 문장"}
+  ],
+  "hook": "이 게시물의 첫 문장이 독자를 끌어당기는 방식",
+  "meme_elements": ["사용된 밈/문화적 요소 (없으면 빈 배열)"]
+}`,
+        ...(hasImages ? { images: imgUrls } : {}),
+      };
 
-      const raw = await callGemini(prompt);
-      const parsed = parseJSON(raw);
-      setAnalysisMap(prev => ({ ...prev, [idx]: parsed || { raw } }));
+      const res = await callGemini(
+        [message],
+        "당신은 LinkedIn 바이럴 콘텐츠 분석 전문가입니다. B2B 마케팅과 전문가 네트워킹 관점에서 분석하세요. JSON 형식으로만 응답하세요."
+      );
+      const data = parseJSON(res);
+      if (!data) throw new Error("분석 파싱 실패");
+      setAnalysisMap(prev => ({ ...prev, [origIdx]: { loading: false, data, error: null } }));
     } catch (e) {
-      setAnalysisMap(prev => ({ ...prev, [idx]: { error: e.message } }));
-    } finally {
-      setAnalyzingIdx(null);
+      setAnalysisMap(prev => ({ ...prev, [origIdx]: { loading: false, data: null, error: e.message || "분석 실패" } }));
     }
-  }, [analyzingIdx]);
+  }, [posts, imageMap]);
 
-  // CSV 다운로드
-  const handleDownloadCSV = useCallback(() => {
-    if (!posts.length) return;
-    const headers = ["순위", "작성자", "내용", "반응", "댓글", "날짜", "게시물URL", "프로필URL"];
-    const rows = posts.map(p => [
-      p.rank,
-      `"${(p.author || "").replace(/"/g, '""')}"`,
-      `"${(p.content || "").replace(/"/g, '""').replace(/\n/g, ' ').slice(0, 300)}"`,
-      p.likes || 0,
-      p.comments || 0,
-      p.time || "",
-      p.postUrl || "",
-      p.profileUrl || "",
-    ]);
-    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const ts = new Date().toISOString().slice(0, 10);
-    a.href = url;
-    a.download = `linkedin_${keyword || "crawl"}_${ts}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [posts, keyword]);
+  // ── 콘텐츠 아이디어 생성 ──
+  const handleGenerateIdeas = useCallback(async (origIdx) => {
+    const post     = posts[origIdx];
+    const analysis = analysisMap[origIdx]?.data;
+    if (!analysis) return;
+    const brand    = loadBrand();
+    const brandInfo = brand.name
+      ? `브랜드: ${brand.name} / 타겟: ${brand.target || "일반"} / 톤앤매너: ${brand.tone || "자유"}`
+      : "브랜드 정보 없음 (일반 마케터 관점)";
 
-  // Enter 키로 수집 시작
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Enter' && keyword.trim()) {
-      window.postMessage({ type: 'EDEN_START_LINKEDIN_CRAWL', keyword: keyword.trim(), count }, '*');
+    setIdeasMap(prev => ({ ...prev, [origIdx]: { loading: true, data: null, error: null } }));
+
+    try {
+      const res = await callGemini(
+        [{ role: "user", content:
+`다음 바이럴 분석을 바탕으로 LinkedIn용 콘텐츠 아이디어 5개를 생성해주세요.
+
+원본 게시물: ${post.content}
+바이럴 요인: ${JSON.stringify(analysis.viral_factors)}
+핵심 키워드: ${analysis.keywords?.join(", ")}
+${brandInfo}
+
+JSON 배열 형식으로만 반환:
+[
+  {
+    "title": "아이디어 제목 (20자 내외)",
+    "hook": "첫 문장 후킹 멘트 (실제로 쓸 수 있는 LinkedIn 게시물 형식)",
+    "summary": "아이디어 설명 1~2문장",
+    "keywords": ["키워드1", "키워드2"],
+    "why": "이 아이디어가 LinkedIn에서 확산될 이유"
+  }
+]` }],
+        "당신은 LinkedIn 콘텐츠 기획 전문가입니다. B2B, 전문가 네트워킹, 커리어 관점에서 아이디어를 제안하세요. JSON 형식으로만 응답하세요."
+      );
+      const data = parseJSON(res);
+      if (!Array.isArray(data)) throw new Error("아이디어 파싱 실패");
+      setIdeasMap(prev => ({ ...prev, [origIdx]: { loading: false, data, error: null } }));
+    } catch (e) {
+      setIdeasMap(prev => ({ ...prev, [origIdx]: { loading: false, data: null, error: e.message || "아이디어 생성 실패" } }));
     }
-  }, [keyword, count]);
+  }, [posts, analysisMap]);
+
+  // ── 정렬 + 필터 ──
+  const SORT_OPTIONS = [
+    { key: "rank",     label: "순서" },
+    { key: "likes",    label: "좋아요" },
+    { key: "comments", label: "댓글" },
+    { key: "shares",   label: "공유" },
+    { key: "views",    label: "조회수" },
+  ];
+  const sortField = sortBy === "latest" ? "rank" : sortBy;
+  const uniqueKeywords = parsedKeywords.length > 0
+    ? parsedKeywords
+    : [...new Set(posts.map(p => p.keyword).filter(Boolean))];
+  const sortedPosts = [...posts]
+    .filter(p => (p[sortField] || 0) >= filterMin)
+    .filter(p => keywordFilter === null || p.keyword === keywordFilter)
+    .sort((a, b) => sortField === "rank" ? a.rank - b.rank : (b[sortField] || 0) - (a[sortField] || 0))
+    .map((p, i) => ({ ...p, origIdx: posts.indexOf(p), displayRank: i + 1 }));
+
+  const brand    = loadBrand();
+  const hasBrand = brand.name || brand.target || brand.tone;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
 
-      {/* ── 컨트롤 영역 ── */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
-        {/* 키워드 입력 */}
-        <div className="flex-1">
-          <label className="block text-xs font-medium text-gray-500 mb-1">
-            검색 키워드
-            <span className="ml-1 text-gray-400 font-normal">예: AI마케팅:20, 스타트업:15</span>
-          </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
-              </svg>
-            </div>
-            <input
-              type="text"
-              value={keyword}
-              onChange={e => setKeyword(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="키워드 입력 (복수 시 쉼표 구분, 키워드:개수)"
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all shadow-sm"
-            />
+      {/* ── 상단 컨트롤 ── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+            </svg>
           </div>
+          <input
+            type="text"
+            value={keyword}
+            onChange={e => setKeyword(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && keyword.trim() && window.postMessage({ type: 'EDEN_START_LINKEDIN_CRAWL', keyword: buildKeywordString(), count: totalCount }, '*')}
+            placeholder="키워드 입력 (예: AI마케팅, 스타트업)"
+            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 shadow-sm"
+          />
         </div>
 
-        {/* 개수 선택 */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">개수</label>
-          <select
-            value={count}
-            onChange={e => setCount(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-blue-500 shadow-sm bg-white"
-          >
-            {[10, 20, 30, 50].map(n => <option key={n} value={n}>{n}개</option>)}
-          </select>
-        </div>
+        {/* 키워드별 개수 설정 */}
+        {parsedKeywords.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {parsedKeywords.map(kw => (
+              <div key={kw} className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                <span className="text-xs text-blue-700 font-medium max-w-[80px] truncate">{kw}</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={100}
+                  value={keywordCounts[kw] ?? 20}
+                  onChange={e => setKeywordCounts(prev => ({
+                    ...prev,
+                    [kw]: Math.min(100, Math.max(5, parseInt(e.target.value) || 20))
+                  }))}
+                  className="w-12 px-1 py-0.5 border border-blue-300 rounded text-xs text-center font-medium text-blue-800 focus:outline-none focus:border-blue-500 bg-white"
+                  title={`"${kw}" 수집 개수 (5~100)`}
+                />
+                <span className="text-[10px] text-blue-500">개</span>
+              </div>
+            ))}
+            {parsedKeywords.length > 1 && (
+              <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+                <span className="text-[10px] text-gray-500">합계</span>
+                <span className="text-xs font-bold text-gray-700">{totalCount}</span>
+                <span className="text-[10px] text-gray-500">개</span>
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* 수집 버튼 */}
-        <LinkedInCrawlButton keyword={keyword} count={count} />
+        <ExtensionLinkedInCrawlButton keyword={buildKeywordString()} count={totalCount} />
+
+        {/* 브랜드 설정 */}
+        <button
+          onClick={() => setShowBrandModal(true)}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all ${
+            hasBrand
+              ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+          }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          {hasBrand ? `브랜드: ${brand.name || "설정됨"}` : "브랜드 설정"}
+        </button>
       </div>
 
-      {/* ── 안내 배너 ── */}
-      <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0">
-          <circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>
-        </svg>
-        <span>
-          Eden Crawl 확장 프로그램이 필요합니다. LinkedIn에 로그인된 상태에서 수집하세요.
-          검색어를 <strong>영문</strong>으로 입력하면 더 많은 결과를 얻을 수 있습니다.
-        </span>
-      </div>
-
-      {/* ── 빈 상태 ── */}
+      {/* ── 빈 상태 안내 ── */}
       {posts.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-          <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="currentColor" className="mb-3 text-gray-200">
-            <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/>
-          </svg>
-          <p className="text-sm font-medium text-gray-500 mb-1">LinkedIn 게시물이 없습니다</p>
-          <p className="text-xs text-gray-400">키워드를 입력하고 수집 버튼을 클릭하세요</p>
+          <div className="w-14 h-14 mb-4 rounded-xl bg-[#0077B5] flex items-center justify-center">
+            <span className="text-white text-2xl font-bold leading-none">in</span>
+          </div>
+          <p className="text-sm font-medium text-gray-500 mb-1">Eden Crawl 확장 프로그램으로 LinkedIn 게시물을 수집합니다</p>
+          <p className="text-xs text-gray-400 text-center max-w-xs mt-1">
+            키워드를 입력하고 수집 버튼을 클릭하면<br />
+            확장 프로그램이 LinkedIn에서 실제 게시물을 가져옵니다
+          </p>
+          <div className="mt-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700 text-center">
+            <strong>LinkedIn 로그인 필수</strong><br />
+            Chrome에서 linkedin.com에 미리 로그인된 상태여야 합니다
+          </div>
         </div>
       )}
 
-      {/* ── 결과 테이블 ── */}
+      {/* ── 게시물 목록 ── */}
       {posts.length > 0 && (
-        <>
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              총 <span className="text-blue-700 font-semibold">{posts.length}</span>개 게시물
-              {keyword && <span className="ml-1 text-gray-400">— "{keyword}"</span>}
-            </p>
-            <button
-              onClick={handleDownloadCSV}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
-              </svg>
-              CSV 다운로드
-            </button>
+        <div className="space-y-4">
+
+          {/* 키워드 필터 탭 */}
+          {uniqueKeywords.length > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => setKeywordFilter(null)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  keywordFilter === null
+                    ? "bg-[#0077B5] text-white shadow-sm"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                전체 ({posts.length})
+              </button>
+              {uniqueKeywords.map(kw => (
+                <button
+                  key={kw}
+                  onClick={() => setKeywordFilter(kw)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    keywordFilter === kw
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  }`}
+                >
+                  {kw} ({posts.filter(p => p.keyword === kw).length})
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 필터 + 정렬 바 */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500 flex-shrink-0">
+                <span className="text-[#0077B5] font-semibold">{sortedPosts.length}</span>
+                <span className="text-gray-400">/{posts.length}개</span>
+                {keywordFilter
+                  ? <>{" "}— <span className="text-blue-600 font-medium">"{keywordFilter}"</span></>
+                  : <>{" "}— <span className="text-gray-400">"{keyword}"</span></>
+                }
+                <span className="ml-2 text-gray-400">· 행 클릭 시 원문 펼침</span>
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-400 flex-shrink-0">최솟값</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={filterMin}
+                  onChange={e => setFilterMin(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-xs text-center focus:outline-none focus:border-blue-400"
+                  placeholder="0"
+                />
+                {filterMin > 0 && (
+                  <button onClick={() => setFilterMin(0)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-400 mr-1 flex-shrink-0">정렬</span>
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 flex-wrap">
+                {SORT_OPTIONS.map(s => (
+                  <button
+                    key={s.key}
+                    onClick={() => setSortBy(s.key)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                      sortField === s.key
+                        ? "bg-white text-[#0077B5] shadow-sm font-semibold"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10">
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left px-4 py-3 text-gray-500 font-medium w-10">#</th>
-                    <th className="text-left px-4 py-3 text-gray-500 font-medium w-32">작성자</th>
-                    <th className="text-left px-4 py-3 text-gray-500 font-medium">내용</th>
-                    <th className="text-center px-4 py-3 text-gray-500 font-medium w-28">반응 / 댓글</th>
-                    <th className="text-center px-4 py-3 text-gray-500 font-medium w-20">날짜</th>
-                    <th className="text-center px-4 py-3 text-gray-500 font-medium w-14">링크</th>
-                    <th className="text-center px-4 py-3 text-gray-500 font-medium w-20">분석</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {posts.map((post, idx) => (
-                    <>
-                      {/* 본문 행 */}
-                      <tr
-                        key={`row-${idx}`}
-                        onClick={() => toggleExpand(idx)}
-                        className={`border-b border-gray-100 cursor-pointer transition-all ${
-                          expandedRows.has(idx) ? "bg-blue-50 border-blue-200" : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <td className="px-4 py-3 text-gray-400 font-mono text-xs">{post.rank}</td>
-                        <td className="px-4 py-3">
-                          {post.profileUrl ? (
-                            <a
-                              href={post.profileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              className="text-blue-700 hover:underline text-xs font-medium truncate block max-w-[120px]"
-                            >
-                              {post.author}
-                            </a>
-                          ) : (
-                            <span className="text-gray-700 text-xs font-medium truncate block max-w-[120px]">{post.author}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs truncate block max-w-sm ${expandedRows.has(idx) ? "text-blue-700 font-medium" : "text-gray-700"}`}>
-                            {post.content?.slice(0, 90)}{(post.content?.length || 0) > 90 ? "…" : ""}
+          {/* 카드 목록 */}
+          <div className="space-y-2">
+            {sortedPosts.map(({ origIdx, displayRank, ...post }) => {
+              const isExpanded = expandedRows.has(origIdx);
+              const aState     = analysisMap[origIdx];
+              const iState     = ideasMap[origIdx];
+              const imgState   = post.postUrl ? imageMap[post.postUrl] : null;
+
+              return (
+                <div
+                  key={origIdx}
+                  className={`bg-white border rounded-xl overflow-hidden shadow-sm transition-all ${
+                    isExpanded ? "border-blue-300" : "border-gray-200"
+                  }`}
+                >
+                  {/* ── 요약 행 ── */}
+                  <div
+                    onClick={() => toggleExpand(origIdx)}
+                    className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-all ${
+                      isExpanded ? "bg-blue-50" : "hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className="flex-shrink-0 w-6 text-center text-xs font-mono text-gray-400 mt-0.5">
+                      {displayRank}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs font-semibold ${isExpanded ? "text-[#0077B5]" : "text-gray-500"}`}>
+                          {post.author}
+                        </span>
+                        {post.keyword && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700 whitespace-nowrap">
+                            {post.keyword}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1 text-xs text-gray-500">
-                            <span className="font-medium text-gray-700" title="반응수">{(post.likes || 0).toLocaleString()}</span>
-                            <span className="text-gray-300">·</span>
-                            <span title="댓글수">{(post.comments || 0).toLocaleString()}</span>
+                        )}
+                        {aState?.data?.tone && <ToneBadge tone={aState.data.tone} />}
+                        <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{post.time}</span>
+                      </div>
+                      <p className={`text-sm text-gray-800 ${isExpanded ? "" : "line-clamp-2"}`}>
+                        {post.content}
+                      </p>
+                    </div>
+                    <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-right">
+                        {[
+                          { key: "likes",    label: "좋아요" },
+                          { key: "comments", label: "댓글"   },
+                          { key: "shares",   label: "공유"   },
+                          { key: "views",    label: "조회수" },
+                        ].map(({ key, label }) => (
+                          <div key={label} className="flex flex-col items-end">
+                            <span className={`text-xs font-semibold ${sortField === key ? "text-[#0077B5] font-bold" : "text-gray-700"}`}>
+                              {Number(post[key] || 0).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-gray-400">{label}</span>
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-center text-xs text-gray-400">{post.time || "-"}</td>
-                        <td className="px-4 py-3 text-center">
-                          {post.postUrl ? (
+                        ))}
+                      </div>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" strokeWidth="2"
+                        className={`text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      >
+                        <path d="m6 9 6 6 6-6"/>
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* ── 펼쳐진 영역 ── */}
+                  {isExpanded && (
+                    <div className="border-t border-blue-100">
+
+                      {/* 원문 */}
+                      <div className="px-5 py-4 bg-white">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-gray-500">원문</p>
+                          {post.postUrl && (
                             <a
                               href={post.postUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={e => e.stopPropagation()}
-                              className="text-blue-600 hover:text-blue-700 text-xs underline"
-                            >원문</a>
-                          ) : <span className="text-gray-300 text-xs">-</span>}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={e => { e.stopPropagation(); handleAnalyze(post, idx); }}
-                            disabled={analyzingIdx !== null}
-                            className="px-2 py-1 text-[11px] font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200 disabled:opacity-50 transition-all"
-                          >
-                            {analyzingIdx === idx ? "분석 중..." : "AI 분석"}
-                          </button>
-                        </td>
-                      </tr>
+                              className="flex items-center gap-1 text-xs text-[#0077B5] hover:text-[#006097] underline"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                <polyline points="15 3 21 3 21 9"/>
+                                <line x1="10" y1="14" x2="21" y2="3"/>
+                              </svg>
+                              LinkedIn에서 보기
+                            </a>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
+                          {post.content}
+                        </p>
 
-                      {/* 펼침 행 — 전문 + 분석 결과 */}
-                      {expandedRows.has(idx) && (
-                        <tr key={`expand-${idx}`} className="bg-blue-50 border-b border-blue-100">
-                          <td colSpan={7} className="px-5 py-3">
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                              <span className="text-xs font-medium text-blue-700">{post.author}의 게시물 전문</span>
+                        {/* 이미지 표시 */}
+                        {imgState?.urls?.length > 0 && (
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            {imgState.urls.map((url, i) => (
+                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+                                <img
+                                  src={url}
+                                  alt={`게시물 이미지 ${i + 1}`}
+                                  className="w-full rounded-lg border border-gray-200 object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                  style={{ maxHeight: '240px' }}
+                                  onError={e => { e.target.style.display = 'none'; }}
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                        {imgState?.error && (
+                          <p className="mt-2 text-xs text-gray-400">{imgState.error}</p>
+                        )}
+                      </div>
+
+                      {/* 분석 버튼 영역 */}
+                      <div className="px-5 pb-4 flex items-center gap-2 flex-wrap">
+                        {!aState && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleAnalyze(origIdx); }}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-[#0077B5] hover:bg-[#006097] text-white text-xs font-semibold rounded-lg transition-all shadow-sm"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                            </svg>
+                            AI 바이럴 분석
+                            {imgState?.urls?.length > 0 && (
+                              <span className="flex items-center gap-0.5 ml-0.5 px-1.5 py-0.5 bg-blue-600 rounded text-[10px] font-medium">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                                이미지
+                              </span>
+                            )}
+                          </button>
+                        )}
+
+                        {/* 이미지 가져오기 */}
+                        {post.postUrl && (
+                          imgState?.loading ? (
+                            <div className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-500 text-xs font-medium rounded-lg border border-blue-200">
+                              <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                              </svg>
+                              이미지 가져오는 중...
                             </div>
-                            <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
-                              {post.content}
-                            </p>
-                            <AnalysisCard analysis={analysisMap[idx]} />
-                          </td>
-                        </tr>
+                          ) : (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleFetchImages(post.postUrl); }}
+                              className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium rounded-lg border border-blue-200 transition-all"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                              </svg>
+                              {imgState?.urls?.length > 0 ? `이미지 ${imgState.urls.length}장 ↺` : '이미지 가져오기'}
+                            </button>
+                          )
+                        )}
+
+                        {aState?.loading && (
+                          <div className="flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-[#0077B5] text-xs font-semibold rounded-lg">
+                            <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                            분석 중...
+                          </div>
+                        )}
+
+                        {aState?.data && !aState.loading && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleAnalyze(origIdx); }}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-[#0077B5] text-xs font-medium rounded-lg border border-blue-200 hover:bg-blue-100 transition-all"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                              <path d="M21 3v5h-5"/>
+                            </svg>
+                            재분석
+                          </button>
+                        )}
+
+                        {aState?.error && !aState.loading && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleAnalyze(origIdx); }}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-red-50 text-red-500 text-xs font-medium rounded-lg border border-red-200 hover:bg-red-100 transition-all"
+                          >
+                            분석 실패 — 재시도
+                          </button>
+                        )}
+                      </div>
+
+                      {/* AI 분석 결과 */}
+                      {aState?.data && !aState.loading && (
+                        <div className="mx-5 mb-5 bg-blue-50 rounded-xl p-4 space-y-3 border border-blue-100">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="w-2 h-2 rounded-full bg-[#0077B5]" />
+                            <span className="text-xs font-bold text-blue-800">AI 바이럴 분석 결과</span>
+                          </div>
+
+                          <div className="bg-white rounded-lg px-3 py-2 border border-blue-100">
+                            <p className="text-xs text-blue-400 font-medium mb-0.5">요약</p>
+                            <p className="text-sm text-blue-900 font-medium">{aState.data.summary}</p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1.5">핵심 키워드</p>
+                              <div className="flex flex-wrap gap-1">
+                                {aState.data.keywords?.map((k, i) => (
+                                  <span key={i} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">#{k}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1.5">톤앤매너</p>
+                              {aState.data.tone && <ToneBadge tone={aState.data.tone} />}
+                            </div>
+                          </div>
+
+                          {aState.data.hook && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">후킹 방식</p>
+                              <p className="text-xs text-gray-700 bg-white rounded-lg px-3 py-2 border border-blue-100">
+                                {aState.data.hook}
+                              </p>
+                            </div>
+                          )}
+
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 mb-1.5">바이럴 성공 요인</p>
+                            <div className="space-y-1.5">
+                              {aState.data.viral_factors?.map((f, i) => (
+                                <div key={i} className="flex gap-2 bg-white rounded-lg px-3 py-2 border border-blue-100">
+                                  <span className="flex-shrink-0 w-4 h-4 rounded-full bg-[#0077B5] text-white flex items-center justify-center text-[10px] font-bold mt-0.5">{i + 1}</span>
+                                  <div>
+                                    <p className="text-xs font-semibold text-gray-700">{f.factor}</p>
+                                    <p className="text-xs text-gray-500">{f.desc}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {aState.data.meme_elements?.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1.5">밈 / 문화적 요소</p>
+                              <div className="flex flex-wrap gap-1">
+                                {aState.data.meme_elements.map((m, i) => (
+                                  <span key={i} className="px-2 py-0.5 bg-yellow-50 text-yellow-700 text-xs rounded-full font-medium">{m}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 아이디어 생성 버튼 */}
+                          <div className="pt-1">
+                            {!iState && (
+                              <button
+                                onClick={e => { e.stopPropagation(); handleGenerateIdeas(origIdx); }}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0077B5] hover:bg-[#006097] text-white text-sm font-semibold rounded-xl shadow-md transition-all"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                                </svg>
+                                콘텐츠 아이디어 생성하기
+                                {hasBrand && (
+                                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
+                                    {brand.name} 맞춤
+                                  </span>
+                                )}
+                              </button>
+                            )}
+                            {iState?.loading && (
+                              <div className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-100 text-[#0077B5] text-sm font-semibold rounded-xl">
+                                <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                                아이디어 생성 중...
+                              </div>
+                            )}
+                            {iState?.error && (
+                              <p className="text-xs text-red-500 mt-1">{iState.error}</p>
+                            )}
+                          </div>
+                        </div>
                       )}
-                    </>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+
+                      {/* 아이디어 카드 */}
+                      {iState?.data?.length > 0 && (
+                        <div className="mx-5 mb-4 space-y-2">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            <span className="text-xs font-bold text-gray-700">콘텐츠 아이디어 {iState.data.length}개</span>
+                          </div>
+                          {iState.data.map((idea, i) => (
+                            <div key={i} className="bg-white rounded-xl border border-gray-200 p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold text-gray-800">{idea.title}</span>
+                                <div className="flex gap-1">
+                                  {idea.keywords?.map((kw, j) => (
+                                    <span key={j} className="px-2 py-0.5 text-[10px] bg-blue-50 text-blue-500 rounded-full">
+                                      #{kw}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="bg-gray-50 rounded-lg px-3 py-2 mb-2 border border-gray-100">
+                                <p className="text-[11px] text-gray-400 mb-1">후킹 문장</p>
+                                <p className="text-sm text-gray-800 font-medium">&ldquo;{idea.hook}&rdquo;</p>
+                              </div>
+                              <p className="text-xs text-gray-600 mb-1.5">{idea.summary}</p>
+                              <p className="text-[11px] text-gray-400 italic">{idea.why}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </>
+        </div>
       )}
+
+      {showBrandModal && <BrandModal onClose={() => setShowBrandModal(false)} />}
     </div>
   );
 }
