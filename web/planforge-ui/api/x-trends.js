@@ -51,78 +51,50 @@ export default async function handler(req, res) {
         : r.continue();
     });
 
-    await page.goto("https://trends24.in/south-korea/", {
+    await page.goto("https://trends24.in/korea/", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
 
-    // 트렌드 카드 로딩 대기
+    // 트렌드 링크 로딩 대기 (실제 DOM 구조 확인됨: a.trend-link)
     await page
-      .waitForSelector(".trend-card, ol.trend-list, #trend-list", { timeout: 15000 })
+      .waitForSelector("a.trend-link", { timeout: 15000 })
       .catch(() => {});
 
-    // ── DOM 파싱 ──
+    // ── DOM 파싱 (확인된 구조: ol > li > span.trend-name > a.trend-link) ──
     const rawTrends = await page.evaluate(() => {
       const results = [];
 
-      // 가장 최신 트렌드 카드의 <ol> 목록을 먼저 시도
-      const firstCard = document.querySelector(".trend-card");
-      const trendOl = firstCard
-        ? firstCard.querySelector("ol")
-        : document.querySelector("ol.trend-list, ol#trend-list, ol");
+      const ol = document.querySelector("ol");
+      if (!ol) return results;
 
-      if (trendOl) {
-        const items = trendOl.querySelectorAll("li");
-        items.forEach((li, idx) => {
-          const a = li.querySelector("a");
-          if (!a) return;
+      ol.querySelectorAll("li").forEach((li, idx) => {
+        const a = li.querySelector("a.trend-link");
+        if (!a) return;
 
-          const name = a.textContent.trim();
-          if (!name) return;
+        const name = a.textContent.trim();
+        if (!name) return;
 
-          // 트윗 수 (있을 경우)
-          const countEl = li.querySelector(
-            ".tweet-count, .trend-tweet-count, span[class*='count'], small"
-          );
-          let tweetCount = 0;
-          if (countEl) {
-            const raw = countEl.textContent.replace(/[^0-9.KMkm]/g, "").trim();
-            if (raw) {
-              const num = parseFloat(raw);
-              if (raw.toUpperCase().includes("M")) tweetCount = Math.round(num * 1_000_000);
-              else if (raw.toUpperCase().includes("K")) tweetCount = Math.round(num * 1_000);
-              else tweetCount = Math.round(num) || 0;
-            }
+        // 트윗 수 (data-count 속성 우선, 없으면 텍스트)
+        const countEl = li.querySelector(".tweet-count");
+        let tweetCount = 0;
+        if (countEl) {
+          const raw = (countEl.getAttribute("data-count") || countEl.textContent || "").trim();
+          if (raw) {
+            const num = parseFloat(raw.replace(/[^0-9.]/g, "") || "0");
+            const upper = raw.toUpperCase();
+            if (upper.includes("M")) tweetCount = Math.round(num * 1_000_000);
+            else if (upper.includes("K")) tweetCount = Math.round(num * 1_000);
+            else tweetCount = Math.round(num) || 0;
           }
+        }
 
-          // 원문 링크 (trends24 링크 → x.com 검색으로 변환)
-          const href = a.getAttribute("href") || "";
-          const keyword = href.split("/").filter(Boolean).pop() || name;
-          const sourceUrl = `https://x.com/search?q=${encodeURIComponent(keyword)}&src=trend_click`;
+        // twitter.com → x.com 링크 변환
+        const href = a.getAttribute("href") || "";
+        const sourceUrl = href.replace("https://twitter.com/", "https://x.com/");
 
-          results.push({ rank: idx + 1, name, tweetCount, sourceUrl });
-        });
-      }
-
-      // 카드 방식이 아니면 전체 페이지에서 트렌드 링크 수집
-      if (results.length === 0) {
-        const allLinks = document.querySelectorAll("a[href*='/trend/']");
-        const seen = new Set();
-        let rank = 1;
-        allLinks.forEach((a) => {
-          const name = a.textContent.trim();
-          if (!name || seen.has(name)) return;
-          seen.add(name);
-          const href = a.getAttribute("href") || "";
-          const kw = href.split("/").filter(Boolean).pop() || name;
-          results.push({
-            rank: rank++,
-            name,
-            tweetCount: 0,
-            sourceUrl: `https://x.com/search?q=${encodeURIComponent(kw)}&src=trend_click`,
-          });
-        });
-      }
+        results.push({ rank: idx + 1, name, tweetCount, sourceUrl });
+      });
 
       return results;
     });

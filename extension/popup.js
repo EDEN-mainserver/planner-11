@@ -1,4 +1,4 @@
-// ── Eden Crawl — popup.js ──
+// ── Eden Crawl v2 — popup.js ──
 
 const STORAGE = {
   VERCEL_URL: 'eden_vercel_url',
@@ -6,17 +6,17 @@ const STORAGE = {
 };
 
 // ── DOM 참조 ──
-const keywordInput   = document.getElementById('keyword');
-const crawlBtn       = document.getElementById('crawl-btn');
-const statusEl       = document.getElementById('status');
-const resultsEl      = document.getElementById('results');
-const settingsToggle = document.getElementById('settings-toggle');
-const settingsPanel  = document.getElementById('settings-panel');
-const vercelUrlInput = document.getElementById('vercel-url');
-const geminiKeyInput = document.getElementById('gemini-key');
+const keywordInput    = document.getElementById('keyword');
+const countInput      = document.getElementById('count-input');
+const crawlBtn        = document.getElementById('crawl-btn');
+const statusEl        = document.getElementById('status');
+const resultsEl       = document.getElementById('results');
+const settingsToggle  = document.getElementById('settings-toggle');
+const settingsPanel   = document.getElementById('settings-panel');
+const vercelUrlInput  = document.getElementById('vercel-url');
+const geminiKeyInput  = document.getElementById('gemini-key');
 const saveSettingsBtn = document.getElementById('save-settings');
 
-// ── 저장된 게시물 (AI 분석용) ──
 let _posts = [];
 
 // ── 설정 로드/저장 ──
@@ -63,13 +63,57 @@ function waitForTabLoad(tabId) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ── Threads DOM 스크래핑 함수 (탭 내 실행) ──
+// ──────────────────────────────────────────────────────────────
+// 1회 스크래핑 함수 (탭 내 실행) — 팝업 루프에서 반복 호출
 // ⚠️ 외부 변수 참조 불가 — 완전히 독립적이어야 함
-function scrapeThreadsPosts() {
-  const containers = document.querySelectorAll('div[data-pressable-container="true"]');
-  const posts = [];
+// Python 크롤러 로직 이식:
+//   - parseCount: 1.4천→1400, 2.3만→23000 한국식 단위 파싱
+//   - seenUrlsArray: 팝업에서 관리한 중복 URL 목록 전달
+//   - svg + span 셀렉터: 좋아요/댓글/리포스트 정확히 추출
+// ──────────────────────────────────────────────────────────────
+function scrapeOnce(seenUrlsArray) {
+  // ── 한국식 숫자 파싱 ──
+  function parseCount(text) {
+    if (!text) return 0;
+    const t = text.trim().replace(/,/g, '');
+    const m = t.match(/([\d.]+)(억|만|천)?/);
+    if (!m) return 0;
+    const n = parseFloat(m[1]);
+    if (isNaN(n)) return 0;
+    if (m[2] === '억') return Math.round(n * 100_000_000);
+    if (m[2] === '만') return Math.round(n * 10_000);
+    if (m[2] === '천') return Math.round(n * 1_000);
+    return Math.round(n);
+  }
 
-  containers.forEach((el, idx) => {
+  // ── svg[aria-label] 기반 카운트 추출 ──
+  function getCount(el, label) {
+    const svg = el.querySelector(`svg[aria-label="${label}"]`);
+    if (!svg) return 0;
+    const sibling = svg.nextElementSibling;
+    if (sibling) return parseCount(sibling.textContent);
+    const btn = svg.closest('div[role="button"], button');
+    if (btn) {
+      const span = btn.querySelector('span');
+      if (span) return parseCount(span.textContent);
+    }
+    let node = svg.parentElement;
+    for (let i = 0; i < 4 && node && node !== el; i++) {
+      const span = node.querySelector('span.x1o0tod') || node.querySelector('span[class]');
+      if (span) {
+        const n = parseInt(span.textContent.replace(/[^0-9]/g, ''));
+        if (!isNaN(n)) return n;
+      }
+      node = node.parentElement;
+    }
+    return 0;
+  }
+
+  const seenSet   = new Set(seenUrlsArray);
+  const newPosts  = [];
+  const containers = document.querySelectorAll('div[data-pressable-container="true"]');
+
+  containers.forEach((el) => {
     try {
       const authorEl = el.querySelector('a[href^="/@"]');
       if (!authorEl) return;
@@ -80,7 +124,9 @@ function scrapeThreadsPosts() {
         ? 'https://www.threads.com' + postLinkEl.getAttribute('href')
         : '';
 
-      const timeEl = el.querySelector('time[datetime]');
+      if (postUrl && seenSet.has(postUrl)) return;
+
+      const timeEl   = el.querySelector('time[datetime]');
       const datetime = timeEl?.getAttribute('datetime') || '';
       const timeText = timeEl?.textContent?.trim() || '';
 
@@ -92,46 +138,32 @@ function scrapeThreadsPosts() {
       const content = [...paragraphs].join('\n');
       if (!content) return;
 
-      const getCount = (label) => {
-        const svg = el.querySelector(`svg[aria-label="${label}"]`);
-        if (!svg) return 0;
-        let node = svg.parentElement;
-        for (let i = 0; i < 4 && node && node !== el; i++) {
-          const span = node.querySelector('span.x1o0tod') || node.querySelector('span[class]');
-          if (span) {
-            const n = parseInt(span.textContent.replace(/[^0-9]/g, ''));
-            if (!isNaN(n)) return n;
-          }
-          node = node.parentElement;
-        }
-        return 0;
-      };
-
-      posts.push({
-        rank: idx + 1,
-        author: '@' + author.replace(/^@/, ''),
+      newPosts.push({
+        author:   '@' + author.replace(/^@/, ''),
         content,
         postUrl,
         datetime,
-        time: timeText || datetime.slice(0, 10),
-        likes:    getCount('좋아요'),
-        comments: getCount('답글'),
-        shares:   getCount('리포스트'),
+        time:     timeText || datetime.slice(0, 10),
+        likes:    getCount(el, '좋아요'),
+        comments: getCount(el, '답글'),
+        shares:   getCount(el, '리포스트'),
       });
     } catch (_) {}
   });
 
   return {
-    posts,
+    newPosts,
     debug: {
       containerCount: containers.length,
-      pageTitle: document.title,
-      url: location.href,
+      pageTitle:      document.title,
+      url:            location.href,
     },
   };
 }
 
-// ── 메인 크롤 ──
+// ──────────────────────────────────────────────────────────────
+// 메인 크롤 핸들러
+// ──────────────────────────────────────────────────────────────
 crawlBtn.addEventListener('click', handleCrawl);
 keywordInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !crawlBtn.disabled) handleCrawl();
@@ -141,10 +173,15 @@ async function handleCrawl() {
   const keyword = keywordInput.value.trim();
   if (!keyword) return;
 
+  const targetCount = Math.min(
+    Math.max(parseInt(countInput?.value || '30', 10) || 30, 5),
+    100
+  );
+
   crawlBtn.disabled = true;
   _posts = [];
   resultsEl.innerHTML = '';
-  showStatus(`"${keyword}" 검색 탭 열는 중...`, 'info');
+  showStatus(`"${keyword}" 검색 탭 열기 중...`, 'info');
 
   let tab = null;
   try {
@@ -156,64 +193,119 @@ async function handleCrawl() {
     await waitForTabLoad(tab.id);
     showStatus('React 렌더링 대기 중...', 'info');
 
-    // 3. SPA 렌더링 대기 (3초)
+    // 3. SPA 렌더링 대기
     await sleep(3000);
 
-    // 4. 스크롤로 추가 콘텐츠 로드
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => window.scrollBy(0, 2500),
-    });
-    await sleep(2000);
+    // 4. 스크롤 + 수집 루프 (팝업에서 직접 관리 → 실시간 카운트 표시)
+    const allPosts  = [];
+    const seenUrls  = new Set();
+    let noNewCount  = 0;
+    const MAX_NO_NEW  = 8;
+    let lastDebug     = { containerCount: 0, pageTitle: '', url: '' };
+    let loopCount     = 0;
 
-    // 5. DOM 스크래핑
-    showStatus('게시물 파싱 중...', 'info');
-    const [result] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: scrapeThreadsPosts,
+    console.log('[Eden Crawl] 수집 시작:', { keyword, targetCount, tabId: tab.id });
+    showStatus(`수집 중... 0 / ${targetCount}개`, 'info');
+
+    while (allPosts.length < targetCount && noNewCount < MAX_NO_NEW) {
+      loopCount++;
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func:   scrapeOnce,
+        args:   [Array.from(seenUrls)],
+      });
+
+      const { newPosts, debug } = result.result;
+      lastDebug = debug;
+
+      console.log(`[Eden Crawl] 루프 ${loopCount}회:`, {
+        url:            debug.url,
+        pageTitle:      debug.pageTitle,
+        containerCount: debug.containerCount,
+        newPostsFound:  newPosts.length,
+        totalSoFar:     allPosts.length,
+        noNewCount,
+      });
+
+      // 로그인 벽 감지
+      if (debug.url.includes('/login') || debug.url.includes('accounts/login')) {
+        console.warn('[Eden Crawl] 로그인 페이지 감지 → 중단');
+        break;
+      }
+
+      if (newPosts.length > 0) {
+        newPosts.forEach((p) => {
+          if (allPosts.length >= targetCount) return;
+          allPosts.push({ ...p, rank: allPosts.length + 1 });
+          if (p.postUrl) seenUrls.add(p.postUrl);
+        });
+        noNewCount = 0;
+        showStatus(`수집 중... ${allPosts.length} / ${targetCount}개`, 'info');
+      } else {
+        noNewCount++;
+        showStatus(`수집 중... ${allPosts.length} / ${targetCount}개 (새 게시물 대기 ${noNewCount}/${MAX_NO_NEW})`, 'info');
+      }
+
+      if (allPosts.length < targetCount) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func:   () => window.scrollBy(0, 900),
+        });
+        await sleep(1800);
+      }
+    }
+
+    console.log('[Eden Crawl] 루프 종료:', {
+      totalCollected: allPosts.length,
+      loopCount,
+      lastUrl:        lastDebug.url,
+      containerCount: lastDebug.containerCount,
     });
 
-    // 6. 탭 닫기
+    // 5. 탭 닫기
     await chrome.tabs.remove(tab.id);
     tab = null;
 
-    const { posts, debug } = result.result;
+    const posts = allPosts;
+    const debug = lastDebug;
 
     if (posts.length === 0) {
       if (debug.url.includes('/login') || debug.url.includes('accounts/login')) {
         showStatus('Threads 로그인이 필요합니다. 브라우저에서 로그인해주세요.', 'warning');
       } else {
         showStatus(
-          `게시물 없음 — 컨테이너 ${debug.containerCount}개 감지. 로그인 후 재시도해주세요.`,
+          `게시물 없음 — 컨테이너 ${debug.containerCount}개 감지. 로그인 후 재시도하세요.`,
           'warning'
         );
       }
-    } else {
-      // chrome.storage에 결과 저장 → 웹앱 content script가 감지해서 자동 전달
-      await chrome.storage.local.set({
-        eden_threads_results: { keyword, posts, timestamp: Date.now() },
-      });
-
-      // 웹앱 탭 열기 또는 포커스
-      const cfg = await chrome.storage.local.get(STORAGE.VERCEL_URL);
-      const vercelUrl = cfg[STORAGE.VERCEL_URL];
-      if (vercelUrl) {
-        const existing = await chrome.tabs.query({ url: `${vercelUrl}/*` });
-        if (existing.length > 0) {
-          // 이미 열려있으면 포커스만
-          await chrome.tabs.update(existing[0].id, { active: true });
-          await chrome.windows.update(existing[0].windowId, { focused: true });
-        } else {
-          // 새 탭으로 열기
-          await chrome.tabs.create({ url: vercelUrl, active: true });
-        }
-        showStatus(`웹앱으로 ${posts.length}개 게시물 전송 완료`, 'success');
-      } else {
-        hideStatus();
-      }
-
-      renderResults(posts, keyword);
+      return;
     }
+
+    // 6. chrome.storage에 저장 → 웹앱 content script가 감지
+    console.log('[Eden Crawl] storage 저장:', { keyword, postCount: posts.length });
+    await chrome.storage.local.set({
+      eden_threads_results: { keyword, posts, timestamp: Date.now() },
+    });
+
+    // 7. 웹앱 탭 열기 또는 포커스
+    const cfg = await chrome.storage.local.get(STORAGE.VERCEL_URL);
+    const vercelUrl = cfg[STORAGE.VERCEL_URL];
+    console.log('[Eden Crawl] Vercel URL 설정값:', vercelUrl || '(없음)');
+    if (vercelUrl) {
+      const existing = await chrome.tabs.query({ url: `${vercelUrl}/*` });
+      console.log('[Eden Crawl] 기존 웹앱 탭:', existing.length, '개');
+      if (existing.length > 0) {
+        await chrome.tabs.update(existing[0].id, { active: true });
+        await chrome.windows.update(existing[0].windowId, { focused: true });
+      } else {
+        await chrome.tabs.create({ url: vercelUrl, active: true });
+      }
+      showStatus(`웹앱으로 ${posts.length}개 게시물 전송 완료`, 'success');
+    } else {
+      hideStatus();
+    }
+
+    renderResults(posts, keyword);
 
   } catch (err) {
     showStatus(`오류: ${err.message}`, 'error');
@@ -229,7 +321,7 @@ function renderResults(posts, keyword) {
 
   resultsEl.innerHTML = `
     <div class="results-header">
-      <strong>${posts.length}</strong>개 게시물 — "${keyword}"
+      <strong>${posts.length}</strong>개 게시물 — "${escHtml(keyword)}"
       &nbsp;·&nbsp; 행 클릭 시 원문 펼침
     </div>
   `;
@@ -263,15 +355,13 @@ function renderResults(posts, keyword) {
     `;
     resultsEl.appendChild(card);
 
-    // 펼치기/접기
     card.querySelector(`#header-${i}`).addEventListener('click', () => {
-      const body = document.getElementById(`body-${i}`);
+      const body   = document.getElementById(`body-${i}`);
       const header = document.getElementById(`header-${i}`);
       const isOpen = body.classList.toggle('open');
       header.classList.toggle('expanded', isOpen);
     });
 
-    // AI 분석
     card.querySelector(`#analyze-${i}`).addEventListener('click', (e) => {
       e.stopPropagation();
       analyzePost(i);
@@ -281,8 +371,8 @@ function renderResults(posts, keyword) {
 
 // ── AI 바이럴 분석 ──
 async function analyzePost(idx) {
-  const post = _posts[idx];
-  const btn    = document.getElementById(`analyze-${idx}`);
+  const post    = _posts[idx];
+  const btn     = document.getElementById(`analyze-${idx}`);
   const resultEl = document.getElementById(`analysis-${idx}`);
 
   btn.disabled = true;
@@ -290,7 +380,7 @@ async function analyzePost(idx) {
   resultEl.innerHTML = '<p class="analysis-loading">Gemini 분석 중...</p>';
 
   try {
-    const data = await chrome.storage.local.get([STORAGE.VERCEL_URL, STORAGE.GEMINI_KEY]);
+    const data      = await chrome.storage.local.get([STORAGE.VERCEL_URL, STORAGE.GEMINI_KEY]);
     const vercelUrl = data[STORAGE.VERCEL_URL];
     const geminiKey = data[STORAGE.GEMINI_KEY];
 
@@ -315,29 +405,27 @@ JSON 형식으로만 반환:
     let text = '';
 
     if (vercelUrl) {
-      // Vercel /api/gemini 경유
       const res = await fetch(`${vercelUrl}/api/gemini`, {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          history: [{ role: 'user', content: prompt }],
+        body:    JSON.stringify({
+          history:      [{ role: 'user', content: prompt }],
           systemPrompt: '당신은 소셜미디어 바이럴 콘텐츠 분석 전문가입니다. JSON 형식으로만 응답하세요.',
         }),
       });
       const json = await res.json();
       text = json.text || '';
     } else if (geminiKey) {
-      // Gemini 직접 호출
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
         {
-          method: 'POST',
+          method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body:    JSON.stringify({
             systemInstruction: {
               parts: [{ text: '당신은 소셜미디어 바이럴 콘텐츠 분석 전문가입니다. JSON 형식으로만 응답하세요.' }],
             },
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            contents:         [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
           }),
         }
@@ -348,7 +436,6 @@ JSON 형식으로만 반환:
       throw new Error('설정(⚙)에서 Vercel URL 또는 Gemini API Key를 입력해주세요.');
     }
 
-    // JSON 파싱
     const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/);
     if (!match) throw new Error('분석 결과 파싱 실패');
     const analysis = JSON.parse(match[1] || match[0]);

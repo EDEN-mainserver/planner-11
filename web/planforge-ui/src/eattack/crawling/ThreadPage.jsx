@@ -189,6 +189,7 @@ export default function ThreadPage() {
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [analysisMap, setAnalysisMap]   = useState({});
   const [ideasMap, setIdeasMap]         = useState({});
+  const [filterMin, setFilterMin]       = useState(0);
 
   const [showBrandModal,  setShowBrandModal]  = useState(false);
   const [showCookieModal, setShowCookieModal] = useState(false);
@@ -369,9 +370,18 @@ JSON 배열 형식으로만 반환:
     }
   }, [posts, analysisMap]);
 
-  // ── 정렬 ──
+  // ── 정렬 + 필터 ──
+  const SORT_OPTIONS = [
+    { key: "rank",     label: "순서" },
+    { key: "likes",    label: "좋아요" },
+    { key: "comments", label: "댓글" },
+    { key: "shares",   label: "리포스트" },
+    { key: "views",    label: "조회수" },
+  ];
+  const sortField = sortBy === "latest" ? "rank" : sortBy;
   const sortedPosts = [...posts]
-    .sort((a, b) => sortBy === "likes" ? b.likes - a.likes : a.rank - b.rank)
+    .filter(p => (p[sortField] || 0) >= filterMin)
+    .sort((a, b) => sortField === "rank" ? a.rank - b.rank : (b[sortField] || 0) - (a[sortField] || 0))
     .map((p, i) => ({ ...p, origIdx: posts.indexOf(p), displayRank: i + 1 }));
 
   const brand    = loadBrand();
@@ -514,25 +524,48 @@ JSON 배열 형식으로만 반환:
       {!collectLoading && posts.length > 0 && (
         <div className="space-y-4">
 
-          {/* 헤더 */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              <span className="text-purple-600 font-semibold">{posts.length}</span>개 게시물 —{" "}
-              <span className="text-gray-400">"{keyword}"</span>
-              <span className="ml-2 text-gray-400">· 행 클릭 시 원문 펼침</span>
-            </p>
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-              {[{ key: "likes", label: "좋아요 순" }, { key: "latest", label: "순서 순" }].map(s => (
-                <button
-                  key={s.key}
-                  onClick={() => setSortBy(s.key)}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    sortBy === s.key ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
+          {/* ── 필터 + 정렬 바 ── */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
+            {/* 상단: 건수 + 필터 최솟값 */}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500 flex-shrink-0">
+                <span className="text-purple-600 font-semibold">{sortedPosts.length}</span>
+                <span className="text-gray-400">/{posts.length}개</span>
+                {" "}— <span className="text-gray-400">"{keyword}"</span>
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-400 flex-shrink-0">최솟값</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={filterMin}
+                  onChange={e => setFilterMin(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-xs text-center focus:outline-none focus:border-purple-400"
+                  placeholder="0"
+                />
+                {filterMin > 0 && (
+                  <button onClick={() => setFilterMin(0)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                )}
+              </div>
+            </div>
+            {/* 하단: 정렬 탭 */}
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-gray-400 mr-1 flex-shrink-0">정렬</span>
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 flex-wrap">
+                {SORT_OPTIONS.map(s => (
+                  <button
+                    key={s.key}
+                    onClick={() => setSortBy(s.key)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                      sortField === s.key
+                        ? "bg-white text-purple-700 shadow-sm font-semibold"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -573,10 +606,25 @@ JSON 배열 형식으로만 반환:
                       </p>
                     </div>
                     <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <span>❤ {Number(post.likes || 0).toLocaleString()}</span>
-                        <span>💬 {Number(post.comments || 0).toLocaleString()}</span>
-                        <span>🔁 {Number(post.shares || 0).toLocaleString()}</span>
+                      <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 text-right">
+                        {[
+                          { icon: "❤", label: "좋아요",  val: post.likes    },
+                          { icon: "💬", label: "댓글",    val: post.comments },
+                          { icon: "🔁", label: "리포스트", val: post.shares  },
+                          { icon: "👁", label: "조회수",  val: post.views    },
+                          { icon: "↗", label: "공유",    val: post.reposts  },
+                        ].map(({ icon, label, val }) => (
+                          <div key={label} className="flex flex-col items-end">
+                            <span className={`text-xs font-semibold ${
+                              sortField === { "❤":"likes","💬":"comments","🔁":"shares","👁":"views","↗":"reposts" }[icon]
+                                ? "text-purple-600"
+                                : "text-gray-700"
+                            }`}>
+                              {Number(val || 0).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-gray-400">{label}</span>
+                          </div>
+                        ))}
                       </div>
                       <svg
                         xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
