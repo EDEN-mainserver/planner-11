@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Eden Crawl v2",
-  "version": "2.9.0",
-  "description": "에덴 전용 v2 — Threads SNS 인기글 수집 및 AI 바이럴 분석 + 웹앱 연동 (백그라운드 수집)",
+  "version": "3.0.0",
+  "description": "에덴 전용 v3 — Threads/LinkedIn/아이보스/X 인기글 수집 및 AI 바이럴 분석 + 웹앱 연동",
   "background": {
     "service_worker": "background.js"
   },
   "permissions": ["tabs", "scripting", "storage"],
   "host_permissions": [
     "https://www.threads.com/*",
+    "https://www.linkedin.com/*",
     "https://*.vercel.app/*",
     "https://generativelanguage.googleapis.com/*",
     "https://www.i-boss.co.kr/*",

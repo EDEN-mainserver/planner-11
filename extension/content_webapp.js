@@ -3,9 +3,11 @@
 // chrome.storage → sessionStorage(백업) + window.postMessage → React 앱
 // 웹앱 postMessage → chrome.runtime.sendMessage → background.js (크롤 실행)
 
-const STORAGE_KEY = 'eden_threads_results';
-const STATUS_KEY  = 'eden_crawl_status';
-const SESSION_KEY = 'eden_threads_pending';
+const STORAGE_KEY          = 'eden_threads_results';
+const STATUS_KEY           = 'eden_crawl_status';
+const SESSION_KEY          = 'eden_threads_pending';
+const LINKEDIN_STORAGE_KEY = 'eden_linkedin_results';
+const LINKEDIN_STATUS_KEY  = 'eden_linkedin_status';
 
 console.log('[Eden Crawl] content_webapp.js 로드됨:', location.href);
 
@@ -53,6 +55,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // X 진행 상태 전달
   if (changes['eden_x_status']) {
     window.postMessage({ type: 'EDEN_X_STATUS', payload: changes['eden_x_status'].newValue }, '*');
+  }
+  // LinkedIn 수집 결과 전달
+  if (changes[LINKEDIN_STORAGE_KEY]) {
+    window.postMessage({ type: 'EDEN_LINKEDIN_RESULTS', payload: changes[LINKEDIN_STORAGE_KEY].newValue }, '*');
+  }
+  // LinkedIn 진행 상태 전달
+  if (changes[LINKEDIN_STATUS_KEY]) {
+    window.postMessage({ type: 'EDEN_LINKEDIN_STATUS', payload: changes[LINKEDIN_STATUS_KEY].newValue }, '*');
   }
 });
 
@@ -117,6 +127,33 @@ window.addEventListener('message', (event) => {
   if (type === 'EDEN_STOP_X_CRAWL') {
     chrome.runtime.sendMessage({ type: 'EDEN_STOP_X_CRAWL' }, () => {
       if (chrome.runtime.lastError) console.error('[Eden Crawl] X 중지 요청 실패:', chrome.runtime.lastError.message);
+    });
+    return;
+  }
+
+  if (type === 'EDEN_START_LINKEDIN_CRAWL') {
+    if (!keyword) return;
+    console.log('[Eden Crawl] LinkedIn 수집 요청 수신 → background 전달:', keyword, count);
+    chrome.runtime.sendMessage(
+      { type: 'EDEN_START_LINKEDIN_CRAWL', keyword, count: count || 20 },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('[Eden Crawl] LinkedIn background 전달 실패:', chrome.runtime.lastError.message);
+          window.postMessage({
+            type: 'EDEN_LINKEDIN_STATUS',
+            payload: { msg: '확장 프로그램 오류: ' + chrome.runtime.lastError.message, done: true, error: true }
+          }, '*');
+        } else {
+          console.log('[Eden Crawl] LinkedIn background 수신 확인:', response);
+        }
+      }
+    );
+    return;
+  }
+
+  if (type === 'EDEN_STOP_LINKEDIN_CRAWL') {
+    chrome.runtime.sendMessage({ type: 'EDEN_STOP_LINKEDIN_CRAWL' }, () => {
+      if (chrome.runtime.lastError) console.error('[Eden Crawl] LinkedIn 중지 요청 실패:', chrome.runtime.lastError.message);
     });
     return;
   }

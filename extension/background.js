@@ -510,7 +510,7 @@ async function crawlX(rawKeyword, targetCount) {
 
   try {
     const [originTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const searchUrl = `https://x.com/search?q=${encodeURIComponent(rawKeyword)}&src=typed_query&f=live`;
+    const searchUrl = `https://x.com/search?q=${encodeURIComponent(rawKeyword)}&src=typed_query`;
     tab = await chrome.tabs.create({ url: searchUrl, active: true });
     await waitForTabLoad(tab.id);
 
@@ -851,6 +851,391 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return false;
   }
+
+  // ── LinkedIn 수집 시작 ──
+  if (message.type === 'EDEN_START_LINKEDIN_CRAWL') {
+    const { keyword, count = 20 } = message;
+    sendResponse({ ok: true, crawling: isLinkedInCrawling });
+    if (!isLinkedInCrawling) {
+      runLinkedInCrawl(keyword, count).catch(err => {
+        console.error('[Eden Crawl BG] LinkedIn 오류:', err);
+        setLinkedInStatus(`오류: ${err.message}`, true, true);
+      });
+    }
+    return false;
+  }
+
+  // ── LinkedIn 수집 중지 ──
+  if (message.type === 'EDEN_STOP_LINKEDIN_CRAWL') {
+    if (isLinkedInCrawling) {
+      linkedInStopRequested = true;
+      setLinkedInStatus('LinkedIn 중지 요청됨... 현재 단계 완료 후 중지합니다.');
+      console.log('[Eden Crawl BG] LinkedIn 수집 중지 요청');
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
 });
+
+// ══════════════════════════════════════════════════════════════
+// LinkedIn 크롤링 모듈
+// ══════════════════════════════════════════════════════════════
+
+const LINKEDIN_RESULT_KEY = 'eden_linkedin_results';
+const LINKEDIN_STATUS_KEY = 'eden_linkedin_status';
+
+let isLinkedInCrawling    = false;
+let linkedInStopRequested = false;
+
+function setLinkedInStatus(msg, done = false, error = false) {
+  console.log('[Eden Crawl BG] LinkedIn 상태:', msg);
+  chrome.storage.local.set({ [LINKEDIN_STATUS_KEY]: { msg, done, error, ts: Date.now() } });
+}
+
+// ── LinkedIn 콘텐츠 로딩 대기 ──
+async function waitForLinkedInContent(tabId, prevCount, timeout = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    await sleep(800);
+    try {
+      const [r] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const candidates = [
+            'div[data-urn*="activity:"]',
+            'li.reusable-search__result-container',
+            '.scaffold-finite-scroll__content > div > ul > li',
+          ];
+          for (const sel of candidates) {
+            const n = document.querySelectorAll(sel).length;
+            if (n > 0) return n;
+          }
+          return 0;
+        },
+      });
+      if (r.result > prevCount) {
+        await sleep(600);
+        return true;
+      }
+    } catch (_) {}
+  }
+  return false;
+}
+
+// ──────────────────────────────────────────────────────────────
+// LinkedIn 1회 스크래핑 (탭 내 실행 — 완전히 독립적이어야 함)
+// ──────────────────────────────────────────────────────────────
+function scrapeLinkedIn(seenUrlsArray) {
+  function parseCount(text) {
+    if (!text) return 0;
+    const t = text.trim().replace(/,/g, '');
+    const m = t.match(/([\d.]+)\s*(억|만|천|K|M|B)?/i);
+    if (!m) return 0;
+    const n = parseFloat(m[1]);
+    if (isNaN(n)) return 0;
+    const sfx = (m[2] || '').toLowerCase();
+    if (sfx === '억') return Math.round(n * 100_000_000);
+    if (sfx === '만') return Math.round(n * 10_000);
+    if (sfx === '천' || sfx === 'k') return Math.round(n * 1_000);
+    if (sfx === 'm') return Math.round(n * 1_000_000);
+    if (sfx === 'b') return Math.round(n * 1_000_000_000);
+    return Math.round(n);
+  }
+
+  function getFirstText(el, selectors) {
+    for (const sel of selectors) {
+      try {
+        const found = el.querySelector(sel);
+        if (found) {
+          const t = (found.innerText || found.textContent || '').trim();
+          if (t) return t;
+        }
+      } catch (_) {}
+    }
+    return '';
+  }
+
+  const seenSet  = new Set(seenUrlsArray);
+  const newPosts = [];
+
+  // 컨테이너 탐색
+  let containers = [];
+  const containerCandidates = [
+    'div[data-urn*="activity:"]',
+    'li.reusable-search__result-container',
+    '.scaffold-finite-scroll__content > div > ul > li',
+  ];
+  for (const sel of containerCandidates) {
+    const found = document.querySelectorAll(sel);
+    if (found.length > 0) { containers = Array.from(found); break; }
+  }
+
+  containers.forEach(el => {
+    try {
+      // ── 작성자 이름 ──
+      const author = getFirstText(el, [
+        '.update-components-actor__name span[aria-hidden="true"]',
+        '.feed-shared-actor__name span[aria-hidden="true"]',
+        '.update-components-actor__title span[aria-hidden="true"]',
+        '[data-test-app-aware-link] span[aria-hidden="true"]',
+        '.entity-result__title-text a span[aria-hidden="true"]',
+        '.update-components-actor__name',
+      ]);
+      if (!author) return;
+
+      // ── 프로필 URL ──
+      let profileUrl = '';
+      for (const sel of [
+        'a[href*="/in/"]:not([href*="search"]):not([href*="miniProfile"])',
+        'a[href*="/company/"]:not([href*="search"])',
+        '.update-components-actor__meta a',
+        '.feed-shared-actor__container-link',
+      ]) {
+        try {
+          const a = el.querySelector(sel);
+          if (a?.href) { profileUrl = a.href.split('?')[0]; break; }
+        } catch (_) {}
+      }
+
+      // ── 게시물 URL ──
+      let postUrl = '';
+      for (const sel of [
+        'a[href*="/posts/"]',
+        'a[href*="/feed/update/"]',
+        'a[href*="ugcPost"]',
+        'a[href*="activity-"]',
+        'time a',
+      ]) {
+        try {
+          const a = el.querySelector(sel);
+          if (a?.href) { postUrl = a.href.split('?')[0]; break; }
+        } catch (_) {}
+      }
+      if (postUrl && seenSet.has(postUrl)) return;
+
+      // ── 게시물 내용 ──
+      const content = getFirstText(el, [
+        '.update-components-text span[dir]',
+        '.feed-shared-text__text-view span[dir]',
+        '.feed-shared-text span[dir]',
+        '.update-components-text .update-components-text__text-view',
+        '[data-test-id="main-feed-activity-card__commentary"] span',
+        '.update-components-text',
+      ]);
+      if (!content) return;
+
+      // ── 날짜 ──
+      const timeEl = el.querySelector('time, .update-components-actor__sub-description span:last-child');
+      const datetime = timeEl?.getAttribute('datetime') || '';
+      const timeText = timeEl?.textContent?.trim() || '';
+
+      // ── 반응수 ──
+      let likes = 0;
+      const likesText = getFirstText(el, [
+        '.social-details-social-counts__reactions-count',
+        '.social-details-social-counts__count-value:first-child',
+      ]);
+      if (likesText) { likes = parseCount(likesText); }
+      if (!likes) {
+        el.querySelectorAll('button[aria-label]').forEach(btn => {
+          const label = btn.getAttribute('aria-label') || '';
+          if (/reaction|like|좋아요|응원|추천|공감/i.test(label)) {
+            const match = label.match(/([\d,]+)/);
+            if (match) likes = Math.max(likes, parseCount(match[1]));
+          }
+        });
+      }
+
+      // ── 댓글수 ──
+      let comments = 0;
+      const commentsText = getFirstText(el, [
+        '.social-details-social-counts__comments a',
+        'button[aria-label*="comment"] span:not(.visually-hidden)',
+      ]);
+      if (commentsText) { comments = parseCount(commentsText); }
+      if (!comments) {
+        el.querySelectorAll('button[aria-label]').forEach(btn => {
+          const label = btn.getAttribute('aria-label') || '';
+          if (/comment|댓글/i.test(label)) {
+            const match = label.match(/([\d,]+)/);
+            if (match) comments = Math.max(comments, parseCount(match[1]));
+          }
+        });
+      }
+
+      newPosts.push({ author, profileUrl, postUrl, content, datetime, time: timeText || datetime.slice(0, 10), likes, comments });
+      if (postUrl) seenSet.add(postUrl);
+    } catch (_) {}
+  });
+
+  return { newPosts, debug: { containerCount: containers.length, url: location.href } };
+}
+
+// ──────────────────────────────────────────────────────────────
+// 단일 키워드 LinkedIn 크롤
+// ──────────────────────────────────────────────────────────────
+async function crawlLinkedInKeyword(keyword, targetCount, prefix) {
+  let tab = null;
+  const allPosts = [];
+  const seenUrls = new Set();
+
+  try {
+    const [originTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const url = `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent(keyword)}&sortBy=date_posted`;
+
+    tab = await chrome.tabs.create({ url, active: true });
+    await waitForTabLoad(tab.id);
+
+    setLinkedInStatus(`${prefix} 렌더링 대기 중...`);
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    }).catch(() => {});
+
+    if (originTab?.id) await chrome.tabs.update(originTab.id, { active: true }).catch(() => {});
+
+    await waitForLinkedInContent(tab.id, 0, 12000);
+
+    let noNewCount = 0;
+    const MAX_NO_NEW = 6;
+    setLinkedInStatus(`(0/${targetCount}) ${prefix} 수집 시작`);
+
+    while (allPosts.length < targetCount && noNewCount < MAX_NO_NEW && !linkedInStopRequested) {
+      // 현재 컨테이너 수 기록
+      const [countRes] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const candidates = [
+            'div[data-urn*="activity:"]',
+            'li.reusable-search__result-container',
+            '.scaffold-finite-scroll__content > div > ul > li',
+          ];
+          for (const sel of candidates) {
+            const n = document.querySelectorAll(sel).length;
+            if (n > 0) return n;
+          }
+          return 0;
+        },
+      }).catch(() => [{ result: 0 }]);
+      const prevContainerCount = countRes?.result || 0;
+
+      // 로그인/authwall 확인
+      const [urlCheck] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => location.href,
+      }).catch(() => [{ result: '' }]);
+      const currentUrl = urlCheck?.result || '';
+      if (currentUrl.includes('/login') || currentUrl.includes('authwall') || currentUrl.includes('checkpoint')) {
+        setLinkedInStatus('LinkedIn 로그인이 필요합니다. 브라우저에서 로그인 후 재시도하세요.', true, true);
+        break;
+      }
+
+      // 스크래핑
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: scrapeLinkedIn,
+        args: [Array.from(seenUrls)],
+      }).catch(() => [{ result: { newPosts: [], debug: { containerCount: 0, url: '' } } }]);
+
+      const { newPosts = [] } = result?.result || {};
+
+      if (newPosts.length > 0) {
+        newPosts.forEach(p => {
+          if (allPosts.length >= targetCount) return;
+          allPosts.push({ ...p, rank: allPosts.length + 1, keyword });
+          if (p.postUrl) seenUrls.add(p.postUrl);
+        });
+        noNewCount = 0;
+        setLinkedInStatus(`(${allPosts.length}/${targetCount}) ${prefix} 수집 중`);
+      } else {
+        noNewCount++;
+        setLinkedInStatus(`(${allPosts.length}/${targetCount}) ${prefix} 로딩 대기 중... [${noNewCount}/${MAX_NO_NEW}]`);
+        await activateAndClick(tab.id, originTab?.id);
+      }
+
+      if (allPosts.length < targetCount) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => window.scrollBy(0, 1200),
+        }).catch(() => {});
+        await waitForLinkedInContent(tab.id, prevContainerCount, 8000);
+      }
+    }
+
+    await chrome.tabs.remove(tab.id).catch(() => {});
+    tab = null;
+    return { posts: allPosts };
+  } catch (err) {
+    if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+    throw err;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// LinkedIn 메인 크롤 실행
+// ──────────────────────────────────────────────────────────────
+async function runLinkedInCrawl(rawKeyword, defaultCount) {
+  if (isLinkedInCrawling) {
+    setLinkedInStatus('이미 LinkedIn 수집이 진행 중입니다.', true, true);
+    return;
+  }
+  isLinkedInCrawling    = true;
+  linkedInStopRequested = false;
+
+  try {
+    const keywords = parseKeywords(rawKeyword, defaultCount);
+    if (keywords.length === 0) return;
+
+    const isMulti  = keywords.length > 1;
+    const allPosts = [];
+
+    for (let i = 0; i < keywords.length; i++) {
+      if (linkedInStopRequested) break;
+
+      const { keyword, count } = keywords[i];
+      const prefix = isMulti ? `[${i + 1}/${keywords.length}] ${keyword}` : `"${keyword}"`;
+
+      setLinkedInStatus(`${prefix} 검색 탭 열기 중...`);
+      const { posts } = await crawlLinkedInKeyword(keyword, count, prefix);
+
+      allPosts.push(...posts);
+
+      if (isMulti && posts.length > 0 && !linkedInStopRequested) {
+        setLinkedInStatus(`[${i + 1}/${keywords.length}] ${keyword} 완료 — ${posts.length}개 수집 (누적 ${allPosts.length}개)`);
+        await sleep(800);
+      }
+    }
+
+    if (allPosts.length === 0) {
+      setLinkedInStatus(
+        linkedInStopRequested
+          ? '수집이 중지됐습니다. (수집된 게시물 없음)'
+          : '게시물을 수집하지 못했습니다. LinkedIn 로그인 후 재시도하세요.',
+        true, !linkedInStopRequested
+      );
+      return;
+    }
+
+    allPosts.forEach((p, i) => { p.rank = i + 1; });
+    const combinedKeyword = keywords.map(k => k.keyword).join(', ');
+
+    await chrome.storage.local.set({
+      [LINKEDIN_RESULT_KEY]: { keyword: combinedKeyword, posts: allPosts, timestamp: Date.now() },
+    });
+
+    setLinkedInStatus(
+      linkedInStopRequested ? `중지됨 — ${allPosts.length}개 수집됨` : `완료 — ${allPosts.length}개 수집됨`,
+      true
+    );
+    console.log('[Eden Crawl BG] LinkedIn 수집 완료:', { combinedKeyword, total: allPosts.length });
+
+  } catch (err) {
+    setLinkedInStatus(`오류: ${err.message}`, true, true);
+    console.error('[Eden Crawl BG] LinkedIn 오류:', err);
+  } finally {
+    isLinkedInCrawling    = false;
+    linkedInStopRequested = false;
+  }
+}
 
 console.log('[Eden Crawl BG] background.js 로드 완료');
