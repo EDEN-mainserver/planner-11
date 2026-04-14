@@ -6,8 +6,10 @@ const RESULT_KEY = 'eden_threads_results';
 const STATUS_KEY = 'eden_crawl_status';
 const VERCEL_URL_KEY = 'eden_vercel_url';
 
-let isCrawling    = false; // 중복 실행 방지
-let stopRequested = false; // 중지 요청 플래그
+let isCrawling    = false; // 중복 실행 방지 (Threads)
+let stopRequested = false; // 중지 요청 플래그 (Threads)
+let isXCrawling    = false; // 중복 실행 방지 (X)
+let stopXRequested = false; // 중지 요청 플래그 (X)
 
 // ── 상태 저장 (content_webapp.js가 감지해서 웹앱으로 브릿지) ──
 function setStatus(msg, done = false, error = false) {
@@ -399,6 +401,211 @@ async function runCrawl(rawKeyword, defaultCount) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// X(트위터) 상태 저장
+// ──────────────────────────────────────────────────────────────
+function setXStatus(msg, done = false, error = false) {
+  console.log('[Eden Crawl BG] X 상태:', msg);
+  chrome.storage.local.set({ eden_x_status: { msg, done, error, ts: Date.now() } });
+}
+
+// ── X 새 콘텐츠 로딩 대기 ──
+async function waitForXContent(tabId, prevCount, timeout = 7000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    await sleep(700);
+    try {
+      const [r] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => document.querySelectorAll('article[data-testid="tweet"]').length,
+      });
+      if (r.result > prevCount) { await sleep(500); return true; }
+    } catch (_) {}
+  }
+  return false;
+}
+
+// ──────────────────────────────────────────────────────────────
+// X 1회 스크래핑 (탭 내 실행)
+// ⚠️ 외부 변수 참조 불가 — 완전히 독립적이어야 함
+// ──────────────────────────────────────────────────────────────
+function scrapeXOnce(seenUrlsArray) {
+  function parseCount(text) {
+    if (!text) return 0;
+    const t = text.trim().replace(/,/g, '');
+    const m = t.match(/([\d.]+)(K|M|B)?/i);
+    if (!m) return 0;
+    const n = parseFloat(m[1]);
+    if (isNaN(n)) return 0;
+    const u = (m[2] || '').toUpperCase();
+    if (u === 'K') return Math.round(n * 1_000);
+    if (u === 'M') return Math.round(n * 1_000_000);
+    if (u === 'B') return Math.round(n * 1_000_000_000);
+    return Math.round(n);
+  }
+
+  const seenSet  = new Set(seenUrlsArray);
+  const newPosts = [];
+  const articles = document.querySelectorAll('article[data-testid="tweet"]');
+
+  articles.forEach(article => {
+    try {
+      const linkEl = article.querySelector('a[href*="/status/"]');
+      if (!linkEl) return;
+      const path = linkEl.getAttribute('href') || '';
+      const postUrl = path.startsWith('http') ? path : 'https://x.com' + path;
+      if (seenSet.has(postUrl)) return;
+
+      const userNameEl = article.querySelector('[data-testid="User-Name"]');
+      let author = '';
+      if (userNameEl) {
+        const handleLink = userNameEl.querySelector('a[role="link"]');
+        author = handleLink ? handleLink.getAttribute('href').replace('/', '@') : '';
+      }
+
+      const textEl  = article.querySelector('[data-testid="tweetText"]');
+      const content = textEl ? textEl.innerText.trim() : '';
+      if (!content) return;
+
+      const timeEl   = article.querySelector('time[datetime]');
+      const datetime = timeEl?.getAttribute('datetime') || '';
+      const timeText = timeEl?.textContent?.trim() || '';
+
+      function getCount(testId) {
+        const btn = article.querySelector(`[data-testid="${testId}"]`);
+        if (!btn) return 0;
+        for (const span of btn.querySelectorAll('span')) {
+          const v = parseCount(span.textContent);
+          if (v > 0) return v;
+        }
+        return 0;
+      }
+
+      newPosts.push({
+        author, content, postUrl, datetime,
+        time:     timeText || datetime.slice(0, 10),
+        likes:    getCount('like'),
+        comments: getCount('reply'),
+        shares:   getCount('retweet'),
+      });
+    } catch (_) {}
+  });
+
+  return { newPosts, debug: { articleCount: articles.length, url: location.href } };
+}
+
+// ──────────────────────────────────────────────────────────────
+// X 크롤 메인 함수
+// ──────────────────────────────────────────────────────────────
+async function crawlX(rawKeyword, targetCount) {
+  if (isXCrawling) {
+    setXStatus('이미 X 수집이 진행 중입니다.', true, true);
+    return;
+  }
+  isXCrawling    = true;
+  stopXRequested = false;
+
+  let tab = null;
+  const allPosts = [];
+  const seenUrls = new Set();
+
+  try {
+    const [originTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const searchUrl = `https://x.com/search?q=${encodeURIComponent(rawKeyword)}&src=typed_query&f=live`;
+    tab = await chrome.tabs.create({ url: searchUrl, active: true });
+    await waitForTabLoad(tab.id);
+
+    setXStatus(`렌더링 대기 중...`);
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    });
+
+    if (originTab?.id) {
+      await chrome.tabs.update(originTab.id, { active: true }).catch(() => {});
+    }
+
+    await waitForXContent(tab.id, 0, 10000);
+
+    let noNewCount = 0;
+    const MAX_NO_NEW = 5;
+    setXStatus(`(0/${targetCount}) "${rawKeyword}" 수집 시작`);
+
+    while (allPosts.length < targetCount && noNewCount < MAX_NO_NEW && !stopXRequested) {
+      const [countRes] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => document.querySelectorAll('article[data-testid="tweet"]').length,
+      });
+      const prevCount = countRes.result;
+
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func:   scrapeXOnce,
+        args:   [Array.from(seenUrls)],
+      });
+      const { newPosts, debug } = result.result;
+
+      if (debug.url.includes('/login') || debug.url.includes('i/flow/login')) {
+        setXStatus('X 로그인이 필요합니다', true, true);
+        break;
+      }
+
+      if (newPosts.length > 0) {
+        newPosts.forEach(p => {
+          if (allPosts.length >= targetCount) return;
+          allPosts.push({ ...p, rank: allPosts.length + 1, keyword: rawKeyword });
+          if (p.postUrl) seenUrls.add(p.postUrl);
+        });
+        noNewCount = 0;
+        setXStatus(`(${allPosts.length}/${targetCount}) "${rawKeyword}" 수집 중`);
+      } else {
+        noNewCount++;
+        setXStatus(`(${allPosts.length}/${targetCount}) 로딩 대기 중... [${noNewCount}/${MAX_NO_NEW}]`);
+        await activateAndClick(tab.id, originTab?.id);
+      }
+
+      if (allPosts.length < targetCount) {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => window.scrollBy(0, 1200) });
+        await waitForXContent(tab.id, prevCount, 7000);
+      }
+    }
+
+    await chrome.tabs.remove(tab.id);
+    tab = null;
+
+    if (allPosts.length === 0) {
+      setXStatus(
+        stopXRequested
+          ? 'X 수집이 중지됐습니다. (수집된 트윗 없음)'
+          : '트윗을 수집하지 못했습니다. X.com 로그인 후 재시도하세요.',
+        true, !stopXRequested
+      );
+      return;
+    }
+
+    allPosts.forEach((p, i) => { p.rank = i + 1; });
+    await chrome.storage.local.set({
+      eden_x_results: { keyword: rawKeyword, posts: allPosts, timestamp: Date.now() },
+    });
+
+    setXStatus(
+      stopXRequested
+        ? `중지됨 — ${allPosts.length}개 트윗 수집됨`
+        : `완료 — ${allPosts.length}개 트윗 수집됨`,
+      true
+    );
+    console.log('[Eden Crawl BG] X 수집 완료:', { rawKeyword, total: allPosts.length });
+
+  } catch (err) {
+    if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+    setXStatus(`오류: ${err.message}`, true, true);
+    console.error('[Eden Crawl BG] X 오류:', err);
+  } finally {
+    isXCrawling    = false;
+    stopXRequested = false;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
 // 게시물 이미지 수집
 // ──────────────────────────────────────────────────────────────
 async function fetchPostImages(postUrl) {
@@ -609,6 +816,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.storage.local.set({ eden_iboss_content: { sourceUrl, content: '', error: err.message, ts: Date.now() } });
       }
     })();
+    return false;
+  }
+
+  // ── X 수집 시작 ──
+  if (message.type === 'EDEN_START_X_CRAWL') {
+    const { keyword, count = 30 } = message;
+    sendResponse({ ok: true, crawling: isXCrawling });
+    if (!isXCrawling) {
+      crawlX(keyword, count).catch(err => {
+        console.error('[Eden Crawl BG] crawlX 오류:', err);
+        setXStatus(`오류: ${err.message}`, true, true);
+      });
+    }
+    return false;
+  }
+
+  // ── X 수집 중지 ──
+  if (message.type === 'EDEN_STOP_X_CRAWL') {
+    if (isXCrawling) {
+      stopXRequested = true;
+      setXStatus('X 중지 요청됨... 현재 단계 완료 후 중지합니다.');
+      console.log('[Eden Crawl BG] X 수집 중지 요청');
+    }
+    sendResponse({ ok: true });
     return false;
   }
 

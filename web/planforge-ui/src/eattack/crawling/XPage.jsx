@@ -1,28 +1,12 @@
 /**
- * X(Twitter) 실시간 크롤링 대시보드
- * - 실제 X.com 검색 결과를 크롤링
- * - 쿠키 설정으로 로그인 세션 주입 (더 많은 결과)
- * - 트렌딩 키워드 칩 → 클릭 시 바로 검색
+ * X(Twitter) 인기글 크롤링 대시보드
+ * - Eden Crawl 확장 프로그램 기반 수집
  * - 행 클릭 → 원문 펼치기/접기 + 원본 링크
  * - [AI 분석] 버튼 → 바이럴 분석 (Gemini)
  * - [아이디어 생성] 버튼 → 콘텐츠 아이디어 5개 생성
  */
 import { useState, useCallback, useEffect } from "react";
 import { callGemini } from "../../utils/gemini";
-
-// ── API 엔드포인트 ──
-const IS_LOCAL = window.location.hostname === "localhost";
-const CRAWL_URL    = IS_LOCAL ? "http://localhost:8001/api/crawl/x/search" : "/api/x-crawl";
-const TRENDS_URL   = IS_LOCAL ? "http://localhost:8001/api/crawl/x"        : "/api/x-trends";
-
-// ── 쿠키 관리 (localStorage) ──
-const COOKIES_KEY = "x_cookies_json";
-function loadCookies() {
-  try { return JSON.parse(localStorage.getItem(COOKIES_KEY) || "[]"); }
-  catch { return []; }
-}
-function saveCookies(arr) { localStorage.setItem(COOKIES_KEY, JSON.stringify(arr)); }
-function clearCookies()   { localStorage.removeItem(COOKIES_KEY); }
 
 // ── 브랜드 프로필 (Threads와 공유) ──
 const BRAND_KEY = "eattack_brand_profile";
@@ -39,6 +23,86 @@ function parseJSON(text) {
   return null;
 }
 
+// ── 수집 버튼 (Eden Crawl 확장 프로그램 기반) ──
+function ExtensionXCrawlButton({ keyword, count = 30 }) {
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== 'EDEN_X_STATUS') return;
+      setStatus(event.data.payload);
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const handleStart = () => {
+    if (!keyword.trim()) return;
+    setStatus({ msg: '수집 요청 중...', done: false, error: false });
+    window.postMessage({ type: 'EDEN_START_X_CRAWL', keyword: keyword.trim(), count }, '*');
+  };
+
+  const handleStop = () => {
+    window.postMessage({ type: 'EDEN_STOP_X_CRAWL' }, '*');
+    setStatus(prev => ({ ...(prev || {}), msg: '중지 요청 중...', done: false, error: false }));
+  };
+
+  const isCrawling = status && !status.done;
+  const isDone     = status?.done && !status?.error;
+  const isError    = status?.error;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={handleStart}
+          disabled={!keyword.trim() || isCrawling}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            isCrawling ? "bg-gray-600 text-white cursor-not-allowed"
+            : isDone    ? "bg-green-500 hover:bg-green-400 text-white"
+            : isError   ? "bg-red-500 hover:bg-red-400 text-white"
+            : "bg-gray-900 hover:bg-gray-700 text-white"
+          }`}
+        >
+          {isCrawling
+            ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            : isDone
+            ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            : <span className="font-bold text-base leading-none">𝕏</span>
+          }
+          {isCrawling ? "수집 중..." : isDone ? "수집 완료!" : "수집"}
+        </button>
+
+        {isCrawling && (
+          <button
+            onClick={handleStop}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-red-500 hover:bg-red-400 active:bg-red-600 text-white rounded-lg shadow-sm transition-all"
+            title="수집 중지 — 지금까지 수집된 결과를 표시합니다"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+            중지
+          </button>
+        )}
+      </div>
+      {status && (
+        <p className={`text-[10px] px-0.5 leading-tight max-w-[200px] truncate ${
+          isError ? "text-red-500" : isDone ? "text-green-600" : isCrawling ? "text-gray-600" : "text-orange-500"
+        }`} title={status.msg}>
+          {status.msg}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── 톤 배지 ──
 const TONE_MAP = {
   "유머러스": "bg-yellow-100 text-yellow-700",
@@ -50,89 +114,7 @@ const TONE_MAP = {
 };
 function ToneBadge({ tone }) {
   const cls = TONE_MAP[tone] || "bg-gray-100 text-gray-600";
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
-      {tone}
-    </span>
-  );
-}
-
-// ── 쿠키 설정 모달 ──
-function CookieModal({ onClose }) {
-  const [raw, setRaw] = useState(() => {
-    const c = loadCookies();
-    return c.length ? JSON.stringify(c, null, 2) : "";
-  });
-  const [error, setError] = useState("");
-
-  const handleSave = () => {
-    setError("");
-    if (!raw.trim()) { clearCookies(); onClose(); return; }
-    try {
-      const parsed = JSON.parse(raw.trim());
-      if (!Array.isArray(parsed)) throw new Error("JSON 배열 형식이어야 합니다");
-      saveCookies(parsed);
-      onClose();
-    } catch (e) {
-      setError("JSON 형식 오류: " + e.message);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-bold text-gray-800">X 쿠키 설정</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6 6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
-          <p className="text-xs font-bold text-gray-800 mb-2">쿠키 추출 방법 (Chrome)</p>
-          <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
-            <li>Chrome에서 <strong>x.com</strong>에 로그인</li>
-            <li>Chrome 웹스토어에서 <strong>&quot;Cookie-Editor&quot;</strong> 확장 설치</li>
-            <li>X 탭에서 Cookie-Editor 아이콘 클릭</li>
-            <li>우측 상단 <strong>Export → Export as JSON</strong> 클릭</li>
-            <li>복사된 JSON을 아래 입력창에 붙여넣기</li>
-          </ol>
-          <p className="text-[11px] text-gray-400 mt-2">
-            쿠키는 이 브라우저 로컬에만 저장되며 크롤링 요청 시 서버에 전달됩니다.
-          </p>
-        </div>
-
-        <textarea
-          value={raw}
-          onChange={e => { setRaw(e.target.value); setError(""); }}
-          placeholder={'[{"name": "auth_token", "value": "...", "domain": ".x.com", ...}]'}
-          rows={8}
-          className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500 resize-none"
-        />
-        {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
-
-        <div className="flex gap-2 mt-4">
-          <button
-            onClick={() => { clearCookies(); setRaw(""); }}
-            className="px-3 py-2 text-xs text-red-500 border border-red-200 rounded-xl hover:bg-red-50"
-          >
-            초기화
-          </button>
-          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
-            취소
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-gray-900 hover:bg-gray-700 rounded-xl"
-          >
-            저장
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{tone}</span>;
 }
 
 // ── 브랜드 모달 ──
@@ -169,9 +151,7 @@ function BrandModal({ onClose }) {
           ))}
         </div>
         <div className="flex gap-2 mt-5">
-          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
-            취소
-          </button>
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">취소</button>
           <button
             onClick={() => { saveBrand(brand); onClose(); }}
             className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-gray-900 hover:bg-gray-700 rounded-xl"
@@ -186,91 +166,34 @@ function BrandModal({ onClose }) {
 
 // ─────────────────────── 메인 컴포넌트 ───────────────────────
 export default function XPage() {
-  const [keyword, setKeyword]               = useState("");
-  const [posts, setPosts]                   = useState([]);
-  const [collectLoading, setCollectLoading] = useState(false);
-  const [collectError, setCollectError]     = useState("");
-  const [sortBy, setSortBy]                 = useState("likes");
-
-  const [trends, setTrends]         = useState([]);
-  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [keyword, setKeyword]   = useState("");
+  const [count, setCount]       = useState(30);
+  const [posts, setPosts]       = useState([]);
+  const [sortBy, setSortBy]     = useState("likes");
 
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [analysisMap, setAnalysisMap]   = useState({});
   const [ideasMap, setIdeasMap]         = useState({});
+  const [showBrandModal, setShowBrandModal] = useState(false);
 
-  const [showBrandModal,  setShowBrandModal]  = useState(false);
-  const [showCookieModal, setShowCookieModal] = useState(false);
-
-  // ── 트렌딩 키워드 로딩 (마운트 시) ──
+  // ── EDEN_X_RESULTS 수신 → posts 업데이트 ──
   useEffect(() => {
-    setTrendsLoading(true);
-    fetch(TRENDS_URL)
-      .then(r => r.json())
-      .then(data => {
-        if (data.posts?.length) setTrends(data.posts.slice(0, 10));
-      })
-      .catch(() => {})
-      .finally(() => setTrendsLoading(false));
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== 'EDEN_X_RESULTS') return;
+      const payload = event.data.payload;
+      if (!payload?.posts?.length) return;
+      setKeyword(payload.keyword || "");
+      setPosts(payload.posts);
+      setExpandedRows(new Set());
+      setAnalysisMap({});
+      setIdeasMap({});
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
   }, []);
 
-  // ── 1. 실제 크롤링 ──
-  const handleCollect = useCallback(async (overrideKeyword) => {
-    const kw = (overrideKeyword ?? keyword).trim();
-    if (!kw) return;
-    if (overrideKeyword) setKeyword(overrideKeyword);
-
-    setCollectLoading(true);
-    setCollectError("");
-    setPosts([]);
-    setExpandedRows(new Set());
-    setAnalysisMap({});
-    setIdeasMap({});
-
-    try {
-      const cookies = loadCookies();
-      let res;
-
-      if (IS_LOCAL) {
-        const qs = new URLSearchParams({ keyword: kw, limit: "20" });
-        if (cookies.length) qs.set("cookies", btoa(JSON.stringify(cookies)));
-        res = await fetch(`${CRAWL_URL}?${qs}`);
-      } else {
-        res = await fetch(CRAWL_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keyword: kw, cookies }),
-        });
-      }
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `서버 오류 (${res.status})`);
-      }
-
-      const data = await res.json();
-      if (data.error && (!data.posts || data.posts.length === 0)) {
-        throw new Error(data.error);
-      }
-      if (!Array.isArray(data.posts)) throw new Error("데이터 형식 오류");
-      if (data.posts.length === 0) {
-        const dbg = data.debug;
-        let msg = cookies.length === 0
-          ? "트윗을 찾을 수 없습니다. X 쿠키를 설정하면 더 많은 결과를 볼 수 있습니다."
-          : "트윗을 찾을 수 없습니다. 쿠키를 갱신해주세요.";
-        if (dbg?.articleCount === 0) msg += " (검색 결과 없음 — 로그인이 필요할 수 있습니다)";
-        throw new Error(msg);
-      }
-
-      setPosts(data.posts);
-    } catch (e) {
-      setCollectError(e.message || "트윗 수집에 실패했습니다.");
-    } finally {
-      setCollectLoading(false);
-    }
-  }, [keyword]);
-
-  // ── 2. 원문 펼치기/접기 ──
+  // ── 원문 펼치기/접기 ──
   const toggleExpand = useCallback((origIdx) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -279,7 +202,7 @@ export default function XPage() {
     });
   }, []);
 
-  // ── 3. AI 바이럴 분석 ──
+  // ── AI 바이럴 분석 ──
   const handleAnalyze = useCallback(async (origIdx) => {
     const post = posts[origIdx];
     setAnalysisMap(prev => ({ ...prev, [origIdx]: { loading: true, data: null, error: null } }));
@@ -306,27 +229,23 @@ JSON 형식으로만 반환:
   ],
   "hook": "이 트윗의 첫 문장이 독자를 끌어당기는 방식",
   "meme_elements": ["사용된 밈/문화적 요소 (없으면 빈 배열)"]
-}`
-        }],
+}` }],
         "당신은 소셜미디어 바이럴 콘텐츠 분석 전문가입니다. JSON 형식으로만 응답하세요."
       );
       const data = parseJSON(res);
       if (!data) throw new Error("분석 파싱 실패");
       setAnalysisMap(prev => ({ ...prev, [origIdx]: { loading: false, data, error: null } }));
     } catch (e) {
-      setAnalysisMap(prev => ({
-        ...prev,
-        [origIdx]: { loading: false, data: null, error: e.message || "분석 실패" },
-      }));
+      setAnalysisMap(prev => ({ ...prev, [origIdx]: { loading: false, data: null, error: e.message || "분석 실패" } }));
     }
   }, [posts]);
 
-  // ── 4. 콘텐츠 아이디어 생성 ──
+  // ── 콘텐츠 아이디어 생성 ──
   const handleGenerateIdeas = useCallback(async (origIdx) => {
-    const post = posts[origIdx];
+    const post     = posts[origIdx];
     const analysis = analysisMap[origIdx]?.data;
     if (!analysis) return;
-    const brand = loadBrand();
+    const brand    = loadBrand();
     const brandInfo = brand.name
       ? `브랜드: ${brand.name} / 타겟: ${brand.target || "일반"} / 톤앤매너: ${brand.tone || "자유"}`
       : "브랜드 정보 없음 (일반 마케터 관점)";
@@ -352,18 +271,14 @@ JSON 배열 형식으로만 반환:
     "keywords": ["키워드1", "키워드2"],
     "why": "이 아이디어가 X에서 바이럴될 이유"
   }
-]`
-        }],
+]` }],
         "당신은 소셜미디어 콘텐츠 기획 전문가입니다. JSON 형식으로만 응답하세요."
       );
       const data = parseJSON(res);
       if (!Array.isArray(data)) throw new Error("아이디어 파싱 실패");
       setIdeasMap(prev => ({ ...prev, [origIdx]: { loading: false, data, error: null } }));
     } catch (e) {
-      setIdeasMap(prev => ({
-        ...prev,
-        [origIdx]: { loading: false, data: null, error: e.message || "아이디어 생성 실패" },
-      }));
+      setIdeasMap(prev => ({ ...prev, [origIdx]: { loading: false, data: null, error: e.message || "아이디어 생성 실패" } }));
     }
   }, [posts, analysisMap]);
 
@@ -372,34 +287,11 @@ JSON 배열 형식으로만 반환:
     .sort((a, b) => sortBy === "likes" ? b.likes - a.likes : a.rank - b.rank)
     .map((p) => ({ ...p, origIdx: posts.indexOf(p), displayRank: posts.indexOf(p) + 1 }));
 
-  const brand      = loadBrand();
-  const hasBrand   = brand.name || brand.target || brand.tone;
-  const hasCookies = loadCookies().length > 0;
+  const brand    = loadBrand();
+  const hasBrand = brand.name || brand.target || brand.tone;
 
   return (
     <div className="space-y-5">
-
-      {/* ── 트렌딩 키워드 칩 ── */}
-      {(trends.length > 0 || trendsLoading) && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-400 font-medium flex-shrink-0">
-            🔥 지금 트렌드
-          </span>
-          {trendsLoading
-            ? <span className="text-xs text-gray-300 animate-pulse">로딩 중...</span>
-            : trends.map((t, i) => (
-                <button
-                  key={i}
-                  onClick={() => !collectLoading && handleCollect(t.title)}
-                  disabled={collectLoading}
-                  className="px-2.5 py-1 text-xs font-medium rounded-full border border-gray-200 text-gray-600 hover:bg-gray-900 hover:text-white hover:border-gray-900 transition-all disabled:opacity-40"
-                >
-                  {t.title}
-                </button>
-              ))
-          }
-        </div>
-      )}
 
       {/* ── 상단 컨트롤 ── */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -413,45 +305,23 @@ JSON 배열 형식으로만 반환:
             type="text"
             value={keyword}
             onChange={e => setKeyword(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && !collectLoading && keyword.trim() && handleCollect()}
-            placeholder="키워드 입력 (예: AI, 마케팅, K-pop)"
-            disabled={collectLoading}
-            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-100 disabled:opacity-50 shadow-sm"
+            placeholder="키워드 입력 (예: AI마케팅, 숏폼)"
+            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-100 shadow-sm"
           />
         </div>
 
-        <button
-          onClick={() => handleCollect()}
-          disabled={collectLoading || !keyword.trim()}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg shadow-sm transition-all"
+        {/* 수집 개수 */}
+        <select
+          value={count}
+          onChange={e => setCount(Number(e.target.value))}
+          className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-gray-500 shadow-sm"
         >
-          {collectLoading
-            ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-              </svg>
-            : <span className="font-bold text-base leading-none">𝕏</span>
-          }
-          {collectLoading ? "수집 중..." : "실시간 수집"}
-        </button>
+          {[10, 20, 30, 50].map(n => <option key={n} value={n}>{n}개</option>)}
+        </select>
 
-        {/* 쿠키 설정 버튼 */}
-        <button
-          onClick={() => setShowCookieModal(true)}
-          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all ${
-            hasCookies
-              ? "bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-              : "bg-yellow-50 border-yellow-200 text-yellow-700 hover:bg-yellow-100"
-          }`}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          {hasCookies ? "쿠키 설정됨 ✓" : "쿠키 설정"}
-        </button>
+        <ExtensionXCrawlButton keyword={keyword} count={count} />
 
-        {/* 브랜드 설정 버튼 */}
+        {/* 브랜드 설정 */}
         <button
           onClick={() => setShowBrandModal(true)}
           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all ${
@@ -468,64 +338,24 @@ JSON 배열 형식으로만 반환:
         </button>
       </div>
 
-      {/* ── 쿠키 미설정 안내 ── */}
-      {!hasCookies && !collectLoading && posts.length === 0 && !collectError && (
-        <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
-          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-600 flex-shrink-0 mt-0.5">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <div>
-            <p className="text-xs font-semibold text-yellow-800">쿠키 설정 권장</p>
-            <p className="text-xs text-yellow-700 mt-0.5">
-              X(트위터) 로그인 쿠키를 설정하면 더 많은 트윗을 가져올 수 있습니다.{" "}
-              <button onClick={() => setShowCookieModal(true)} className="underline font-semibold">
-                지금 설정하기
-              </button>
-            </p>
+      {/* ── 빈 상태 안내 ── */}
+      {posts.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+          <span className="text-5xl mb-4 font-bold text-gray-800">𝕏</span>
+          <p className="text-sm font-medium text-gray-500 mb-1">Eden Crawl 확장 프로그램으로 X 트윗을 수집합니다</p>
+          <p className="text-xs text-gray-400 text-center max-w-xs mt-1">
+            키워드를 입력하고 수집 버튼을 클릭하면<br />
+            확장 프로그램이 X.com에서 실제 트윗을 가져옵니다
+          </p>
+          <div className="mt-4 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 text-center">
+            <strong>X.com 로그인 필수</strong><br />
+            Chrome에서 x.com에 미리 로그인된 상태여야 합니다
           </div>
         </div>
       )}
 
-      {/* ── 에러 메시지 ── */}
-      {collectError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-500 flex-shrink-0">
-            <circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>
-          </svg>
-          <span className="text-red-600 text-sm flex-1">{collectError}</span>
-          <button onClick={() => handleCollect()} className="text-red-500 underline text-xs flex-shrink-0">
-            재시도
-          </button>
-        </div>
-      )}
-
-      {/* ── 로딩 ── */}
-      {collectLoading && (
-        <div className="flex flex-col items-center justify-center py-16">
-          <svg className="animate-spin w-8 h-8 text-gray-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-          <p className="text-gray-600 text-sm font-medium">"{keyword}" 실시간 수집 중...</p>
-          <p className="text-gray-400 text-xs mt-1">X.com에서 실제 트윗을 가져오고 있습니다 (최대 30초)</p>
-        </div>
-      )}
-
-      {/* ── 빈 상태 ── */}
-      {!collectLoading && posts.length === 0 && !collectError && (
-        <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-          <span className="text-5xl mb-4 font-bold">𝕏</span>
-          <p className="text-sm font-medium text-gray-500 mb-1">X 트윗을 실시간으로 수집합니다</p>
-          <p className="text-xs text-gray-400 text-center max-w-xs">
-            키워드를 입력하거나 위 트렌드 칩을 클릭하면<br />
-            X.com에서 실제 트윗을 크롤링하고<br />
-            AI가 바이럴 성공 요인을 분석합니다
-          </p>
-        </div>
-      )}
-
       {/* ── 게시물 목록 ── */}
-      {!collectLoading && posts.length > 0 && (
+      {posts.length > 0 && (
         <div className="space-y-4">
 
           {/* 헤더 */}
@@ -554,8 +384,8 @@ JSON 배열 형식으로만 반환:
           <div className="space-y-2">
             {sortedPosts.map(({ origIdx, displayRank, ...post }) => {
               const isExpanded = expandedRows.has(origIdx);
-              const aState = analysisMap[origIdx];
-              const iState = ideasMap[origIdx];
+              const aState     = analysisMap[origIdx];
+              const iState     = ideasMap[origIdx];
 
               return (
                 <div
@@ -656,9 +486,7 @@ JSON 배열 형식으로만 반환:
                           </div>
                         )}
 
-                        {aState?.error && (
-                          <span className="text-xs text-red-500">{aState.error}</span>
-                        )}
+                        {aState?.error && <span className="text-xs text-red-500">{aState.error}</span>}
 
                         {aState?.data && !iState && (
                           <button
@@ -771,9 +599,7 @@ JSON 배열 형식으로만 반환:
         </div>
       )}
 
-      {/* 모달 */}
-      {showCookieModal && <CookieModal onClose={() => setShowCookieModal(false)} />}
-      {showBrandModal  && <BrandModal  onClose={() => setShowBrandModal(false)}  />}
+      {showBrandModal && <BrandModal onClose={() => setShowBrandModal(false)} />}
     </div>
   );
 }

@@ -46,6 +46,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes['eden_iboss_list']) {
     window.postMessage({ type: 'EDEN_IBOSS_LIST', payload: changes['eden_iboss_list'].newValue }, '*');
   }
+  // X 수집 결과 전달
+  if (changes['eden_x_results']) {
+    window.postMessage({ type: 'EDEN_X_RESULTS', payload: changes['eden_x_results'].newValue }, '*');
+  }
+  // X 진행 상태 전달
+  if (changes['eden_x_status']) {
+    window.postMessage({ type: 'EDEN_X_STATUS', payload: changes['eden_x_status'].newValue }, '*');
+  }
 });
 
 // 3. 웹앱 → 백그라운드: 크롤 시작 요청 전달
@@ -82,6 +90,33 @@ window.addEventListener('message', (event) => {
   if (type === 'EDEN_STOP_CRAWL') {
     chrome.runtime.sendMessage({ type: 'EDEN_STOP_CRAWL' }, () => {
       if (chrome.runtime.lastError) console.error('[Eden Crawl] 중지 요청 실패:', chrome.runtime.lastError.message);
+    });
+    return;
+  }
+
+  if (type === 'EDEN_START_X_CRAWL') {
+    if (!keyword) return;
+    console.log('[Eden Crawl] X 수집 요청 수신 → background 전달:', keyword, count);
+    chrome.runtime.sendMessage(
+      { type: 'EDEN_START_X_CRAWL', keyword, count: count || 30 },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('[Eden Crawl] X background 전달 실패:', chrome.runtime.lastError.message);
+          window.postMessage({
+            type: 'EDEN_X_STATUS',
+            payload: { msg: '확장 프로그램 오류: ' + chrome.runtime.lastError.message, done: true, error: true }
+          }, '*');
+        } else {
+          console.log('[Eden Crawl] X background 수신 확인:', response);
+        }
+      }
+    );
+    return;
+  }
+
+  if (type === 'EDEN_STOP_X_CRAWL') {
+    chrome.runtime.sendMessage({ type: 'EDEN_STOP_X_CRAWL' }, () => {
+      if (chrome.runtime.lastError) console.error('[Eden Crawl] X 중지 요청 실패:', chrome.runtime.lastError.message);
     });
     return;
   }
