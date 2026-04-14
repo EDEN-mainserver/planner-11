@@ -308,6 +308,19 @@
       margin-top: 6px;
     }
 
+    /* ── 키워드 배지 (멀티 키워드 모드) ── */
+    .kw-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      font-size: 9px;
+      font-weight: 700;
+      background: #ede9fe;
+      color: #6d28d9;
+      border-radius: 99px;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+    }
+
     /* ── 빈 상태 ── */
     .empty {
       text-align: center;
@@ -348,7 +361,7 @@
       type="text"
       class="search-input"
       id="keyword"
-      placeholder="키워드 입력 (예: AI 마케팅, 숏폼)"
+      placeholder="키워드 (멀티: 마케팅:20, 숏폼:30)"
     />
     <input
       type="number"

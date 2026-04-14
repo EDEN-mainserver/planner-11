@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import ThreadPage from "./ThreadPage";
 import XPage from "./XPage";
 
@@ -141,6 +141,37 @@ export default function CrawlingPage({ onBack }) {
   const [activeTab, setActiveTab] = useState("iboss");
   const [startMonth, setStartMonth] = useState("202604");
   const [endMonth, setEndMonth] = useState("202604");
+
+  // 확장 프로그램 연동 상태
+  const [extensionData, setExtensionData] = useState(null);
+
+  // 확장 프로그램 브릿지 — CrawlingPage 레벨에서 수신해야 항상 활성화됨
+  useEffect(() => {
+    const SESSION_KEY = 'eden_threads_pending';
+
+    function applyData(payload) {
+      if (!payload?.posts?.length) return;
+      setExtensionData(payload);
+      setActiveTab('thread');
+      // 사용 후 sessionStorage 정리
+      try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
+    }
+
+    // 1. 마운트 시 sessionStorage 백업 데이터 확인 (타이밍 문제 해결)
+    try {
+      const pending = sessionStorage.getItem(SESSION_KEY);
+      if (pending) applyData(JSON.parse(pending));
+    } catch (_) {}
+
+    // 2. 실시간 postMessage 수신
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== 'EDEN_THREADS_RESULTS') return;
+      applyData(event.data.payload);
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
 
   // 아이보스 전용 상태
   const [ibossData, setIbossData] = useState({ posts: [], loading: false, error: "", selectedRow: null });
@@ -321,7 +352,12 @@ export default function CrawlingPage({ onBack }) {
         {activeTab === "x" && <XPage />}
 
         {/* ── 쓰레드 대시보드 ── */}
-        {activeTab === "thread" && <ThreadPage />}
+        {activeTab === "thread" && (
+          <ThreadPage
+            extensionData={extensionData}
+            onExtensionDataConsumed={() => setExtensionData(null)}
+          />
+        )}
 
         {/* ── 링크드인 준비 중 ── */}
         {activeTab === "linkedin" && (

@@ -39,6 +39,63 @@ function parseJSON(text) {
   return null;
 }
 
+// ── 확장 프로그램 수집 버튼 + 진행 상태 표시 ──
+// 웹앱에서 직접 Eden Crawl 백그라운드 크롤러를 실행
+// postMessage → content_webapp.js → chrome.runtime.sendMessage → background.js
+function ExtensionCrawlButton({ keyword, count = 30 }) {
+  const [status, setStatus] = useState(null); // null | { msg, done, error }
+
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== 'EDEN_CRAWL_STATUS') return;
+      setStatus(event.data.payload);
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const handleStart = () => {
+    if (!keyword.trim()) return;
+    setStatus({ msg: '수집 요청 중...', done: false, error: false });
+    window.postMessage({ type: 'EDEN_START_CRAWL', keyword: keyword.trim(), count }, '*');
+  };
+
+  const isCrawling = status && !status.done;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        onClick={handleStart}
+        disabled={!keyword.trim() || isCrawling}
+        title="Eden Crawl 확장 프로그램으로 자동 수집"
+        className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+          isCrawling
+            ? "bg-purple-50 border-purple-300 text-purple-700"
+            : status?.done && !status?.error
+            ? "bg-green-50 border-green-300 text-green-700"
+            : status?.error
+            ? "bg-red-50 border-red-300 text-red-600"
+            : "bg-white border-gray-300 text-gray-600 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700"
+        }`}
+      >
+        {isCrawling
+          ? <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          : "🧩"
+        }
+        {isCrawling ? "수집 중..." : status?.done && !status?.error ? "수집 완료!" : "확장 수집"}
+      </button>
+      {status && (
+        <p className={`text-[10px] px-1 leading-tight max-w-[140px] ${
+          status.error ? "text-red-500" : status.done ? "text-green-600" : "text-purple-600"
+        }`}>
+          {status.msg}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── 톤 배지 ──
 const TONE_MAP = {
   "유머러스": "bg-yellow-100 text-yellow-700",
@@ -179,7 +236,7 @@ function BrandModal({ onClose }) {
 }
 
 // ─────────────────────── 메인 컴포넌트 ───────────────────────
-export default function ThreadPage() {
+export default function ThreadPage({ extensionData = null, onExtensionDataConsumed = null }) {
   const [keyword, setKeyword]               = useState("");
   const [posts, setPosts]                   = useState([]);
   const [collectLoading, setCollectLoading] = useState(false);
@@ -196,23 +253,19 @@ export default function ThreadPage() {
   const [fromExtension,   setFromExtension]   = useState(false);
 
   // ── 1. Eden Crawl 확장 프로그램 연동 ──
-  // content_webapp.js가 chrome.storage 변경을 감지해 postMessage로 전달
+  // CrawlingPage에서 수신한 extensionData prop이 바뀌면 적용
   useEffect(() => {
-    const handler = (event) => {
-      if (event.source !== window) return;
-      if (event.data?.type !== 'EDEN_THREADS_RESULTS') return;
-      const { keyword: kw, posts: p } = event.data.payload;
-      setKeyword(kw);
-      setPosts(p);
-      setCollectError("");
-      setExpandedRows(new Set());
-      setAnalysisMap({});
-      setIdeasMap({});
-      setFromExtension(true);
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, []);
+    if (!extensionData?.posts?.length) return;
+    setKeyword(extensionData.keyword || "");
+    setPosts(extensionData.posts);
+    setCollectError("");
+    setExpandedRows(new Set());
+    setAnalysisMap({});
+    setIdeasMap({});
+    setFilterMin(0);
+    setFromExtension(true);
+    if (onExtensionDataConsumed) onExtensionDataConsumed();
+  }, [extensionData]);
 
   // ── 2. 실제 크롤링 ──
   const handleCollect = useCallback(async () => {
@@ -422,6 +475,9 @@ JSON 배열 형식으로만 반환:
           {collectLoading ? "수집 중..." : "실시간 수집"}
         </button>
 
+        {/* 확장 프로그램 수집 버튼 */}
+        <ExtensionCrawlButton keyword={keyword} />
+
         {/* 쿠키 설정 버튼 */}
         <button
           onClick={() => setShowCookieModal(true)}
@@ -598,6 +654,7 @@ JSON 배열 형식으로만 반환:
                         <span className={`text-xs font-semibold ${isExpanded ? "text-purple-600" : "text-gray-500"}`}>
                           {post.author}
                         </span>
+                        {post.keyword && <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700 whitespace-nowrap">{post.keyword}</span>}
                         {aState?.data?.tone && <ToneBadge tone={aState.data.tone} />}
                         <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{post.time}</span>
                       </div>

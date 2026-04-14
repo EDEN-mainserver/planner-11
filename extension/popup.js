@@ -19,6 +19,24 @@ const saveSettingsBtn = document.getElementById('save-settings');
 
 let _posts = [];
 
+// ── 키워드 파싱 (멀티 키워드 지원) ──
+// "AI마케팅:20, 숏폼:30" → [{keyword:"AI마케팅",count:20},{keyword:"숏폼",count:30}]
+// "AI마케팅" → [{keyword:"AI마케팅",count:defaultCount}]
+function parseKeywords(input, defaultCount) {
+  const parts = input.split(',').map(s => s.trim()).filter(Boolean);
+  return parts.map(part => {
+    const colonIdx = part.lastIndexOf(':');
+    if (colonIdx > 0) {
+      const kw  = part.slice(0, colonIdx).trim();
+      const cnt = parseInt(part.slice(colonIdx + 1).trim(), 10);
+      if (kw && !isNaN(cnt)) {
+        return { keyword: kw, count: Math.min(Math.max(cnt, 5), 100) };
+      }
+    }
+    return { keyword: part, count: defaultCount };
+  }).filter(item => item.keyword.length > 0);
+}
+
 // ── 설정 로드/저장 ──
 async function loadSettings() {
   const data = await chrome.storage.local.get([STORAGE.VERCEL_URL, STORAGE.GEMINI_KEY]);
@@ -62,6 +80,34 @@ function waitForTabLoad(tabId) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ──────────────────────────────────────────────────────────────
+// 조회수 추출 함수 (게시물 상세 페이지에서 실행)
+// ⚠️ 외부 변수 참조 불가 — 완전히 독립적이어야 함
+// Python 크롤러와 동일 방식: span:has-text("조회") 탐색
+// ──────────────────────────────────────────────────────────────
+function extractViewCount() {
+  function parseCount(text) {
+    if (!text) return 0;
+    const t = text.trim().replace(/,/g, '');
+    const m = t.match(/([\d.]+)(억|만|천)?/);
+    if (!m) return 0;
+    const n = parseFloat(m[1]);
+    if (isNaN(n)) return 0;
+    if (m[2] === '억') return Math.round(n * 100_000_000);
+    if (m[2] === '만') return Math.round(n * 10_000);
+    if (m[2] === '천') return Math.round(n * 1_000);
+    return Math.round(n);
+  }
+  // "조회" 텍스트 포함 span 탐색
+  const spans = document.querySelectorAll('span');
+  for (const span of spans) {
+    if (span.textContent.includes('조회')) {
+      return parseCount(span.textContent);
+    }
+  }
+  return 0;
+}
 
 // ──────────────────────────────────────────────────────────────
 // 1회 스크래핑 함수 (탭 내 실행) — 팝업 루프에서 반복 호출
@@ -162,50 +208,29 @@ function scrapeOnce(seenUrlsArray) {
 }
 
 // ──────────────────────────────────────────────────────────────
-// 메인 크롤 핸들러
+// 단일 키워드 크롤 (멀티 키워드 루프에서 반복 호출)
+// prefix: 진행 표시 문자열 (예: "[1/3] AI마케팅")
+// 반환: { posts, lastDebug }
 // ──────────────────────────────────────────────────────────────
-crawlBtn.addEventListener('click', handleCrawl);
-keywordInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !crawlBtn.disabled) handleCrawl();
-});
-
-async function handleCrawl() {
-  const keyword = keywordInput.value.trim();
-  if (!keyword) return;
-
-  const targetCount = Math.min(
-    Math.max(parseInt(countInput?.value || '30', 10) || 30, 5),
-    100
-  );
-
-  crawlBtn.disabled = true;
-  _posts = [];
-  resultsEl.innerHTML = '';
-  showStatus(`"${keyword}" 검색 탭 열기 중...`, 'info');
-
+async function crawlSingleKeyword(keyword, targetCount, prefix) {
   let tab = null;
+  const allPosts = [];
+  const seenUrls = new Set();
+
   try {
-    // 1. 백그라운드 탭으로 Threads 검색 열기
     const url = `https://www.threads.com/search?q=${encodeURIComponent(keyword)}&serp_type=default`;
     tab = await chrome.tabs.create({ url, active: false });
-
-    // 2. 페이지 로드 완료 대기
     await waitForTabLoad(tab.id);
-    showStatus('React 렌더링 대기 중...', 'info');
-
-    // 3. SPA 렌더링 대기
+    showStatus(`${prefix} React 렌더링 대기 중...`, 'info');
     await sleep(3000);
 
-    // 4. 스크롤 + 수집 루프 (팝업에서 직접 관리 → 실시간 카운트 표시)
-    const allPosts  = [];
-    const seenUrls  = new Set();
-    let noNewCount  = 0;
-    const MAX_NO_NEW  = 8;
-    let lastDebug     = { containerCount: 0, pageTitle: '', url: '' };
-    let loopCount     = 0;
+    let noNewCount = 0;
+    const MAX_NO_NEW = 8;
+    let lastDebug   = { containerCount: 0, pageTitle: '', url: '' };
+    let loopCount   = 0;
 
     console.log('[Eden Crawl] 수집 시작:', { keyword, targetCount, tabId: tab.id });
-    showStatus(`수집 중... 0 / ${targetCount}개`, 'info');
+    showStatus(`${prefix} 수집 중... 0 / ${targetCount}개`, 'info');
 
     while (allPosts.length < targetCount && noNewCount < MAX_NO_NEW) {
       loopCount++;
@@ -219,15 +244,10 @@ async function handleCrawl() {
       lastDebug = debug;
 
       console.log(`[Eden Crawl] 루프 ${loopCount}회:`, {
-        url:            debug.url,
-        pageTitle:      debug.pageTitle,
-        containerCount: debug.containerCount,
-        newPostsFound:  newPosts.length,
-        totalSoFar:     allPosts.length,
-        noNewCount,
+        keyword, containerCount: debug.containerCount,
+        newPostsFound: newPosts.length, totalSoFar: allPosts.length,
       });
 
-      // 로그인 벽 감지
       if (debug.url.includes('/login') || debug.url.includes('accounts/login')) {
         console.warn('[Eden Crawl] 로그인 페이지 감지 → 중단');
         break;
@@ -236,14 +256,14 @@ async function handleCrawl() {
       if (newPosts.length > 0) {
         newPosts.forEach((p) => {
           if (allPosts.length >= targetCount) return;
-          allPosts.push({ ...p, rank: allPosts.length + 1 });
+          allPosts.push({ ...p, rank: allPosts.length + 1, keyword });
           if (p.postUrl) seenUrls.add(p.postUrl);
         });
         noNewCount = 0;
-        showStatus(`수집 중... ${allPosts.length} / ${targetCount}개`, 'info');
+        showStatus(`${prefix} 수집 중... ${allPosts.length} / ${targetCount}개`, 'info');
       } else {
         noNewCount++;
-        showStatus(`수집 중... ${allPosts.length} / ${targetCount}개 (새 게시물 대기 ${noNewCount}/${MAX_NO_NEW})`, 'info');
+        showStatus(`${prefix} 수집 중... ${allPosts.length} / ${targetCount}개 (대기 ${noNewCount}/${MAX_NO_NEW})`, 'info');
       }
 
       if (allPosts.length < targetCount) {
@@ -255,61 +275,132 @@ async function handleCrawl() {
       }
     }
 
-    console.log('[Eden Crawl] 루프 종료:', {
-      totalCollected: allPosts.length,
-      loopCount,
-      lastUrl:        lastDebug.url,
-      containerCount: lastDebug.containerCount,
-    });
-
-    // 5. 탭 닫기
+    // 검색 탭 닫기
     await chrome.tabs.remove(tab.id);
     tab = null;
 
-    const posts = allPosts;
-    const debug = lastDebug;
-
-    if (posts.length === 0) {
-      if (debug.url.includes('/login') || debug.url.includes('accounts/login')) {
-        showStatus('Threads 로그인이 필요합니다. 브라우저에서 로그인해주세요.', 'warning');
-      } else {
-        showStatus(
-          `게시물 없음 — 컨테이너 ${debug.containerCount}개 감지. 로그인 후 재시도하세요.`,
-          'warning'
-        );
+    // 조회수 수집 — 게시물 상세 페이지 순차 방문 (탭 1개 재사용)
+    const postsWithUrl = allPosts.filter(p => p.postUrl);
+    if (postsWithUrl.length > 0) {
+      showStatus(`${prefix} 조회수 수집 중... 0 / ${postsWithUrl.length}개`, 'info');
+      let detailTab = null;
+      try {
+        detailTab = await chrome.tabs.create({ url: 'about:blank', active: false });
+        for (let i = 0; i < postsWithUrl.length; i++) {
+          const post = postsWithUrl[i];
+          showStatus(`${prefix} 조회수 수집 중... ${i + 1} / ${postsWithUrl.length}개`, 'info');
+          await chrome.tabs.update(detailTab.id, { url: post.postUrl });
+          await waitForTabLoad(detailTab.id);
+          await sleep(2500);
+          try {
+            const [res] = await chrome.scripting.executeScript({
+              target: { tabId: detailTab.id },
+              func:   extractViewCount,
+            });
+            post.views = res.result || 0;
+          } catch (_) {
+            post.views = 0;
+          }
+        }
+      } finally {
+        if (detailTab) await chrome.tabs.remove(detailTab.id).catch(() => {});
       }
+    }
+
+    return { posts: allPosts, lastDebug };
+  } catch (err) {
+    if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+    throw err;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// 메인 크롤 핸들러 (멀티 키워드 지원)
+// ──────────────────────────────────────────────────────────────
+crawlBtn.addEventListener('click', handleCrawl);
+keywordInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !crawlBtn.disabled) handleCrawl();
+});
+
+async function handleCrawl() {
+  const rawInput = keywordInput.value.trim();
+  if (!rawInput) return;
+
+  const defaultCount = Math.min(Math.max(parseInt(countInput?.value || '30', 10) || 30, 5), 100);
+  const keywords = parseKeywords(rawInput, defaultCount);
+  if (keywords.length === 0) return;
+
+  const isMulti = keywords.length > 1;
+
+  crawlBtn.disabled = true;
+  _posts = [];
+  resultsEl.innerHTML = '';
+
+  const allPosts = [];
+
+  try {
+    for (let i = 0; i < keywords.length; i++) {
+      const { keyword, count } = keywords[i];
+      const prefix = isMulti
+        ? `[${i + 1}/${keywords.length}] ${keyword}`
+        : `"${keyword}"`;
+
+      showStatus(`${prefix} 검색 탭 열기 중...`, 'info');
+
+      const { posts, lastDebug } = await crawlSingleKeyword(keyword, count, prefix);
+
+      if (posts.length === 0) {
+        if (lastDebug.url.includes('/login') || lastDebug.url.includes('accounts/login')) {
+          showStatus('Threads 로그인이 필요합니다. 브라우저에서 로그인해주세요.', 'warning');
+          return;
+        }
+        showStatus(`${prefix} 게시물 없음 — 컨테이너 ${lastDebug.containerCount}개 감지`, 'warning');
+        continue;
+      }
+
+      allPosts.push(...posts);
+
+      if (isMulti) {
+        showStatus(`${prefix} 완료 — ${posts.length}개 (누적 ${allPosts.length}개)`, 'success');
+        if (i < keywords.length - 1) await sleep(800);
+      }
+    }
+
+    if (allPosts.length === 0) {
+      showStatus('게시물을 수집하지 못했습니다. Threads 로그인 후 재시도하세요.', 'warning');
       return;
     }
 
-    // 6. chrome.storage에 저장 → 웹앱 content script가 감지
-    console.log('[Eden Crawl] storage 저장:', { keyword, postCount: posts.length });
+    // rank 재정렬
+    allPosts.forEach((p, i) => { p.rank = i + 1; });
+
+    // chrome.storage 저장 → 웹앱 content script가 감지
+    const combinedKeyword = keywords.map(k => k.keyword).join(', ');
+    console.log('[Eden Crawl] storage 저장:', { combinedKeyword, postCount: allPosts.length });
     await chrome.storage.local.set({
-      eden_threads_results: { keyword, posts, timestamp: Date.now() },
+      eden_threads_results: { keyword: combinedKeyword, posts: allPosts, timestamp: Date.now() },
     });
 
-    // 7. 웹앱 탭 열기 또는 포커스
+    // 웹앱 탭 열기 또는 포커스
     const cfg = await chrome.storage.local.get(STORAGE.VERCEL_URL);
     const vercelUrl = cfg[STORAGE.VERCEL_URL];
-    console.log('[Eden Crawl] Vercel URL 설정값:', vercelUrl || '(없음)');
     if (vercelUrl) {
       const existing = await chrome.tabs.query({ url: `${vercelUrl}/*` });
-      console.log('[Eden Crawl] 기존 웹앱 탭:', existing.length, '개');
       if (existing.length > 0) {
         await chrome.tabs.update(existing[0].id, { active: true });
         await chrome.windows.update(existing[0].windowId, { focused: true });
       } else {
         await chrome.tabs.create({ url: vercelUrl, active: true });
       }
-      showStatus(`웹앱으로 ${posts.length}개 게시물 전송 완료`, 'success');
+      showStatus(`웹앱으로 ${allPosts.length}개 게시물 전송 완료`, 'success');
     } else {
-      hideStatus();
+      showStatus(`${allPosts.length}개 게시물 수집 완료`, 'success');
     }
 
-    renderResults(posts, keyword);
+    renderResults(allPosts, combinedKeyword);
 
   } catch (err) {
     showStatus(`오류: ${err.message}`, 'error');
-    if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
   } finally {
     crawlBtn.disabled = false;
   }
@@ -318,6 +409,9 @@ async function handleCrawl() {
 // ── 결과 렌더링 ──
 function renderResults(posts, keyword) {
   _posts = posts;
+
+  // 멀티 키워드 여부 판단 (쉼표 포함 시)
+  const _isMultiKw = keyword.includes(',');
 
   resultsEl.innerHTML = `
     <div class="results-header">
@@ -335,6 +429,9 @@ function renderResults(posts, keyword) {
         <div class="card-main">
           <div class="card-top">
             <span class="author">${escHtml(post.author)}</span>
+            ${_isMultiKw && post.keyword
+              ? `<span class="kw-badge">${escHtml(post.keyword)}</span>`
+              : ''}
             <span class="time">${escHtml(post.time)}</span>
           </div>
           <p class="preview">${escHtml(post.content)}</p>
@@ -473,3 +570,14 @@ function escHtml(str) {
 
 // ── 초기화 ──
 loadSettings();
+
+// 웹앱에서 전달된 pending 키워드 자동 입력
+chrome.storage.local.get('eden_pending_keyword', (data) => {
+  if (data.eden_pending_keyword) {
+    keywordInput.value = data.eden_pending_keyword;
+    keywordInput.focus();
+    // 사용 후 즉시 삭제 (한 번만 사용)
+    chrome.storage.local.remove('eden_pending_keyword');
+    console.log('[Eden Crawl] 웹앱 키워드 자동 입력:', data.eden_pending_keyword);
+  }
+});
