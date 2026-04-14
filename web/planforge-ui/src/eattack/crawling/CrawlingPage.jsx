@@ -145,7 +145,7 @@ function ExtensionInstallModal({ onClose }) {
       title: "GitHub에서 파일 다운로드",
       desc: (
         <>
-          아래 링크 접속 → <strong>Code → Download ZIP</strong> 클릭
+          아래 링크를 클릭해서 GitHub 페이지로 이동하세요.
           <a
             href="https://github.com/EDEN-mainserver/E-ATTACK-"
             target="_blank"
@@ -154,15 +154,17 @@ function ExtensionInstallModal({ onClose }) {
           >
             github.com/EDEN-mainserver/E-ATTACK-
           </a>
+          <span className="block mt-1.5">페이지에서 초록색 <strong>{"<>"} Code</strong> 버튼 → <strong>Download ZIP</strong> 클릭</span>
         </>
       ),
     },
     {
       num: 2,
-      title: "ZIP 압축 해제 후 extension 폴더 찾기",
+      title: "ZIP 압축 해제",
       desc: (
         <>
-          압축 해제하면 <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-purple-700">planforge_complete / extension</code> 폴더가 있습니다.
+          다운로드된 ZIP 파일을 압축 해제하세요.<br />
+          압축을 풀면 <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-purple-700">E-ATTACK--master</code> 폴더가 생깁니다. 이 폴더 안에 확장 프로그램 파일들이 있습니다.
         </>
       ),
     },
@@ -171,7 +173,7 @@ function ExtensionInstallModal({ onClose }) {
       title: "Chrome 확장 프로그램 페이지 열기",
       desc: (
         <>
-          Chrome 주소창에 입력:
+          Chrome 주소창에 아래를 그대로 붙여넣고 엔터를 누르세요.
           <code className="block mt-1.5 px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-mono text-blue-700">chrome://extensions</code>
         </>
       ),
@@ -179,17 +181,36 @@ function ExtensionInstallModal({ onClose }) {
     {
       num: 4,
       title: "개발자 모드 켜기",
-      desc: "우측 상단 '개발자 모드' 토글을 ON으로 켜주세요.",
+      desc: (
+        <>
+          페이지 <strong>우측 상단</strong>에 있는 <strong>개발자 모드</strong> 토글을 클릭해서 <strong>파란색(ON)</strong>으로 켜주세요.
+        </>
+      ),
     },
     {
       num: 5,
-      title: "'압축 해제된 확장 프로그램 로드' 클릭",
-      desc: "좌측 상단 버튼 클릭 → 2단계에서 찾은 extension 폴더 선택",
+      title: "'압축 해제된 확장 프로그램을 로드합니다' 클릭",
+      desc: (
+        <>
+          개발자 모드를 켜면 <strong>좌측 상단</strong>에 버튼이 생깁니다.<br />
+          클릭 후 2단계에서 압축 해제한 <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-purple-700">E-ATTACK--master</code> 폴더를 선택하세요.
+        </>
+      ),
     },
     {
       num: 6,
-      title: "Threads 로그인 후 사용",
-      desc: "threads.com에서 로그인된 상태에서 이 사이트의 쓰레드 탭에서 수집 버튼을 누르면 자동으로 수집됩니다.",
+      title: "각 플랫폼 로그인 후 수집 시작",
+      desc: (
+        <>
+          수집하려는 플랫폼에 미리 로그인한 상태여야 합니다.
+          <div className="mt-1.5 space-y-0.5">
+            <div className="flex items-center gap-1.5"><span className="text-purple-500 font-bold">🧵</span> <span>쓰레드: threads.com 로그인</span></div>
+            <div className="flex items-center gap-1.5"><span className="font-bold text-gray-800">𝕏</span> <span>X(트위터): x.com 로그인</span></div>
+            <div className="flex items-center gap-1.5"><span className="font-bold text-blue-600">in</span> <span>링크드인: linkedin.com 로그인</span></div>
+          </div>
+          <span className="block mt-1.5">로그인 후 이 사이트에서 각 탭의 수집 버튼을 누르면 자동으로 수집됩니다.</span>
+        </>
+      ),
     },
   ];
 
@@ -206,7 +227,7 @@ function ExtensionInstallModal({ onClose }) {
             </div>
             <div>
               <h3 className="text-sm font-bold text-gray-900">Eden Crawl 확장 프로그램 설치</h3>
-              <p className="text-[11px] text-gray-400">Chrome 전용 · 쓰레드 자동 수집</p>
+              <p className="text-[11px] text-gray-400">Chrome 전용 · 쓰레드 / X / LinkedIn 자동 수집</p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -233,9 +254,9 @@ function ExtensionInstallModal({ onClose }) {
         <div className="mx-5 mb-5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
           <p className="text-xs text-amber-700 font-medium mb-1">⚠️ 주의사항</p>
           <ul className="text-xs text-amber-600 space-y-0.5 list-disc list-inside">
-            <li>Chrome 브라우저 전용입니다</li>
-            <li>threads.com 로그인 필수</li>
-            <li>업데이트 시 extension 폴더 교체 후 재로드</li>
+            <li>Chrome 브라우저 전용입니다 (Edge 불가)</li>
+            <li>수집 전 해당 플랫폼에 미리 로그인 필수</li>
+            <li>업데이트 시 ZIP 재다운로드 → 폴더 교체 → chrome://extensions에서 새로고침(↺) 클릭</li>
           </ul>
         </div>
       </div>
