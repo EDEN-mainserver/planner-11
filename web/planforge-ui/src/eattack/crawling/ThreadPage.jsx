@@ -240,6 +240,7 @@ function BrandModal({ onClose }) {
 // ─────────────────────── 메인 컴포넌트 ───────────────────────
 export default function ThreadPage({ extensionData = null, onExtensionDataConsumed = null }) {
   const [keyword, setKeyword]               = useState("");
+  const [collectCount, setCollectCount]     = useState(30);
   const [posts, setPosts]                   = useState([]);
   const [collectLoading, setCollectLoading] = useState(false);
   const [collectError, setCollectError]     = useState("");
@@ -458,15 +459,29 @@ JSON 배열 형식으로만 반환:
             type="text"
             value={keyword}
             onChange={e => setKeyword(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && keyword.trim() && window.postMessage({ type: 'EDEN_START_CRAWL', keyword: keyword.trim(), count: 30 }, '*')}
+            onKeyDown={e => e.key === "Enter" && keyword.trim() && window.postMessage({ type: 'EDEN_START_CRAWL', keyword: keyword.trim(), count: collectCount }, '*')}
             placeholder="키워드 입력 (예: 숏폼, AI 마케팅)"
             disabled={collectLoading}
             className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 shadow-sm"
           />
         </div>
 
+        {/* 수집 개수 입력 */}
+        <div className="flex flex-col items-center gap-0.5">
+          <input
+            type="number"
+            min={5}
+            max={200}
+            value={collectCount}
+            onChange={e => setCollectCount(Math.min(200, Math.max(5, parseInt(e.target.value) || 30)))}
+            className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-sm text-center font-medium text-gray-700 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 shadow-sm"
+            title="수집 개수 (5~200)"
+          />
+          <span className="text-[10px] text-gray-400">개</span>
+        </div>
+
         {/* 메인 수집 버튼 (확장 프로그램 기반) */}
-        <ExtensionCrawlButton keyword={keyword} />
+        <ExtensionCrawlButton keyword={keyword} count={collectCount} />
 
         {/* 쿠키 설정 버튼 */}
         <button
