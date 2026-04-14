@@ -678,7 +678,7 @@ export default function CrawlingPage({ onBack }) {
                           본문을 불러오는 중...
                         </div>
                       ) : (
-                        <p className="text-gray-600 text-sm leading-relaxed line-clamp-5 whitespace-pre-wrap">
+                        <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
                           {detailContent || posts[selectedRow]?.content_raw || "(본문을 불러오려면 잠시 기다려주세요)"}
                         </p>
                       )}
