@@ -167,11 +167,26 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
   const seenUrls = new Set();
 
   try {
+    // 현재 활성 탭 기억 — 크롤 후 웹앱으로 복귀
+    const [originTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
     const url = `https://www.threads.com/search?q=${encodeURIComponent(keyword)}&serp_type=default`;
-    tab = await chrome.tabs.create({ url, active: false });
+    // active: true로 열어 Threads가 포커스를 받아 콘텐츠를 즉시 로딩
+    tab = await chrome.tabs.create({ url, active: true });
     await waitForTabLoad(tab.id);
-    // 초기 렌더링 대기 — 컨테이너가 나타날 때까지 기다림 (최대 10초)
+
+    // 초기 렌더링 대기 — body 클릭으로 로딩 유도
     setStatus(`${prefix} 렌더링 대기 중...`);
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    });
+
+    // 바로 웹앱 탭으로 복귀
+    if (originTab?.id) {
+      await chrome.tabs.update(originTab.id, { active: true }).catch(() => {});
+    }
+
     await waitForNewContent(tab.id, 0, 10000);
 
     let noNewCount = 0;
@@ -236,6 +251,11 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
           setStatus(`조회수 수집 중... (${i + 1}/${postsWithUrl.length})`);
           await chrome.tabs.update(detailTab.id, { url: post.postUrl });
           await waitForTabLoad(detailTab.id);
+          // body 클릭으로 조회수 로딩 유도
+          await chrome.scripting.executeScript({
+            target: { tabId: detailTab.id },
+            func: () => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+          }).catch(() => {});
           await sleep(2500);
           try {
             const [res] = await chrome.scripting.executeScript({ target: { tabId: detailTab.id }, func: extractViewCount });
