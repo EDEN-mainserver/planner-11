@@ -474,6 +474,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  // ── 아이보스 본문 추출 (브라우저 세션 활용) ──
+  if (message.type === 'EDEN_GET_IBOSS_CONTENT') {
+    const { sourceUrl } = message;
+    sendResponse({ ok: true });
+    (async () => {
+      let tab = null;
+      try {
+        tab = await chrome.tabs.create({ url: sourceUrl, active: false });
+        await waitForTabLoad(tab.id);
+        await sleep(1500);
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const el = document.querySelector('.fr-view')
+              || document.querySelector('#article_content')
+              || document.querySelector('.post_content')
+              || document.querySelector('.view_content');
+            if (!el) return '';
+            // 텍스트 추출 (줄바꿈 보존)
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+            let text = '';
+            let node;
+            while ((node = walker.nextNode())) {
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const tag = node.tagName.toLowerCase();
+                if (['br', 'p', 'div', 'li'].includes(tag)) text += '\n';
+              } else {
+                text += node.textContent;
+              }
+            }
+            return text.replace(/\n{3,}/g, '\n\n').trim();
+          },
+        });
+        await chrome.tabs.remove(tab.id);
+        tab = null;
+        const content = result?.result || '';
+        chrome.storage.local.set({ eden_iboss_content: { sourceUrl, content, ts: Date.now() } });
+      } catch (err) {
+        if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+        chrome.storage.local.set({ eden_iboss_content: { sourceUrl, content: '', error: err.message, ts: Date.now() } });
+      }
+    })();
+    return false;
+  }
+
   if (message.type === 'EDEN_GET_POST_IMAGES') {
     const { postUrl } = message;
     sendResponse({ ok: true });

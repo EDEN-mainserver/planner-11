@@ -74,23 +74,99 @@ export default async function handler(req, res) {
 
   const { month, limit = "50", detail, url: detailUrl } = req.query;
 
+  // ── fr-view div 깊이 기반 추출 (중첩 태그 지원) ──
+  function extractFrView(html) {
+    // fr-view 위치 탐색
+    const marker = 'class="fr-view"';
+    const markerIdx = html.indexOf(marker);
+    if (markerIdx === -1) return "";
+
+    // 여는 > 위치
+    const openEnd = html.indexOf('>', markerIdx) + 1;
+
+    // div 깊이 카운팅으로 닫는 태그 찾기
+    let depth = 1;
+    let pos = openEnd;
+    while (pos < html.length && depth > 0) {
+      const nextOpen  = html.indexOf('<div', pos);
+      const nextClose = html.indexOf('</div>', pos);
+      if (nextClose === -1) break;
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth++;
+        pos = nextOpen + 4;
+      } else {
+        depth--;
+        if (depth === 0) {
+          const inner = html.slice(openEnd, nextClose);
+          return inner
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+        }
+        pos = nextClose + 6;
+      }
+    }
+    return "";
+  }
+
   // ── 상세 본문 크롤링 모드 ──
   if (detail === "true" && detailUrl) {
     try {
       const mainResp = await fetch("https://www.i-boss.co.kr/", {
-        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", "Accept-Language": "ko-KR" },
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "ko-KR,ko;q=0.9",
+        },
       });
       const cookies = mainResp.headers.getSetCookie?.() || [];
       const cookieStr = cookies.map((c) => c.split(";")[0]).join("; ");
 
       const resp = await fetch(detailUrl, {
-        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", "Referer": "https://www.i-boss.co.kr/", "Cookie": cookieStr },
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "ko-KR,ko;q=0.9",
+          "Referer": "https://www.i-boss.co.kr/",
+          "Cookie": cookieStr,
+        },
       });
       const html = await resp.text();
-      // fr-view 클래스 내용 추출
-      const bodyMatch = html.match(/<div class="fr-view">([\s\S]*?)<\/div>\s*<\/div>/);
-      const content = bodyMatch ? bodyMatch[1].replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim() : "";
-      return res.status(200).json({ content, error: "" });
+
+      // 방법 1: fr-view 깊이 카운팅 추출
+      let content = extractFrView(html);
+
+      // 방법 2: fr-view 못 찾으면 article_content, post_content 등 대체 시도
+      if (!content) {
+        const altPatterns = [
+          /id="article_content"[^>]*>([\s\S]*?)<\/div>/,
+          /class="post_content[^"]*"[^>]*>([\s\S]{20,}?)<\/div>/,
+          /class="view_content[^"]*"[^>]*>([\s\S]{20,}?)<\/div>/,
+          /class="content[^"]*"[^>]*>([\s\S]{20,}?)<\/div>/,
+        ];
+        for (const pat of altPatterns) {
+          const m = html.match(pat);
+          if (m?.[1]) {
+            const candidate = m[1]
+              .replace(/<br\s*\/?>/gi, '\n')
+              .replace(/<\/p>/gi, '\n')
+              .replace(/<[^>]+>/g, '')
+              .replace(/&nbsp;/g, ' ')
+              .replace(/\n{3,}/g, '\n\n')
+              .trim();
+            if (candidate.length > 20) { content = candidate; break; }
+          }
+        }
+      }
+
+      return res.status(200).json({ content, error: content ? "" : "본문 영역을 찾을 수 없습니다" });
     } catch (e) {
       return res.status(200).json({ content: "", error: e.message });
     }
