@@ -300,31 +300,60 @@ export default function CrawlingPage({ onBack }) {
     return () => window.removeEventListener('message', handler);
   }, []);
 
+  // 확장 프로그램 아이보스 목록 수신
+  const ibossPendingRef = useRef({ months: [], collected: [], total: 0 });
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== 'EDEN_IBOSS_LIST') return;
+      const { posts: newPosts = [], month, error } = event.data.payload || {};
+      if (error) {
+        setIbossData((prev) => ({ ...prev, loading: false, error: `수집 오류: ${error}` }));
+        return;
+      }
+      const pending = ibossPendingRef.current;
+      pending.collected.push(...newPosts);
+      pending.months = pending.months.filter(m => m !== month);
+
+      if (pending.months.length === 0) {
+        // 모든 월 수집 완료
+        const all = pending.collected;
+        all.sort((a, b) => (b.views || 0) - (a.views || 0));
+        const top50 = all.slice(0, 50).map((p, i) => ({ ...p, rank: i + 1 }));
+        setIbossData((prev) => ({ ...prev, loading: false, posts: top50 }));
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
   const { posts, loading, error, selectedRow } = ibossData;
   const rangeMonths = getMonthsInRange(startMonth, endMonth);
 
-  // 아이보스 크롤링 실행
-  const handleRefresh = useCallback(async () => {
-    setIbossData((prev) => ({ ...prev, loading: true, error: "", selectedRow: null }));
+  // 아이보스 크롤링 — 확장 프로그램으로 직접 수집
+  const refreshTimeoutRef = useRef(null);
+  const handleRefresh = useCallback(() => {
+    const months = getMonthsInRange(startMonth, endMonth);
+    if (!months.length) return;
+
+    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+    ibossPendingRef.current = { months: [...months], collected: [], total: months.length };
+
+    setIbossData((prev) => ({ ...prev, loading: true, error: "", selectedRow: null, posts: [] }));
     setDetailContent("");
-    try {
-      const months = getMonthsInRange(startMonth, endMonth);
-      const allPosts = [];
-      let rank = 1;
-      for (const month of months) {
-        const data = await fetchIbossPosts(month);
-        if (data.posts) {
-          for (const post of data.posts) {
-            allPosts.push({ ...post, rank: rank++ });
-          }
-        }
-      }
-      allPosts.sort((a, b) => b.views - a.views);
-      const top50 = allPosts.slice(0, 50).map((p, i) => ({ ...p, rank: i + 1 }));
-      setIbossData((prev) => ({ ...prev, loading: false, posts: top50 }));
-    } catch (e) {
-      setIbossData((prev) => ({ ...prev, loading: false, error: e.message || "크롤링에 실패했습니다." }));
-    }
+
+    // 각 월별로 확장에 수집 요청
+    months.forEach(month => {
+      window.postMessage({ type: 'EDEN_GET_IBOSS_LIST', month }, '*');
+    });
+
+    // 타임아웃: 월당 15초
+    refreshTimeoutRef.current = setTimeout(() => {
+      setIbossData((prev) => {
+        if (prev.loading) return { ...prev, loading: false, error: '수집 시간 초과 — 확장 프로그램을 확인해주세요' };
+        return prev;
+      });
+    }, months.length * 15000);
   }, [startMonth, endMonth]);
 
   // 행 클릭 (아이보스 전용)

@@ -42,6 +42,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes['eden_iboss_content']) {
     window.postMessage({ type: 'EDEN_IBOSS_CONTENT', payload: changes['eden_iboss_content'].newValue }, '*');
   }
+  // 아이보스 목록 결과 전달
+  if (changes['eden_iboss_list']) {
+    window.postMessage({ type: 'EDEN_IBOSS_LIST', payload: changes['eden_iboss_list'].newValue }, '*');
+  }
 });
 
 // 3. 웹앱 → 백그라운드: 크롤 시작 요청 전달
@@ -55,6 +59,14 @@ window.addEventListener('message', (event) => {
     if (!event.data.postUrl) return;
     chrome.runtime.sendMessage({ type: 'EDEN_GET_POST_IMAGES', postUrl: event.data.postUrl }, () => {
       if (chrome.runtime.lastError) console.error('[Eden Crawl] 이미지 요청 실패:', chrome.runtime.lastError.message);
+    });
+    return;
+  }
+
+  if (type === 'EDEN_GET_IBOSS_LIST') {
+    if (!event.data.month) return;
+    chrome.runtime.sendMessage({ type: 'EDEN_GET_IBOSS_LIST', month: event.data.month }, () => {
+      if (chrome.runtime.lastError) console.error('[Eden Crawl] 아이보스 목록 요청 실패:', chrome.runtime.lastError.message);
     });
     return;
   }

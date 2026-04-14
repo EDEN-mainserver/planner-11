@@ -474,6 +474,66 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  // ── 아이보스 인기글 목록 크롤 ──
+  if (message.type === 'EDEN_GET_IBOSS_LIST') {
+    const { month } = message;
+    sendResponse({ ok: true });
+    (async () => {
+      let tab = null;
+      try {
+        const url = `https://www.i-boss.co.kr/ab-1886?month=${month}`;
+        tab = await chrome.tabs.create({ url, active: false });
+        await sleep(4000);
+
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            function parseCount(text) {
+              if (!text) return 0;
+              const t = text.trim().replace(/,/g, '');
+              const m = t.match(/([\d.]+)/);
+              return m ? parseInt(m[1]) || 0 : 0;
+            }
+            const posts = [];
+            const rows = document.querySelectorAll('tr.is_notice_');
+            rows.forEach((row, i) => {
+              try {
+                const rankEl  = row.querySelector('.snum');
+                const rank    = rankEl ? parseInt(rankEl.textContent.trim()) || (i + 1) : (i + 1);
+                const linkEl  = row.querySelector('a[href][title]');
+                if (!linkEl) return;
+                const title   = linkEl.getAttribute('title') || linkEl.textContent.trim();
+                const href    = linkEl.getAttribute('href') || '';
+                const sourceUrl = href.startsWith('http') ? href : 'https://www.i-boss.co.kr' + href;
+                const commEl  = row.querySelector('.AB-comm');
+                const comments = commEl ? parseCount(commEl.textContent) : 0;
+                const writerEl = row.querySelector('.mb_writer');
+                const author  = writerEl ? writerEl.textContent.trim() : '';
+                const tds = Array.from(row.querySelectorAll('td')).map(td => td.textContent.trim());
+                const createdAt = tds[3] || '';
+                const likes  = parseCount(tds[4] || '0');
+                const views  = parseCount(tds[5] || '0');
+                posts.push({ rank, title, author, views, likes, comments, source_url: sourceUrl, created_at: createdAt, platform: 'iboss' });
+              } catch (_) {}
+            });
+            return { posts, url: location.href };
+          },
+        });
+
+        await chrome.tabs.remove(tab.id);
+        tab = null;
+        const { posts = [], url = '' } = result?.result || {};
+        console.log('[Eden Crawl BG] 아이보스 목록:', { count: posts.length, url, month });
+        chrome.storage.local.set({ eden_iboss_list: { month, posts, ts: Date.now() } });
+      } catch (err) {
+        if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+        console.error('[Eden Crawl BG] 아이보스 목록 오류:', err.message);
+        chrome.storage.local.set({ eden_iboss_list: { month, posts: [], error: err.message, ts: Date.now() } });
+      }
+    })();
+    return false;
+  }
+
   // ── 아이보스 본문 추출 (브라우저 세션 활용) ──
   if (message.type === 'EDEN_GET_IBOSS_CONTENT') {
     const { sourceUrl } = message;
