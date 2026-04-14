@@ -483,36 +483,56 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         tab = await chrome.tabs.create({ url: sourceUrl, active: false });
         await waitForTabLoad(tab.id);
-        await sleep(1500);
+        await sleep(2500); // JS 렌더링 대기
+
         const [result] = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           func: () => {
-            const el = document.querySelector('.fr-view')
-              || document.querySelector('#article_content')
-              || document.querySelector('.post_content')
-              || document.querySelector('.view_content');
-            if (!el) return '';
-            // 텍스트 추출 (줄바꿈 보존)
-            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-            let text = '';
-            let node;
-            while ((node = walker.nextNode())) {
-              if (node.nodeType === Node.ELEMENT_NODE) {
-                const tag = node.tagName.toLowerCase();
-                if (['br', 'p', 'div', 'li'].includes(tag)) text += '\n';
-              } else {
-                text += node.textContent;
-              }
+            // 후보 셀렉터 순서대로 시도
+            const SELECTORS = [
+              '.fr-view', '.fr-element',
+              '#article_content', '#bo_v_con',
+              '.wr_content', '.post_content',
+              '.view_content', '.content_view',
+              '.ab-body', '[class*="view_body"]',
+              '[id*="content"]',
+            ];
+            let el = null;
+            let matchedSel = '';
+            for (const sel of SELECTORS) {
+              try {
+                const found = document.querySelector(sel);
+                if (found && (found.innerText || '').trim().length > 30) {
+                  el = found;
+                  matchedSel = sel;
+                  break;
+                }
+              } catch (_) {}
             }
-            return text.replace(/\n{3,}/g, '\n\n').trim();
+            if (!el) {
+              // 최후 수단: 가장 긴 텍스트를 가진 div 탐색
+              let best = null, bestLen = 0;
+              document.querySelectorAll('div, article, section').forEach(d => {
+                const t = (d.innerText || '').trim();
+                if (t.length > bestLen && t.length < 20000) { best = d; bestLen = t.length; }
+              });
+              el = best;
+              matchedSel = 'auto';
+            }
+            if (!el) return { content: '', selector: 'none', url: location.href };
+            const content = (el.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
+            return { content, selector: matchedSel, url: location.href };
           },
         });
+
         await chrome.tabs.remove(tab.id);
         tab = null;
-        const content = result?.result || '';
+        const { content = '', selector = '', url = '' } = result?.result || {};
+        console.log('[Eden Crawl BG] 아이보스 본문:', { selector, len: content.length, url });
         chrome.storage.local.set({ eden_iboss_content: { sourceUrl, content, ts: Date.now() } });
       } catch (err) {
         if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+        console.error('[Eden Crawl BG] 아이보스 본문 오류:', err.message);
         chrome.storage.local.set({ eden_iboss_content: { sourceUrl, content: '', error: err.message, ts: Date.now() } });
       }
     })();
