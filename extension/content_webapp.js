@@ -34,6 +34,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes[STATUS_KEY]) {
     window.postMessage({ type: 'EDEN_CRAWL_STATUS', payload: changes[STATUS_KEY].newValue }, '*');
   }
+  // 게시물 이미지 결과 전달
+  if (changes['eden_post_images']) {
+    window.postMessage({ type: 'EDEN_POST_IMAGES', payload: changes['eden_post_images'].newValue }, '*');
+  }
 });
 
 // 3. 웹앱 → 백그라운드: 크롤 시작 요청 전달
@@ -42,6 +46,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
   const { type, keyword, count } = event.data || {};
+
+  if (type === 'EDEN_GET_POST_IMAGES') {
+    if (!event.data.postUrl) return;
+    chrome.runtime.sendMessage({ type: 'EDEN_GET_POST_IMAGES', postUrl: event.data.postUrl }, () => {
+      if (chrome.runtime.lastError) console.error('[Eden Crawl] 이미지 요청 실패:', chrome.runtime.lastError.message);
+    });
+    return;
+  }
 
   if (type === 'EDEN_START_CRAWL') {
     if (!keyword) return;

@@ -382,6 +382,51 @@ async function runCrawl(rawKeyword, defaultCount) {
   }
 }
 
+// ──────────────────────────────────────────────────────────────
+// 게시물 이미지 수집
+// ──────────────────────────────────────────────────────────────
+async function fetchPostImages(postUrl) {
+  let tab = null;
+  try {
+    tab = await chrome.tabs.create({ url: postUrl, active: false });
+    await waitForTabLoad(tab.id);
+    await sleep(2500);
+    // body 클릭으로 렌더링 유도
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    }).catch(() => {});
+    await sleep(1000);
+
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const seen = new Set();
+        const urls = [];
+        document.querySelectorAll('img').forEach(img => {
+          const src = img.src || img.getAttribute('src') || '';
+          if (!src || seen.has(src)) return;
+          // Threads/Instagram CDN 이미지만 수집, 아이콘/UI 이미지 제외
+          if ((src.includes('cdninstagram') || src.includes('fbcdn')) &&
+              (img.naturalWidth > 150 || img.width > 150 || parseInt(img.getAttribute('width')) > 150)) {
+            seen.add(src);
+            urls.push(src);
+          }
+        });
+        return urls;
+      },
+    });
+
+    await chrome.tabs.remove(tab.id);
+    tab = null;
+    return result?.result || [];
+  } catch (err) {
+    if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+    console.error('[Eden Crawl BG] 이미지 수집 오류:', err);
+    return [];
+  }
+}
+
 // ── 메시지 리스너 (content_webapp.js → background) ──
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[Eden Crawl BG] 메시지 수신:', message.type, message);
@@ -400,6 +445,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'EDEN_CRAWL_STATUS_CHECK') {
     sendResponse({ crawling: isCrawling });
+    return false;
+  }
+
+  if (message.type === 'EDEN_GET_POST_IMAGES') {
+    const { postUrl } = message;
+    sendResponse({ ok: true });
+    fetchPostImages(postUrl).then(urls => {
+      chrome.storage.local.set({ eden_post_images: { postUrl, urls, ts: Date.now() } });
+    });
     return false;
   }
 });

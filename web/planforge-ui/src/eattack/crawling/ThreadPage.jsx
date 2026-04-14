@@ -152,6 +152,7 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [analysisMap, setAnalysisMap]   = useState({});
   const [ideasMap, setIdeasMap]         = useState({});
+  const [imageMap, setImageMap]         = useState({}); // { [postUrl]: { loading, urls, error } }
   const [filterMin, setFilterMin]       = useState(0);
 
   // 키워드 입력 변경 시 키워드별 개수 자동 동기화 (중복 제거)
@@ -173,6 +174,29 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
 
   const [showBrandModal, setShowBrandModal] = useState(false);
   const [fromExtension,  setFromExtension]  = useState(false);
+
+  // ── 이미지 수집 ──
+  const handleFetchImages = useCallback((postUrl) => {
+    if (!postUrl) return;
+    setImageMap(prev => ({ ...prev, [postUrl]: { loading: true, urls: [], error: null } }));
+    window.postMessage({ type: 'EDEN_GET_POST_IMAGES', postUrl }, '*');
+  }, []);
+
+  // EDEN_POST_IMAGES 메시지 수신
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== 'EDEN_POST_IMAGES') return;
+      const { postUrl, urls } = event.data.payload || {};
+      if (!postUrl) return;
+      setImageMap(prev => ({
+        ...prev,
+        [postUrl]: { loading: false, urls: urls || [], error: urls?.length === 0 ? '이미지가 없습니다' : null }
+      }));
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
 
   // ── 1. Eden Crawl 확장 프로그램 연동 ──
   // CrawlingPage에서 수신한 extensionData prop이 바뀌면 적용
@@ -490,6 +514,7 @@ JSON 배열 형식으로만 반환:
               const isExpanded = expandedRows.has(origIdx);
               const aState = analysisMap[origIdx];
               const iState = ideasMap[origIdx];
+              const imgState = post.postUrl ? imageMap[post.postUrl] : null;
 
               return (
                 <div
@@ -580,6 +605,26 @@ JSON 배열 형식으로만 반환:
                         <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
                           {post.content}
                         </p>
+
+                        {/* 이미지 표시 */}
+                        {imgState?.urls?.length > 0 && (
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            {imgState.urls.map((url, i) => (
+                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+                                <img
+                                  src={url}
+                                  alt={`게시물 이미지 ${i + 1}`}
+                                  className="w-full rounded-lg border border-gray-200 object-cover hover:opacity-90 transition-opacity cursor-zoom-in"
+                                  style={{ maxHeight: '240px' }}
+                                  onError={e => { e.target.style.display = 'none'; }}
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                        {imgState?.error && (
+                          <p className="mt-2 text-xs text-gray-400">{imgState.error}</p>
+                        )}
                       </div>
 
                       {/* 분석 버튼 영역 */}
@@ -594,6 +639,29 @@ JSON 배열 형식으로만 반환:
                             </svg>
                             AI 바이럴 분석
                           </button>
+                        )}
+
+                        {/* 이미지 가져오기 버튼 */}
+                        {post.postUrl && (
+                          imgState?.loading ? (
+                            <div className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-500 text-xs font-medium rounded-lg border border-blue-200">
+                              <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                              </svg>
+                              이미지 가져오는 중...
+                            </div>
+                          ) : (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleFetchImages(post.postUrl); }}
+                              className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-medium rounded-lg border border-blue-200 transition-all"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                              </svg>
+                              {imgState?.urls?.length > 0 ? `이미지 ${imgState.urls.length}장 ↺` : '이미지 가져오기'}
+                            </button>
+                          )
                         )}
                         {aState?.loading && (
                           <div className="flex items-center gap-1.5 px-4 py-2 bg-purple-50 text-purple-600 text-xs font-semibold rounded-lg">
