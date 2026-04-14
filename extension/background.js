@@ -124,16 +124,36 @@ function scrapeOnce(seenUrlsArray) {
     }
     return 0;
   }
-  // 공유하기는 data-pressable-container 밖에 있을 수 있으므로 상위 DOM까지 탐색
+  // 공유하기 카운트 추출 — pressable-container 외부까지 최대 10단계 탐색
+  // 구조: svg[aria-label="공유하기"] → parentElement(flexBox) → span.x1o0tod
   function findShare(el) {
     let node = el;
-    for (let i = 0; i < 6; i++) {
-      if (node.querySelector('svg[aria-label="공유하기"]')) return getCount(node, '공유하기');
-      if (!node.parentElement) break;
+    for (let i = 0; i < 10; i++) {
+      if (!node) break;
+      const svg = node.querySelector('svg[aria-label="공유하기"]');
+      if (svg) {
+        // 방법 1: SVG 부모 flex 컨테이너 내 span.x1o0tod 직접 쿼리
+        const flexBox = svg.parentElement;
+        if (flexBox) {
+          const numSpan = flexBox.querySelector('span.x1o0tod');
+          if (numSpan) return parseCount(numSpan.textContent);
+        }
+        // 방법 2: nextElementSibling textContent
+        const sibling = svg.nextElementSibling;
+        if (sibling) { const v = parseCount(sibling.textContent); if (v > 0) return v; }
+        // 방법 3: role=button 컨테이너 내 모든 span 순회
+        const btn = svg.closest('[role="button"]');
+        if (btn) {
+          for (const s of btn.querySelectorAll('span')) {
+            const v = parseCount(s.textContent.trim());
+            if (v > 0) return v;
+          }
+        }
+        return 0;
+      }
       node = node.parentElement;
     }
-    // fallback: 리포스트 라벨
-    return getCount(el, '리포스트');
+    return 0;
   }
   const seenSet  = new Set(seenUrlsArray);
   const newPosts = [];
