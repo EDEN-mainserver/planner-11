@@ -147,12 +147,12 @@ function ExtensionInstallModal({ onClose }) {
         <>
           아래 링크 접속 → <strong>Code → Download ZIP</strong> 클릭
           <a
-            href="https://github.com/EDEN-mainserver/planner-11"
+            href="https://github.com/EDEN-mainserver/E-ATTACK-"
             target="_blank"
             rel="noopener noreferrer"
             className="block mt-1.5 px-3 py-1.5 bg-gray-900 text-green-400 rounded-lg text-xs font-mono hover:bg-gray-800 transition-all truncate"
           >
-            github.com/EDEN-mainserver/planner-11
+            github.com/EDEN-mainserver/E-ATTACK-
           </a>
         </>
       ),
