@@ -3,6 +3,7 @@ import { callGemini } from "../utils/gemini";
 import { relativeTime } from "../utils/storage";
 import { IconArrowUp } from "../components/Icons";
 import EAttackPage from "../eattack/EAttackPage";
+import MoneyPage from "../eattack/MoneyPage";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [idea, setIdea] = useState('');
@@ -93,6 +94,13 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
               ${activePage === 'eattack' ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
             <span className="text-base">🚀</span>
             E-Attack
+          </div>
+          <div
+            onClick={() => setActivePage('money')}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+              ${activePage === 'money' ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
+            <span className="text-base">💸</span>
+            이걸 돈내고 써?
           </div>
         </div>
         <div className="mt-auto px-4 py-3 border-t border-gray-100">
@@ -317,6 +325,11 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
         {/* ════ E-Attack 화면 ════ */}
         {activePage === 'eattack' && (
           <EAttackPage />
+        )}
+
+        {/* ════ 이걸 돈내고 써? 화면 ════ */}
+        {activePage === 'money' && (
+          <MoneyPage onBack={() => setActivePage('eattack')} />
         )}
 
         {/* ════ 홈 화면 ════ */}
