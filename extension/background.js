@@ -151,7 +151,7 @@ function scrapeOnce(seenUrlsArray) {
         time:     timeText || datetime.slice(0, 10),
         likes:    getCount(el, '좋아요'),
         comments: getCount(el, '답글'),
-        shares:   getCount(el, '리포스트'),
+        shares:   getCount(el, '공유하기') || getCount(el, '리포스트'),
       });
     } catch (_) {}
   });
