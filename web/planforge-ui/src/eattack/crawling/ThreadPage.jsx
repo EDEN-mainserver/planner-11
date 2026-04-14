@@ -154,8 +154,8 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   const [ideasMap, setIdeasMap]         = useState({});
   const [filterMin, setFilterMin]       = useState(0);
 
-  // 키워드 입력 변경 시 키워드별 개수 자동 동기화
-  const parsedKeywords = keyword.split(',').map(k => k.trim()).filter(Boolean);
+  // 키워드 입력 변경 시 키워드별 개수 자동 동기화 (중복 제거)
+  const parsedKeywords = [...new Set(keyword.split(',').map(k => k.trim()).filter(Boolean))];
   useEffect(() => {
     setKeywordCounts(prev => {
       const next = {};
@@ -294,8 +294,8 @@ JSON 배열 형식으로만 반환:
     { key: "views",    label: "조회수" },
   ];
   const sortField = sortBy === "latest" ? "rank" : sortBy;
-  // 키워드 필터 적용 후 정렬
-  const uniqueKeywords = [...new Set(posts.map(p => p.keyword).filter(Boolean))];
+  // 탭에 표시할 키워드: 입력 키워드 기준 (결과 0개도 표시)
+  const uniqueKeywords = parsedKeywords.length > 0 ? parsedKeywords : [...new Set(posts.map(p => p.keyword).filter(Boolean))];
   const sortedPosts = [...posts]
     .filter(p => (p[sortField] || 0) >= filterMin)
     .filter(p => keywordFilter === null || p.keyword === keywordFilter)
