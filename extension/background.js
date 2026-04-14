@@ -480,12 +480,35 @@ function scrapeXOnce(seenUrlsArray) {
         return 0;
       }
 
+      // 조회수: analytics 링크 내 app-text-transition-container
+      // 구조: <a href="*/analytics"> ... <span data-testid="app-text-transition-container">1.1K</span>
+      function getViews() {
+        // Method 1: analytics 링크
+        const analyticsA = article.querySelector('a[href*="/analytics"]');
+        if (analyticsA) {
+          const c = analyticsA.querySelector('[data-testid="app-text-transition-container"]');
+          if (c) return parseCount(c.textContent);
+        }
+        // Method 2: aria-label에 "Views" 포함
+        for (const el of article.querySelectorAll('[aria-label]')) {
+          const label = el.getAttribute('aria-label') || '';
+          if (/views/i.test(label)) {
+            const c = el.querySelector('[data-testid="app-text-transition-container"]');
+            if (c) return parseCount(c.textContent);
+            const m = label.match(/([\d,\.]+[KMBkmb]?)\s*[Vv]iew/);
+            if (m) return parseCount(m[1]);
+          }
+        }
+        return 0;
+      }
+
       newPosts.push({
         author, content, postUrl, datetime,
         time:     timeText || datetime.slice(0, 10),
         likes:    getCount('like'),
         comments: getCount('reply'),
         shares:   getCount('retweet'),
+        views:    getViews(),
       });
     } catch (_) {}
   });

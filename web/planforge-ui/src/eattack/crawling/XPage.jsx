@@ -215,7 +215,7 @@ export default function XPage() {
 
 작성자: ${post.author}
 내용: ${post.content}
-좋아요: ${post.likes} | 댓글: ${post.comments} | 리트윗: ${post.shares}
+좋아요: ${post.likes} | 댓글: ${post.comments} | 리트윗: ${post.shares} | 조회수: ${post.views || 0}
 
 JSON 형식으로만 반환:
 {
@@ -421,6 +421,7 @@ JSON 배열 형식으로만 반환:
                         <span>❤ {Number(post.likes || 0).toLocaleString()}</span>
                         <span>💬 {Number(post.comments || 0).toLocaleString()}</span>
                         <span>🔁 {Number(post.shares || 0).toLocaleString()}</span>
+                        {post.views > 0 && <span>👁 {Number(post.views).toLocaleString()}</span>}
                       </div>
                       <svg
                         xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
