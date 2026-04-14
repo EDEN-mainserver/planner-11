@@ -6,7 +6,7 @@
  * - [AI 분석] 버튼 → 바이럴 분석 (Gemini)
  * - [아이디어 생성] 버튼 → 콘텐츠 아이디어 5개 생성
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { callGemini } from "../../utils/gemini";
 
 // ── API 엔드포인트 ──
