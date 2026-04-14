@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import ThreadPage from "./ThreadPage";
 import XPage from "./XPage";
+import LinkedInPage from "./LinkedInPage";
 
 // ─── 탭 데이터 ───
 const PLATFORM_TABS = [
@@ -534,16 +535,8 @@ export default function CrawlingPage({ onBack }) {
           />
         )}
 
-        {/* ── 링크드인 준비 중 ── */}
-        {activeTab === "linkedin" && (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="currentColor" className="mb-4 text-gray-300">
-              <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/>
-            </svg>
-            <p className="text-sm font-medium text-gray-500 mb-1">링크드인 크롤링 준비 중</p>
-            <p className="text-xs text-gray-400">해당 기능은 추후 업데이트 예정입니다</p>
-          </div>
-        )}
+        {/* ── LinkedIn 대시보드 ── */}
+        {activeTab === "linkedin" && <LinkedInPage />}
 
         {/* ── 아이보스 전용 영역 ── */}
         {isIbossTab && (
