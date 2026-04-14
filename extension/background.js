@@ -482,42 +482,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let tab = null;
       try {
         tab = await chrome.tabs.create({ url: sourceUrl, active: false });
-        await waitForTabLoad(tab.id);
-        await sleep(2500); // JS 렌더링 대기
+        // waitForTabLoad 대신 고정 대기 — onUpdated 무한 대기 방지
+        await sleep(4000);
 
         const [result] = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           func: () => {
-            // 후보 셀렉터 순서대로 시도
             const SELECTORS = [
               '.fr-view', '.fr-element',
               '#article_content', '#bo_v_con',
               '.wr_content', '.post_content',
               '.view_content', '.content_view',
               '.ab-body', '[class*="view_body"]',
-              '[id*="content"]',
             ];
-            let el = null;
-            let matchedSel = '';
+            let el = null, matchedSel = '';
             for (const sel of SELECTORS) {
               try {
                 const found = document.querySelector(sel);
                 if (found && (found.innerText || '').trim().length > 30) {
-                  el = found;
-                  matchedSel = sel;
-                  break;
+                  el = found; matchedSel = sel; break;
                 }
               } catch (_) {}
             }
+            // 최후 수단: 텍스트가 가장 긴 div
             if (!el) {
-              // 최후 수단: 가장 긴 텍스트를 가진 div 탐색
-              let best = null, bestLen = 0;
+              let best = null, bestLen = 100;
               document.querySelectorAll('div, article, section').forEach(d => {
                 const t = (d.innerText || '').trim();
                 if (t.length > bestLen && t.length < 20000) { best = d; bestLen = t.length; }
               });
-              el = best;
-              matchedSel = 'auto';
+              el = best; matchedSel = 'auto';
             }
             if (!el) return { content: '', selector: 'none', url: location.href };
             const content = (el.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
