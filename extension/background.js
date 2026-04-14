@@ -547,7 +547,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const [result] = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          func: async () => {
+          func: () => {
             // 본문 영역 탐색
             const SELECTORS = [
               '.ABA-view-body', '.ABA-article-contents',
@@ -561,41 +561,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (found && (found.innerText || '').trim().length > 10) { el = found; break; }
               } catch (_) {}
             }
-            if (!el) return { content: '', images: [], url: location.href };
+            if (!el) return { content: '', imageUrls: [], url: location.href };
 
             // 텍스트 추출
             const content = (el.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
 
-            // 이미지를 탭 내부에서 fetch → base64 변환 (hotlink 우회)
-            const rawSrcs = [];
+            // 이미지 URL만 추출 (fetch 없이 — CORS 적용되므로)
+            const imageUrls = [];
             el.querySelectorAll('img[src]').forEach(img => {
               const src = img.getAttribute('src') || '';
-              if (src && !rawSrcs.includes(src)) rawSrcs.push(src);
+              if (src && !imageUrls.includes(src)) imageUrls.push(src);
             });
 
-            const images = [];
-            for (const src of rawSrcs.slice(0, 6)) {
-              try {
-                const resp = await fetch(src);
-                if (!resp.ok) continue;
-                const blob = await resp.blob();
-                const dataUrl = await new Promise((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve(reader.result);
-                  reader.onerror = reject;
-                  reader.readAsDataURL(blob);
-                });
-                images.push(dataUrl);
-              } catch (_) {}
-            }
-
-            return { content, images, url: location.href };
+            return { content, imageUrls: imageUrls.slice(0, 6), url: location.href };
           },
         });
 
         await chrome.tabs.remove(tab.id);
         tab = null;
-        const { content = '', images = [], url: pageUrl = '' } = result?.result || {};
+        const { content = '', imageUrls = [], url: pageUrl = '' } = result?.result || {};
+
+        // ── background 서비스워커에서 이미지 fetch (host_permissions → CORS 우회) ──
+        const images = [];
+        for (const imgUrl of imageUrls) {
+          try {
+            const resp = await fetch(imgUrl);
+            if (!resp.ok) continue;
+            const buffer = await resp.arrayBuffer();
+            const uint8  = new Uint8Array(buffer);
+            let binary   = '';
+            uint8.forEach(b => { binary += String.fromCharCode(b); });
+            const base64 = btoa(binary);
+            const mime   = /\.png(\?|$)/i.test(imgUrl)  ? 'image/png'  :
+                           /\.gif(\?|$)/i.test(imgUrl)  ? 'image/gif'  :
+                           /\.webp(\?|$)/i.test(imgUrl) ? 'image/webp' : 'image/jpeg';
+            images.push(`data:${mime};base64,${base64}`);
+          } catch (e) {
+            console.warn('[Eden Crawl BG] 이미지 fetch 실패:', imgUrl, e.message);
+          }
+        }
+
         console.log('[Eden Crawl BG] 아이보스 본문:', { len: content.length, images: images.length, pageUrl });
         chrome.storage.local.set({ eden_iboss_content: { sourceUrl, content, images, ts: Date.now() } });
       } catch (err) {
