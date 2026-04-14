@@ -481,8 +481,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       let tab = null;
       try {
-        const url = `https://www.i-boss.co.kr/ab-1886?month=${month}`;
-        tab = await chrome.tabs.create({ url, active: false });
+        const listUrl = `https://www.i-boss.co.kr/ab-1886?month=${month}`;
+        tab = await chrome.tabs.create({ url: listUrl, active: false });
         await sleep(4000);
 
         const [result] = await chrome.scripting.executeScript({
@@ -516,14 +516,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 posts.push({ rank, title, author, views, likes, comments, source_url: sourceUrl, created_at: createdAt, platform: 'iboss' });
               } catch (_) {}
             });
-            return { posts, url: location.href };
+            return { posts, pageUrl: location.href };
           },
         });
 
         await chrome.tabs.remove(tab.id);
         tab = null;
-        const { posts = [], url = '' } = result?.result || {};
-        console.log('[Eden Crawl BG] 아이보스 목록:', { count: posts.length, url, month });
+        const { posts = [], pageUrl = '' } = result?.result || {};
+        console.log('[Eden Crawl BG] 아이보스 목록:', { count: posts.length, pageUrl, month });
         chrome.storage.local.set({ eden_iboss_list: { month, posts, ts: Date.now() } });
       } catch (err) {
         if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
