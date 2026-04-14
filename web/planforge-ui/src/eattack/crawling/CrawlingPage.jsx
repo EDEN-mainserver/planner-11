@@ -136,11 +136,118 @@ function MonthRangePicker({ startMonth, endMonth, onChangeStart, onChangeEnd, di
   );
 }
 
+// ─── Eden Crawl 설치 안내 모달 ───
+function ExtensionInstallModal({ onClose }) {
+  const steps = [
+    {
+      num: 1,
+      title: "GitHub에서 파일 다운로드",
+      desc: (
+        <>
+          아래 링크 접속 → <strong>Code → Download ZIP</strong> 클릭
+          <a
+            href="https://github.com/EDEN-mainserver/planner-11"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block mt-1.5 px-3 py-1.5 bg-gray-900 text-green-400 rounded-lg text-xs font-mono hover:bg-gray-800 transition-all truncate"
+          >
+            github.com/EDEN-mainserver/planner-11
+          </a>
+        </>
+      ),
+    },
+    {
+      num: 2,
+      title: "ZIP 압축 해제 후 extension 폴더 찾기",
+      desc: (
+        <>
+          압축 해제하면 <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-purple-700">planforge_complete / extension</code> 폴더가 있습니다.
+        </>
+      ),
+    },
+    {
+      num: 3,
+      title: "Chrome 확장 프로그램 페이지 열기",
+      desc: (
+        <>
+          Chrome 주소창에 입력:
+          <code className="block mt-1.5 px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-mono text-blue-700">chrome://extensions</code>
+        </>
+      ),
+    },
+    {
+      num: 4,
+      title: "개발자 모드 켜기",
+      desc: "우측 상단 '개발자 모드' 토글을 ON으로 켜주세요.",
+    },
+    {
+      num: 5,
+      title: "'압축 해제된 확장 프로그램 로드' 클릭",
+      desc: "좌측 상단 버튼 클릭 → 2단계에서 찾은 extension 폴더 선택",
+    },
+    {
+      num: 6,
+      title: "Threads 로그인 후 사용",
+      desc: "threads.com에서 로그인된 상태에서 이 사이트의 쓰레드 탭에서 수집 버튼을 누르면 자동으로 수집됩니다.",
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-purple-600">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Eden Crawl 확장 프로그램 설치</h3>
+              <p className="text-[11px] text-gray-400">Chrome 전용 · 쓰레드 자동 수집</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        {/* 단계별 안내 */}
+        <div className="px-5 py-4 space-y-4">
+          {steps.map((s) => (
+            <div key={s.num} className="flex gap-3">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">
+                {s.num}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800 mb-0.5">{s.title}</p>
+                <div className="text-xs text-gray-500 leading-relaxed">{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 주의사항 */}
+        <div className="mx-5 mb-5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <p className="text-xs text-amber-700 font-medium mb-1">⚠️ 주의사항</p>
+          <ul className="text-xs text-amber-600 space-y-0.5 list-disc list-inside">
+            <li>Chrome 브라우저 전용입니다</li>
+            <li>threads.com 로그인 필수</li>
+            <li>업데이트 시 extension 폴더 교체 후 재로드</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── 메인 크롤링 페이지 ───
 export default function CrawlingPage({ onBack }) {
   const [activeTab, setActiveTab] = useState("iboss");
   const [startMonth, setStartMonth] = useState("202604");
   const [endMonth, setEndMonth] = useState("202604");
+  const [showExtModal, setShowExtModal] = useState(false);
 
   // 확장 프로그램 연동 상태
   const [extensionData, setExtensionData] = useState(null);
@@ -295,6 +402,18 @@ export default function CrawlingPage({ onBack }) {
         {/* ── 탭 + 컨트롤 바 ── */}
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <div className="flex items-center gap-3">
+            {/* Eden Crawl 설치 버튼 */}
+            <button
+              onClick={() => setShowExtModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all whitespace-nowrap"
+              title="Eden Crawl 확장 프로그램 설치 안내"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              </svg>
+              확장 설치
+            </button>
+
             {/* 플랫폼 탭 */}
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
               {PLATFORM_TABS.map((tab) => (
@@ -530,6 +649,8 @@ export default function CrawlingPage({ onBack }) {
         )}
 
       </div>
+
+      {showExtModal && <ExtensionInstallModal onClose={() => setShowExtModal(false)} />}
     </div>
   );
 }
