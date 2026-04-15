@@ -160,6 +160,7 @@ export default function EdenCanvas({ onBack }) {
   const [sideTab, setSideTab]       = useState("template");
   const [showSizeMenu, setShowSizeMenu] = useState(false);
   const [manualZoom, setManualZoom] = useState(null); // null = auto
+  const [selBox, setSelBox]         = useState(null); // 드래그 선택 박스 {x1,y1,x2,y2}
 
   // ── Undo / Redo ──
   const histRef = useRef([]);
@@ -218,6 +219,7 @@ export default function EdenCanvas({ onBack }) {
   const containerRef = useRef(null);
   const dragRef      = useRef(null);   // { ids[], startX, startY, origPositions }
   const resizeRef    = useRef(null);   // { id, handle, startX, startY, origEl }
+  const selBoxRef    = useRef(null);   // { startX, startY } 캔버스 좌표
   const clipboardRef = useRef(null);   // copied element
   const [baseScale, setBaseScale] = useState(0.7);
 
@@ -351,14 +353,46 @@ export default function EdenCanvas({ onBack }) {
         const orig = dragRef.current.origPositions[el.id];
         return {...el, x: orig.x+dx, y: orig.y+dy};
       }));
+      return;
+    }
+    // 드래그 선택 박스 업데이트
+    if (selBoxRef.current && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const cx = (e.clientX - rect.left) / scale;
+      const cy = (e.clientY - rect.top)  / scale;
+      setSelBox({ x1: selBoxRef.current.startX, y1: selBoxRef.current.startY, x2: cx, y2: cy });
     }
   }, [scale, setElements]);
 
-  const onMouseUp = useCallback(() => {
+  const onMouseUp = useCallback((e) => {
     if (dragRef.current || resizeRef.current) saveHistory();
     dragRef.current   = null;
     resizeRef.current = null;
-  }, [saveHistory]);
+
+    // 드래그 선택 박스 완료
+    if (selBoxRef.current && canvasRef.current) {
+      setSelBox(prev => {
+        if (!prev) return null;
+        const minX = Math.min(prev.x1, prev.x2);
+        const maxX = Math.max(prev.x1, prev.x2);
+        const minY = Math.min(prev.y1, prev.y2);
+        const maxY = Math.max(prev.y1, prev.y2);
+        // 5px 이상 드래그했을 때만 선택
+        if (maxX - minX > 5 || maxY - minY > 5) {
+          setElements(els => {
+            const hit = els.filter(el =>
+              el.x < maxX && el.x + el.w > minX &&
+              el.y < maxY && el.y + el.h > minY
+            );
+            setSelectedIds(hit.map(el => el.id));
+            return els; // 요소 자체는 변경 없음
+          });
+        }
+        return null;
+      });
+      selBoxRef.current = null;
+    }
+  }, [saveHistory, setElements]);
 
   useEffect(() => {
     window.addEventListener("mousemove", onMouseMove);
@@ -369,9 +403,16 @@ export default function EdenCanvas({ onBack }) {
     };
   }, [onMouseMove, onMouseUp]);
 
-  // ── 빈 캔버스 클릭 ──
-  const onCanvasClick = (e) => {
-    if (e.target === canvasRef.current) { setSelectedIds([]); setEditingId(null); }
+  // ── 캔버스 빈 영역 mousedown → 드래그 선택 시작 ──
+  const onCanvasMouseDown = (e) => {
+    if (e.target !== canvasRef.current) return;
+    setSelectedIds([]); setEditingId(null);
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) / scale;
+    const cy = (e.clientY - rect.top)  / scale;
+    selBoxRef.current = { startX: cx, startY: cy };
+    setSelBox({ x1: cx, y1: cy, x2: cx, y2: cy });
   };
 
   // ── 요소 속성 변경 ──
@@ -568,12 +609,12 @@ export default function EdenCanvas({ onBack }) {
           <div style={{transform:`scale(${scale})`, transformOrigin:"center center"}}>
             <div
               ref={canvasRef}
-              onClick={onCanvasClick}
+              onMouseDown={onCanvasMouseDown}
               style={{
                 width:canvasSize.w, height:canvasSize.h,
                 background: bgImage ? `url(${bgImage}) center/cover no-repeat` : bg,
                 position:"relative", boxShadow:"0 8px 40px rgba(0,0,0,0.22)",
-                overflow:"hidden", cursor:"default", flexShrink:0,
+                overflow:"hidden", cursor: selBox ? "crosshair" : "default", flexShrink:0,
               }}
             >
               {elements.map(el => (
@@ -590,6 +631,21 @@ export default function EdenCanvas({ onBack }) {
                   onChange={(content)=>updateEl(el.id,{content})}
                 />
               ))}
+              {/* 드래그 선택 박스 */}
+              {selBox && (
+                <div style={{
+                  position:"absolute",
+                  left:   Math.min(selBox.x1, selBox.x2),
+                  top:    Math.min(selBox.y1, selBox.y2),
+                  width:  Math.abs(selBox.x2 - selBox.x1),
+                  height: Math.abs(selBox.y2 - selBox.y1),
+                  border: "1.5px solid #7c3aed",
+                  background: "rgba(124,58,237,0.08)",
+                  pointerEvents: "none",
+                  zIndex: 9999,
+                  borderRadius: 2,
+                }}/>
+              )}
             </div>
           </div>
         </div>
@@ -1236,25 +1292,40 @@ function PropertiesPanel({ el, multiCount, onChange, onDelete, onMoveLayer, onAl
         {/* 테두리 (도형·이미지 공통) */}
         {(el.type==="rect"||el.type==="image") && (
           <Section label="테두리">
+            {/* 활성 토글 + 색상 */}
             <div className="flex items-center gap-2 mb-2">
-              <input type="color" value={el.strokeColor&&el.strokeColor!=="none"?el.strokeColor:"#000000"}
-                onChange={(e)=>onChange({strokeColor:e.target.value, strokeWidth:el.strokeWidth>0?el.strokeWidth:2})}
-                className="w-8 h-8 rounded-lg border border-gray-200 cursor-pointer p-0.5"/>
-              <span className="text-xs text-gray-500 flex-1">{el.strokeColor==="none"?"없음":el.strokeColor}</span>
+              <button
+                onClick={()=> el.strokeColor&&el.strokeColor!=="none"
+                  ? onChange({strokeColor:"none", strokeWidth:0})
+                  : onChange({strokeColor:"#000000", strokeWidth: el.strokeWidth>0?el.strokeWidth:2})
+                }
+                className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 ${el.strokeColor&&el.strokeColor!=="none"?"bg-violet-500":"bg-gray-300"}`}
+                style={{position:"relative"}}
+              >
+                <span style={{
+                  position:"absolute", top:2, transition:"left 0.15s",
+                  left: el.strokeColor&&el.strokeColor!=="none" ? "calc(100% - 14px)" : 2,
+                  width:12, height:12, borderRadius:9999, background:"white",
+                  boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
+                }}/>
+              </button>
+              <span className="text-[10px] text-gray-400 flex-1">
+                {el.strokeColor&&el.strokeColor!=="none" ? "활성" : "비활성"}
+              </span>
               {el.strokeColor&&el.strokeColor!=="none" && (
-                <button onClick={()=>onChange({strokeColor:"none",strokeWidth:0})}
-                  className="text-[10px] text-gray-400 hover:text-red-400 transition-colors">제거</button>
+                <input type="color" value={el.strokeColor}
+                  onChange={(e)=>onChange({strokeColor:e.target.value})}
+                  className="w-7 h-7 rounded-lg border border-gray-200 cursor-pointer p-0.5"/>
               )}
             </div>
-            {el.strokeColor&&el.strokeColor!=="none" && (
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-10">두께</span>
-                <input type="range" min={1} max={20} value={el.strokeWidth??2}
-                  onChange={(e)=>onChange({strokeWidth:Number(e.target.value)})}
-                  className="flex-1 accent-violet-600"/>
-                <span className="text-xs text-gray-500 w-5 text-right">{el.strokeWidth??2}</span>
-              </div>
-            )}
+            {/* 두께 슬라이더 — 항상 표시, 비활성 시 흐리게 */}
+            <div className={`flex items-center gap-2 ${!(el.strokeColor&&el.strokeColor!=="none")?"opacity-30 pointer-events-none":""}`}>
+              <span className="text-[10px] text-gray-400 w-8 flex-shrink-0">두께</span>
+              <input type="range" min={1} max={30} value={el.strokeWidth??2}
+                onChange={(e)=>onChange({strokeWidth:Number(e.target.value)})}
+                className="flex-1 accent-violet-600"/>
+              <span className="text-xs text-gray-600 font-medium w-6 text-right">{el.strokeWidth??2}</span>
+            </div>
           </Section>
         )}
 
