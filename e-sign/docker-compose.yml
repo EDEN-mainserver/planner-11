@@ -15,14 +15,13 @@ services:
       - UPLOAD_FOLDER=/data/uploads
       - FLASK_DEBUG=0
 
-  # Cloudflare Quick Tunnel — 계정 없이 외부 URL 자동 발급
+  # Cloudflare Named Tunnel — 고정 URL (계정 연동)
   tunnel:
     image: cloudflare/cloudflared:latest
     container_name: esign-tunnel
     restart: unless-stopped
     depends_on:
       - esign
-    command: tunnel --url http://esign:5050 --no-autoupdate
-    # 실행 후 로그에서 https://xxxx.trycloudflare.com URL 확인
+    command: tunnel --no-autoupdate run --token eyJhIjoiNWEzOTEzNjEwMDA4ZTlmM2NmNzE1ZmI1ZTU5MDJiYjIiLCJ0IjoiNzNiZjhiMDItOWVhZi00MDBmLThiYjUtMDVkOTUwY2E1Nzk3IiwicyI6IlpqWTFPV05oTjJVdFpUZ3dNUzAwTVdGbUxUaGpZVGt0T1RVellXSmpZV0prWkdNeSJ9
 
 # 볼륨은 NAS 직접 마운트로 대체 (위 bind mount 사용)
