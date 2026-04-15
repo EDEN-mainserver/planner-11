@@ -264,7 +264,6 @@ export default function MoneyPage({ onBack }) {
               </div>
             </div>
           </div>
-          </div>
         </div>
       )}
     </div>
