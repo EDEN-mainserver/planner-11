@@ -85,6 +85,85 @@ const TEMPLATES = [
   },
 ];
 
+// ── 도형 clip-path 맵 (polygon 기반) ──
+const SHAPE_CLIP = {
+  triangle:       "polygon(50% 0%, 0% 100%, 100% 100%)",
+  "triangle-down":"polygon(0% 0%, 100% 0%, 50% 100%)",
+  "triangle-right":"polygon(0% 0%, 100% 50%, 0% 100%)",
+  "triangle-left": "polygon(100% 0%, 0% 50%, 100% 100%)",
+  diamond:        "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
+  parallelogram:  "polygon(20% 0%, 100% 0%, 80% 100%, 0% 100%)",
+  pentagon:       "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)",
+  hexagon:        "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
+  octagon:        "polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)",
+  "arrow-right":  "polygon(0% 20%, 65% 20%, 65% 0%, 100% 50%, 65% 100%, 65% 80%, 0% 80%)",
+  "arrow-left":   "polygon(100% 20%, 35% 20%, 35% 0%, 0% 50%, 35% 100%, 35% 80%, 100% 80%)",
+  "arrow-up":     "polygon(50% 0%, 100% 65%, 80% 65%, 80% 100%, 20% 100%, 20% 65%, 0% 65%)",
+  "arrow-down":   "polygon(50% 100%, 100% 35%, 80% 35%, 80% 0%, 20% 0%, 20% 35%, 0% 35%)",
+  "arrow-both":   "polygon(0% 50%, 20% 0%, 20% 30%, 80% 30%, 80% 0%, 100% 50%, 80% 100%, 80% 70%, 20% 70%, 20% 100%)",
+  star:           "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)",
+  "star-6":       "polygon(50% 0%, 61% 25%, 93% 25%, 67% 45%, 78% 75%, 50% 58%, 22% 75%, 33% 45%, 7% 25%, 39% 25%)",
+  cross:          "polygon(33% 0%, 67% 0%, 67% 33%, 100% 33%, 100% 67%, 67% 67%, 67% 100%, 33% 100%, 33% 67%, 0% 67%, 0% 33%, 33% 33%)",
+  lightning:      "polygon(65% 0%, 35% 48%, 58% 48%, 35% 100%, 70% 52%, 47% 52%)",
+  "speech-bubble":"polygon(0% 0%, 100% 0%, 100% 75%, 70% 75%, 55% 100%, 40% 75%, 0% 75%)",
+};
+
+// 도형 카테고리 UI 정의
+const SHAPE_CATEGORIES = [
+  {
+    label: "기본 도형",
+    items: [
+      { key: "rect",          label: "사각형",      fill: "#6366f1", w: 200, h: 120, borderRadius: 0 },
+      { key: "rect-round",    label: "둥근 사각형", fill: "#8b5cf6", w: 200, h: 120, borderRadius: 20 },
+      { key: "circle",        label: "원",          fill: "#ec4899", w: 130, h: 130, borderRadius: 9999 },
+      { key: "ellipse",       label: "타원",        fill: "#f59e0b", w: 200, h: 120, borderRadius: 9999 },
+      { key: "triangle",      label: "삼각형",      fill: "#10b981", w: 150, h: 130, shape: "triangle" },
+      { key: "triangle-down", label: "역삼각형",    fill: "#3b82f6", w: 150, h: 130, shape: "triangle-down" },
+      { key: "diamond",       label: "마름모",      fill: "#f97316", w: 150, h: 150, shape: "diamond" },
+      { key: "parallelogram", label: "평행사변형",  fill: "#06b6d4", w: 200, h: 100, shape: "parallelogram" },
+    ],
+  },
+  {
+    label: "다각형",
+    items: [
+      { key: "pentagon",      label: "오각형",  fill: "#6366f1", w: 140, h: 140, shape: "pentagon" },
+      { key: "hexagon",       label: "육각형",  fill: "#8b5cf6", w: 150, h: 130, shape: "hexagon" },
+      { key: "octagon",       label: "팔각형",  fill: "#ec4899", w: 140, h: 140, shape: "octagon" },
+      { key: "triangle-right",label: "직각▶",   fill: "#10b981", w: 130, h: 130, shape: "triangle-right" },
+      { key: "triangle-left", label: "직각◀",   fill: "#3b82f6", w: 130, h: 130, shape: "triangle-left" },
+    ],
+  },
+  {
+    label: "화살표",
+    items: [
+      { key: "arrow-right", label: "→",      fill: "#6366f1", w: 200, h: 100, shape: "arrow-right" },
+      { key: "arrow-left",  label: "←",      fill: "#8b5cf6", w: 200, h: 100, shape: "arrow-left" },
+      { key: "arrow-up",    label: "↑",      fill: "#ec4899", w: 100, h: 160, shape: "arrow-up" },
+      { key: "arrow-down",  label: "↓",      fill: "#f59e0b", w: 100, h: 160, shape: "arrow-down" },
+      { key: "arrow-both",  label: "↔",      fill: "#10b981", w: 200, h: 100, shape: "arrow-both" },
+    ],
+  },
+  {
+    label: "별·장식",
+    items: [
+      { key: "star",         label: "별",       fill: "#f59e0b", w: 140, h: 140, shape: "star" },
+      { key: "star-6",       label: "6각별",    fill: "#f97316", w: 140, h: 140, shape: "star-6" },
+      { key: "cross",        label: "십자",     fill: "#ef4444", w: 130, h: 130, shape: "cross" },
+      { key: "lightning",    label: "번개",     fill: "#eab308", w: 110, h: 160, shape: "lightning" },
+      { key: "speech-bubble",label: "말풍선",   fill: "#6366f1", w: 200, h: 140, shape: "speech-bubble" },
+    ],
+  },
+  {
+    label: "선",
+    items: [
+      { key: "line-h",       label: "가로선",   fill: "#374151", w: 300, h: 4,   borderRadius: 0 },
+      { key: "line-v",       label: "세로선",   fill: "#374151", w: 4,   h: 200, borderRadius: 0 },
+      { key: "line-thick",   label: "굵은선",   fill: "#374151", w: 300, h: 12,  borderRadius: 6 },
+      { key: "line-dashed",  label: "점선",     fill: "#9ca3af", w: 300, h: 4,   borderRadius: 0, dashed: true },
+    ],
+  },
+];
+
 // ── 요소 기본값 ──
 const DEFAULTS = {
   heading: { type: "text", w: 400, h: 70,  content: "제목 텍스트", fontSize: 40, color: "#1f2937", fontWeight: "700", textAlign: "left",   fontFamily: "sans-serif", opacity: 1 },
@@ -94,6 +173,20 @@ const DEFAULTS = {
   circle:  { type: "rect", w: 120, h: 120, fill: "#ec4899", stroke: "none", strokeWidth: 0, borderRadius: 9999, opacity: 1 },
   line:    { type: "rect", w: 300, h: 4,   fill: "#374151", stroke: "none", strokeWidth: 0, borderRadius: 0,    opacity: 1 },
 };
+
+// 도형 아이템 → addElement 기본값 변환
+function shapeItemToDefault(item) {
+  return {
+    type: "rect",
+    w: item.w, h: item.h,
+    fill: item.fill,
+    stroke: "none", strokeWidth: 0,
+    borderRadius: item.borderRadius ?? 0,
+    opacity: 1,
+    ...(item.shape  ? { shape: item.shape }   : {}),
+    ...(item.dashed ? { dashed: item.dashed } : {}),
+  };
+}
 
 let _uid = 0;
 const uid  = () => `el_${++_uid}_${Date.now()}`;
@@ -345,8 +438,16 @@ export default function EdenCanvas({ onBack }) {
       ctx.globalAlpha = el.opacity ?? 1;
       if (el.type === "rect") {
         ctx.fillStyle = el.fill;
-        if (el.borderRadius > 0) { rrectPath(ctx, el.x, el.y, el.w, el.h, Math.min(el.borderRadius, el.w/2, el.h/2)); ctx.fill(); }
-        else ctx.fillRect(el.x, el.y, el.w, el.h);
+        if (el.shape && SHAPE_CLIP[el.shape]) {
+          drawShapeOnCanvas(ctx, el.shape, el.x, el.y, el.w, el.h);
+          ctx.fill();
+        } else if (el.dashed) {
+          ctx.fillRect(el.x, el.y, el.w, el.h); // 점선은 사각형으로 근사 처리
+        } else if (el.borderRadius > 0) {
+          rrectPath(ctx, el.x, el.y, el.w, el.h, Math.min(el.borderRadius, el.w/2, el.h/2)); ctx.fill();
+        } else {
+          ctx.fillRect(el.x, el.y, el.w, el.h);
+        }
       } else if (el.type === "text") {
         ctx.fillStyle    = el.color;
         ctx.font         = `${el.fontWeight} ${el.fontSize}px ${el.fontFamily || "sans-serif"}`;
@@ -373,6 +474,19 @@ export default function EdenCanvas({ onBack }) {
     ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
     ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
     ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+    ctx.closePath();
+  }
+
+  function drawShapeOnCanvas(ctx, shape, x, y, w, h) {
+    const clipStr = SHAPE_CLIP[shape];
+    if (!clipStr) return;
+    const pts = clipStr.replace("polygon(","").replace(")","").split(",").map(p => {
+      const [px, py] = p.trim().split(" ");
+      return [x + parseFloat(px)/100 * w, y + parseFloat(py)/100 * h];
+    });
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    pts.slice(1).forEach(([px, py]) => ctx.lineTo(px, py));
     ctx.closePath();
   }
 
@@ -720,26 +834,18 @@ function Sidebar({ active, setActive, onApplyTemplate, onAddElement, onImageUplo
 
           {/* ── 요소 탭 ── */}
           {active === "element" && (
-            <>
-              <p className="text-[10px] text-gray-400 mb-1">도형</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => onAddElement(DEFAULTS.rect)}
-                  className="h-16 rounded-xl border border-gray-200 hover:border-violet-300 flex flex-col items-center justify-center gap-1 transition-all hover:bg-violet-50">
-                  <div className="w-8 h-5 rounded bg-violet-400"/>
-                  <span className="text-[10px] text-gray-500">사각형</span>
-                </button>
-                <button onClick={() => onAddElement(DEFAULTS.circle)}
-                  className="h-16 rounded-xl border border-gray-200 hover:border-violet-300 flex flex-col items-center justify-center gap-1 transition-all hover:bg-violet-50">
-                  <div className="w-7 h-7 rounded-full bg-pink-400"/>
-                  <span className="text-[10px] text-gray-500">원</span>
-                </button>
-              </div>
-              <button onClick={() => onAddElement(DEFAULTS.line)}
-                className="w-full h-12 rounded-xl border border-gray-200 hover:border-violet-300 flex flex-col items-center justify-center gap-1 transition-all hover:bg-violet-50">
-                <div className="w-16 h-0.5 bg-gray-600 rounded"/>
-                <span className="text-[10px] text-gray-500">선</span>
-              </button>
-            </>
+            <div className="space-y-4">
+              {SHAPE_CATEGORIES.map(cat => (
+                <div key={cat.label}>
+                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-2">{cat.label}</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {cat.items.map(item => (
+                      <ShapeButton key={item.key} item={item} onAdd={() => onAddElement(shapeItemToDefault(item))} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
 
           {/* ── 사진 탭 ── */}
@@ -763,6 +869,38 @@ function Sidebar({ active, setActive, onApplyTemplate, onAddElement, onImageUplo
   );
 }
 
+// ── 도형 선택 버튼 (요소 탭용) ──
+function ShapeButton({ item, onAdd }) {
+  const isLine   = item.h <= 12;
+  const isDashed = item.dashed;
+  const hasShape = item.shape && SHAPE_CLIP[item.shape];
+  const isCircle = item.borderRadius === 9999;
+
+  // 미리보기 박스 스타일 결정
+  const previewW = isLine ? 40 : 28;
+  const previewH = isLine ? (item.h >= 12 ? 8 : item.h <= 4 ? 3 : item.h) : (item.h >= item.w ? 28 : Math.round(28 * item.h / item.w));
+
+  const previewStyle = {
+    width: previewW, height: previewH,
+    background: isDashed
+      ? `repeating-linear-gradient(90deg,${item.fill} 0 5px,transparent 5px 8px)`
+      : item.fill,
+    borderRadius: isCircle ? 9999 : hasShape ? 0 : (item.borderRadius ? Math.min(item.borderRadius * 0.2, 4) : 0),
+    ...(hasShape ? { clipPath: SHAPE_CLIP[item.shape] } : {}),
+    flexShrink: 0,
+  };
+
+  return (
+    <button
+      onClick={onAdd}
+      className="h-16 rounded-xl border border-gray-200 hover:border-violet-300 flex flex-col items-center justify-center gap-1.5 transition-all hover:bg-violet-50 px-1"
+    >
+      <div style={previewStyle} />
+      <span className="text-[9px] text-gray-500 leading-tight text-center">{item.label}</span>
+    </button>
+  );
+}
+
 // 썸네일용 경량 요소 렌더러
 function ThumbElement({ el, scale }) {
   const s = {
@@ -774,7 +912,15 @@ function ThumbElement({ el, scale }) {
     opacity: el.opacity ?? 1,
     pointerEvents: "none",
   };
-  if (el.type === "rect")  return <div style={{ ...s, background: el.fill, borderRadius: el.borderRadius * scale }} />;
+  if (el.type === "rect") {
+    const tShapeStyle = el.shape && SHAPE_CLIP[el.shape]
+      ? { clipPath: SHAPE_CLIP[el.shape], borderRadius: 0 }
+      : { borderRadius: el.borderRadius * scale };
+    const tDashedStyle = el.dashed
+      ? { background: "repeating-linear-gradient(90deg," + el.fill + " 0 6px,transparent 6px 10px)" }
+      : { background: el.fill };
+    return <div style={{ ...s, ...tDashedStyle, ...tShapeStyle }} />;
+  }
   if (el.type === "image") return <img src={el.src} alt="" draggable={false} style={{ ...s, objectFit: "cover" }} />;
   if (el.type === "text")  return (
     <div style={{ ...s, fontSize: el.fontSize * scale, color: el.color, fontWeight: el.fontWeight,
@@ -805,7 +951,15 @@ function CanvasElement({ el, selected, editing, onMouseDown, onDoubleClick, onBl
     outline: selected ? "2px solid #7c3aed" : "none", outlineOffset: "1px",
     userSelect: editing ? "text" : "none",
   };
-  if (el.type === "rect")  return <div style={{ ...base, background: el.fill, borderRadius: el.borderRadius }} onMouseDown={onMouseDown}/>;
+  if (el.type === "rect") {
+    const shapeStyle = el.shape && SHAPE_CLIP[el.shape]
+      ? { clipPath: SHAPE_CLIP[el.shape], borderRadius: 0 }
+      : { borderRadius: el.borderRadius };
+    const dashedStyle = el.dashed
+      ? { background: "repeating-linear-gradient(90deg," + el.fill + " 0 12px,transparent 12px 20px)", borderRadius: 0 }
+      : { background: el.fill };
+    return <div style={{ ...base, ...dashedStyle, ...shapeStyle }} onMouseDown={onMouseDown}/>;
+  }
   if (el.type === "image") return <img src={el.src} alt="" draggable={false} style={{ ...base, objectFit: "cover" }} onMouseDown={onMouseDown}/>;
   if (el.type === "text")  return (
     <div ref={textRef} contentEditable={editing} suppressContentEditableWarning
@@ -900,14 +1054,21 @@ function PropertiesPanel({ el, onChange, onDelete, onMoveLayer }) {
               <span className="text-xs text-gray-500">{el.fill}</span>
             </div>
           </Section>
-          <Section label="모서리 둥글기">
-            <div className="flex items-center gap-2">
-              <input type="range" min={0} max={100} value={el.borderRadius === 9999 ? 100 : el.borderRadius}
-                onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
-                className="flex-1 accent-violet-600"/>
-              <span className="text-xs text-gray-500 w-6 text-right">{el.borderRadius === 9999 ? "●" : el.borderRadius}</span>
-            </div>
-          </Section>
+          {!el.shape && (
+            <Section label="모서리 둥글기">
+              <div className="flex items-center gap-2">
+                <input type="range" min={0} max={100} value={el.borderRadius === 9999 ? 100 : el.borderRadius}
+                  onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
+                  className="flex-1 accent-violet-600"/>
+                <span className="text-xs text-gray-500 w-6 text-right">{el.borderRadius === 9999 ? "●" : el.borderRadius}</span>
+              </div>
+            </Section>
+          )}
+          {el.shape && (
+            <Section label="도형">
+              <div className="px-2 py-1.5 bg-gray-50 rounded-lg text-xs text-gray-500 text-center">{el.shape}</div>
+            </Section>
+          )}
         </>}
         <Section label="레이어">
           <div className="flex gap-2">
