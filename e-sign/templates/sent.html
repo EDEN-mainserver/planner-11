@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Sign · 전송 완료</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/prepare.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/finalize.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+  <a href="/" class="global-home">
+    <div style="width:32px;height:32px;border-radius:8px;background:#455065;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">E</div>
+    <span>TEAM EDEN</span>
+  </a>
+  <div class="prepare-layout">
+    <header class="prepare-topbar">
+      <a href="{{ url_for('home.index') }}" class="btn-prev">
+        <i class="far fa-chevron-left"></i> 홈
+      </a>
+      <div></div>
+      <div></div>
+    </header>
+
+    <div class="prepare-body prepare-body-centered">
+      <div class="sent-card">
+        <div class="sent-icon">
+          <i class="fas fa-circle-check"></i>
+        </div>
+        <h2>전송 완료</h2>
+        <p>문서가 전송되었습니다.</p>
+
+        <div class="sent-info">
+          <div><b>제목</b> <span>{{ batch.title }}</span></div>
+          <div><b>서명자</b>
+            <ul>
+              {% for s in batch.signers %}
+                <li>
+                  {{ loop.index }}. {{ s.name }}
+                  {% if s.contact %}({{ s.contact }}){% endif %}
+                  — <em>{{ s.status }}</em>
+                  <br>
+                  <a href="{{ url_for('sign.signing', token=s.token) }}"
+                     style="font-size:11px;color:#3a4ed7">서명 링크 (테스트용)</a>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <a class="btn-next sent-btn" href="{{ url_for('sign.status', batch_id=batch.batch_id) }}">
+            진행 상태 확인 <i class="far fa-chevron-right"></i>
+          </a>
+          <a class="btn-ghost" href="{{ url_for('home.index') }}"
+             style="padding:10px 20px;border:1px solid #e0e0e0;border-radius:8px;text-decoration:none;text-align:center;color:#555">
+            문서함으로
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

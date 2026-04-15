@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Sign · 기타</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/prepare.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/finalize.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+  <a href="/" class="global-home">
+    <div style="width:32px;height:32px;border-radius:8px;background:#455065;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">E</div>
+    <span>TEAM EDEN</span>
+  </a>
+  <div class="prepare-layout">
+    <header class="prepare-topbar">
+      <a href="javascript:history.back()" class="btn-prev">
+        <i class="far fa-chevron-left"></i> 이전
+      </a>
+
+      <ol class="stepper">
+        <li class="step done"><span class="step-num">1</span><span class="step-label">서명자</span></li>
+        <li class="step-arrow"><i class="far fa-chevron-right"></i></li>
+        <li class="step done"><span class="step-num">2</span><span class="step-label">입력</span></li>
+        <li class="step-arrow"><i class="far fa-chevron-right"></i></li>
+        <li class="step active"><span class="step-num">3</span><span class="step-label">기타</span></li>
+      </ol>
+
+      <button id="sendBtn" class="btn-next">
+        <i class="fas fa-paper-plane"></i> 보내기
+      </button>
+    </header>
+
+    <div class="prepare-body prepare-body-centered">
+      <div class="finalize-panel">
+        <!-- 문서 정보 카드 -->
+        <section class="fz-card">
+          <div class="fz-row">
+            <label class="fz-label">문서 제목 <i class="far fa-circle-info"></i></label>
+            <input type="text" id="docTitle" maxlength="100"
+                   placeholder="2자 이상 100자 이하로 입력해주세요." />
+          </div>
+
+          <div class="fz-row fz-inline">
+            <label class="fz-label"><b>서명 기한</b> <i class="far fa-circle-question"></i></label>
+            <div class="fz-expire">
+              <input type="number" id="expireDays" min="1" max="365" value="14" />
+              <span>일</span>
+            </div>
+          </div>
+
+          <div class="fz-divider"></div>
+
+          <div class="fz-row fz-inline">
+            <label class="fz-label"><b>완료된 문서 잠금</b> <i class="far fa-circle-question"></i></label>
+            <label class="fz-toggle">
+              <input type="checkbox" id="lockToggle" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="fz-row fz-inline">
+            <label class="fz-label">전송 예약 <span class="chip">무료체험</span></label>
+            <label class="fz-toggle">
+              <input type="checkbox" id="scheduleToggle" disabled />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </section>
+
+        <!-- 첨부파일 -->
+        <section class="fz-card">
+          <div class="fz-section-head">
+            <h3>첨부파일</h3>
+            <button class="fz-btn-ghost" id="attachBtn">
+              <i class="fas fa-arrow-up-from-bracket"></i> 업로드
+            </button>
+          </div>
+          <ul id="attachList" class="fz-list"></ul>
+          <input type="file" id="attachInput" hidden multiple />
+        </section>
+
+        <!-- 외부 참조자 -->
+        <section class="fz-card">
+          <div class="fz-section-head">
+            <h3>외부 참조자 <i class="far fa-circle-question"></i></h3>
+            <button class="fz-btn-ghost"><i class="fas fa-plus"></i> 설정</button>
+          </div>
+        </section>
+
+        <!-- 계약 리마인더 -->
+        <section class="fz-card">
+          <div class="fz-section-head">
+            <h3>계약 리마인더 <i class="far fa-circle-question"></i></h3>
+            <button class="fz-btn-ghost" disabled>설정 <span class="badge">0</span></button>
+          </div>
+        </section>
+
+        <!-- 서명자 리스트 -->
+        <div id="signerCardList"></div>
+      </div>
+    </div>
+  </div>
+
+  <template id="signerCardTpl">
+    <section class="fz-card signer-fz-card">
+      <h3 class="signer-fz-title"></h3>
+      <div class="signer-fz-info">
+        <div class="signer-fz-name"></div>
+        <div class="signer-fz-contact"></div>
+      </div>
+      <div class="fz-actions">
+        <button class="fz-btn-ghost">
+          <i class="fas fa-message"></i> 남길 말 입력
+        </button>
+        <button class="fz-btn-ghost">
+          <i class="fas fa-shield-halved"></i> 인증 수단 추가
+        </button>
+      </div>
+    </section>
+  </template>
+
+  <!-- 전송 정보 확인 모달 -->
+  <div id="confirmModal" class="confirm-modal" hidden>
+    <div class="confirm-box">
+      <div class="confirm-head">
+        <i class="far fa-circle-exclamation"></i>
+        <h3>전송 정보 확인</h3>
+      </div>
+      <table class="confirm-table">
+        <tbody>
+          <tr>
+            <th>문서 제목</th>
+            <td id="cmTitle"></td>
+          </tr>
+          <tr>
+            <th>서명자</th>
+            <td>
+              <table class="signer-table">
+                <thead>
+                  <tr>
+                    <th>서명자 정보</th>
+                    <th>인증 수단</th>
+                  </tr>
+                </thead>
+                <tbody id="cmSignerRows"></tbody>
+              </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="confirm-foot">
+        <div class="left-info">서명 요청 <b id="cmCount">0</b>건</div>
+        <div class="actions">
+          <button class="btn-ghost" id="cmCancel">취소</button>
+          <button class="btn-next" id="cmSubmit">전송하기 <i class="far fa-chevron-right"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ORDINALS = ['첫 번째','두 번째','세 번째','네 번째','다섯 번째','여섯 번째',
+                      '일곱 번째','여덟 번째','아홉 번째','열 번째'];
+    const docIds = {{ doc_ids | tojson }};
+    const signers = JSON.parse(localStorage.getItem('esign_signers') || '[]');
+
+    if (signers.length === 0) {
+      alert('서명자 정보가 없습니다. 1단계로 돌아갑니다.');
+      window.location.href = '/sign/prepare/' + docIds.join(',');
+    }
+
+    // 서명자 카드 렌더
+    const signerListEl = document.getElementById('signerCardList');
+    const tpl = document.getElementById('signerCardTpl');
+    signers.forEach((s, i) => {
+      const node = tpl.content.cloneNode(true);
+      node.querySelector('.signer-fz-title').textContent = `${ORDINALS[i] || (i + 1 + ' 번째')} 서명자`;
+      node.querySelector('.signer-fz-name').textContent = s.name;
+      node.querySelector('.signer-fz-contact').textContent = s.contact || '(연락처 없음)';
+      signerListEl.appendChild(node);
+    });
+
+    // 첨부파일 (로컬 표시만, 실제 업로드는 다음 단계)
+    const attachInput = document.getElementById('attachInput');
+    const attachList = document.getElementById('attachList');
+    document.getElementById('attachBtn').addEventListener('click', () => attachInput.click());
+    attachInput.addEventListener('change', (e) => {
+      for (const f of e.target.files) {
+        const li = document.createElement('li');
+        const icon = document.createElement('i');
+        icon.className = 'far fa-file';
+        const nameNode = document.createTextNode(' ' + f.name + ' ');
+        const sizeSpan = document.createElement('span');
+        sizeSpan.className = 'fz-size';
+        sizeSpan.textContent = (f.size / 1024).toFixed(1) + ' KB';
+        li.appendChild(icon);
+        li.appendChild(nameNode);
+        li.appendChild(sizeSpan);
+        attachList.appendChild(li);
+      }
+      attachInput.value = '';
+    });
+
+    // ============ 전송 플로우 ============
+    const modal = document.getElementById('confirmModal');
+    const sendBtn = document.getElementById('sendBtn');
+    const cmCancel = document.getElementById('cmCancel');
+    const cmSubmit = document.getElementById('cmSubmit');
+
+    function openConfirm() {
+      const title = document.getElementById('docTitle').value.trim();
+      if (title.length < 2) {
+        alert('문서 제목을 2자 이상 입력해주세요.');
+        return;
+      }
+      document.getElementById('cmTitle').textContent = title;
+      document.getElementById('cmCount').textContent = signers.length;
+
+      const rows = document.getElementById('cmSignerRows');
+      rows.innerHTML = '';
+      signers.forEach((s, i) => {
+        const tr = document.createElement('tr');
+        const methodLabel = { email: '이메일', kakao: '카카오톡', inperson: '대면서명' }[s.method] || s.method;
+        const td1 = document.createElement('td');
+        const infoDiv = document.createElement('div');
+        infoDiv.textContent = `${i + 1}. ${s.name} (${s.contact || '연락처 없음'})`;
+        const langDiv = document.createElement('div');
+        langDiv.className = 'lang-note';
+        langDiv.textContent = `${s.lang === 'ko' ? '한국어' : s.lang}로 알림 · ${methodLabel}`;
+        td1.appendChild(infoDiv);
+        td1.appendChild(langDiv);
+        const td2 = document.createElement('td');
+        td2.textContent = '설정 안함';
+        tr.appendChild(td1);
+        tr.appendChild(td2);
+        rows.appendChild(tr);
+      });
+      modal.hidden = false;
+    }
+
+    sendBtn.addEventListener('click', openConfirm);
+    cmCancel.addEventListener('click', () => modal.hidden = true);
+
+    cmSubmit.addEventListener('click', async () => {
+      cmSubmit.disabled = true;
+      cmSubmit.textContent = '전송 중...';
+
+      const fieldData = JSON.parse(localStorage.getItem('esign_fields') || '{"fields":[],"scale":1.4}');
+      const payload = {
+        title: document.getElementById('docTitle').value.trim(),
+        doc_ids: docIds,
+        signers,
+        expire_days: parseInt(document.getElementById('expireDays').value, 10),
+        fields: fieldData.fields,
+        scale: fieldData.scale,
+      };
+      try {
+        const res = await fetch('/sign/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          // 전송 후 로컬 상태 정리
+          localStorage.removeItem('esign_signers');
+          localStorage.removeItem('esign_fields');
+          window.location.href = data.next_url;
+        } else {
+          alert(data.error || '전송 실패');
+          cmSubmit.disabled = false;
+          cmSubmit.innerHTML = '전송하기 <i class="far fa-chevron-right"></i>';
+        }
+      } catch (err) {
+        alert('네트워크 오류: ' + err.message);
+        cmSubmit.disabled = false;
+        cmSubmit.innerHTML = '전송하기 <i class="far fa-chevron-right"></i>';
+      }
+    });
+  </script>
+</body>
+</html>

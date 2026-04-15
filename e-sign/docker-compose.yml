@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  esign:
+    build: .
+    container_name: esign-app
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    volumes:
+      - esign-data:/data          # 업로드 파일 + 세션 영구 저장
+    env_file:
+      - .env
+    environment:
+      - UPLOAD_FOLDER=/data/uploads
+      - FLASK_DEBUG=0
+
+  # Cloudflare Quick Tunnel — 계정 없이 외부 URL 자동 발급
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: esign-tunnel
+    restart: unless-stopped
+    depends_on:
+      - esign
+    command: tunnel --url http://esign:5050 --no-autoupdate
+    # 실행 후 로그에서 https://xxxx.trycloudflare.com URL 확인
+
+volumes:
+  esign-data:

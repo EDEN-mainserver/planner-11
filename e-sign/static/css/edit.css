@@ -1,0 +1,367 @@
+/* 3-column edit layout */
+.edit-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Left sidebar */
+.edit-sidebar {
+  width: 240px;
+  background: #fff;
+  border-right: 1px solid #ececec;
+  overflow-y: auto;
+  padding: 16px 12px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.tool-section {
+  background: #fff;
+  border: 1px solid #ececec;
+  border-radius: 10px;
+  padding: 0;
+  overflow: hidden;
+}
+.tool-section > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 600;
+}
+.tool-section > summary::-webkit-details-marker { display: none; }
+.tool-section > summary > i:last-child {
+  margin-left: auto;
+  color: #aaa; font-size: 11px;
+  transition: transform 0.2s;
+}
+.tool-section:not([open]) > summary > i:last-child { transform: rotate(180deg); }
+
+/* Signer section accent */
+.signer-section { border: 1px solid var(--signer-color, #ddd); }
+.signer-section > summary { background: color-mix(in srgb, var(--signer-color, #fff) 18%, white); }
+.signer-color {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #ddd; flex-shrink: 0;
+}
+.signer-num { color: #666; font-weight: 500; }
+
+.signer-tabs {
+  display: flex;
+  background: #f4f5f7;
+  border-radius: 6px;
+  padding: 3px;
+  margin: 0 12px 8px;
+}
+.stab {
+  flex: 1; padding: 6px;
+  font-size: 12px; font-weight: 600; color: #888;
+  border-radius: 4px;
+}
+.stab.active { background: #fff; color: #1a1a1a; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+.stab:disabled { opacity: 0.4; }
+
+/* Tool grid */
+.tool-grid {
+  display: flex; flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 12px;
+}
+.tool-btn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  font-size: 13px; color: #555;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+}
+.tool-btn:hover { background: #f9f9fb; border-color: #c4c4c4; }
+.tool-btn > i:first-child { width: 16px; color: #888; }
+.tool-btn > span { flex: 1; }
+.tool-btn .chip {
+  background: #eef2ff; color: #3a4ed7;
+  font-size: 10px; font-weight: 600;
+  padding: 2px 6px; border-radius: 10px;
+}
+.tool-btn .lock-icon { color: #c4c4c4; font-size: 12px; }
+.sig-caret { color: #888; font-size: 10px; }
+
+/* Center canvas */
+.edit-canvas {
+  flex: 1;
+  display: flex; flex-direction: column;
+  background: #efefef;
+  overflow: hidden;
+}
+.canvas-toolbar {
+  height: 44px;
+  background: #fff;
+  border-bottom: 1px solid #ececec;
+  display: flex; align-items: center; justify-content: center;
+  gap: 14px;
+}
+.cv-btn {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  color: #555; border-radius: 6px;
+}
+.cv-btn:hover { background: #f4f5f7; }
+
+.canvas-area {
+  flex: 1; overflow: auto;
+  padding: 32px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 20px;
+}
+.pdf-page-wrap {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pdf-page-wrap.active-page {
+  outline: 2px solid #3a4ed7;
+  outline-offset: 2px;
+}
+.pdf-page-wrap canvas, .pdf-page-wrap > img {
+  display: block;
+  pointer-events: none;
+}
+.pdf-page-wrap.unsupported {
+  padding: 60px 80px; color: #888;
+}
+.field-layer {
+  position: absolute;
+  inset: 0;
+}
+.field-layer .field { cursor: move; }
+
+/* ============ 서명자 페이지 ============ */
+.signing-title { display: flex; align-items: center; gap: 12px; }
+.signing-title i { color: #3a4ed7; font-size: 22px; }
+.signing-title .t1 { font-weight: 700; font-size: 14px; }
+.signing-title .t2 { font-size: 12px; color: #888; }
+.signing-field { cursor: pointer; }
+.signing-field.mine {
+  background: #fffbe6;
+  border: 2px dashed #ffd400;
+  color: #1a1a1a;
+}
+.signing-field.mine:hover { background: #fff5b3; }
+.signing-field.other {
+  background: rgba(240,240,240,0.6);
+  border: 1px dashed #ccc;
+  color: #aaa;
+  pointer-events: none;
+}
+.signing-field .field-body { padding: 4px; }
+.signing-field img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.page-placeholder { text-align: center; color: #c4c4c4; }
+.page-placeholder i { font-size: 64px; display: block; margin-bottom: 16px; }
+.page-placeholder p { font-size: 16px; margin-bottom: 4px; }
+.page-placeholder small { font-size: 12px; }
+
+/* Right thumbnails */
+.doc-thumbs {
+  width: 200px;
+  background: #fff;
+  border-left: 1px solid #ececec;
+  display: flex; flex-direction: column;
+}
+.thumbs-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ececec;
+  font-size: 14px; font-weight: 600;
+}
+.thumbs-actions { display: flex; gap: 6px; }
+.thumbs-actions button {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  color: #888; font-size: 12px;
+}
+.thumbs-actions button:hover { background: #f4f5f7; }
+.thumb-list {
+  flex: 1; overflow-y: auto;
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.doc-thumb { cursor: pointer; }
+.thumb-img {
+  background: #fafafa;
+  border: 1px solid #ececec;
+  border-radius: 6px;
+  height: 200px;
+  display: flex; align-items: center; justify-content: center;
+  color: #c4c4c4; font-size: 40px;
+}
+.doc-thumb:hover .thumb-img { border-color: #3a4ed7; }
+.thumb-name { font-size: 12px; color: #555; margin-top: 6px; text-align: center; }
+
+/* Step "done" state */
+.step.done { color: #1a1a1a; }
+.step.done .step-num { background: #3a4ed7; }
+
+/* ============ Canvas page positioning ============ */
+.canvas-page { position: relative; }
+#pdfCanvas, #imgCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+.page-placeholder {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.page-indicator {
+  text-align: center;
+  padding: 8px;
+  font-size: 12px;
+  color: #888;
+  background: #fff;
+  border-top: 1px solid #ececec;
+}
+.doc-thumb.active .thumb-img {
+  border-color: #3a4ed7;
+  box-shadow: 0 0 0 2px rgba(58,78,215,0.15);
+}
+.thumb-img canvas { display: block; max-width: 100%; }
+
+/* date input inside field */
+.field-date-input {
+  width: 100%; height: 100%;
+  border: none; outline: none;
+  background: transparent;
+  font-size: 12px; color: #1a1a1a;
+  padding: 0 6px;
+  font-family: inherit;
+}
+
+/* ============ Field on canvas ============ */
+.field {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.85);
+  border: 2px dashed #888;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: move;
+  user-select: none;
+  font-size: 12px;
+  color: #555;
+}
+.field.selected {
+  border-style: solid;
+  box-shadow: 0 0 0 2px rgba(58,78,215,0.15);
+}
+.field-body {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px; padding: 4px 8px;
+  width: 100%; height: 100%;
+  overflow: hidden;
+}
+.field-body i { font-size: 12px; color: #888; }
+.field-body img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.field.has-content { background: #fff; }
+
+.field-owner-tag {
+  position: absolute;
+  top: -18px; left: -2px;
+  font-size: 10px; font-weight: 600;
+  color: #1a1a1a;
+  padding: 2px 6px;
+  border-radius: 3px 3px 0 0;
+  white-space: nowrap;
+  display: none;
+}
+.field.selected .field-owner-tag { display: block; }
+
+.field-remove {
+  position: absolute;
+  top: -10px; right: -10px;
+  width: 20px; height: 20px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  display: none;
+  align-items: center; justify-content: center;
+  font-size: 10px; color: #555;
+  cursor: pointer;
+}
+.field.selected .field-remove { display: flex; }
+.field-remove:hover { background: #fdecec; color: #d93025; border-color: #d93025; }
+
+.field-resizer {
+  position: absolute;
+  bottom: -2px; right: -2px;
+  width: 12px; height: 12px;
+  background: #3a4ed7;
+  border: 2px solid #fff;
+  border-radius: 2px;
+  cursor: nwse-resize;
+  display: none;
+}
+.field.selected .field-resizer { display: block; }
+
+.field-checkbox .field-body { padding: 0; }
+.field-checkbox .field-body i { font-size: 18px; }
+
+/* ============ Signature modal ============ */
+.sig-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.sig-modal[hidden] { display: none; }
+.sig-modal-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  width: 540px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+.sig-modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px;
+}
+.sig-modal-head h3 { font-size: 16px; font-weight: 700; }
+.sig-close {
+  width: 28px; height: 28px;
+  border-radius: 50%; background: #f4f5f7; color: #555;
+  display: flex; align-items: center; justify-content: center;
+}
+#sigPad {
+  width: 500px; height: 200px;
+  border: 1px dashed #c4c4c4;
+  border-radius: 8px;
+  cursor: crosshair;
+  background: #fafafa;
+  display: block;
+}
+.sig-modal-foot {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 16px;
+}
+.btn-ghost {
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 13px; color: #555;
+  cursor: pointer;
+}
+.btn-ghost:hover { background: #f4f5f7; }
+.btn-primary-sm {
+  padding: 8px 20px;
+  background: #3a4ed7; color: #fff;
+  border-radius: 6px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary-sm:hover { background: #2f3fb3; }

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>E-Sign · 서명 완료</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/prepare.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/finalize.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+  <a href="/" class="global-home">
+    <div style="width:32px;height:32px;border-radius:8px;background:#455065;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">E</div>
+    <span>TEAM EDEN</span>
+  </a>
+  <div class="prepare-layout">
+    <header class="prepare-topbar"><div></div><div></div><div></div></header>
+    <div class="prepare-body prepare-body-centered">
+      <div class="sent-card">
+        <div class="sent-icon"><i class="fas fa-circle-check"></i></div>
+        <h2>서명이 완료되었습니다</h2>
+        <p>{{ signer.name }} 님의 서명이 정상적으로 제출되었습니다.</p>
+
+        {% set all_signed = batch.signers | selectattr('status', 'equalto', 'signed') | list | length == batch.signers | length %}
+        {% if all_signed or batch.status == 'completed' %}
+          <div class="sent-info">
+            <div><b>상태</b> <span>모든 서명자 완료</span></div>
+            <div><b>제목</b> <span>{{ batch.title }}</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+          {% for did in batch.doc_ids %}
+            <a class="btn-next sent-btn"
+               href="{{ url_for('sign.download', batch_id=batch.batch_id, doc_idx=loop.index0) }}">
+              <i class="fas fa-download"></i> 서명된 PDF 다운로드 ({{ loop.index }})
+            </a>
+          {% endfor %}
+          </div>
+        {% else %}
+          <div class="sent-info">
+            <div><b>상태</b> <span>다른 서명자를 기다리는 중</span></div>
+            <ul>
+              {% for s in batch.signers %}
+                <li>{{ loop.index }}. {{ s.name }} — <em>{% if s.status == 'signed' %}서명 완료{% else %}대기 중{% endif %}</em></li>
+              {% endfor %}
+            </ul>
+          </div>
+          <p style="font-size:12px;color:#888">
+            다른 서명자가 모두 서명을 완료하면 PDF를 다운로드할 수 있습니다.<br/>
+            진행 상태: <a href="{{ url_for('sign.status', batch_id=batch.batch_id) }}">확인 페이지</a>
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>

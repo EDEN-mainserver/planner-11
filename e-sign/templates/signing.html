@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Sign · 서명하기</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/prepare.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/edit.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+</head>
+<body>
+  <a href="/" class="global-home">
+    <div style="width:32px;height:32px;border-radius:8px;background:#455065;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">E</div>
+    <span>TEAM EDEN</span>
+  </a>
+  <div class="prepare-layout">
+    <header class="prepare-topbar">
+      <div class="signing-title">
+        <i class="fas fa-file-signature"></i>
+        <div>
+          <div class="t1">{{ batch.title }}</div>
+          <div class="t2">{{ signer.name }} 님의 서명 요청</div>
+        </div>
+      </div>
+      <button id="completeBtn" class="btn-next">
+        서명 완료 <i class="far fa-chevron-right"></i>
+      </button>
+    </header>
+
+    <div class="edit-body">
+      <main class="edit-canvas">
+        <div class="canvas-area" id="canvasArea">
+          <div class="page-placeholder" id="pagePlaceholder">
+            <i class="far fa-file-lines"></i>
+            <p>문서 불러오는 중...</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 서명 패드 모달 -->
+  <div id="sigModal" class="sig-modal" hidden>
+    <div class="sig-modal-box">
+      <div class="sig-modal-head">
+        <h3>서명 그리기</h3>
+        <button class="sig-close" id="sigClose"><i class="fas fa-xmark"></i></button>
+      </div>
+      <canvas id="sigPad" width="500" height="200"></canvas>
+      <div class="sig-modal-foot">
+        <button class="btn-ghost" id="sigClear">지우기</button>
+        <div style="flex:1"></div>
+        <button class="btn-ghost" id="sigCancel">취소</button>
+        <button class="btn-primary-sm" id="sigSave">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="imageUpload" hidden accept="image/*" />
+
+  <script>
+    const BATCH = {{ batch | tojson }};
+    const SIGNER_IDX = {{ signer_idx }};
+    const TOKEN = {{ token | tojson }};
+    const SCALE = BATCH.scale || 1.4;
+    const docIds = BATCH.doc_ids;
+    const docs = docIds.map(id => ({ id, type: null, pdfDoc: null, numPages: 1 }));
+
+    const canvasArea = document.getElementById('canvasArea');
+    const pagePlaceholder = document.getElementById('pagePlaceholder');
+
+    // 필드 인덱스 → DOM 매핑 (제출 시 값 수집용)
+    const fieldNodes = {};
+
+    async function loadDoc(i) {
+      const d = docs[i];
+      if (d.type) return d;
+      const url = '/sign/file/' + d.id;
+      d.url = url;
+      try {
+        const head = await fetch(url, { method: 'HEAD' });
+        const ct = head.headers.get('content-type') || '';
+        if (ct.includes('pdf')) {
+          d.type = 'pdf';
+          d.pdfDoc = await pdfjsLib.getDocument(url).promise;
+          d.numPages = d.pdfDoc.numPages;
+        } else if (ct.startsWith('image/')) {
+          d.type = 'image';
+        } else {
+          d.type = 'other';
+        }
+      } catch (e) { d.type = 'other'; }
+      return d;
+    }
+
+    function makePageWrap(docIdx, pageIdx) {
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-page-wrap';
+      wrap.dataset.docIdx = String(docIdx);
+      wrap.dataset.pageIdx = String(pageIdx);
+      wrap.innerHTML = '<div class="field-layer"></div>';
+      return wrap;
+    }
+
+    async function renderPdfPage(d, pageNum, wrap) {
+      const page = await d.pdfDoc.getPage(pageNum);
+      const vp = page.getViewport({ scale: SCALE });
+      const cv = document.createElement('canvas');
+      cv.width = vp.width; cv.height = vp.height;
+      cv.style.width = vp.width + 'px'; cv.style.height = vp.height + 'px';
+      wrap.style.width = vp.width + 'px';
+      wrap.style.height = vp.height + 'px';
+      wrap.insertBefore(cv, wrap.firstChild);
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    }
+
+    function renderField(field, fieldIndex, layer) {
+      const owner = field.owner;
+      const ownerStr = String(owner);
+      const isMine = ownerStr === String(SIGNER_IDX);
+      const el = document.createElement('div');
+      el.className = 'field signing-field' + (isMine ? ' mine' : ' other') + ' field-' + field.tool;
+      el.style.left = field.x + 'px';
+      el.style.top = field.y + 'px';
+      el.style.width = field.w + 'px';
+      el.style.height = field.h + 'px';
+      el.dataset.tool = field.tool;
+      el.dataset.fieldIndex = String(fieldIndex);
+
+      const labels = {
+        signature: '사인', stamp: '도장', text: '텍스트 입력', checkbox: '',
+        'signing-date': '서명일', date: '날짜',
+        image: '이미지', attachment: '첨부',
+      };
+
+      // 미리 채워진 값 (요청자/문서 소유 필드 또는 ownerStr === 'doc')
+      let body;
+      if (field.value && typeof field.value === 'string' && field.value.startsWith('data:image')) {
+        body = `<img src="${field.value}" alt="" />`;
+      } else if (field.tool === 'checkbox') {
+        const checked = field.value === 'checked';
+        body = `<i class="far ${checked ? 'fa-square-check' : 'fa-square'}"></i>`;
+      } else if (field.value) {
+        body = `<span>${field.value}</span>`;
+      } else if (isMine) {
+        const icon = field.tool === 'signature' ? 'signature' : field.tool === 'stamp' ? 'stamp' : 'pen';
+        body = `<i class="far fa-${icon}"></i>
+                <span>${labels[field.tool] || ''}</span>`;
+      } else {
+        body = `<i class="far fa-lock"></i>`;
+      }
+      el.innerHTML = `<div class="field-body">${body}</div>`;
+
+      if (isMine) {
+        el.addEventListener('click', () => activateMineField(el, field, fieldIndex));
+      }
+
+      layer.appendChild(el);
+      if (isMine) fieldNodes[fieldIndex] = el;
+    }
+
+    async function buildAllPages() {
+      canvasArea.innerHTML = '';
+      const fields = BATCH.fields || [];
+      for (let i = 0; i < docs.length; i++) {
+        const d = await loadDoc(i);
+        if (d.type === 'pdf') {
+          for (let p = 1; p <= d.numPages; p++) {
+            const wrap = makePageWrap(i, p);
+            canvasArea.appendChild(wrap);
+            await renderPdfPage(d, p, wrap);
+            const layer = wrap.querySelector('.field-layer');
+            fields.forEach((f, idx) => {
+              if (f.docIdx === i && f.pageIdx === p) renderField(f, idx, layer);
+            });
+          }
+        } else if (d.type === 'image') {
+          const wrap = makePageWrap(i, 1);
+          const img = document.createElement('img');
+          img.src = d.url;
+          await new Promise(r => img.onload = r);
+          wrap.style.width = img.naturalWidth + 'px';
+          wrap.style.height = img.naturalHeight + 'px';
+          wrap.insertBefore(img, wrap.firstChild);
+          canvasArea.appendChild(wrap);
+        } else {
+          const wrap = makePageWrap(i, 1);
+          wrap.classList.add('unsupported');
+          wrap.innerHTML = '<div class="field-layer"></div><p>미리보기 미지원</p>';
+          canvasArea.appendChild(wrap);
+        }
+      }
+    }
+
+    // ============ 내 필드 활성화 ============
+    function activateMineField(el, field, fieldIndex) {
+      const tool = field.tool;
+      if (tool === 'signature') {
+        openSigModal(el, fieldIndex);
+      } else if (tool === 'stamp') {
+        openImageUpload(el, fieldIndex);
+      } else if (tool === 'image') {
+        openImageUpload(el, fieldIndex);
+      } else if (tool === 'checkbox') {
+        const i = el.querySelector('i');
+        const checked = i.classList.contains('fa-square-check');
+        i.className = 'far ' + (checked ? 'fa-square' : 'fa-square-check');
+        el.dataset.value = checked ? '' : 'checked';
+      } else if (tool === 'date' || tool === 'signing-date') {
+        const today = new Date().toISOString().slice(0, 10);
+        const v = prompt('날짜 입력 (YYYY-MM-DD)', el.dataset.value || today);
+        if (v) {
+          el.dataset.value = v;
+          const body = el.querySelector('.field-body');
+          body.textContent = '';
+          const span = document.createElement('span');
+          span.textContent = v;
+          body.appendChild(span);
+        }
+      } else {
+        const v = prompt('값 입력', el.dataset.value || '');
+        if (v != null) {
+          el.dataset.value = v;
+          const body = el.querySelector('.field-body');
+          body.textContent = '';
+          const span = document.createElement('span');
+          span.textContent = v;
+          body.appendChild(span);
+        }
+      }
+    }
+
+    // ============ 서명 패드 모달 ============
+    const sigModal = document.getElementById('sigModal');
+    const sigPad = document.getElementById('sigPad');
+    const sigCtx = sigPad.getContext('2d');
+    let sigTarget = null, sigDrawing = false;
+
+    function openSigModal(el) {
+      sigTarget = el;
+      sigCtx.clearRect(0, 0, sigPad.width, sigPad.height);
+      sigCtx.lineWidth = 2.5; sigCtx.lineCap = 'round'; sigCtx.strokeStyle = '#1a1a1a';
+      sigModal.hidden = false;
+    }
+    function closeSig() { sigModal.hidden = true; sigTarget = null; }
+    function pos(e) {
+      const r = sigPad.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    }
+    // 마우스 이벤트
+    sigPad.addEventListener('mousedown', e => { sigDrawing = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); });
+    sigPad.addEventListener('mousemove', e => { if (sigDrawing) { const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); } });
+    ['mouseup', 'mouseleave'].forEach(ev => sigPad.addEventListener(ev, () => sigDrawing = false));
+    // 터치 이벤트 (모바일/태블릿)
+    sigPad.addEventListener('touchstart', e => { e.preventDefault(); sigDrawing = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }, { passive: false });
+    sigPad.addEventListener('touchmove', e => { e.preventDefault(); if (sigDrawing) { const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); } }, { passive: false });
+    sigPad.addEventListener('touchend', () => sigDrawing = false);
+    document.getElementById('sigClear').addEventListener('click', () => sigCtx.clearRect(0, 0, sigPad.width, sigPad.height));
+    document.getElementById('sigCancel').addEventListener('click', closeSig);
+    document.getElementById('sigClose').addEventListener('click', closeSig);
+    document.getElementById('sigSave').addEventListener('click', () => {
+      if (!sigTarget) return closeSig();
+      const url = sigPad.toDataURL('image/png');
+      sigTarget.dataset.value = url;
+      sigTarget.querySelector('.field-body').innerHTML = `<img src="${url}" alt="" />`;
+      closeSig();
+    });
+
+    // ============ 이미지 업로드 ============
+    const imageInput = document.getElementById('imageUpload');
+    let imgTarget = null;
+    function openImageUpload(el) { imgTarget = el; imageInput.value = ''; imageInput.click(); }
+    imageInput.addEventListener('change', e => {
+      const f = e.target.files[0];
+      if (!f || !imgTarget) return;
+      const r = new FileReader();
+      r.onload = ev => {
+        imgTarget.dataset.value = ev.target.result;
+        imgTarget.querySelector('.field-body').innerHTML = `<img src="${ev.target.result}" alt="" />`;
+      };
+      r.readAsDataURL(f);
+    });
+
+    // ============ 제출 ============
+    document.getElementById('completeBtn').addEventListener('click', async () => {
+      const values = [];
+      for (const [idxStr, el] of Object.entries(fieldNodes)) {
+        const v = el.dataset.value;
+        if (v) values.push({ field_index: parseInt(idxStr, 10), value: v });
+      }
+      if (values.length === 0) {
+        if (!confirm('입력된 필드가 없습니다. 그래도 완료하시겠습니까?')) return;
+      }
+      const res = await fetch('/sign/signing/' + TOKEN + '/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values }),
+      });
+      const data = await res.json();
+      if (data.ok) window.location.href = data.next_url;
+      else alert(data.error || '제출 실패');
+    });
+
+    (async () => {
+      await buildAllPages();
+      pagePlaceholder.remove();
+    })();
+  </script>
+</body>
+</html>

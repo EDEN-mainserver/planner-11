@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Sign · 계약 준비</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/prepare.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+</head>
+<body>
+  <a href="/" class="global-home">
+    <div style="width:32px;height:32px;border-radius:8px;background:#455065;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">E</div>
+    <span>TEAM EDEN</span>
+  </a>
+  <div class="prepare-layout">
+    <!-- 상단 바: 이전 / 스텝퍼 / 다음으로 -->
+    <header class="prepare-topbar">
+      <a href="{{ url_for('sign.new_request') }}" class="btn-prev">
+        <i class="far fa-chevron-left"></i> 이전
+      </a>
+
+      <ol class="stepper">
+        <li class="step active" data-step="1">
+          <span class="step-num">1</span><span class="step-label">서명자</span>
+        </li>
+        <li class="step-arrow"><i class="far fa-chevron-right"></i></li>
+        <li class="step" data-step="2">
+          <span class="step-num">2</span><span class="step-label">입력</span>
+        </li>
+        <li class="step-arrow"><i class="far fa-chevron-right"></i></li>
+        <li class="step" data-step="3">
+          <span class="step-num">3</span><span class="step-label">기타</span>
+        </li>
+      </ol>
+
+      <button id="nextBtn" class="btn-next">
+        다음으로 <i class="far fa-chevron-right"></i>
+      </button>
+    </header>
+
+    <div class="prepare-body prepare-body-centered">
+      <!-- 중앙 서명자 패널 -->
+      <aside class="prepare-panel prepare-panel-center">
+        <!-- 탭 -->
+        <div class="panel-tabs" role="tablist">
+          <button class="tab active" role="tab" data-tab="contract">계약 서명 요청</button>
+          <button class="tab" role="tab" data-tab="view">문서 열람 요청</button>
+        </div>
+
+        <!-- 순서 옵션 -->
+        <div class="order-card">
+          <label class="radio">
+            <input type="radio" name="order" value="ordered" checked />
+            <span>순서대로 한 명씩 서명</span>
+          </label>
+          <label class="radio">
+            <input type="radio" name="order" value="parallel" />
+            <span>순서없이 서명</span>
+          </label>
+        </div>
+
+        <!-- 서명자 리스트 -->
+        <div id="signerList" class="signer-list"></div>
+
+        <!-- 추가 버튼 -->
+        <button id="addSignerBtn" class="add-signer-btn">
+          <div class="add-icon"><i class="fas fa-plus"></i></div>
+          <span class="add-label">서명자 추가하기 (<span id="signerCount">1</span>/30)</span>
+        </button>
+      </aside>
+    </div>
+  </div>
+
+  <!-- 서명자 카드 템플릿 -->
+  <template id="signerTemplate">
+    <div class="signer-card">
+      <div class="signer-head">
+        <span class="signer-title"></span>
+        <button class="signer-remove" type="button" aria-label="서명자 삭제">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+      <input class="signer-name" type="text" placeholder="이름" />
+      <div class="contact-methods">
+        <button type="button" class="contact-btn active" data-method="email">
+          <i class="fas fa-envelope"></i> 이메일
+        </button>
+        <button type="button" class="contact-btn" data-method="kakao">
+          <i class="fas fa-comment"></i> 카카오톡
+        </button>
+        <button type="button" class="contact-btn" data-method="inperson">
+          <i class="fas fa-user"></i> 대면서명
+        </button>
+      </div>
+      <div class="contact-input-wrap">
+        <input class="contact-input contact-email"
+               type="email" maxlength="50" placeholder="이메일 주소" autocomplete="off" />
+        <input class="contact-input contact-kakao" hidden
+               type="tel" maxlength="9" placeholder="8자리 '-' 없이 입력" />
+        <input class="contact-input contact-inperson" hidden
+               type="text" maxlength="50" placeholder="이메일 주소 또는 휴대폰 번호" />
+      </div>
+      <div class="lang-row">
+        <span>알림 언어</span>
+        <i class="fas fa-globe"></i>
+        <select class="lang-select">
+          <option value="ko">한국어 (ko)</option>
+          <option value="en">English (en)</option>
+          <option value="zh-CN">简体中文 (zh-CN)</option>
+          <option value="ja">日本語 (ja)</option>
+          <option value="vi">Tiếng Việt (vi)</option>
+        </select>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    const ORDINALS = ['첫 번째','두 번째','세 번째','네 번째','다섯 번째','여섯 번째',
+                      '일곱 번째','여덟 번째','아홉 번째','열 번째'];
+    const MAX_SIGNERS = 30;
+    const list = document.getElementById('signerList');
+    const tpl = document.getElementById('signerTemplate');
+    const addBtn = document.getElementById('addSignerBtn');
+    const countLabel = document.getElementById('signerCount');
+
+    function ordinal(i) {
+      return ORDINALS[i] || `${i + 1} 번째`;
+    }
+
+    function render() {
+      const cards = list.querySelectorAll('.signer-card');
+      cards.forEach((c, i) => {
+        c.querySelector('.signer-title').textContent = `${ordinal(i)} 서명자`;
+        // 첫 카드는 삭제 버튼 숨김 (최소 1명 보장)
+        c.querySelector('.signer-remove').style.display = cards.length === 1 ? 'none' : '';
+      });
+      countLabel.textContent = cards.length;
+      addBtn.disabled = cards.length >= MAX_SIGNERS;
+    }
+
+    function addSigner() {
+      if (list.querySelectorAll('.signer-card').length >= MAX_SIGNERS) return;
+      const node = tpl.content.cloneNode(true);
+      const card = node.querySelector('.signer-card');
+
+      card.querySelector('.signer-remove').addEventListener('click', () => {
+        card.remove();
+        render();
+      });
+
+      card.querySelectorAll('.contact-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          card.querySelectorAll('.contact-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const method = btn.dataset.method;
+          card.querySelectorAll('.contact-input').forEach(inp => {
+            inp.hidden = !inp.classList.contains('contact-' + method);
+          });
+        });
+      });
+
+      list.appendChild(node);
+      render();
+    }
+
+    addBtn.addEventListener('click', addSigner);
+
+    // 탭 전환
+    document.querySelectorAll('.panel-tabs .tab').forEach(t => {
+      t.addEventListener('click', () => {
+        document.querySelectorAll('.panel-tabs .tab').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+      });
+    });
+
+    // 다음 단계: 입력(필드 배치) 화면으로 이동
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      const cards = list.querySelectorAll('.signer-card');
+      const signers = [];
+      let hasEmpty = false;
+      cards.forEach((card, idx) => {
+        const name = card.querySelector('.signer-name').value.trim();
+        if (!name) {
+          hasEmpty = true;
+          card.querySelector('.signer-name').focus();
+          card.querySelector('.signer-name').style.borderColor = '#e65100';
+          return;
+        }
+        card.querySelector('.signer-name').style.borderColor = '';
+        const activeBtn = card.querySelector('.contact-btn.active');
+        const method = activeBtn ? activeBtn.dataset.method : 'email';
+        const inputEl = card.querySelector('.contact-' + method);
+        signers.push({
+          name,
+          method,
+          contact: inputEl ? inputEl.value.trim() : '',
+          lang: card.querySelector('.lang-select').value,
+        });
+      });
+      if (hasEmpty) {
+        alert('모든 서명자의 이름을 입력해주세요.');
+        return;
+      }
+      if (signers.length === 0) {
+        alert('서명자 이름을 1명 이상 입력해주세요.');
+        return;
+      }
+      const docIds = {{ doc_ids | tojson }};
+      localStorage.setItem('esign_signers', JSON.stringify(signers));
+      window.location.href = '/sign/edit/' + docIds.join(',');
+    });
+
+    // 초기 첫 번째 서명자 1개 생성
+    addSigner();
+  </script>
+</body>
+</html>

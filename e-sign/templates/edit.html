@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Sign · 입력</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/prepare.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/edit.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+</head>
+<body>
+  <a href="/" class="global-home">
+    <div style="width:32px;height:32px;border-radius:8px;background:#455065;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">E</div>
+    <span>TEAM EDEN</span>
+  </a>
+  <div class="prepare-layout">
+    <header class="prepare-topbar">
+      <a href="javascript:history.back()" class="btn-prev">
+        <i class="far fa-chevron-left"></i> 이전
+      </a>
+
+      <ol class="stepper">
+        <li class="step done"><span class="step-num">1</span><span class="step-label">서명자</span></li>
+        <li class="step-arrow"><i class="far fa-chevron-right"></i></li>
+        <li class="step active"><span class="step-num">2</span><span class="step-label">입력</span></li>
+        <li class="step-arrow"><i class="far fa-chevron-right"></i></li>
+        <li class="step"><span class="step-num">3</span><span class="step-label">기타</span></li>
+      </ol>
+
+      <button id="nextBtn" class="btn-next">
+        다음으로 <i class="far fa-chevron-right"></i>
+      </button>
+    </header>
+
+    <div class="edit-body">
+      <!-- 좌측 사이드바: 필드 도구 -->
+      <aside class="edit-sidebar">
+        <!-- 문서 편집 섹션 -->
+        <details class="tool-section" open>
+          <summary>
+            <span>문서 편집</span>
+            <i class="far fa-chevron-up"></i>
+          </summary>
+          <div class="tool-grid">
+            <button class="tool-btn" data-tool="text" data-owner="doc">
+              <i class="far fa-note-sticky"></i><span>텍스트</span>
+            </button>
+            <button class="tool-btn" data-tool="checkbox" data-owner="doc">
+              <i class="far fa-square-check"></i><span>체크박스</span>
+            </button>
+            <button class="tool-btn" data-tool="image" data-owner="doc">
+              <i class="far fa-image"></i><span>이미지</span>
+            </button>
+          </div>
+        </details>
+
+        <!-- 서명자별 섹션 (JS로 동적 생성) -->
+        <div id="signerSections"></div>
+      </aside>
+
+      <!-- 중앙: 문서 미리보기 -->
+      <main class="edit-canvas">
+        <div class="canvas-toolbar">
+          <button class="cv-btn" id="prevPageBtn" title="이전 페이지"><i class="fas fa-arrow-left"></i></button>
+          <button class="cv-btn" id="nextPageBtn" title="다음 페이지"><i class="fas fa-arrow-right"></i></button>
+          <button class="cv-btn" id="zoomOutBtn" title="축소"><i class="fas fa-magnifying-glass-minus"></i></button>
+          <button class="cv-btn" id="zoomInBtn" title="확대"><i class="fas fa-magnifying-glass-plus"></i></button>
+        </div>
+        <div class="canvas-area" id="canvasArea">
+          <div class="page-placeholder" id="pagePlaceholder">
+            <i class="far fa-file-lines"></i>
+            <p>문서 불러오는 중...</p>
+          </div>
+        </div>
+      </main>
+
+      <!-- 우측: 문서 썸네일 -->
+      <aside class="doc-thumbs">
+        <div class="thumbs-head">
+          <span>문서</span>
+          <div class="thumbs-actions">
+            <button><i class="far fa-arrow-right-arrow-left"></i></button>
+            <button><i class="far fa-plus"></i></button>
+          </div>
+        </div>
+        <div id="docThumbList" class="thumb-list"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- 서명 패드 모달 -->
+  <div id="sigModal" class="sig-modal" hidden>
+    <div class="sig-modal-box">
+      <div class="sig-modal-head">
+        <h3>서명 그리기</h3>
+        <button class="sig-close" id="sigClose"><i class="fas fa-xmark"></i></button>
+      </div>
+      <canvas id="sigPad" width="500" height="200"></canvas>
+      <div class="sig-modal-foot">
+        <button class="btn-ghost" id="sigClear">지우기</button>
+        <div style="flex:1"></div>
+        <button class="btn-ghost" id="sigCancel">취소</button>
+        <button class="btn-primary-sm" id="sigSave">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 이미지 업로드용 hidden input -->
+  <input type="file" id="imageUpload" hidden accept="image/*" />
+
+  <!-- 서명자 섹션 템플릿 -->
+  <template id="signerSectionTpl">
+    <details class="tool-section signer-section" open>
+      <summary>
+        <span class="signer-color"></span>
+        <span class="signer-num"></span>
+        <span class="signer-name"></span>
+        <i class="far fa-chevron-up"></i>
+      </summary>
+      <div class="signer-tabs">
+        <button class="stab active" data-stab="basic">기본</button>
+        <button class="stab" data-stab="auto">자동 입력</button>
+      </div>
+      <div class="tool-grid">
+        <button class="tool-btn" data-tool="signature">
+          <i class="far fa-signature"></i><span>사인</span>
+        </button>
+        <button class="tool-btn" data-tool="stamp">
+          <i class="far fa-stamp"></i><span>도장</span>
+        </button>
+        <button class="tool-btn" data-tool="text">
+          <i class="far fa-note-sticky"></i><span>텍스트</span>
+        </button>
+        <button class="tool-btn" data-tool="checkbox">
+          <i class="far fa-square-check"></i><span>체크박스</span>
+        </button>
+        <button class="tool-btn" data-tool="signing-date">
+          <i class="far fa-calendar-day"></i><span>서명한 날짜</span>
+        </button>
+        <button class="tool-btn" data-tool="date">
+          <i class="far fa-calendar"></i><span>날짜</span>
+        </button>
+        <button class="tool-btn" data-tool="image">
+          <i class="far fa-image"></i><span>이미지</span>
+        </button>
+        <button class="tool-btn" data-tool="attachment">
+          <i class="far fa-paperclip-vertical"></i><span>첨부파일 요청</span>
+        </button>
+      </div>
+    </details>
+  </template>
+
+  <script>
+    const SIGNER_COLORS = ['#ffd400', '#7fd9c8', '#a3b6ff', '#ffb38a', '#c8a3ff'];
+    const docIds = {{ doc_ids | tojson }};
+
+    // 1단계에서 저장한 서명자 불러오기
+    const signers = JSON.parse(localStorage.getItem('esign_signers') || '[]');
+    const sectionsRoot = document.getElementById('signerSections');
+    const tpl = document.getElementById('signerSectionTpl');
+
+    if (signers.length === 0) {
+      // 서명자가 없으면 1단계로 되돌림
+      alert('서명자 정보가 없습니다. 1단계로 돌아갑니다.');
+      window.location.href = '/sign/prepare/' + docIds.join(',');
+    }
+
+    signers.forEach((s, i) => {
+      const node = tpl.content.cloneNode(true);
+      const det = node.querySelector('details');
+      const color = SIGNER_COLORS[i % SIGNER_COLORS.length];
+      det.style.setProperty('--signer-color', color);
+      det.querySelector('.signer-color').style.background = color;
+      det.querySelector('.signer-num').textContent = (i + 1) + ' ·';
+      det.querySelector('.signer-name').textContent = s.name;
+
+      // 탭 전환
+      det.querySelectorAll('.stab').forEach(t => {
+        t.addEventListener('click', () => {
+          det.querySelectorAll('.stab').forEach(x => x.classList.remove('active'));
+          t.classList.add('active');
+        });
+      });
+
+      sectionsRoot.appendChild(node);
+    });
+
+    // ============ 필드 시스템 ============
+    const canvasArea = document.getElementById('canvasArea');
+    let activePage = null;  // 현재 선택된 .pdf-page-wrap
+
+    function setActivePage(wrap) {
+      document.querySelectorAll('.pdf-page-wrap.active-page')
+        .forEach(w => w.classList.remove('active-page'));
+      if (wrap) wrap.classList.add('active-page');
+      activePage = wrap;
+      if (typeof updateActiveThumb === 'function') updateActiveThumb();
+    }
+
+    const FIELD_DEFAULTS = {
+      signature:      { w: 160, h: 70,  label: '사인',       icon: 'far fa-signature' },
+      stamp:          { w: 100, h: 100, label: '도장',       icon: 'far fa-stamp' },
+      text:           { w: 160, h: 32,  label: '텍스트',     icon: 'far fa-note-sticky' },
+      checkbox:       { w: 28,  h: 28,  label: '',           icon: 'far fa-square' },
+      'signing-date': { w: 140, h: 32,  label: '서명한 날짜', icon: 'far fa-calendar-day' },
+      date:           { w: 140, h: 32,  label: '날짜',        icon: 'far fa-calendar' },
+      image:          { w: 140, h: 100, label: '이미지',      icon: 'far fa-image' },
+      attachment:     { w: 160, h: 36,  label: '첨부파일',    icon: 'far fa-paperclip-vertical' },
+    };
+
+    function ownerColor(owner) {
+      if (owner === 'doc') return '#888';
+      const idx = parseInt(owner, 10);
+      return SIGNER_COLORS[idx % SIGNER_COLORS.length];
+    }
+    function ownerLabel(owner) {
+      if (owner === 'doc') return '문서';
+      const idx = parseInt(owner, 10);
+      return signers[idx]?.name || ('서명자 ' + (idx + 1));
+    }
+
+    let selectedField = null;
+    function selectField(el) {
+      document.querySelectorAll('.field.selected').forEach(f => f.classList.remove('selected'));
+      if (el) el.classList.add('selected');
+      selectedField = el;
+    }
+
+    function createField(tool, owner) {
+      if (!activePage) {
+        alert('먼저 문서 위 페이지를 클릭해 활성화 해주세요.');
+        return;
+      }
+      const layer = activePage.querySelector('.field-layer');
+      const def = FIELD_DEFAULTS[tool] || FIELD_DEFAULTS.text;
+      const el = document.createElement('div');
+      el.className = 'field field-' + tool;
+      el.dataset.tool = tool;
+      el.dataset.owner = String(owner);
+      el.dataset.docIdx = activePage.dataset.docIdx;
+      el.dataset.pageIdx = activePage.dataset.pageIdx;
+      el.style.width = def.w + 'px';
+      el.style.height = def.h + 'px';
+      // 활성 페이지의 보이는 영역 중앙에 배치
+      const pageRect = activePage.getBoundingClientRect();
+      const areaRect = canvasArea.getBoundingClientRect();
+      const visibleTop = Math.max(0, areaRect.top - pageRect.top);
+      const visibleBot = Math.min(pageRect.height, areaRect.bottom - pageRect.top);
+      const cx = (activePage.clientWidth - def.w) / 2;
+      const cy = (visibleTop + visibleBot) / 2 - def.h / 2;
+      el.style.left = Math.max(0, cx) + 'px';
+      el.style.top  = Math.max(0, cy) + 'px';
+      el.style.borderColor = ownerColor(owner);
+
+      const ownerTag = `<div class="field-owner-tag" style="background:${ownerColor(owner)}">${ownerLabel(owner)}</div>`;
+      const removeBtn = `<button class="field-remove" title="삭제"><i class="fas fa-xmark"></i></button>`;
+      const resizer = `<div class="field-resizer"></div>`;
+
+      let body = '';
+      if (tool === 'checkbox') {
+        body = `<div class="field-body cb-body"><i class="far fa-square"></i></div>`;
+      } else if (tool === 'image') {
+        body = `<div class="field-body img-body"><i class="far fa-image"></i><span>이미지</span></div>`;
+      } else if (tool === 'signature') {
+        body = `<div class="field-body sig-body"><i class="far fa-signature"></i><span>사인</span></div>`;
+      } else if (tool === 'stamp') {
+        body = `<div class="field-body sig-body"><i class="far fa-stamp"></i><span>도장</span></div>`;
+      } else {
+        body = `<div class="field-body"><i class="${def.icon}"></i><span>${def.label}</span></div>`;
+      }
+
+      el.innerHTML = ownerTag + body + removeBtn + resizer;
+      layer.appendChild(el);
+
+      // 선택
+      el.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.field-remove') || e.target.closest('.field-resizer')) return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+          selectField(el); return;
+        }
+        selectField(el);
+        startDrag(e, el);
+      });
+
+      // 더블클릭 액션 (서명/이미지)
+      el.addEventListener('dblclick', () => activateField(el));
+
+      // 삭제
+      el.querySelector('.field-remove').addEventListener('click', (e) => {
+        e.stopPropagation();
+        el.remove();
+      });
+
+      // 리사이즈
+      el.querySelector('.field-resizer').addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        startResize(e, el);
+      });
+
+      selectField(el);
+      return el;
+    }
+
+    function startDrag(e, el) {
+      e.preventDefault();
+      const startX = e.clientX, startY = e.clientY;
+      const startLeft = parseFloat(el.style.left);
+      const startTop  = parseFloat(el.style.top);
+      const layer = el.parentElement;
+      function move(ev) {
+        let nx = startLeft + (ev.clientX - startX);
+        let ny = startTop  + (ev.clientY - startY);
+        nx = Math.max(0, Math.min(layer.clientWidth  - el.offsetWidth,  nx));
+        ny = Math.max(0, Math.min(layer.clientHeight - el.offsetHeight, ny));
+        el.style.left = nx + 'px';
+        el.style.top  = ny + 'px';
+      }
+      function up() {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+      }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    }
+
+    function startResize(e, el) {
+      e.preventDefault();
+      const startX = e.clientX, startY = e.clientY;
+      const startW = el.offsetWidth, startH = el.offsetHeight;
+      function move(ev) {
+        const w = Math.max(40, startW + (ev.clientX - startX));
+        const h = Math.max(24, startH + (ev.clientY - startY));
+        el.style.width = w + 'px';
+        el.style.height = h + 'px';
+      }
+      function up() {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+      }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    }
+
+    function activateField(el) {
+      const tool = el.dataset.tool;
+      if (tool === 'signature') {
+        openSigModal(el);
+      } else if (tool === 'stamp') {
+        openImageUpload(el);
+      } else if (tool === 'image') {
+        openImageUpload(el);
+      } else if (tool === 'checkbox') {
+        const i = el.querySelector('.cb-body i');
+        if (i.classList.contains('fa-square')) {
+          i.classList.remove('fa-square'); i.classList.add('fa-square-check');
+        } else {
+          i.classList.remove('fa-square-check'); i.classList.add('fa-square');
+        }
+      } else if (tool === 'text') {
+        const cur = el.querySelector('.field-body span').textContent;
+        const v = prompt('텍스트 입력', cur === '텍스트' ? '' : cur);
+        if (v != null) el.querySelector('.field-body span').textContent = v || '텍스트';
+      } else if (tool === 'date') {
+        // 네이티브 date picker 열기
+        const body = el.querySelector('.field-body');
+        let input = body.querySelector('input[type=date]');
+        if (!input) {
+          body.innerHTML = '<input type="date" class="field-date-input" />';
+          input = body.querySelector('input');
+          input.addEventListener('change', () => {
+            if (input.value) el.classList.add('has-content');
+          });
+          input.addEventListener('mousedown', (e) => e.stopPropagation());
+        }
+        if (typeof input.showPicker === 'function') input.showPicker();
+        else input.focus();
+      } else if (tool === 'signing-date') {
+        // 서명한 날짜 = 서명 시점에 자동 채워지므로 placeholder만 표시
+        el.querySelector('.field-body span').textContent = '서명일 자동';
+      }
+    }
+
+    // 캔버스 빈 곳 클릭 → 선택 해제
+    canvasArea.addEventListener('mousedown', (e) => {
+      if (!e.target.closest('.field')) selectField(null);
+    });
+
+    // 도구 버튼 → 필드 생성
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tool = btn.dataset.tool;
+        let owner = btn.dataset.owner;
+        if (owner == null) {
+          // 서명자 섹션에 속한 도구
+          const sec = btn.closest('.signer-section');
+          owner = String(Array.from(sectionsRoot.querySelectorAll('.signer-section')).indexOf(sec));
+        }
+        createField(tool, owner);
+      });
+    });
+
+    // ============ 서명 패드 모달 ============
+    const sigModal = document.getElementById('sigModal');
+    const sigPad = document.getElementById('sigPad');
+    const sigCtx = sigPad.getContext('2d');
+    let sigTargetField = null;
+    let sigDrawing = false;
+
+    function openSigModal(field) {
+      sigTargetField = field;
+      sigCtx.clearRect(0, 0, sigPad.width, sigPad.height);
+      sigCtx.lineWidth = 2.5;
+      sigCtx.lineCap = 'round';
+      sigCtx.strokeStyle = '#1a1a1a';
+      sigModal.hidden = false;
+    }
+    function closeSigModal() { sigModal.hidden = true; sigTargetField = null; }
+
+    function sigPos(e) {
+      const r = sigPad.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    }
+    sigPad.addEventListener('mousedown', (e) => {
+      sigDrawing = true;
+      const p = sigPos(e);
+      sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y);
+    });
+    sigPad.addEventListener('mousemove', (e) => {
+      if (!sigDrawing) return;
+      const p = sigPos(e);
+      sigCtx.lineTo(p.x, p.y); sigCtx.stroke();
+    });
+    ['mouseup','mouseleave'].forEach(ev => sigPad.addEventListener(ev, () => sigDrawing = false));
+
+    document.getElementById('sigClear').addEventListener('click', () =>
+      sigCtx.clearRect(0, 0, sigPad.width, sigPad.height));
+    document.getElementById('sigCancel').addEventListener('click', closeSigModal);
+    document.getElementById('sigClose').addEventListener('click', closeSigModal);
+    document.getElementById('sigSave').addEventListener('click', () => {
+      if (!sigTargetField) return closeSigModal();
+      const dataUrl = sigPad.toDataURL('image/png');
+      sigTargetField.classList.add('has-content');
+      sigTargetField.querySelector('.field-body').innerHTML =
+        `<img src="${dataUrl}" alt="signature" />`;
+      closeSigModal();
+    });
+
+    // ============ 이미지 업로드 ============
+    const imageInput = document.getElementById('imageUpload');
+    let imageTargetField = null;
+    function openImageUpload(field) {
+      imageTargetField = field;
+      imageInput.value = '';
+      imageInput.click();
+    }
+    imageInput.addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (!f || !imageTargetField) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        imageTargetField.classList.add('has-content');
+        imageTargetField.querySelector('.field-body').innerHTML =
+          `<img src="${ev.target.result}" alt="image" />`;
+      };
+      reader.readAsDataURL(f);
+    });
+
+    // ============ PDF / 이미지 렌더링 (전 페이지 세로 스크롤) ============
+    const pagePlaceholder = document.getElementById('pagePlaceholder');
+    const thumbList = document.getElementById('docThumbList');
+    const docs = docIds.map(id => ({ id, type: null, pdfDoc: null, numPages: 1 }));
+    let curScale = 1.4;
+
+    async function loadDoc(i) {
+      const d = docs[i];
+      if (d.type) return d;
+      const url = '/sign/file/' + d.id;
+      d.url = url;
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('pdf')) {
+          d.type = 'pdf';
+          d.pdfDoc = await pdfjsLib.getDocument(url).promise;
+          d.numPages = d.pdfDoc.numPages;
+        } else if (ct.startsWith('image/')) {
+          d.type = 'image';
+        } else {
+          d.type = 'other';
+        }
+      } catch (err) {
+        console.error('문서 로드 실패', err);
+        d.type = 'other';
+      }
+      return d;
+    }
+
+    function makePageWrap(docIdx, pageIdx) {
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-page-wrap';
+      wrap.dataset.docIdx = String(docIdx);
+      wrap.dataset.pageIdx = String(pageIdx);
+      wrap.innerHTML = '<div class="field-layer"></div>';
+      wrap.addEventListener('mousedown', () => setActivePage(wrap), true);
+      return wrap;
+    }
+
+    async function renderPdfPage(d, pageNum, wrap) {
+      const page = await d.pdfDoc.getPage(pageNum);
+      const vp = page.getViewport({ scale: curScale });
+      const canvas = document.createElement('canvas');
+      canvas.width = vp.width; canvas.height = vp.height;
+      canvas.style.width = vp.width + 'px';
+      canvas.style.height = vp.height + 'px';
+      wrap.style.width = vp.width + 'px';
+      wrap.style.height = vp.height + 'px';
+      wrap.insertBefore(canvas, wrap.firstChild);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    }
+
+    async function buildAllPages() {
+      canvasArea.innerHTML = '';
+      for (let i = 0; i < docs.length; i++) {
+        const d = await loadDoc(i);
+        if (d.type === 'pdf') {
+          for (let p = 1; p <= d.numPages; p++) {
+            const wrap = makePageWrap(i, p);
+            canvasArea.appendChild(wrap);
+            await renderPdfPage(d, p, wrap);
+          }
+        } else if (d.type === 'image') {
+          const wrap = makePageWrap(i, 1);
+          const img = document.createElement('img');
+          img.src = d.url;
+          await new Promise(r => img.onload = r);
+          wrap.style.width = img.naturalWidth + 'px';
+          wrap.style.height = img.naturalHeight + 'px';
+          wrap.insertBefore(img, wrap.firstChild);
+          canvasArea.appendChild(wrap);
+        } else {
+          const wrap = makePageWrap(i, 1);
+          wrap.classList.add('unsupported');
+          wrap.innerHTML = '<div class="field-layer"></div><p>미리보기 미지원 형식</p>';
+          canvasArea.appendChild(wrap);
+        }
+      }
+      const first = canvasArea.querySelector('.pdf-page-wrap');
+      if (first) setActivePage(first);
+    }
+
+    // 줌
+    document.getElementById('zoomInBtn').addEventListener('click', async () => {
+      curScale = Math.min(3, curScale + 0.2);
+      await rerenderPdfPages();
+    });
+    document.getElementById('zoomOutBtn').addEventListener('click', async () => {
+      curScale = Math.max(0.6, curScale - 0.2);
+      await rerenderPdfPages();
+    });
+    async function rerenderPdfPages() {
+      for (const wrap of canvasArea.querySelectorAll('.pdf-page-wrap')) {
+        const di = parseInt(wrap.dataset.docIdx, 10);
+        const pi = parseInt(wrap.dataset.pageIdx, 10);
+        const d = docs[di];
+        if (d.type !== 'pdf') continue;
+        const old = wrap.querySelector('canvas');
+        if (old) old.remove();
+        await renderPdfPage(d, pi, wrap);
+      }
+    }
+
+    // 페이지 화살표 = 활성 페이지 위/아래로 스크롤
+    document.getElementById('prevPageBtn').addEventListener('click', () => {
+      const wraps = [...canvasArea.querySelectorAll('.pdf-page-wrap')];
+      const idx = wraps.indexOf(activePage);
+      if (idx > 0) { setActivePage(wraps[idx - 1]); wraps[idx - 1].scrollIntoView({behavior:'smooth'}); }
+    });
+    document.getElementById('nextPageBtn').addEventListener('click', () => {
+      const wraps = [...canvasArea.querySelectorAll('.pdf-page-wrap')];
+      const idx = wraps.indexOf(activePage);
+      if (idx < wraps.length - 1) { setActivePage(wraps[idx + 1]); wraps[idx + 1].scrollIntoView({behavior:'smooth'}); }
+    });
+
+    // 우측 썸네일: 모든 페이지 (문서×페이지 1개씩)
+    async function buildThumbnails() {
+      thumbList.innerHTML = '';
+      for (let i = 0; i < docs.length; i++) {
+        const d = await loadDoc(i);
+        const pageCount = d.type === 'pdf' ? d.numPages : 1;
+        for (let p = 1; p <= pageCount; p++) {
+          const wrap = document.createElement('div');
+          wrap.className = 'doc-thumb';
+          wrap.dataset.docIdx = String(i);
+          wrap.dataset.pageIdx = String(p);
+          wrap.innerHTML = `<div class="thumb-img"><canvas></canvas></div>
+                            <div class="thumb-name">문서 ${i + 1} · ${p}p</div>`;
+          wrap.addEventListener('click', () => {
+            const target = canvasArea.querySelector(
+              `.pdf-page-wrap[data-doc-idx="${i}"][data-page-idx="${p}"]`);
+            if (target) { setActivePage(target); target.scrollIntoView({behavior:'smooth', block:'start'}); }
+          });
+          thumbList.appendChild(wrap);
+
+          const cv = wrap.querySelector('canvas');
+          if (d.type === 'pdf') {
+            const page = await d.pdfDoc.getPage(p);
+            const vp = page.getViewport({ scale: 0.3 });
+            cv.width = vp.width; cv.height = vp.height;
+            await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+          } else if (d.type === 'image') {
+            wrap.querySelector('.thumb-img').innerHTML =
+              `<img src="${d.url}" style="max-width:100%;max-height:100%;" />`;
+          } else {
+            wrap.querySelector('.thumb-img').innerHTML = '<i class="far fa-file-lines"></i>';
+          }
+        }
+      }
+      updateActiveThumb();
+    }
+
+    // 스크롤 위치에 따라 활성 페이지 자동 설정
+    function pickActivePageByScroll() {
+      const wraps = [...canvasArea.querySelectorAll('.pdf-page-wrap')];
+      if (wraps.length === 0) return;
+      const areaRect = canvasArea.getBoundingClientRect();
+      const center = areaRect.top + areaRect.height / 2;
+      let best = wraps[0], bestDist = Infinity;
+      for (const w of wraps) {
+        const r = w.getBoundingClientRect();
+        const wc = r.top + r.height / 2;
+        const dist = Math.abs(wc - center);
+        if (dist < bestDist) { bestDist = dist; best = w; }
+      }
+      if (best !== activePage) setActivePage(best);
+    }
+
+    function updateActiveThumb() {
+      if (!activePage) return;
+      const di = activePage.dataset.docIdx, pi = activePage.dataset.pageIdx;
+      thumbList.querySelectorAll('.doc-thumb').forEach(t => {
+        t.classList.toggle('active',
+          t.dataset.docIdx === di && t.dataset.pageIdx === pi);
+      });
+    }
+
+    canvasArea.addEventListener('scroll', () => {
+      pickActivePageByScroll();
+      updateActiveThumb();
+    }, { passive: true });
+
+    (async () => {
+      await buildAllPages();
+      pagePlaceholder.remove();
+      await buildThumbnails();
+    })();
+
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      // 모든 필드 직렬화
+      const allFields = [];
+      document.querySelectorAll('.field-layer .field').forEach(el => {
+        const f = {
+          tool: el.dataset.tool,
+          owner: el.dataset.owner,
+          docIdx: parseInt(el.dataset.docIdx, 10),
+          pageIdx: parseInt(el.dataset.pageIdx, 10),
+          x: parseFloat(el.style.left) || 0,
+          y: parseFloat(el.style.top) || 0,
+          w: el.offsetWidth,
+          h: el.offsetHeight,
+        };
+        // 콘텐츠 캡처 (요청자/문서 소유 필드만 사전 입력값을 가짐)
+        const img = el.querySelector('img');
+        if (img) f.value = img.src;
+        else {
+          const span = el.querySelector('.field-body span');
+          if (span) f.value = span.textContent;
+          const dateInput = el.querySelector('input[type=date]');
+          if (dateInput && dateInput.value) f.value = dateInput.value;
+          if (el.querySelector('.cb-body i.fa-square-check')) f.value = 'checked';
+        }
+        allFields.push(f);
+      });
+      localStorage.setItem('esign_fields', JSON.stringify({
+        fields: allFields, scale: curScale,
+      }));
+      window.location.href = '/sign/finalize/' + docIds.join(',');
+    });
+  </script>
+</body>
+</html>
