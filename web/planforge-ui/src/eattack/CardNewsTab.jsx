@@ -1,5 +1,5 @@
 // ── CardNewsTab — AI 카드뉴스 제작 (새 구조) ──
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { callGemini } from "../utils/gemini";
 
 const TEMPLATE_KEY = 'eden_cn_template_v2';
@@ -105,10 +105,12 @@ function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide })
   // 슬라이드 → textBlocks 배열로 정규화
   const initSlide = (s) => {
     const existing = s.textBlocks?.length > 0;
-    const blocks = existing ? s.textBlocks : [
+    const rawBlocks = existing ? s.textBlocks : [
       { id: 'b1', text: s.headline || '', style: { ...DEF_HL, ...(s.headlineStyle || {}) } },
       ...(s.body ? [{ id: 'b2', text: s.body, style: { ...DEF_BD, ...(s.bodyStyle || {}) } }] : []),
     ];
+    // 기존 x,y 없으면 기본 위치 부여 (이미 있으면 spread로 유지됨)
+    const blocks = rawBlocks.map((b, i) => ({ x: 50, y: 35 + i * 22, ...b }));
     return { ...s, textBlocks: blocks, bgImage: s.bgImage || null };
   };
 
@@ -143,7 +145,8 @@ function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide })
   };
   const addBlock = () => {
     const newId = 'b' + Date.now();
-    const newBlock = { id: newId, text: '', style: { ...DEF_BD } };
+    const count = slide.textBlocks.length;
+    const newBlock = { id: newId, text: '', style: { ...DEF_BD }, x: 50, y: Math.min(88, 35 + count * 22) };
     setSlide(p => ({ ...p, textBlocks: [...p.textBlocks, newBlock] }));
     setSelId(newId);
   };
@@ -163,6 +166,38 @@ function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide })
       [arr[i], arr[j]] = [arr[j], arr[i]];
       return { ...p, textBlocks: arr };
     });
+  };
+
+  const canvasRef = useRef(null);
+  const dragRef   = useRef(null);
+
+  const handleDragStart = (e, id) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelId(id);
+    const block = slide.textBlocks.find(b => b.id === id);
+    if (!block) return;
+    dragRef.current = { id, startX: e.clientX, startY: e.clientY, origX: block.x ?? 50, origY: block.y ?? 50 };
+    const onMove = (ev) => {
+      if (!dragRef.current || !canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const dx = ((ev.clientX - dragRef.current.startX) / rect.width) * 100;
+      const dy = ((ev.clientY - dragRef.current.startY) / rect.height) * 100;
+      const newX = Math.max(5, Math.min(95, dragRef.current.origX + dx));
+      const newY = Math.max(5, Math.min(95, dragRef.current.origY + dy));
+      setSlide(p => ({
+        ...p,
+        textBlocks: p.textBlocks.map(b => b.id === dragRef.current.id ? { ...b, x: newX, y: newY } : b),
+      }));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   const getSlideFont = (style) => style?.fontFamily || FONT_CSS[brand.font || 'sans'];
@@ -212,6 +247,7 @@ function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide })
 
         {/* ── 슬라이드 캔버스 ── */}
         <div className="relative w-full select-none" style={{ aspectRatio: '1/1', ...getBg(slide) }}
+          ref={canvasRef}
           onClick={() => setSelId(null)}>
           {slide.bgImage && <div className="absolute inset-0 bg-black/25 z-0" />}
           {slide.emoji && <span className="absolute top-3 left-4 text-3xl leading-none z-10 pointer-events-none">{slide.emoji}</span>}
@@ -220,50 +256,66 @@ function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide })
             {slide.type === 'cover' ? 'COVER' : slide.type === 'closing' ? 'END' : ''}
           </div>
 
-          {/* 텍스트 블록들 */}
-          <div className={`absolute inset-0 z-10 flex flex-col justify-center px-4 py-8 gap-1
-            ${slide.layout === 'left' ? 'items-start' : 'items-center'}`}>
-            {(slide.textBlocks || []).map((block, bi) => (
-              <div key={block.id} className="relative w-full group"
-                onClick={e => { e.stopPropagation(); setSelId(block.id); }}>
-                {/* 선택 표시 링 */}
-                {selId === block.id && (
-                  <div className="absolute -inset-1 rounded-lg border-2 border-white/50 pointer-events-none z-20" />
-                )}
-                {/* 블록 번호 뱃지 */}
-                {selId === block.id && (
-                  <span className="absolute -top-2.5 -left-1 text-[9px] bg-white/80 text-gray-800 font-bold px-1.5 py-0.5 rounded-full z-30 leading-none">
-                    {bi + 1}
-                  </span>
-                )}
-                <textarea
-                  value={block.text}
-                  onChange={e => updateBlockText(block.id, e.target.value)}
-                  onFocus={e => { e.stopPropagation(); setSelId(block.id); }}
-                  onClick={e => e.stopPropagation()}
-                  rows={block.text ? undefined : 1}
-                  className="w-full bg-transparent resize-none outline-none leading-snug placeholder:opacity-30 transition-colors"
-                  style={{
-                    color: block.style.color || tc,
-                    fontSize: `${block.style.fontSize}px`,
-                    fontWeight: block.style.fontWeight,
-                    fontStyle: block.style.fontStyle,
-                    textDecoration: block.style.textDecoration,
-                    fontFamily: getSlideFont(block.style),
-                    textAlign: block.style.textAlign,
-                    minHeight: `${block.style.fontSize * 1.6}px`,
-                  }}
-                  placeholder={bi === 0 ? '제목을 입력하세요' : '텍스트를 입력하세요'}
-                />
+          {/* 텍스트 블록들 — 자유 위치 드래그 */}
+          {(slide.textBlocks || []).map((block, bi) => (
+            <div key={block.id}
+              className="absolute group"
+              style={{
+                left: `${block.x ?? 50}%`,
+                top: `${block.y ?? (35 + bi * 22)}%`,
+                transform: 'translate(-50%, -50%)',
+                width: '82%',
+                zIndex: selId === block.id ? 30 : 20,
+              }}
+              onClick={e => { e.stopPropagation(); setSelId(block.id); }}>
+              {/* 드래그 핸들 (hover/선택 시 표시) */}
+              <div
+                className={`absolute -left-5 top-0 bottom-0 flex items-center justify-center w-5 cursor-grab active:cursor-grabbing transition-opacity select-none
+                  ${selId === block.id ? 'opacity-70' : 'opacity-0 group-hover:opacity-50'}`}
+                onMouseDown={e => handleDragStart(e, block.id)}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="14" viewBox="0 0 10 16" fill="white">
+                  <circle cx="3" cy="2" r="1.5"/><circle cx="7" cy="2" r="1.5"/>
+                  <circle cx="3" cy="7" r="1.5"/><circle cx="7" cy="7" r="1.5"/>
+                  <circle cx="3" cy="12" r="1.5"/><circle cx="7" cy="12" r="1.5"/>
+                </svg>
               </div>
-            ))}
-            {/* 텍스트 추가 버튼 */}
-            <button onClick={e => { e.stopPropagation(); addBlock(); }}
-              className="flex items-center gap-1.5 mt-2 px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white/70 hover:text-white text-xs font-semibold transition-all border border-dashed border-white/30 hover:border-white/50">
-              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-              텍스트 추가
-            </button>
-          </div>
+              {/* 선택 표시 링 */}
+              {selId === block.id && (
+                <div className="absolute -inset-1 rounded-lg border-2 border-white/50 pointer-events-none z-20" />
+              )}
+              {/* 블록 번호 뱃지 */}
+              {selId === block.id && (
+                <span className="absolute -top-2.5 -left-1 text-[9px] bg-white/80 text-gray-800 font-bold px-1.5 py-0.5 rounded-full z-30 leading-none">
+                  {bi + 1}
+                </span>
+              )}
+              <textarea
+                value={block.text}
+                onChange={e => updateBlockText(block.id, e.target.value)}
+                onFocus={e => { e.stopPropagation(); setSelId(block.id); }}
+                onClick={e => e.stopPropagation()}
+                rows={block.text ? undefined : 1}
+                className="w-full bg-transparent resize-none outline-none leading-snug placeholder:opacity-30 transition-colors"
+                style={{
+                  color: block.style.color || tc,
+                  fontSize: `${block.style.fontSize}px`,
+                  fontWeight: block.style.fontWeight,
+                  fontStyle: block.style.fontStyle,
+                  textDecoration: block.style.textDecoration,
+                  fontFamily: getSlideFont(block.style),
+                  textAlign: block.style.textAlign,
+                  minHeight: `${block.style.fontSize * 1.6}px`,
+                }}
+                placeholder={bi === 0 ? '제목을 입력하세요' : '텍스트를 입력하세요'}
+              />
+            </div>
+          ))}
+          {/* 텍스트 추가 버튼 */}
+          <button onClick={e => { e.stopPropagation(); addBlock(); }}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white/70 hover:text-white text-xs font-semibold transition-all border border-dashed border-white/30 hover:border-white/50">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            텍스트 추가
+          </button>
         </div>
 
         {/* ── 텍스트 툴바 ── */}
