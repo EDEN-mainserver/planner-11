@@ -197,6 +197,8 @@ export default function EdenCanvas({ onBack }) {
   // ── 현재 페이지 편의 접근 ──
   const curPage  = pages[pageIdx] ?? pages[0];
   const elements = curPage.elements;
+  // elementsRef 동기화 (onMouseUp에서 setState 없이 읽기 위해)
+  elementsRef.current = elements;
   const bg       = curPage.bg;
   const bgImage  = curPage.bgImage;
 
@@ -221,6 +223,7 @@ export default function EdenCanvas({ onBack }) {
   const resizeRef    = useRef(null);   // { id, handle, startX, startY, origEl }
   const selBoxRef    = useRef(null);   // { startX, startY } 캔버스 좌표
   const clipboardRef = useRef(null);   // copied element
+  const elementsRef  = useRef([]);     // elements 최신값 (onMouseUp에서 사용)
   const [baseScale, setBaseScale] = useState(0.7);
 
   const scale = manualZoom !== null ? manualZoom : baseScale;
@@ -371,28 +374,27 @@ export default function EdenCanvas({ onBack }) {
 
     // 드래그 선택 박스 완료
     if (selBoxRef.current && canvasRef.current) {
-      setSelBox(prev => {
-        if (!prev) return null;
-        const minX = Math.min(prev.x1, prev.x2);
-        const maxX = Math.max(prev.x1, prev.x2);
-        const minY = Math.min(prev.y1, prev.y2);
-        const maxY = Math.max(prev.y1, prev.y2);
-        // 5px 이상 드래그했을 때만 선택
-        if (maxX - minX > 5 || maxY - minY > 5) {
-          setElements(els => {
-            const hit = els.filter(el =>
-              el.x < maxX && el.x + el.w > minX &&
-              el.y < maxY && el.y + el.h > minY
-            );
-            setSelectedIds(hit.map(el => el.id));
-            return els; // 요소 자체는 변경 없음
-          });
-        }
-        return null;
-      });
+      const {startX, startY} = selBoxRef.current;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const endX = (e.clientX - rect.left) / scale;
+      const endY = (e.clientY - rect.top)  / scale;
       selBoxRef.current = null;
+      setSelBox(null);
+
+      const minX = Math.min(startX, endX);
+      const maxX = Math.max(startX, endX);
+      const minY = Math.min(startY, endY);
+      const maxY = Math.max(startY, endY);
+      // 5px 이상 드래그했을 때만 선택 (setState 중첩 금지 → elementsRef 직접 읽기)
+      if (maxX - minX > 5 || maxY - minY > 5) {
+        const hit = elementsRef.current.filter(el =>
+          el.x < maxX && el.x + el.w > minX &&
+          el.y < maxY && el.y + el.h > minY
+        );
+        setSelectedIds(hit.map(el => el.id));
+      }
     }
-  }, [saveHistory, setElements]);
+  }, [saveHistory, scale]);
 
   useEffect(() => {
     window.addEventListener("mousemove", onMouseMove);

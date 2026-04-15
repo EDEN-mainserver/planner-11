@@ -1,4 +1,27 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Component } from "react";
+
+// ── 에러 경계: 컴포넌트 크래시 시 흰 화면 방지 ──
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(err) { return { error: err }; }
+  componentDidCatch(err, info) { console.error("[ErrorBoundary]", err, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",background:"#f9fafb"}}>
+          <div style={{fontSize:32,marginBottom:12}}>⚠️</div>
+          <p style={{fontSize:16,fontWeight:700,color:"#1f2937",marginBottom:6}}>오류가 발생했습니다</p>
+          <p style={{fontSize:12,color:"#6b7280",marginBottom:20}}>{String(this.state.error)}</p>
+          <button onClick={()=>this.setState({error:null})}
+            style={{padding:"8px 20px",background:"#7c3aed",color:"white",borderRadius:8,border:"none",cursor:"pointer",fontSize:14,fontWeight:600}}>
+            다시 시도
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { loadProjects, saveProjects, loadTrash, saveTrash } from "./utils/storage";
 import { EMPTY_PRD } from "./utils/prd";
 import HomePage from "./pages/HomePage";
@@ -132,41 +155,47 @@ export default function App() {
   }, [prd, specData, flowData, projectTitle, page, currentProjectId, upsertProject]);
 
   if (page === 'home') return (
-    <HomePage
-      onStart={handleStart}
-      projects={projects}
-      onDelete={deleteProject}
-      onLoad={handleLoad}
-      trash={trash}
-      onRestore={restoreProject}
-      onPermanentDelete={permanentDelete}
-      onEmptyTrash={emptyTrash}
-    />
+    <ErrorBoundary>
+      <HomePage
+        onStart={handleStart}
+        projects={projects}
+        onDelete={deleteProject}
+        onLoad={handleLoad}
+        trash={trash}
+        onRestore={restoreProject}
+        onPermanentDelete={permanentDelete}
+        onEmptyTrash={emptyTrash}
+      />
+    </ErrorBoundary>
   );
 
   if (page === 'interview') return (
-    <InterviewPage
-      initialIdea={projectTitle}
-      prd={prd}
-      setPrd={setPrd}
-      onComplete={handleInterviewComplete}
-      onScoreUpdate={setAiScore}
-    />
+    <ErrorBoundary>
+      <InterviewPage
+        initialIdea={projectTitle}
+        prd={prd}
+        setPrd={setPrd}
+        onComplete={handleInterviewComplete}
+        onScoreUpdate={setAiScore}
+      />
+    </ErrorBoundary>
   );
 
   return (
-    <EditorPage
-      prd={prd}
-      setPrd={setPrd}
-      specData={specData}
-      setSpecData={setSpecData}
-      flowData={flowData}
-      setFlowData={setFlowData}
-      projectTitle={projectTitle}
-      setProjectTitle={setProjectTitle}
-      onHome={handleHome}
-      aiScore={aiScore}
-      setAiScore={setAiScore}
-    />
+    <ErrorBoundary>
+      <EditorPage
+        prd={prd}
+        setPrd={setPrd}
+        specData={specData}
+        setSpecData={setSpecData}
+        flowData={flowData}
+        setFlowData={setFlowData}
+        projectTitle={projectTitle}
+        setProjectTitle={setProjectTitle}
+        onHome={handleHome}
+        aiScore={aiScore}
+        setAiScore={setAiScore}
+      />
+    </ErrorBoundary>
   );
 }
