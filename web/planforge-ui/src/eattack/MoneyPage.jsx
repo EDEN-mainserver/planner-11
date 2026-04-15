@@ -237,6 +237,33 @@ export default function MoneyPage({ onBack }) {
                 </div>
               ))}
             </div>
+
+            {/* 사용 방법 */}
+            <div className="px-5 pb-5">
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-xs font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+                  <span className="text-base">🚀</span> 사용 방법
+                </p>
+                <div className="space-y-3">
+                  {[
+                    { icon: "🌐", title: "분석할 사이트 접속", desc: "벤치마킹하고 싶은 웹사이트를 Chrome에서 열어두세요." },
+                    { icon: "🔍", title: "확장 프로그램 아이콘 클릭", desc: <>주소창 오른쪽 퍼즐 조각(🧩) 아이콘 → <strong>EDEN Benchmark Analyzer</strong> 선택</> },
+                    { icon: "⚙️", title: "API Key 설정 (최초 1회)", desc: <>팝업 우측 상단 <strong>⚙️</strong> 클릭 → Claude(<code className="bg-gray-100 px-1 rounded font-mono text-purple-700">sk-ant-</code>) 또는 Gemini(<code className="bg-gray-100 px-1 rounded font-mono text-purple-700">AIza</code>) 키 입력 → 저장</> },
+                    { icon: "🚀", title: "전체 분석 시작", desc: <>팝업에서 <strong>🚀 전체 분석 시작</strong> 클릭. 모든 서브 페이지를 자동 수집합니다.<br /><span className="text-amber-500">페이지 수에 따라 1~5분 소요됩니다.</span></> },
+                    { icon: "📋", title: "결과 확인 및 다운로드", desc: <>분석 완료 후 두 탭에서 결과 확인:<div className="mt-1.5 space-y-0.5"><div><strong>📋 기능명세서</strong> 탭 — UI 요소·기능 명세 MD</div><div><strong>🔀 유저플로우</strong> 탭 — Mermaid 다이어그램 MD</div></div><span className="block mt-1.5">각 탭 하단 <strong>⬇️ MD 다운로드</strong> 또는 <strong>🖼️ 이미지 저장</strong> 클릭</span></> },
+                  ].map((item, i) => (
+                    <div key={i} className="flex gap-3 p-3 bg-gray-50 rounded-xl">
+                      <span className="text-base flex-shrink-0 mt-0.5">{item.icon}</span>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-800 mb-0.5">{item.title}</p>
+                        <div className="text-xs text-gray-500 leading-relaxed">{item.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
           </div>
         </div>
       )}
