@@ -977,28 +977,36 @@ function CanvasElement({ el, selected, isSingleSelected, editing, onMouseDown, o
     }
   },[editing]);
 
-  const base = {
+  // 래퍼 div가 위치·선택 아웃라인 담당
+  const wrapperStyle = {
     position:"absolute", left:el.x, top:el.y, width:el.w, height:el.h,
-    opacity:el.opacity??1, cursor:editing?"text":"move", boxSizing:"border-box",
+    opacity:el.opacity??1,
     outline: selected?"2px solid #7c3aed":"none", outlineOffset:"1px",
-    userSelect:editing?"text":"none",
   };
 
-  let el_node = null;
+  // 내부 요소는 100%×100%, position 없음
+  const innerBase = {
+    width:"100%", height:"100%",
+    cursor: editing?"text":"move",
+    boxSizing:"border-box",
+    userSelect: editing?"text":"none",
+  };
+
+  let inner = null;
   if (el.type==="rect") {
     const shapeStyle  = el.shape && SHAPE_CLIP[el.shape] ? {clipPath:SHAPE_CLIP[el.shape],borderRadius:0} : {borderRadius:el.borderRadius};
     const dashedStyle = el.dashed ? {background:`repeating-linear-gradient(90deg,${el.fill} 0 12px,transparent 12px 20px)`,borderRadius:0} : {background:el.fill};
     const strokeStyle = (el.strokeWidth>0&&el.strokeColor&&el.strokeColor!=="none") ? {boxShadow:`inset 0 0 0 ${el.strokeWidth}px ${el.strokeColor}`} : {};
-    el_node = <div style={{...base,...dashedStyle,...shapeStyle,...strokeStyle}} onMouseDown={onMouseDown}/>;
+    inner = <div style={{...innerBase,...dashedStyle,...shapeStyle,...strokeStyle}} onMouseDown={onMouseDown}/>;
   } else if (el.type==="image") {
     const strokeStyle = (el.strokeWidth>0&&el.strokeColor&&el.strokeColor!=="none") ? {boxShadow:`inset 0 0 0 ${el.strokeWidth}px ${el.strokeColor}`} : {};
-    el_node = <img src={el.src} alt="" draggable={false} style={{...base,objectFit:"cover",...strokeStyle}} onMouseDown={onMouseDown}/>;
+    inner = <img src={el.src} alt="" draggable={false} style={{...innerBase,objectFit:"cover",display:"block",...strokeStyle}} onMouseDown={onMouseDown}/>;
   } else if (el.type==="text") {
-    el_node = (
+    inner = (
       <div ref={textRef} contentEditable={editing} suppressContentEditableWarning
         onMouseDown={onMouseDown} onDoubleClick={onDoubleClick}
         onBlur={(e)=>{onChange(e.currentTarget.innerText); onBlur();}}
-        style={{...base, fontSize:el.fontSize, color:el.color, fontWeight:el.fontWeight,
+        style={{...innerBase, fontSize:el.fontSize, color:el.color, fontWeight:el.fontWeight,
           fontStyle:el.fontStyle||"normal", textDecoration:el.textDecoration||"none",
           textAlign:el.textAlign, fontFamily:el.fontFamily||"sans-serif", lineHeight:1.4,
           whiteSpace:"pre-wrap", wordBreak:"break-word", overflow:"hidden",
@@ -1008,29 +1016,17 @@ function CanvasElement({ el, selected, isSingleSelected, editing, onMouseDown, o
     );
   }
 
-  if (!el_node) return null;
-
-  // 리사이즈 핸들 (단일 선택 && 편집 중 아닐 때)
-  const handles = isSingleSelected && !editing ? (
-    <>
-      {HANDLES.map(h => <ResizeHandle key={h} handle={h} onMouseDown={(e)=>onResizeStart(e,h)}/>)}
-    </>
-  ) : null;
-
-  if (!handles) return el_node;
+  if (!inner) return null;
 
   return (
-    <div style={{position:"absolute",left:el.x,top:el.y,width:el.w,height:el.h,pointerEvents:"none"}}>
-      <div style={{position:"absolute",inset:0,pointerEvents:"auto"}}>
-        {React.cloneElement(el_node, {style:{...el_node.props.style,left:0,top:0}})}
-      </div>
-      {handles}
+    <div style={wrapperStyle}>
+      {inner}
+      {isSingleSelected && !editing && HANDLES.map(h=>(
+        <ResizeHandle key={h} handle={h} onMouseDown={(e)=>onResizeStart(e,h)}/>
+      ))}
     </div>
   );
 }
-
-// React import for cloneElement
-import React from "react";
 
 // ── 리사이즈 핸들 점 ──
 function ResizeHandle({ handle, onMouseDown }) {
