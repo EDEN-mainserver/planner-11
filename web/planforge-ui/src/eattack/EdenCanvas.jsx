@@ -2,14 +2,48 @@
 // 미리캔버스 기능명세서 기반: 캔버스 편집, 템플릿, 텍스트/요소/이미지 추가, PNG 다운로드
 import { useState, useRef, useEffect, useCallback } from "react";
 
-// ── 캔버스 사이즈 프리셋 ──
-const SIZE_PRESETS = [
-  { label: "카드뉴스 1:1",  w: 800,  h: 800  },
-  { label: "세로형 4:5",    w: 800,  h: 1000 },
-  { label: "스토리 9:16",   w: 675,  h: 1200 },
-  { label: "배너 16:9",     w: 1200, h: 675  },
-  { label: "A4 세로",       w: 794,  h: 1123 },
+// ── 캔버스 사이즈 카테고리 ──
+const SIZE_CATEGORIES = [
+  {
+    category: "소셜미디어",
+    sizes: [
+      { label: "카드뉴스 1:1",   w: 1080, h: 1080, desc: "1080×1080 px" },
+      { label: "SNS 세로 4:5",   w: 1080, h: 1350, desc: "1080×1350 px" },
+      { label: "웹 포스터 세로", w: 891,  h: 1260, desc: "891×1260 px"  },
+      { label: "상세페이지",     w: 860,  h: 1100, desc: "860×1100 px"  },
+      { label: "스토리 9:16",    w: 1080, h: 1920, desc: "1080×1920 px" },
+    ],
+  },
+  {
+    category: "문서",
+    sizes: [
+      { label: "프레젠테이션",   w: 1920, h: 1080, desc: "1920×1080 px" },
+      { label: "인포그래픽 가로",w: 1920, h: 1080, desc: "1920×1080 px" },
+      { label: "인포그래픽 세로",w: 800,  h: 2000, desc: "800×2000 px"  },
+      { label: "A4 문서",        w: 794,  h: 1123, desc: "794×1123 px"  },
+    ],
+  },
+  {
+    category: "유튜브",
+    sizes: [
+      { label: "썸네일",         w: 1280, h: 720,  desc: "1280×720 px"  },
+      { label: "영상 16:9",      w: 1920, h: 1080, desc: "1920×1080 px" },
+      { label: "쇼츠 9:16",      w: 1080, h: 1920, desc: "1080×1920 px" },
+      { label: "채널아트",       w: 2560, h: 1440, desc: "2560×1440 px" },
+    ],
+  },
+  {
+    category: "로고·명함",
+    sizes: [
+      { label: "로고/프로필",    w: 500,  h: 500,  desc: "500×500 px"   },
+      { label: "명함 가로",      w: 355,  h: 204,  desc: "94×54 mm"     },
+      { label: "명함 세로",      w: 204,  h: 355,  desc: "54×94 mm"     },
+    ],
+  },
 ];
+
+// 평탄화 (기본값 참조용)
+const ALL_SIZES = SIZE_CATEGORIES.flatMap(c => c.sizes);
 
 // ── 기본 템플릿 ──
 const TEMPLATES = [
@@ -70,7 +104,7 @@ const uid = () => `el_${++_uid}_${Date.now()}`;
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
 export default function EdenCanvas({ onBack }) {
-  const [canvasSize, setCanvasSize] = useState(SIZE_PRESETS[0]);
+  const [canvasSize, setCanvasSize] = useState(ALL_SIZES[0]);
   const [bg, setBg]                 = useState("#ffffff");
   const [elements, setElements]     = useState([]);
   const [selected, setSelected]     = useState(null);
@@ -390,16 +424,26 @@ function TopBar({ onBack, canvasSize, showSizeMenu, setShowSizeMenu, onSelectSiz
           </svg>
         </button>
         {showSizeMenu && (
-          <div className="absolute top-full left-0 mt-1 w-44 bg-white rounded-xl border border-gray-200 shadow-lg z-50 py-1 overflow-hidden">
-            {SIZE_PRESETS.map(s => (
-              <button
-                key={s.label}
-                onClick={() => onSelectSize(s)}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${canvasSize.label === s.label ? "text-violet-600 font-semibold bg-violet-50" : "text-gray-700"}`}
-              >
-                {s.label}
-                <span className="text-gray-400 ml-1">({s.w}×{s.h})</span>
-              </button>
+          <div className="absolute top-full left-0 mt-1 w-56 bg-white rounded-xl border border-gray-200 shadow-xl z-50 overflow-hidden"
+            style={{ maxHeight: "70vh", overflowY: "auto" }}>
+            {SIZE_CATEGORIES.map((cat, ci) => (
+              <div key={cat.category}>
+                {ci > 0 && <div className="h-px bg-gray-100 mx-3" />}
+                <div className="px-3 pt-2.5 pb-1">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{cat.category}</p>
+                </div>
+                {cat.sizes.map(s => (
+                  <button
+                    key={s.label}
+                    onClick={() => onSelectSize(s)}
+                    className={`w-full text-left px-3 py-2 flex items-center justify-between transition-colors hover:bg-gray-50
+                      ${canvasSize.label === s.label ? "bg-violet-50 text-violet-600" : "text-gray-700"}`}
+                  >
+                    <span className={`text-xs font-medium ${canvasSize.label === s.label ? "text-violet-600" : ""}`}>{s.label}</span>
+                    <span className="text-[10px] text-gray-400">{s.desc}</span>
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         )}
