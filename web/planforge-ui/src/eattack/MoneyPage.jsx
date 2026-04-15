@@ -170,10 +170,23 @@ export default function MoneyPage({ onBack }) {
               <path d="m15 18-6-6 6-6"/>
             </svg>
           </button>
-          <div>
+          <div className="flex-1">
             <h3 className="text-lg font-bold text-gray-800">툴 선택</h3>
             <p className="text-sm text-gray-400">사용할 내부 툴을 선택하세요</p>
           </div>
+          <a
+            href="https://github.com/E-ATTACK-/Eden-Crawl"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 bg-purple-50 text-purple-600 text-xs font-semibold hover:bg-purple-100 hover:border-purple-300 transition-all whitespace-nowrap"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            확장프로그램 설치 · 가이드
+          </a>
         </div>
 
         {/* 툴 카드 그리드 */}
