@@ -4,6 +4,7 @@
  * - 상세페이지 만들기 탭
  */
 import { useState } from "react";
+import CardNewsTab from "./CardNewsTab";
 
 // ── 탭 정의 ──
 const IMAGE_TABS = [
@@ -32,24 +33,6 @@ const IMAGE_TABS = [
   },
 ];
 
-// ── 카드뉴스 탭 ──
-function CardNewsTab() {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center mb-5 shadow-lg">
-        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/>
-          <rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
-        </svg>
-      </div>
-      <h4 className="text-base font-semibold text-gray-700 mb-2">카드뉴스 제작 기능</h4>
-      <p className="text-sm text-gray-400 max-w-xs">
-        주제를 입력하면 AI가 슬라이드 구성과 카피를 자동으로 기획합니다.<br />
-        <span className="text-pink-500 font-medium">준비 중입니다</span>
-      </p>
-    </div>
-  );
-}
 
 // ── 상세페이지 탭 ──
 function DetailPageTab() {
