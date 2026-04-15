@@ -1,30 +1,97 @@
-// ── CardNewsTab — AI 카드뉴스 제작 ──
-// 브랜드 프로필 관리 · AI 슬라이드 생성 · 클릭 인라인 편집 · 예약 발행
+// ── CardNewsTab — AI 카드뉴스 제작 (새 구조) ──
 import { useState } from "react";
 import { callGemini } from "../utils/gemini";
 
-const BRANDS_KEY    = 'eden_cn_brands';
-const SCHEDULES_KEY = 'eden_cn_schedules';
+const TEMPLATE_KEY = 'eden_cn_template_v2';
+const IG_KEY       = 'eden_cn_ig_v1';
 
 const FONTS       = ['sans', 'serif', 'mono'];
 const FONT_LABELS = { sans: '고딕', serif: '명조', mono: '모노' };
 const FONT_CSS    = { sans: 'inherit', serif: 'Georgia, serif', mono: "'Courier New', monospace" };
 
-function loadBrands() {
-  try { return JSON.parse(localStorage.getItem(BRANDS_KEY)) || []; } catch { return []; }
+const TONE_OPTIONS = [
+  { value: 'professional', label: '전문적·신뢰감', icon: '🏢' },
+  { value: 'friendly',     label: '친근한·편안한', icon: '😊' },
+  { value: 'emotional',    label: '감성적·공감',   icon: '💜' },
+  { value: 'humorous',     label: '유머러스·재밌는', icon: '😄' },
+  { value: 'luxury',       label: '고급스러운',     icon: '👑' },
+  { value: 'bold',         label: '강렬한·임팩트', icon: '🔥' },
+];
+const LAYOUT_OPTIONS = [
+  { value: 'minimal',  label: '미니멀',      desc: '여백 중심' },
+  { value: 'graphic',  label: '화려한',      desc: '그래픽 풍부' },
+  { value: 'typo',     label: '타이포그래피', desc: '텍스트 중심' },
+  { value: 'info',     label: '인포그래픽',  desc: '정보 시각화' },
+  { value: 'balanced', label: '균형잡힌',    desc: '이미지+텍스트' },
+];
+const COLOR_OPTIONS = [
+  { value: 'pastel', label: '파스텔',      desc: '부드러운' },
+  { value: 'vivid',  label: '비비드',      desc: '선명한' },
+  { value: 'mono',   label: '모노톤',      desc: '흑백' },
+  { value: 'dark',   label: '다크',        desc: '고급스러운' },
+  { value: 'brand',  label: '브랜드 컬러', desc: '그대로 사용' },
+];
+const TARGET_OPTIONS = [
+  { value: 'teen',   label: '10-20대',  icon: '🧑' },
+  { value: 'worker', label: '직장인',    icon: '💼' },
+  { value: 'parent', label: '30-40대',  icon: '👨‍👩‍👧' },
+  { value: 'mz',     label: 'MZ세대',   icon: '📱' },
+  { value: 'all',    label: '전 연령',  icon: '🌍' },
+];
+const PURPOSE_OPTIONS = [
+  { value: 'promo',    label: '제품 홍보',   icon: '🛍️' },
+  { value: 'event',    label: '이벤트 안내', icon: '🎉' },
+  { value: 'info',     label: '정보 제공',   icon: '💡' },
+  { value: 'branding', label: '브랜딩',      icon: '✨' },
+  { value: 'review',   label: '고객 후기',   icon: '⭐' },
+];
+
+function loadSaved() {
+  try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY)) || {}; } catch { return {}; }
 }
-function saveBrands(b) { localStorage.setItem(BRANDS_KEY, JSON.stringify(b)); }
+function loadIg() {
+  try { return JSON.parse(localStorage.getItem(IG_KEY)) || { accountId: '', accessToken: '', pageId: '', autoPost: false }; }
+  catch { return { accountId: '', accessToken: '', pageId: '', autoPost: false }; }
+}
+
+// ── 옵션 칩 ──
+function OptionChips({ options, value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map(opt => (
+        <button key={opt.value} type="button"
+          onClick={() => onChange(value === opt.value ? '' : opt.value)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all
+            ${value === opt.value ? 'border-pink-400 bg-pink-50 text-pink-700 shadow-sm' : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}
+        >
+          {opt.icon && <span className="text-sm leading-none">{opt.icon}</span>}
+          <span>{opt.label}</span>
+          {opt.desc && <span className="text-gray-400 font-normal hidden sm:inline"> · {opt.desc}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── 섹션 헤더 ──
+function SectionHeader({ num, title, desc }) {
+  return (
+    <div className="flex items-start gap-3 mb-3">
+      <span className="w-5 h-5 rounded-full bg-pink-100 text-pink-600 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{num}</span>
+      <div>
+        <h4 className="text-sm font-bold text-gray-800">{title}</h4>
+        {desc && <p className="text-[11px] text-gray-400 mt-0.5">{desc}</p>}
+      </div>
+    </div>
+  );
+}
 
 // ── 슬라이드 카드 ──
 function SlidePreview({ slide, brand, index, total, isSelected, onClick, onEditHeadline, onEditBody }) {
   const [editingField, setEditingField] = useState(null);
-  const [editVal, setEditVal]           = useState('');
+  const [editVal, setEditVal] = useState('');
 
-  const startEdit = (field, val, e) => {
-    e.stopPropagation();
-    setEditingField(field);
-    setEditVal(val);
-  };
+  const startEdit = (field, val, e) => { e.stopPropagation(); setEditingField(field); setEditVal(val); };
   const commitEdit = () => {
     if (editingField === 'headline') onEditHeadline(editVal);
     else if (editingField === 'body') onEditBody(editVal);
@@ -40,68 +107,29 @@ function SlidePreview({ slide, brand, index, total, isSelected, onClick, onEditH
   const tc = isLight ? brand.color1 : '#ffffff';
 
   return (
-    <div
-      onClick={onClick}
+    <div onClick={onClick}
       style={{ ...bgStyle, aspectRatio: '1/1', fontFamily: FONT_CSS[brand.font || 'sans'] }}
       className={`relative rounded-xl overflow-hidden cursor-pointer transition-all duration-200 select-none
         ${isSelected ? 'ring-2 ring-pink-500 ring-offset-2 shadow-xl' : 'hover:shadow-lg hover:scale-[1.01]'}`}
     >
-      {/* 슬라이드 번호 */}
-      <span className="absolute top-2 right-2.5 text-[9px] font-bold opacity-40" style={{ color: tc }}>
-        {index + 1}/{total}
-      </span>
-
-      {/* 이모지 */}
-      {slide.emoji && (
-        <span className="absolute top-2 left-2.5 text-lg leading-none">{slide.emoji}</span>
-      )}
-
-      {/* 텍스트 */}
-      <div className={`absolute inset-0 flex flex-col justify-center px-3 py-7
-        ${slide.layout === 'left' ? 'items-start text-left' : 'items-center text-center'}`}>
-
+      <span className="absolute top-2 right-2.5 text-[9px] font-bold opacity-40" style={{ color: tc }}>{index + 1}/{total}</span>
+      {slide.emoji && <span className="absolute top-2 left-2.5 text-lg leading-none">{slide.emoji}</span>}
+      <div className={`absolute inset-0 flex flex-col justify-center px-3 py-7 ${slide.layout === 'left' ? 'items-start text-left' : 'items-center text-center'}`}>
         {editingField === 'headline' ? (
-          <textarea autoFocus rows={2}
-            className="w-full bg-white/20 rounded px-2 py-1 text-xs font-bold resize-none outline-none text-center"
-            style={{ color: tc }}
-            value={editVal}
-            onChange={e => setEditVal(e.target.value)}
-            onBlur={commitEdit}
-            onClick={e => e.stopPropagation()}
-          />
+          <textarea autoFocus rows={2} className="w-full bg-white/20 rounded px-2 py-1 text-xs font-bold resize-none outline-none text-center" style={{ color: tc }}
+            value={editVal} onChange={e => setEditVal(e.target.value)} onBlur={commitEdit} onClick={e => e.stopPropagation()} />
         ) : (
-          <p
-            title="클릭하여 수정"
-            className="text-xs font-bold leading-tight mb-1 cursor-text hover:opacity-75 transition-opacity"
-            style={{ color: tc }}
-            onClick={e => startEdit('headline', slide.headline, e)}
-          >
-            {slide.headline}
-          </p>
+          <p title="클릭하여 수정" className="text-xs font-bold leading-tight mb-1 cursor-text hover:opacity-75 transition-opacity" style={{ color: tc }}
+            onClick={e => startEdit('headline', slide.headline, e)}>{slide.headline}</p>
         )}
-
         {slide.body && (editingField === 'body' ? (
-          <textarea autoFocus rows={3}
-            className="w-full bg-white/20 rounded px-2 py-1 text-[10px] resize-none outline-none text-center"
-            style={{ color: tc }}
-            value={editVal}
-            onChange={e => setEditVal(e.target.value)}
-            onBlur={commitEdit}
-            onClick={e => e.stopPropagation()}
-          />
+          <textarea autoFocus rows={3} className="w-full bg-white/20 rounded px-2 py-1 text-[10px] resize-none outline-none text-center" style={{ color: tc }}
+            value={editVal} onChange={e => setEditVal(e.target.value)} onBlur={commitEdit} onClick={e => e.stopPropagation()} />
         ) : (
-          <p
-            title="클릭하여 수정"
-            className="text-[10px] leading-relaxed opacity-85 cursor-text hover:opacity-65 transition-opacity"
-            style={{ color: tc }}
-            onClick={e => startEdit('body', slide.body, e)}
-          >
-            {slide.body}
-          </p>
+          <p title="클릭하여 수정" className="text-[10px] leading-relaxed opacity-85 cursor-text hover:opacity-65 transition-opacity" style={{ color: tc }}
+            onClick={e => startEdit('body', slide.body, e)}>{slide.body}</p>
         ))}
       </div>
-
-      {/* 타입 라벨 */}
       <div className="absolute bottom-1.5 left-2.5 text-[8px] font-bold uppercase opacity-30" style={{ color: tc }}>
         {slide.type === 'cover' ? 'COVER' : slide.type === 'closing' ? 'END' : ''}
       </div>
@@ -111,99 +139,112 @@ function SlidePreview({ slide, brand, index, total, isSelected, onClick, onEditH
 
 // ── 메인 컴포넌트 ──
 export default function CardNewsTab() {
-  const [step, setStep]                 = useState('input'); // 'input' | 'generating' | 'editor'
-  const [brands, setBrands]             = useState(loadBrands);
-  const [showBrandForm, setShowBrandForm] = useState(false);
-  const [editingBrandId, setEditingBrandId] = useState(null); // 수정 중인 브랜드 id
-  const [selectedBrandId, setSelectedBrandId] = useState(() => loadBrands()[0]?.id || null);
-  const [topic, setTopic]               = useState('');
-  const [slideCount, setSlideCount]     = useState(5);
-  const [slides, setSlides]             = useState([]);
-  const [selectedIdx, setSelectedIdx]   = useState(0);
-  const [genError, setGenError]         = useState('');
+  const saved = loadSaved();
 
-  // 예약
-  const [scheduleDate, setScheduleDate] = useState('');
-  const [scheduleTime, setScheduleTime] = useState('18:00');
-  const [schedChannels, setSchedChannels] = useState({ insta: true, facebook: false });
-  const [scheduleSaved, setScheduleSaved] = useState(false);
+  // 브랜드 / 스타일
+  const [brandName,   setBrandName]   = useState(saved.brandName   || '');
+  const [color1,      setColor1]      = useState(saved.color1      || '#7c3aed');
+  const [color2,      setColor2]      = useState(saved.color2      || '#4f46e5');
+  const [font,        setFont]        = useState(saved.font        || 'sans');
+  const [tone,        setTone]        = useState(saved.tone        || '');
+  const [layoutStyle, setLayoutStyle] = useState(saved.layoutStyle || '');
+  const [colorScheme, setColorScheme] = useState(saved.colorScheme || '');
+  const [target,      setTarget]      = useState(saved.target      || '');
+  const [purpose,     setPurpose]     = useState(saved.purpose     || '');
+  const [slideCount,  setSlideCount]  = useState(saved.slideCount  || 5);
 
-  // 새 브랜드 폼
-  const [newBrand, setNewBrand] = useState({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans', refImages: [] });
+  // 참고 이미지
+  const [refImages, setRefImages] = useState(saved.refImages || []);
 
-  const selectedBrand = brands.find(b => b.id === selectedBrandId) || brands[0] || null;
+  // 인스타그램 API
+  const [igConfig, setIgConfig] = useState(loadIg());
 
-  // ── 브랜드 추가 ──
-  const addBrand = () => {
-    if (!newBrand.name.trim()) return;
-    const brand = { ...newBrand, id: Date.now().toString(), name: newBrand.name.trim() };
-    const updated = [...brands, brand];
-    setBrands(updated);
-    saveBrands(updated);
-    setSelectedBrandId(brand.id);
-    setShowBrandForm(false);
-    setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans' });
-  };
+  // 템플릿 미리보기
+  const [templateSlides,  setTemplateSlides]  = useState(saved.templateSlides || []);
+  const [isGenTemplate,   setIsGenTemplate]   = useState(false);
 
-  const deleteBrand = (id) => {
-    const updated = brands.filter(b => b.id !== id);
-    setBrands(updated);
-    saveBrands(updated);
-    if (selectedBrandId === id) setSelectedBrandId(updated[0]?.id || null);
-    if (editingBrandId === id) setEditingBrandId(null);
-  };
+  // 카드뉴스 생성
+  const [topic,       setTopic]       = useState('');
+  const [step,        setStep]        = useState('setup');
+  const [slides,      setSlides]      = useState([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [genError,    setGenError]    = useState('');
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // ── 브랜드 수정 ──
-  const startEditBrand = (e, brand) => {
-    e.stopPropagation();
-    setEditingBrandId(brand.id);
-    setShowBrandForm(false);
-    setNewBrand({ name: brand.name, color1: brand.color1, color2: brand.color2, font: brand.font || 'sans', refImages: brand.refImages || [] });
-  };
-
-  const saveEditBrand = () => {
-    if (!newBrand.name.trim()) return;
-    const updated = brands.map(b =>
-      b.id === editingBrandId ? { ...b, name: newBrand.name.trim(), color1: newBrand.color1, color2: newBrand.color2, font: newBrand.font, refImages: newBrand.refImages || [] } : b
-    );
-    setBrands(updated);
-    saveBrands(updated);
-    setEditingBrandId(null);
-    setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans', refImages: [] });
-  };
+  const brand = { name: brandName || '브랜드', color1, color2, font };
 
   // ── 참고 이미지 업로드 ──
-  const handleRefImageUpload = (e) => {
+  const handleRefUpload = (e) => {
     const files = Array.from(e.target.files);
-    if (!files.length) return;
-    const remaining = 6 - (newBrand.refImages?.length || 0);
-    const toRead = files.slice(0, remaining);
-    toRead.forEach(file => {
+    const remaining = 6 - refImages.length;
+    files.slice(0, remaining).forEach(file => {
       const reader = new FileReader();
-      reader.onload = (ev) => {
-        setNewBrand(p => ({ ...p, refImages: [...(p.refImages || []), ev.target.result] }));
-      };
+      reader.onload = ev => setRefImages(p => [...p, ev.target.result]);
       reader.readAsDataURL(file);
     });
     e.target.value = '';
   };
 
-  const removeRefImage = (idx) => {
-    setNewBrand(p => ({ ...p, refImages: p.refImages.filter((_, i) => i !== idx) }));
+  // ── 템플릿 생성 ──
+  const generateTemplate = async () => {
+    setIsGenTemplate(true);
+    setGenError('');
+    const label = (arr, v) => arr.find(o => o.value === v)?.label || v;
+    const prompt = `너는 인스타그램 카드뉴스 전문 디자이너야.
+아래 설정으로 카드뉴스 디자인 템플릿을 설계해줘.
+
+브랜드: ${brandName || '브랜드'}
+톤/분위기: ${label(TONE_OPTIONS, tone)}
+레이아웃: ${label(LAYOUT_OPTIONS, layoutStyle)}
+색감: ${label(COLOR_OPTIONS, colorScheme)}
+타겟: ${label(TARGET_OPTIONS, target)}
+목적: ${label(PURPOSE_OPTIONS, purpose)}
+${refImages.length > 0 ? `참고 이미지 ${refImages.length}장 첨부 (스타일 참고)` : ''}
+
+응답 형식 (JSON만, 다른 텍스트 없이):
+{
+  "color1": "#주색상hex",
+  "color2": "#보조색상hex",
+  "font": "sans|serif|mono",
+  "slides": [
+    {"type":"cover","headline":"커버 예시 제목","emoji":"🌟","layout":"center","bgStyle":"gradient"},
+    {"type":"content","headline":"내용 예시 제목","body":"본문 예시 텍스트입니다.","emoji":"💡","layout":"center","bgStyle":"gradient"},
+    {"type":"content","headline":"두 번째 내용","body":"추가 내용 예시입니다.","emoji":"✨","layout":"center","bgStyle":"light"},
+    {"type":"closing","headline":"마무리 문구","emoji":"👏","layout":"center","bgStyle":"solid"}
+  ]
+}`;
+    try {
+      const raw = await callGemini([{ role: 'user', content: prompt }], '카드뉴스 디자인 전문가. JSON만 반환.');
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('응답 파싱 실패');
+      const parsed = JSON.parse(match[0]);
+      if (parsed.color1) setColor1(parsed.color1);
+      if (parsed.color2) setColor2(parsed.color2);
+      if (parsed.font)   setFont(parsed.font);
+      if (parsed.slides?.length) {
+        setTemplateSlides(parsed.slides.map((s, i) => ({ ...s, id: i + 1, total: parsed.slides.length })));
+      }
+    } catch (e) {
+      setGenError('템플릿 생성 실패: ' + e.message);
+    } finally {
+      setIsGenTemplate(false);
+    }
   };
 
-  // ── AI 생성 ──
+  // ── 카드뉴스 생성 ──
   const generateSlides = async () => {
     if (!topic.trim()) return;
-    if (!selectedBrand) { setGenError('브랜드를 먼저 추가해주세요.'); return; }
     setStep('generating');
     setGenError('');
-
+    const label = (arr, v) => arr.find(o => o.value === v)?.label || '';
     const prompt = `너는 인스타그램 카드뉴스 전문 기획자야.
 아래 정보로 카드뉴스 슬라이드 ${slideCount}장 구성을 JSON 배열로만 반환해줘.
 
-브랜드명: ${selectedBrand.name}
-브랜드 컬러: ${selectedBrand.color1}
+브랜드명: ${brandName || '브랜드'}
+브랜드 컬러: ${color1}
+톤/분위기: ${label(TONE_OPTIONS, tone)}
+타겟: ${label(TARGET_OPTIONS, target)}
+목적: ${label(PURPOSE_OPTIONS, purpose)}
 주제: ${topic}
 
 각 슬라이드 형식:
@@ -211,23 +252,17 @@ export default function CardNewsTab() {
 
 첫 장은 cover, 마지막 장은 closing, 나머지는 content. body는 content 슬라이드에만 포함.
 JSON 배열만 반환. 다른 텍스트 없이.`;
-
     try {
-      const raw = await callGemini(
-        [{ role: 'user', content: prompt }],
-        '카드뉴스 슬라이드 기획 전문가. JSON 배열만 반환.'
-      );
+      const raw = await callGemini([{ role: 'user', content: prompt }], '카드뉴스 슬라이드 기획 전문가. JSON 배열만 반환.');
       const match = raw.match(/\[[\s\S]*\]/);
       if (!match) throw new Error('응답 파싱 실패');
       const parsed = JSON.parse(match[0]);
-      const total  = Math.min(parsed.length, slideCount);
-      const withIds = parsed.slice(0, slideCount).map((s, i) => ({ ...s, id: i + 1, total }));
-      setSlides(withIds);
+      setSlides(parsed.slice(0, slideCount).map((s, i) => ({ ...s, id: i + 1, total: Math.min(parsed.length, slideCount) })));
       setSelectedIdx(0);
       setStep('editor');
     } catch (e) {
       setGenError('생성 실패: ' + e.message);
-      setStep('input');
+      setStep('setup');
     }
   };
 
@@ -235,317 +270,18 @@ JSON 배열만 반환. 다른 텍스트 없이.`;
     setSlides(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   };
 
-  // ── 예약 저장 ──
-  const saveSchedule = () => {
-    if (!scheduleDate) return;
-    const list = JSON.parse(localStorage.getItem(SCHEDULES_KEY) || '[]');
-    list.push({
-      id: Date.now(),
-      topic,
-      brand: selectedBrand?.name,
-      slideCount: slides.length,
-      datetime: `${scheduleDate}T${scheduleTime}`,
-      channels: Object.entries(schedChannels).filter(([, v]) => v).map(([k]) => k),
-      createdAt: new Date().toISOString(),
-    });
-    localStorage.setItem(SCHEDULES_KEY, JSON.stringify(list));
-    setScheduleSaved(true);
-    setTimeout(() => setScheduleSaved(false), 3000);
+  // ── 전체 저장 ──
+  const saveAll = () => {
+    localStorage.setItem(TEMPLATE_KEY, JSON.stringify({
+      brandName, color1, color2, font, tone, layoutStyle, colorScheme, target, purpose,
+      slideCount, refImages, templateSlides, savedAt: new Date().toISOString(),
+    }));
+    localStorage.setItem(IG_KEY, JSON.stringify(igConfig));
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
   };
 
-  // ══════════════════════════════════════
-  // ── STEP: 입력 ──
-  // ══════════════════════════════════════
-  if (step === 'input') {
-    return (
-      <div className="p-6">
-
-        {/* 브랜드 선택 */}
-        <div className="mb-5">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-sm font-bold text-gray-700">브랜드 / 계정</h4>
-            <button
-              onClick={() => setShowBrandForm(v => !v)}
-              className="text-xs font-semibold text-pink-600 hover:text-pink-700 flex items-center gap-1 transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
-              새 브랜드 추가
-            </button>
-          </div>
-
-          {brands.length === 0 ? (
-            <p className="text-xs text-gray-400 py-4 text-center border border-dashed border-gray-200 rounded-xl">
-              등록된 브랜드가 없습니다.<br />위 버튼으로 브랜드를 추가해주세요.
-            </p>
-          ) : (
-            <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {brands.map(b => (
-                <div
-                  key={b.id}
-                  onClick={() => setSelectedBrandId(b.id)}
-                  className={`relative group flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all
-                    ${selectedBrandId === b.id ? 'border-pink-400 bg-pink-50' : 'border-gray-200 bg-white hover:border-gray-300'}
-                    ${editingBrandId === b.id ? 'border-blue-400 bg-blue-50' : ''}`}
-                >
-                  <div className="w-5 h-5 rounded-full flex-shrink-0 shadow-sm"
-                    style={{ background: `linear-gradient(135deg, ${b.color1}, ${b.color2})` }} />
-                  <span className={`text-xs font-semibold truncate flex-1 min-w-0
-                    ${editingBrandId === b.id ? 'text-blue-700' : selectedBrandId === b.id ? 'text-pink-700' : 'text-gray-700'}`}>
-                    {b.name}
-                  </span>
-                  {/* 호버 시 편집/삭제 버튼 */}
-                  <div className="absolute top-1 right-1 hidden group-hover:flex items-center gap-0.5">
-                    <button
-                      onClick={e => startEditBrand(e, b)}
-                      className="w-4 h-4 rounded-full bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-500 flex items-center justify-center transition-colors"
-                      title="수정"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"/>
-                      </svg>
-                    </button>
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteBrand(b.id); }}
-                      className="w-4 h-4 rounded-full bg-gray-100 text-gray-400 hover:bg-red-100 hover:text-red-500 text-[10px] flex items-center justify-center transition-colors"
-                      title="삭제"
-                    >×</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-          {/* ── 전체 너비 수정 폼 (그리드 밖) ── */}
-          {editingBrandId && (() => {
-            const editTarget = brands.find(b => b.id === editingBrandId);
-            if (!editTarget) return null;
-            return (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-3">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded-full shadow-sm flex-shrink-0"
-                      style={{ background: `linear-gradient(135deg, ${newBrand.color1}, ${newBrand.color2})` }} />
-                    <h5 className="text-xs font-bold text-blue-700">"{editTarget.name}" 수정</h5>
-                  </div>
-                  <button
-                    onClick={() => { setEditingBrandId(null); setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans' }); }}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 6 6 18M6 6l12 12"/>
-                    </svg>
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* 왼쪽: 이름 + 색상 */}
-                  <div className="space-y-2.5">
-                    <input
-                      type="text"
-                      placeholder="브랜드 이름"
-                      className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg outline-none focus:border-pink-400 bg-white"
-                      value={newBrand.name}
-                      onChange={e => setNewBrand(p => ({ ...p, name: e.target.value }))}
-                    />
-                    <div className="flex gap-2 items-center">
-                      <label className="text-xs text-gray-500 w-16 flex-shrink-0">주색상</label>
-                      <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5 bg-white flex-shrink-0"
-                        value={newBrand.color1} onChange={e => setNewBrand(p => ({ ...p, color1: e.target.value }))} />
-                      <input type="text" className="flex-1 px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
-                        value={newBrand.color1} onChange={e => setNewBrand(p => ({ ...p, color1: e.target.value }))} />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <label className="text-xs text-gray-500 w-16 flex-shrink-0">보조색상</label>
-                      <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5 bg-white flex-shrink-0"
-                        value={newBrand.color2} onChange={e => setNewBrand(p => ({ ...p, color2: e.target.value }))} />
-                      <input type="text" className="flex-1 px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
-                        value={newBrand.color2} onChange={e => setNewBrand(p => ({ ...p, color2: e.target.value }))} />
-                    </div>
-                  </div>
-                  {/* 오른쪽: 폰트 + 미리보기 */}
-                  <div className="space-y-2.5">
-                    <div>
-                      <label className="text-xs text-gray-500 block mb-1.5">폰트</label>
-                      <div className="flex gap-1.5">
-                        {FONTS.map(f => (
-                          <button key={f}
-                            onClick={() => setNewBrand(p => ({ ...p, font: f }))}
-                            className={`flex-1 py-1.5 text-xs rounded-lg border transition-all
-                              ${newBrand.font === f ? 'border-pink-400 bg-pink-50 text-pink-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}
-                            style={{ fontFamily: FONT_CSS[f] }}
-                          >
-                            {FONT_LABELS[f]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {/* 미리보기 */}
-                    <div className="flex items-center gap-2 px-3 py-3 bg-white rounded-xl border border-gray-200">
-                      <div className="w-7 h-7 rounded-full shadow-sm flex-shrink-0"
-                        style={{ background: `linear-gradient(135deg, ${newBrand.color1}, ${newBrand.color2})` }} />
-                      <div>
-                        <p className="text-[10px] text-gray-400 leading-none mb-0.5">미리보기</p>
-                        <span className="text-sm font-bold text-gray-800" style={{ fontFamily: FONT_CSS[newBrand.font] }}>
-                          {newBrand.name || '브랜드명'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {/* ── 참고 디자인 이미지 ── */}
-                <div className="mt-3 pt-3 border-t border-blue-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-blue-700">참고 디자인</label>
-                    <span className="text-[10px] text-gray-400">{newBrand.refImages?.length || 0}/6장</span>
-                  </div>
-                  {/* 썸네일 목록 */}
-                  {newBrand.refImages?.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {newBrand.refImages.map((src, idx) => (
-                        <div key={idx} className="relative group w-16 h-16 rounded-lg overflow-hidden border border-blue-200 shadow-sm flex-shrink-0">
-                          <img src={src} alt={`참고${idx + 1}`} className="w-full h-full object-cover" />
-                          <button
-                            onClick={() => removeRefImage(idx)}
-                            className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none"
-                          >×</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {/* 업로드 버튼 */}
-                  {(newBrand.refImages?.length || 0) < 6 && (
-                    <label className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-dashed border-blue-200 hover:border-blue-400 cursor-pointer transition-colors group">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-400 group-hover:text-blue-600 transition-colors flex-shrink-0">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-                      </svg>
-                      <span className="text-xs text-blue-500 group-hover:text-blue-700 transition-colors">이미지 업로드 (최대 6장)</span>
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={handleRefImageUpload} />
-                    </label>
-                  )}
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <button onClick={saveEditBrand}
-                    className="flex-1 py-2.5 bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold rounded-xl transition-colors">
-                    저장
-                  </button>
-                  <button onClick={() => { setEditingBrandId(null); setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans', refImages: [] }); }}
-                    className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-bold rounded-xl transition-colors">
-                    취소
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
-
-
-          {/* 새 브랜드 폼 */}
-          {showBrandForm && (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mt-3">
-              <h5 className="text-xs font-bold text-gray-600 mb-3">새 브랜드 등록</h5>
-              <div className="space-y-2.5">
-                <input
-                  type="text"
-                  placeholder="브랜드 이름 (예: 에덴, A클라이언트)"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400"
-                  value={newBrand.name}
-                  onChange={e => setNewBrand(p => ({ ...p, name: e.target.value }))}
-                />
-                <div className="flex gap-2 items-center">
-                  <label className="text-xs text-gray-500 w-14 flex-shrink-0">주색상</label>
-                  <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5"
-                    value={newBrand.color1} onChange={e => setNewBrand(p => ({ ...p, color1: e.target.value }))} />
-                  <input type="text" className="flex-1 px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-pink-400"
-                    value={newBrand.color1} onChange={e => setNewBrand(p => ({ ...p, color1: e.target.value }))} />
-                </div>
-                <div className="flex gap-2 items-center">
-                  <label className="text-xs text-gray-500 w-14 flex-shrink-0">보조색상</label>
-                  <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5"
-                    value={newBrand.color2} onChange={e => setNewBrand(p => ({ ...p, color2: e.target.value }))} />
-                  <input type="text" className="flex-1 px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-pink-400"
-                    value={newBrand.color2} onChange={e => setNewBrand(p => ({ ...p, color2: e.target.value }))} />
-                </div>
-                <div className="flex gap-2 items-center">
-                  <label className="text-xs text-gray-500 w-14 flex-shrink-0">폰트</label>
-                  <div className="flex gap-1.5">
-                    {FONTS.map(f => (
-                      <button key={f}
-                        onClick={() => setNewBrand(p => ({ ...p, font: f }))}
-                        className={`px-2.5 py-1 text-xs rounded-lg border transition-all
-                          ${newBrand.font === f ? 'border-pink-400 bg-pink-50 text-pink-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                        style={{ fontFamily: FONT_CSS[f] }}
-                      >
-                        {FONT_LABELS[f]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-2 mt-3">
-                <button onClick={addBrand}
-                  className="flex-1 py-2 bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold rounded-lg transition-colors">
-                  추가
-                </button>
-                <button onClick={() => setShowBrandForm(false)}
-                  className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold rounded-lg transition-colors">
-                  취소
-                </button>
-              </div>
-            </div>
-          )}
-            </>
-          )}
-        </div>
-
-        {/* 주제 입력 */}
-        <div className="mb-4">
-          <h4 className="text-sm font-bold text-gray-700 mb-2">카드뉴스 주제</h4>
-          <textarea
-            rows={3}
-            className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl outline-none focus:border-pink-400 resize-none leading-relaxed"
-            placeholder="예: 신제품 오로라 립밤 출시, 1+1 이벤트 진행 중"
-            value={topic}
-            onChange={e => setTopic(e.target.value.slice(0, 100))}
-          />
-          <p className="text-xs text-gray-400 text-right mt-1">{topic.length}/100자</p>
-        </div>
-
-        {/* 슬라이드 수 */}
-        <div className="mb-6">
-          <h4 className="text-sm font-bold text-gray-700 mb-2">슬라이드 수</h4>
-          <div className="flex gap-2">
-            {[3, 4, 5, 6, 7].map(n => (
-              <button key={n}
-                onClick={() => setSlideCount(n)}
-                className={`w-10 h-10 rounded-xl text-sm font-bold border-2 transition-all
-                  ${slideCount === n ? 'border-pink-400 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {genError && (
-          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
-            {genError}
-          </div>
-        )}
-
-        <button
-          onClick={generateSlides}
-          disabled={!topic.trim() || !selectedBrand}
-          className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-pink-200"
-        >
-          ✨ AI 카드뉴스 생성하기
-        </button>
-      </div>
-    );
-  }
-
-  // ══════════════════════════════════════
-  // ── STEP: 생성 중 ──
-  // ══════════════════════════════════════
+  // ══ 생성 중 ══
   if (step === 'generating') {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
@@ -560,154 +296,286 @@ JSON 배열만 반환. 다른 텍스트 없이.`;
     );
   }
 
-  // ══════════════════════════════════════
-  // ── STEP: 에디터 ──
-  // ══════════════════════════════════════
-  const slide = slides[selectedIdx];
-  if (!slide || !selectedBrand) return null;
-
-  return (
-    <div className="p-5">
-      {/* 상단 바 */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded-full shadow-sm flex-shrink-0"
-            style={{ background: `linear-gradient(135deg, ${selectedBrand.color1}, ${selectedBrand.color2})` }} />
-          <span className="text-sm font-bold text-gray-700">{selectedBrand.name}</span>
-          <span className="text-xs text-gray-400">· {slides.length}장</span>
+  // ══ 에디터 ══
+  if (step === 'editor') {
+    const slide = slides[selectedIdx];
+    if (!slide) return null;
+    return (
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-full shadow-sm flex-shrink-0" style={{ background: `linear-gradient(135deg, ${brand.color1}, ${brand.color2})` }} />
+            <span className="text-sm font-bold text-gray-700">{brand.name}</span>
+            <span className="text-xs text-gray-400">· {slides.length}장</span>
+          </div>
+          <button onClick={() => { setStep('setup'); setSlides([]); }}
+            className="text-xs font-semibold text-gray-400 hover:text-pink-600 transition-colors flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m15 18-6-6 6-6"/></svg>
+            다시 만들기
+          </button>
         </div>
-        <button
-          onClick={() => { setStep('input'); setSlides([]); }}
-          className="text-xs font-semibold text-gray-400 hover:text-pink-600 transition-colors flex items-center gap-1"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="m15 18-6-6 6-6"/>
-          </svg>
-          다시 만들기
+        <div className="grid grid-cols-[1fr,190px] gap-4">
+          <div>
+            <p className="text-[11px] text-gray-400 mb-2.5 flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              텍스트를 클릭하면 바로 수정 가능합니다
+            </p>
+            <div className={`grid gap-2.5 ${slides.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              {slides.map((s, i) => (
+                <SlidePreview key={s.id} slide={s} brand={brand} index={i} total={slides.length}
+                  isSelected={selectedIdx === i} onClick={() => setSelectedIdx(i)}
+                  onEditHeadline={val => updateSlide(i, 'headline', val)}
+                  onEditBody={val => updateSlide(i, 'body', val)} />
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">슬라이드 {selectedIdx + 1} 배경</p>
+              <div className="space-y-1.5">
+                {[{ key: 'gradient', label: '그라디언트' }, { key: 'solid', label: '단색' }, { key: 'light', label: '라이트' }].map(s => (
+                  <button key={s.key} onClick={() => updateSlide(selectedIdx, 'bgStyle', s.key)}
+                    className={`w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all text-left
+                      ${slide.bgStyle === s.key ? 'border-pink-400 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">정렬</p>
+              <div className="flex gap-1.5">
+                {[{ k: 'center', l: '가운데' }, { k: 'left', l: '왼쪽' }].map(({ k, l }) => (
+                  <button key={k} onClick={() => updateSlide(selectedIdx, 'layout', k)}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-all
+                      ${slide.layout === k ? 'border-pink-400 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">전체 일괄 적용</p>
+              <div className="space-y-1.5">
+                {[{ key: 'gradient', label: '전체 그라디언트' }, { key: 'light', label: '전체 라이트' }].map(s => (
+                  <button key={s.key} onClick={() => setSlides(prev => prev.map(sl => ({ ...sl, bgStyle: s.key })))}
+                    className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:border-pink-300 hover:bg-pink-50 hover:text-pink-700 transition-all text-left">
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ══ 설정 (setup) ══
+  return (
+    <div className="p-6 space-y-7">
+
+      {/* ── 1. 템플릿 미리보기 ── */}
+      <div>
+        <SectionHeader num="1" title="템플릿 미리보기" desc="스타일 설정 후 '템플릿 생성하기'를 누르면 미리보기가 업데이트됩니다" />
+        {templateSlides.length > 0 ? (
+          <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1">
+            {templateSlides.map((s, i) => (
+              <div key={i} className="flex-shrink-0" style={{ width: '96px' }}>
+                <SlidePreview slide={s} brand={brand} index={i} total={templateSlides.length}
+                  isSelected={false} onClick={() => {}} onEditHeadline={() => {}} onEditBody={() => {}} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="h-28 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-2 bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-300">
+              <rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/>
+              <rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
+            </svg>
+            <p className="text-xs text-gray-400">아직 생성된 템플릿이 없습니다</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── 2. 스타일 설정 ── */}
+      <div>
+        <SectionHeader num="2" title="템플릿 스타일 설정" desc="원하는 카드뉴스 스타일을 선택하세요. 여러 항목을 조합할수록 더 정확한 결과를 얻을 수 있습니다" />
+        <div className="space-y-4 bg-gray-50 border border-gray-100 rounded-2xl p-4">
+
+          {/* 브랜드 기본 */}
+          <div>
+            <p className="text-xs font-bold text-gray-600 mb-2">브랜드 기본</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <input type="text" placeholder="브랜드명 입력"
+                className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
+                value={brandName} onChange={e => setBrandName(e.target.value)} />
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg flex-shrink-0 shadow-sm" style={{ background: `linear-gradient(135deg, ${color1}, ${color2})` }} />
+                <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5 bg-white flex-shrink-0" value={color1} onChange={e => setColor1(e.target.value)} title="주색상" />
+                <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5 bg-white flex-shrink-0" value={color2} onChange={e => setColor2(e.target.value)} title="보조색상" />
+                <div className="flex gap-1">
+                  {FONTS.map(f => (
+                    <button key={f} onClick={() => setFont(f)}
+                      className={`px-2 py-1 text-xs rounded-lg border transition-all ${font === f ? 'border-pink-400 bg-pink-50 text-pink-700 font-semibold' : 'border-gray-200 text-gray-500 hover:border-gray-300 bg-white'}`}
+                      style={{ fontFamily: FONT_CSS[f] }}>
+                      {FONT_LABELS[f]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 톤/분위기 */}
+          <div>
+            <p className="text-xs font-bold text-gray-600 mb-2">톤 / 분위기</p>
+            <OptionChips options={TONE_OPTIONS} value={tone} onChange={setTone} />
+          </div>
+
+          {/* 레이아웃 */}
+          <div>
+            <p className="text-xs font-bold text-gray-600 mb-2">레이아웃 스타일</p>
+            <OptionChips options={LAYOUT_OPTIONS} value={layoutStyle} onChange={setLayoutStyle} />
+          </div>
+
+          {/* 색감 */}
+          <div>
+            <p className="text-xs font-bold text-gray-600 mb-2">색감 계열</p>
+            <OptionChips options={COLOR_OPTIONS} value={colorScheme} onChange={setColorScheme} />
+          </div>
+
+          {/* 타겟 */}
+          <div>
+            <p className="text-xs font-bold text-gray-600 mb-2">타겟 고객</p>
+            <OptionChips options={TARGET_OPTIONS} value={target} onChange={setTarget} />
+          </div>
+
+          {/* 목적 */}
+          <div>
+            <p className="text-xs font-bold text-gray-600 mb-2">콘텐츠 목적</p>
+            <OptionChips options={PURPOSE_OPTIONS} value={purpose} onChange={setPurpose} />
+          </div>
+
+          {/* 슬라이드 수 */}
+          <div>
+            <p className="text-xs font-bold text-gray-600 mb-2">슬라이드 수</p>
+            <div className="flex flex-wrap gap-2">
+              {[3, 4, 5, 6, 7, 8, 10].map(n => (
+                <button key={n} onClick={() => setSlideCount(n)}
+                  className={`w-9 h-9 rounded-xl text-sm font-bold border-2 transition-all
+                    ${slideCount === n ? 'border-pink-400 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* ── 템플릿 생성하기 버튼 ── */}
+      <button onClick={generateTemplate} disabled={isGenTemplate}
+        className="w-full py-3.5 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-purple-200 flex items-center justify-center gap-2">
+        {isGenTemplate ? (
+          <>
+            <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
+            </svg>
+            AI가 템플릿 디자인 중...
+          </>
+        ) : <>🎨 템플릿 생성하기</>}
+      </button>
+
+      {/* ── 3. 참고 레퍼런스 ── */}
+      <div>
+        <SectionHeader num="3" title="참고 레퍼런스" desc="원하는 디자인 스타일의 이미지를 업로드하면 AI가 참고하여 템플릿을 만들어드립니다 (최대 6장)" />
+        {refImages.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {refImages.map((src, idx) => (
+              <div key={idx} className="relative group w-20 h-20 rounded-xl overflow-hidden border border-gray-200 shadow-sm flex-shrink-0">
+                <img src={src} alt={`ref${idx}`} className="w-full h-full object-cover" />
+                <button onClick={() => setRefImages(p => p.filter((_, i) => i !== idx))}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none">
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {refImages.length < 6 && (
+          <label className="flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-dashed border-gray-200 hover:border-pink-300 cursor-pointer transition-colors group bg-white">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400 group-hover:text-pink-500 transition-colors flex-shrink-0">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <div>
+              <p className="text-sm font-medium text-gray-600 group-hover:text-pink-600 transition-colors">이미지 업로드</p>
+              <p className="text-xs text-gray-400">{refImages.length}/6장 · 여러 장 동시 선택 가능</p>
+            </div>
+            <input type="file" accept="image/*" multiple className="hidden" onChange={handleRefUpload} />
+          </label>
+        )}
+      </div>
+
+      {/* ── 4. 인스타그램 API ── */}
+      <div>
+        <SectionHeader num="4" title="인스타그램 자동 업로드" desc="생성된 카드뉴스를 인스타그램에 자동으로 게시하기 위한 API 설정입니다" />
+        <div className="space-y-3 bg-gray-50 border border-gray-100 rounded-2xl p-4">
+          <div>
+            <label className="text-xs font-bold text-gray-600 block mb-1.5">인스타그램 비즈니스 계정 ID</label>
+            <input type="text" placeholder="예: 17841400000000000"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white font-mono"
+              value={igConfig.accountId} onChange={e => setIgConfig(p => ({ ...p, accountId: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-600 block mb-1.5">액세스 토큰 (Access Token)</label>
+            <input type="password" placeholder="EAAxxxxxxxxxxxxxxx..."
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white font-mono"
+              value={igConfig.accessToken} onChange={e => setIgConfig(p => ({ ...p, accessToken: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-600 block mb-1.5">Facebook 페이지 ID <span className="font-normal text-gray-400">(선택)</span></label>
+            <input type="text" placeholder="페이지 ID (필요한 경우 입력)"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white font-mono"
+              value={igConfig.pageId || ''} onChange={e => setIgConfig(p => ({ ...p, pageId: e.target.value }))} />
+          </div>
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 accent-pink-500"
+              checked={igConfig.autoPost} onChange={e => setIgConfig(p => ({ ...p, autoPost: e.target.checked }))} />
+            <span className="text-xs text-gray-700 font-medium">카드뉴스 생성 후 자동으로 인스타그램에 게시</span>
+          </label>
+          <p className="text-[11px] text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
+            🔒 API 키는 브라우저 로컬에만 저장되며, 외부 서버로 전송되지 않습니다.
+          </p>
+        </div>
+      </div>
+
+      {genError && (
+        <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">{genError}</div>
+      )}
+
+      {/* ── 저장 버튼 ── */}
+      <button onClick={saveAll}
+        className={`w-full py-3.5 text-sm font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2
+          ${saveSuccess ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-gray-900 hover:bg-gray-700 text-white shadow-gray-200'}`}>
+        {saveSuccess ? '✓ 저장 완료!' : '💾 저장하기'}
+      </button>
+
+      {/* ── 카드뉴스 만들기 ── */}
+      <div className="border-t border-gray-200 pt-6">
+        <h4 className="text-sm font-bold text-gray-800 mb-1">카드뉴스 만들기</h4>
+        <p className="text-xs text-gray-400 mb-3">저장한 템플릿으로 카드뉴스를 바로 생성합니다</p>
+        <textarea rows={3}
+          className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl outline-none focus:border-pink-400 resize-none leading-relaxed"
+          placeholder="예: 신제품 오로라 립밤 출시, 1+1 이벤트 진행 중"
+          value={topic} onChange={e => setTopic(e.target.value.slice(0, 100))} />
+        <p className="text-xs text-gray-400 text-right mt-1 mb-3">{topic.length}/100자</p>
+        <button onClick={generateSlides} disabled={!topic.trim()}
+          className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-pink-200">
+          ✨ AI 카드뉴스 생성하기
         </button>
       </div>
 
-      <div className="grid grid-cols-[1fr,190px] gap-4">
-
-        {/* ── 슬라이드 그리드 ── */}
-        <div>
-          <p className="text-[11px] text-gray-400 mb-2.5 flex items-center gap-1">
-            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-            텍스트를 클릭하면 바로 수정 가능합니다
-          </p>
-          <div className={`grid gap-2.5 ${slides.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-            {slides.map((s, i) => (
-              <SlidePreview
-                key={s.id}
-                slide={s}
-                brand={selectedBrand}
-                index={i}
-                total={slides.length}
-                isSelected={selectedIdx === i}
-                onClick={() => setSelectedIdx(i)}
-                onEditHeadline={val => updateSlide(i, 'headline', val)}
-                onEditBody={val => updateSlide(i, 'body', val)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* ── 우측 패널 ── */}
-        <div className="space-y-3">
-
-          {/* 배경 스타일 */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">
-              슬라이드 {selectedIdx + 1} 배경
-            </p>
-            <div className="space-y-1.5">
-              {[
-                { key: 'gradient', label: '그라디언트' },
-                { key: 'solid',    label: '단색' },
-                { key: 'light',    label: '라이트' },
-              ].map(s => (
-                <button key={s.key}
-                  onClick={() => updateSlide(selectedIdx, 'bgStyle', s.key)}
-                  className={`w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all text-left
-                    ${slide.bgStyle === s.key ? 'border-pink-400 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 텍스트 정렬 */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">정렬</p>
-            <div className="flex gap-1.5">
-              {[{ k: 'center', l: '가운데' }, { k: 'left', l: '왼쪽' }].map(({ k, l }) => (
-                <button key={k}
-                  onClick={() => updateSlide(selectedIdx, 'layout', k)}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-all
-                    ${slide.layout === k ? 'border-pink-400 bg-pink-50 text-pink-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 전체 배경 일괄 변경 */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">전체 일괄 적용</p>
-            <div className="space-y-1.5">
-              {[
-                { key: 'gradient', label: '전체 그라디언트' },
-                { key: 'light',    label: '전체 라이트' },
-              ].map(s => (
-                <button key={s.key}
-                  onClick={() => setSlides(prev => prev.map(sl => ({ ...sl, bgStyle: s.key })))}
-                  className="w-full px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:border-pink-300 hover:bg-pink-50 hover:text-pink-700 transition-all text-left">
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 예약 발행 */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">예약 발행</p>
-            <div className="space-y-2">
-              <input type="date"
-                className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-pink-400"
-                value={scheduleDate}
-                onChange={e => setScheduleDate(e.target.value)} />
-              <input type="time"
-                className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-pink-400"
-                value={scheduleTime}
-                onChange={e => setScheduleTime(e.target.value)} />
-              <div className="space-y-1">
-                {[{ key: 'insta', label: '📷 인스타그램' }, { key: 'facebook', label: '👍 페이스북' }].map(ch => (
-                  <label key={ch.key} className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox"
-                      className="w-3.5 h-3.5 accent-pink-500"
-                      checked={schedChannels[ch.key]}
-                      onChange={e => setSchedChannels(p => ({ ...p, [ch.key]: e.target.checked }))} />
-                    <span className="text-xs text-gray-600">{ch.label}</span>
-                  </label>
-                ))}
-              </div>
-              {scheduleSaved ? (
-                <div className="w-full py-1.5 text-xs text-center font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg">
-                  ✓ 예약 저장됨
-                </div>
-              ) : (
-                <button
-                  onClick={saveSchedule}
-                  disabled={!scheduleDate}
-                  className="w-full py-2 bg-gray-900 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-colors">
-                  예약 등록
-                </button>
-              )}
-            </div>
-          </div>
-
-        </div>
-      </div>
     </div>
   );
 }
