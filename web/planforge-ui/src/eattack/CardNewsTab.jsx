@@ -260,6 +260,7 @@ JSON 배열만 반환. 다른 텍스트 없이.`;
               등록된 브랜드가 없습니다.<br />위 버튼으로 브랜드를 추가해주세요.
             </p>
           ) : (
+            <>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {brands.map(b => (
                 <div
@@ -441,6 +442,8 @@ JSON 배열만 반환. 다른 텍스트 없이.`;
                 </button>
               </div>
             </div>
+          )}
+            </>
           )}
         </div>
 
