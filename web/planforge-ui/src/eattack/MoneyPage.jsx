@@ -1,5 +1,6 @@
 // ── 이걸 돈내고 써? — 무료 대체 툴 모음 ──
 import { useState } from "react";
+import EdenCanvas from "./EdenCanvas";
 
 // ── 툴 목록 ──
 const FREE_TOOLS = [
@@ -19,6 +20,23 @@ const FREE_TOOLS = [
     url: "https://mortgage-accepting-chose-only.trycloudflare.com",
     replaces: ["모두싸인 월 19,900원~", "DocuSign 월 $15~"],
     features: ["PDF·HWP·DOCX 업로드", "서명자 이메일 자동 발송", "필드 드래그 배치", "서명 완료 PDF 다운로드"],
+  },
+  {
+    key: "canvas",
+    label: "에덴캔버스",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+        <path d="M2 2l7.586 7.586"/>
+        <circle cx="11" cy="11" r="2"/>
+      </svg>
+    ),
+    gradient: "from-violet-500 to-purple-600",
+    description: "Figma·Canva 대신 — 카드뉴스, 배너, 썸네일 디자인을 에덴 내부에서 무료로",
+    url: "#",
+    replaces: ["Figma 월 $15~", "Canva Pro 월 $13~"],
+    features: ["드래그 앤 드롭 편집", "카드뉴스·배너 템플릿", "텍스트·이미지 레이어", "PNG·JPG 다운로드"],
   },
 ];
 
@@ -135,6 +153,81 @@ function ESignDetail({ tool, onBack }) {
   );
 }
 
+// ── 에덴캔버스 상세 페이지 ──
+function EdenCanvasDetail({ tool, onBack }) {
+  return (
+    <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="max-w-3xl mx-auto px-6 sm:px-10 py-8 sm:py-12">
+
+        {/* 헤더 */}
+        <div className="flex items-center gap-3 mb-8">
+          <button
+            onClick={onBack}
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m15 18-6-6 6-6"/>
+            </svg>
+          </button>
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${tool.gradient} flex items-center justify-center shadow-md text-white [&>svg]:w-5 [&>svg]:h-5`}>
+              {tool.icon}
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-800">{tool.label}</h3>
+              <p className="text-sm text-gray-400">이걸 돈내고 써?</p>
+            </div>
+          </div>
+        </div>
+
+        {/* 비교 배너 */}
+        <div className="bg-gradient-to-r from-violet-900 to-purple-800 rounded-2xl p-6 mb-6 text-white">
+          <p className="text-xs text-violet-300 mb-1 font-medium uppercase tracking-wide">절약 비용</p>
+          <h2 className="text-xl font-bold mb-4">월 0원으로 디자인 툴 쓰기</h2>
+          <div className="flex flex-wrap gap-2">
+            {tool.replaces.map(r => (
+              <span key={r} className="px-3 py-1.5 bg-white/10 rounded-lg text-xs text-red-300 line-through font-medium">{r}</span>
+            ))}
+            <span className="px-3 py-1.5 bg-violet-500/30 border border-violet-400/40 rounded-lg text-xs text-violet-200 font-bold">
+              에덴캔버스 무료 🎨
+            </span>
+          </div>
+        </div>
+
+        {/* 기능 목록 */}
+        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">포함 기능</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+          {tool.features.map((f, i) => (
+            <div key={i} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+              <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5"/>
+                </svg>
+              </div>
+              <p className="text-sm text-gray-700 font-medium">{f}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* 개발 중 안내 */}
+        <div className="bg-white border border-violet-200 rounded-2xl p-6 text-center">
+          <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center mx-auto mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+              <path d="M2 2l7.586 7.586"/>
+              <circle cx="11" cy="11" r="2"/>
+            </svg>
+          </div>
+          <p className="text-sm font-semibold text-gray-800 mb-1">개발 진행 중</p>
+          <p className="text-xs text-gray-400">에덴캔버스는 현재 개발 중입니다. 오픈 시 여기에서 바로 사용할 수 있습니다.</p>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 컴포넌트 ──
 export default function MoneyPage({ onBack }) {
   const [activeTool, setActiveTool] = useState(null);
@@ -143,6 +236,7 @@ export default function MoneyPage({ onBack }) {
   // 툴 상세 화면
   if (activeTool) {
     const tool = FREE_TOOLS.find(t => t.key === activeTool);
+    if (tool.key === "canvas") return <EdenCanvas onBack={() => setActiveTool(null)} />;
     return <ESignDetail tool={tool} onBack={() => setActiveTool(null)} />;
   }
 
