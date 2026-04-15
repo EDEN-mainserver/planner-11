@@ -101,23 +101,71 @@ const DEF_BD = { fontSize: 13, fontWeight: 'normal', fontStyle: 'normal', textDe
 
 // ── 슬라이드 전체 편집 모달 ──
 function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide }) {
-  const initSlide = (s) => ({
-    ...s,
-    headlineStyle: s.headlineStyle ? { ...DEF_HL, ...s.headlineStyle } : { ...DEF_HL },
-    bodyStyle:     s.bodyStyle     ? { ...DEF_BD, ...s.bodyStyle }     : { ...DEF_BD },
-    bgImage: s.bgImage || null,
-  });
+
+  // 슬라이드 → textBlocks 배열로 정규화
+  const initSlide = (s) => {
+    const existing = s.textBlocks?.length > 0;
+    const blocks = existing ? s.textBlocks : [
+      { id: 'b1', text: s.headline || '', style: { ...DEF_HL, ...(s.headlineStyle || {}) } },
+      ...(s.body ? [{ id: 'b2', text: s.body, style: { ...DEF_BD, ...(s.bodyStyle || {}) } }] : []),
+    ];
+    return { ...s, textBlocks: blocks, bgImage: s.bgImage || null };
+  };
+
+  // textBlocks → 기존 headline/body 필드도 함께 저장 (하위 호환)
+  const toSave = (s) => {
+    const blocks = s.textBlocks || [];
+    return {
+      ...s,
+      headline:      blocks[0]?.text || '',
+      headlineStyle: blocks[0]?.style || DEF_HL,
+      body:          blocks.slice(1).map(b => b.text).filter(Boolean).join('\n') || '',
+      bodyStyle:     blocks[1]?.style || DEF_BD,
+    };
+  };
 
   const [idx,   setIdx]  = useState(initialIdx);
   const [slide, setSlide] = useState(() => initSlide(slides[initialIdx]));
-  const [activeField, setActiveField] = useState('headline');
+  const [selId, setSelId] = useState(() => initSlide(slides[initialIdx]).textBlocks[0]?.id || null);
 
-  const curStyle    = activeField === 'headline' ? slide.headlineStyle : slide.bodyStyle;
-  const styleKey    = activeField === 'headline' ? 'headlineStyle' : 'bodyStyle';
-  const setStyle    = (updates) => setSlide(p => ({ ...p, [styleKey]: { ...p[styleKey], ...updates } }));
+  const selectedBlock = slide.textBlocks?.find(b => b.id === selId) || null;
+  const curStyle      = selectedBlock?.style || { ...DEF_HL };
 
-  const getSlideFont = (style) => style.fontFamily || FONT_CSS[brand.font || 'sans'];
+  const setStyle = (updates) => {
+    if (!selId) return;
+    setSlide(p => ({
+      ...p,
+      textBlocks: p.textBlocks.map(b => b.id === selId ? { ...b, style: { ...b.style, ...updates } } : b),
+    }));
+  };
+  const updateBlockText = (id, text) => {
+    setSlide(p => ({ ...p, textBlocks: p.textBlocks.map(b => b.id === id ? { ...b, text } : b) }));
+  };
+  const addBlock = () => {
+    const newId = 'b' + Date.now();
+    const newBlock = { id: newId, text: '', style: { ...DEF_BD } };
+    setSlide(p => ({ ...p, textBlocks: [...p.textBlocks, newBlock] }));
+    setSelId(newId);
+  };
+  const deleteBlock = (id) => {
+    setSlide(p => {
+      const blocks = p.textBlocks.filter(b => b.id !== id);
+      return { ...p, textBlocks: blocks };
+    });
+    setSelId(slide.textBlocks.find(b => b.id !== id)?.id || null);
+  };
+  const moveBlock = (id, dir) => {
+    setSlide(p => {
+      const arr = [...p.textBlocks];
+      const i = arr.findIndex(b => b.id === id);
+      const j = i + dir;
+      if (j < 0 || j >= arr.length) return p;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      return { ...p, textBlocks: arr };
+    });
+  };
 
+  const getSlideFont = (style) => style?.fontFamily || FONT_CSS[brand.font || 'sans'];
   const getBg = (s) => {
     if (s.bgImage) return { backgroundImage: `url(${s.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' };
     if (s.bgStyle === 'light')  return { background: `${brand.color1}18` };
@@ -127,14 +175,15 @@ function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide })
   const tc = (!slide.bgImage && slide.bgStyle === 'light') ? brand.color1 : '#ffffff';
 
   const saveAndNav = (nextIdx) => {
-    onUpdateSlide(idx, slide);
+    onUpdateSlide(idx, toSave(slide));
     if (nextIdx !== null && nextIdx !== idx) {
+      const next = initSlide(slides[nextIdx]);
       setIdx(nextIdx);
-      setSlide(initSlide(slides[nextIdx]));
-      setActiveField('headline');
+      setSlide(next);
+      setSelId(next.textBlocks[0]?.id || null);
     }
   };
-  const handleClose = () => { onUpdateSlide(idx, slide); onClose(); };
+  const handleClose = () => { onUpdateSlide(idx, toSave(slide)); onClose(); };
 
   const handleBgImage = (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -161,117 +210,142 @@ function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide })
           </button>
         </div>
 
-        {/* ── 슬라이드 미리보기 ── */}
-        <div className="relative w-full" style={{ aspectRatio: '1/1', ...getBg(slide), fontFamily: getSlideFont(slide.headlineStyle) }}>
+        {/* ── 슬라이드 캔버스 ── */}
+        <div className="relative w-full select-none" style={{ aspectRatio: '1/1', ...getBg(slide) }}
+          onClick={() => setSelId(null)}>
           {slide.bgImage && <div className="absolute inset-0 bg-black/25 z-0" />}
-          {slide.emoji && <span className="absolute top-3 left-4 text-3xl leading-none z-10">{slide.emoji}</span>}
-          <span className="absolute top-3 right-4 text-[10px] font-bold opacity-40 z-10" style={{ color: tc }}>{idx + 1}/{slides.length}</span>
-          <div className="absolute bottom-2 left-3 text-[9px] font-bold uppercase opacity-30 z-10" style={{ color: tc }}>
+          {slide.emoji && <span className="absolute top-3 left-4 text-3xl leading-none z-10 pointer-events-none">{slide.emoji}</span>}
+          <span className="absolute top-3 right-4 text-[10px] font-bold opacity-40 z-10 pointer-events-none" style={{ color: tc }}>{idx + 1}/{slides.length}</span>
+          <div className="absolute bottom-2 left-3 text-[9px] font-bold uppercase opacity-30 z-10 pointer-events-none" style={{ color: tc }}>
             {slide.type === 'cover' ? 'COVER' : slide.type === 'closing' ? 'END' : ''}
           </div>
-          <div className={`absolute inset-0 z-10 flex flex-col justify-center px-5 py-10 gap-2
+
+          {/* 텍스트 블록들 */}
+          <div className={`absolute inset-0 z-10 flex flex-col justify-center px-4 py-8 gap-1
             ${slide.layout === 'left' ? 'items-start' : 'items-center'}`}>
-            <textarea rows={2}
-              value={slide.headline}
-              onChange={e => setSlide(p => ({ ...p, headline: e.target.value }))}
-              onFocus={() => setActiveField('headline')}
-              className="w-full bg-transparent resize-none outline-none leading-snug placeholder:opacity-40 transition-all"
-              style={{
-                color: slide.headlineStyle.color || tc,
-                fontSize: `${slide.headlineStyle.fontSize}px`,
-                fontWeight: slide.headlineStyle.fontWeight,
-                fontStyle: slide.headlineStyle.fontStyle,
-                textDecoration: slide.headlineStyle.textDecoration,
-                fontFamily: getSlideFont(slide.headlineStyle),
-                textAlign: slide.headlineStyle.textAlign,
-                borderBottom: activeField === 'headline' ? '1px dashed rgba(255,255,255,0.5)' : '1px dashed transparent',
-              }}
-              placeholder="제목"
-            />
-            <textarea rows={3}
-              value={slide.body || ''}
-              onChange={e => setSlide(p => ({ ...p, body: e.target.value }))}
-              onFocus={() => setActiveField('body')}
-              className="w-full bg-transparent resize-none outline-none leading-relaxed placeholder:opacity-30 transition-all"
-              style={{
-                color: slide.bodyStyle.color || tc,
-                fontSize: `${slide.bodyStyle.fontSize}px`,
-                fontWeight: slide.bodyStyle.fontWeight,
-                fontStyle: slide.bodyStyle.fontStyle,
-                textDecoration: slide.bodyStyle.textDecoration,
-                fontFamily: getSlideFont(slide.bodyStyle),
-                textAlign: slide.bodyStyle.textAlign,
-                borderBottom: activeField === 'body' ? '1px dashed rgba(255,255,255,0.4)' : '1px dashed transparent',
-              }}
-              placeholder={slide.type === 'content' ? '본문' : ''}
-            />
+            {(slide.textBlocks || []).map((block, bi) => (
+              <div key={block.id} className="relative w-full group"
+                onClick={e => { e.stopPropagation(); setSelId(block.id); }}>
+                {/* 선택 표시 링 */}
+                {selId === block.id && (
+                  <div className="absolute -inset-1 rounded-lg border-2 border-white/50 pointer-events-none z-20" />
+                )}
+                {/* 블록 번호 뱃지 */}
+                {selId === block.id && (
+                  <span className="absolute -top-2.5 -left-1 text-[9px] bg-white/80 text-gray-800 font-bold px-1.5 py-0.5 rounded-full z-30 leading-none">
+                    {bi + 1}
+                  </span>
+                )}
+                <textarea
+                  value={block.text}
+                  onChange={e => updateBlockText(block.id, e.target.value)}
+                  onFocus={e => { e.stopPropagation(); setSelId(block.id); }}
+                  onClick={e => e.stopPropagation()}
+                  rows={block.text ? undefined : 1}
+                  className="w-full bg-transparent resize-none outline-none leading-snug placeholder:opacity-30 transition-colors"
+                  style={{
+                    color: block.style.color || tc,
+                    fontSize: `${block.style.fontSize}px`,
+                    fontWeight: block.style.fontWeight,
+                    fontStyle: block.style.fontStyle,
+                    textDecoration: block.style.textDecoration,
+                    fontFamily: getSlideFont(block.style),
+                    textAlign: block.style.textAlign,
+                    minHeight: `${block.style.fontSize * 1.6}px`,
+                  }}
+                  placeholder={bi === 0 ? '제목을 입력하세요' : '텍스트를 입력하세요'}
+                />
+              </div>
+            ))}
+            {/* 텍스트 추가 버튼 */}
+            <button onClick={e => { e.stopPropagation(); addBlock(); }}
+              className="flex items-center gap-1.5 mt-2 px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white/70 hover:text-white text-xs font-semibold transition-all border border-dashed border-white/30 hover:border-white/50">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+              텍스트 추가
+            </button>
           </div>
         </div>
 
         {/* ── 텍스트 툴바 ── */}
-        <div className="bg-gray-800 border-t border-white/10 px-4 py-3 space-y-3">
-          {/* 제목/본문 탭 */}
-          <div className="flex gap-1">
-            {[['headline','제목'], ['body','본문']].map(([f, l]) => (
-              <button key={f} onClick={() => setActiveField(f)}
-                className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${activeField === f ? 'bg-white/20 text-white' : 'text-white/40 hover:text-white/60'}`}>
-                {l}
-              </button>
-            ))}
+        <div className="bg-gray-800 border-t border-white/10 px-3 py-3 space-y-2.5">
+          {/* 선택된 블록 표시 + 순서 이동 + 삭제 */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-white/50 font-semibold">
+              {selId
+                ? `블록 ${(slide.textBlocks?.findIndex(b => b.id === selId) ?? 0) + 1} 편집 중`
+                : '텍스트 블록을 클릭하세요'}
+            </span>
+            {selId && (
+              <div className="flex items-center gap-1 ml-auto">
+                <button onClick={() => moveBlock(selId, -1)}
+                  className="w-6 h-6 rounded bg-gray-700 hover:bg-gray-600 text-white/70 flex items-center justify-center" title="위로">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m18 15-6-6-6 6"/></svg>
+                </button>
+                <button onClick={() => moveBlock(selId, 1)}
+                  className="w-6 h-6 rounded bg-gray-700 hover:bg-gray-600 text-white/70 flex items-center justify-center" title="아래로">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {(slide.textBlocks?.length || 0) > 1 && (
+                  <button onClick={() => deleteBlock(selId)}
+                    className="w-6 h-6 rounded bg-red-500/30 hover:bg-red-500/60 text-red-300 flex items-center justify-center" title="블록 삭제">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 폰트 + 크기 */}
           <div className="flex items-center gap-2">
-            <select value={curStyle.fontFamily}
+            <select value={curStyle.fontFamily || ''}
               onChange={e => setStyle({ fontFamily: e.target.value })}
-              className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-gray-700 text-white border border-white/10 rounded-lg outline-none">
-              {EDITOR_FONTS.map(f => (
-                <option key={f.value} value={f.value}>{f.label}</option>
-              ))}
+              disabled={!selId}
+              className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-gray-700 text-white border border-white/10 rounded-lg outline-none disabled:opacity-40">
+              {EDITOR_FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <button onClick={() => setStyle({ fontSize: Math.max(8, curStyle.fontSize - 1) })}
-                className="w-7 h-7 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-base flex items-center justify-center transition-colors">−</button>
-              <span className="w-8 text-center text-xs font-mono text-white tabular-nums">{curStyle.fontSize}</span>
-              <button onClick={() => setStyle({ fontSize: Math.min(72, curStyle.fontSize + 1) })}
-                className="w-7 h-7 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-base flex items-center justify-center transition-colors">+</button>
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <button onClick={() => setStyle({ fontSize: Math.max(8, curStyle.fontSize - 1) })} disabled={!selId}
+                className="w-7 h-7 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-base flex items-center justify-center transition-colors disabled:opacity-40">−</button>
+              <span className="w-9 text-center text-xs font-mono text-white tabular-nums">{curStyle.fontSize}</span>
+              <button onClick={() => setStyle({ fontSize: Math.min(72, curStyle.fontSize + 1) })} disabled={!selId}
+                className="w-7 h-7 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-base flex items-center justify-center transition-colors disabled:opacity-40">+</button>
             </div>
           </div>
 
-          {/* B / I / U + 색상 + 정렬 */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Bold */}
-            <button onClick={() => setStyle({ fontWeight: curStyle.fontWeight === 'bold' ? 'normal' : 'bold' })}
-              className={`w-8 h-8 rounded-lg text-sm font-black transition-all ${curStyle.fontWeight === 'bold' ? 'bg-white text-gray-900' : 'bg-gray-700 text-white hover:bg-gray-600'}`}>B</button>
-            {/* Italic */}
-            <button onClick={() => setStyle({ fontStyle: curStyle.fontStyle === 'italic' ? 'normal' : 'italic' })}
-              className={`w-8 h-8 rounded-lg text-sm italic font-bold transition-all ${curStyle.fontStyle === 'italic' ? 'bg-white text-gray-900' : 'bg-gray-700 text-white hover:bg-gray-600'}`}>I</button>
-            {/* Underline */}
-            <button onClick={() => setStyle({ textDecoration: curStyle.textDecoration === 'underline' ? 'none' : 'underline' })}
-              className={`w-8 h-8 rounded-lg text-sm underline font-bold transition-all ${curStyle.textDecoration === 'underline' ? 'bg-white text-gray-900' : 'bg-gray-700 text-white hover:bg-gray-600'}`}>U</button>
-            {/* Strikethrough */}
-            <button onClick={() => setStyle({ textDecoration: curStyle.textDecoration === 'line-through' ? 'none' : 'line-through' })}
-              className={`w-8 h-8 rounded-lg text-sm line-through font-bold transition-all ${curStyle.textDecoration === 'line-through' ? 'bg-white text-gray-900' : 'bg-gray-700 text-white hover:bg-gray-600'}`}>S</button>
+          {/* B I U S + 색상 + 정렬 */}
+          <div className="flex items-center gap-1 flex-wrap">
+            {[
+              { key: 'bold',         prop: 'fontWeight',     on: 'bold',         off: 'normal',  label: 'B', cls: 'font-black' },
+              { key: 'italic',       prop: 'fontStyle',      on: 'italic',       off: 'normal',  label: 'I', cls: 'italic font-bold' },
+              { key: 'underline',    prop: 'textDecoration', on: 'underline',    off: 'none',    label: 'U', cls: 'underline font-bold' },
+              { key: 'linethrough',  prop: 'textDecoration', on: 'line-through', off: 'none',    label: 'S', cls: 'line-through font-bold' },
+            ].map(({ key, prop, on, off, label, cls }) => (
+              <button key={key} disabled={!selId}
+                onClick={() => setStyle({ [prop]: curStyle[prop] === on ? off : on })}
+                className={`w-8 h-8 rounded-lg text-sm transition-all disabled:opacity-40 ${cls}
+                  ${curStyle[prop] === on ? 'bg-white text-gray-900' : 'bg-gray-700 text-white hover:bg-gray-600'}`}>
+                {label}
+              </button>
+            ))}
 
-            <div className="w-px h-6 bg-white/15 mx-0.5" />
+            <div className="w-px h-6 bg-white/15" />
 
             {/* 글자색 */}
             <label className="relative w-8 h-8 rounded-lg overflow-hidden cursor-pointer flex-shrink-0 bg-gray-700 hover:bg-gray-600 transition-colors" title="글자 색상">
-              <span className="absolute inset-0 flex items-center justify-center text-sm font-black" style={{ color: curStyle.color || tc, textShadow: '0 0 4px rgba(0,0,0,0.9)' }}>A</span>
-              <div className="absolute bottom-0 left-0 right-0 h-1.5 rounded-b-lg" style={{ background: curStyle.color || tc }} />
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-black z-10"
+                style={{ color: curStyle.color || tc, textShadow: '0 0 4px rgba(0,0,0,0.9)' }}>A</span>
+              <div className="absolute bottom-0 left-0 right-0 h-1.5" style={{ background: curStyle.color || tc }} />
               <input type="color" className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                value={curStyle.color || tc} onChange={e => setStyle({ color: e.target.value })} />
+                value={curStyle.color || tc} onChange={e => setStyle({ color: e.target.value })} disabled={!selId} />
             </label>
-
-            {/* 글자색 리셋 */}
-            {curStyle.color && (
+            {curStyle.color && selId && (
               <button onClick={() => setStyle({ color: null })}
-                className="w-8 h-8 rounded-lg bg-gray-700 hover:bg-gray-600 text-white/60 text-[10px] transition-colors flex items-center justify-center" title="색상 초기화">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                className="w-8 h-8 rounded-lg bg-gray-700 hover:bg-gray-600 text-white/50 flex items-center justify-center" title="색상 초기화">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
               </button>
             )}
 
-            <div className="w-px h-6 bg-white/15 mx-0.5" />
+            <div className="w-px h-6 bg-white/15" />
 
             {/* 정렬 */}
             {[
@@ -279,8 +353,10 @@ function SlideEditorModal({ slides, brand, initialIdx, onClose, onUpdateSlide })
               { val: 'center', d: 'M3 6h18M6 12h12M4 18h16' },
               { val: 'right',  d: 'M3 6h18M9 12h12M6 18h15' },
             ].map(a => (
-              <button key={a.val} onClick={() => setStyle({ textAlign: a.val })}
-                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${curStyle.textAlign === a.val ? 'bg-white text-gray-900' : 'bg-gray-700 text-white hover:bg-gray-600'}`}>
+              <button key={a.val} disabled={!selId}
+                onClick={() => setStyle({ textAlign: a.val })}
+                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-40
+                  ${curStyle.textAlign === a.val ? 'bg-white text-gray-900' : 'bg-gray-700 text-white hover:bg-gray-600'}`}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={a.d}/></svg>
               </button>
             ))}
