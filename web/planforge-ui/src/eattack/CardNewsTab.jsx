@@ -262,102 +262,131 @@ JSON 배열만 반환. 다른 텍스트 없이.`;
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {brands.map(b => (
-                <div key={b.id}>
-                  <div
-                    onClick={() => setSelectedBrandId(b.id)}
-                    className={`relative group flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all
-                      ${selectedBrandId === b.id ? 'border-pink-400 bg-pink-50' : 'border-gray-200 bg-white hover:border-gray-300'}
-                      ${editingBrandId === b.id ? 'border-pink-300' : ''}`}
-                  >
-                    <div className="w-5 h-5 rounded-full flex-shrink-0 shadow-sm"
-                      style={{ background: `linear-gradient(135deg, ${b.color1}, ${b.color2})` }} />
-                    <span className={`text-xs font-semibold truncate flex-1 min-w-0 ${selectedBrandId === b.id ? 'text-pink-700' : 'text-gray-700'}`}>
-                      {b.name}
-                    </span>
-                    {/* 호버 시 편집/삭제 버튼 */}
-                    <div className="absolute top-1 right-1 hidden group-hover:flex items-center gap-0.5">
-                      <button
-                        onClick={e => startEditBrand(e, b)}
-                        className="w-4 h-4 rounded-full bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-500 flex items-center justify-center transition-colors"
-                        title="수정"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"/>
-                        </svg>
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); deleteBrand(b.id); }}
-                        className="w-4 h-4 rounded-full bg-gray-100 text-gray-400 hover:bg-red-100 hover:text-red-500 text-[10px] flex items-center justify-center transition-colors"
-                        title="삭제"
-                      >×</button>
-                    </div>
+                <div
+                  key={b.id}
+                  onClick={() => setSelectedBrandId(b.id)}
+                  className={`relative group flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all
+                    ${selectedBrandId === b.id ? 'border-pink-400 bg-pink-50' : 'border-gray-200 bg-white hover:border-gray-300'}
+                    ${editingBrandId === b.id ? 'border-blue-400 bg-blue-50' : ''}`}
+                >
+                  <div className="w-5 h-5 rounded-full flex-shrink-0 shadow-sm"
+                    style={{ background: `linear-gradient(135deg, ${b.color1}, ${b.color2})` }} />
+                  <span className={`text-xs font-semibold truncate flex-1 min-w-0
+                    ${editingBrandId === b.id ? 'text-blue-700' : selectedBrandId === b.id ? 'text-pink-700' : 'text-gray-700'}`}>
+                    {b.name}
+                  </span>
+                  {/* 호버 시 편집/삭제 버튼 */}
+                  <div className="absolute top-1 right-1 hidden group-hover:flex items-center gap-0.5">
+                    <button
+                      onClick={e => startEditBrand(e, b)}
+                      className="w-4 h-4 rounded-full bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-500 flex items-center justify-center transition-colors"
+                      title="수정"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"/>
+                      </svg>
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); deleteBrand(b.id); }}
+                      className="w-4 h-4 rounded-full bg-gray-100 text-gray-400 hover:bg-red-100 hover:text-red-500 text-[10px] flex items-center justify-center transition-colors"
+                      title="삭제"
+                    >×</button>
                   </div>
-
-                  {/* 인라인 수정 폼 */}
-                  {editingBrandId === b.id && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-1.5">
-                      <h5 className="text-xs font-bold text-blue-700 mb-2.5">브랜드 수정</h5>
-                      <div className="space-y-2">
-                        <input
-                          type="text"
-                          placeholder="브랜드 이름"
-                          className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg outline-none focus:border-pink-400 bg-white"
-                          value={newBrand.name}
-                          onChange={e => setNewBrand(p => ({ ...p, name: e.target.value }))}
-                        />
-                        <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-500 w-14 flex-shrink-0">주색상</label>
-                          <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5 bg-white"
-                            value={newBrand.color1} onChange={e => setNewBrand(p => ({ ...p, color1: e.target.value }))} />
-                          <input type="text" className="flex-1 px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
-                            value={newBrand.color1} onChange={e => setNewBrand(p => ({ ...p, color1: e.target.value }))} />
-                        </div>
-                        <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-500 w-14 flex-shrink-0">보조색상</label>
-                          <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5 bg-white"
-                            value={newBrand.color2} onChange={e => setNewBrand(p => ({ ...p, color2: e.target.value }))} />
-                          <input type="text" className="flex-1 px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
-                            value={newBrand.color2} onChange={e => setNewBrand(p => ({ ...p, color2: e.target.value }))} />
-                        </div>
-                        <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-500 w-14 flex-shrink-0">폰트</label>
-                          <div className="flex gap-1.5">
-                            {FONTS.map(f => (
-                              <button key={f}
-                                onClick={() => setNewBrand(p => ({ ...p, font: f }))}
-                                className={`px-2.5 py-1 text-xs rounded-lg border transition-all
-                                  ${newBrand.font === f ? 'border-pink-400 bg-pink-50 text-pink-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}
-                                style={{ fontFamily: FONT_CSS[f] }}
-                              >
-                                {FONT_LABELS[f]}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      {/* 미리보기 */}
-                      <div className="mt-2.5 flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200">
-                        <div className="w-5 h-5 rounded-full shadow-sm flex-shrink-0"
-                          style={{ background: `linear-gradient(135deg, ${newBrand.color1}, ${newBrand.color2})` }} />
-                        <span className="text-xs font-semibold text-gray-700">{newBrand.name || '미리보기'}</span>
-                      </div>
-                      <div className="flex gap-2 mt-2.5">
-                        <button onClick={saveEditBrand}
-                          className="flex-1 py-2 bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold rounded-lg transition-colors">
-                          저장
-                        </button>
-                        <button onClick={() => { setEditingBrandId(null); setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans' }); }}
-                          className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold rounded-lg transition-colors">
-                          취소
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
-          )}
+
+          {/* ── 전체 너비 수정 폼 (그리드 밖) ── */}
+          {editingBrandId && (() => {
+            const editTarget = brands.find(b => b.id === editingBrandId);
+            if (!editTarget) return null;
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full shadow-sm flex-shrink-0"
+                      style={{ background: `linear-gradient(135deg, ${newBrand.color1}, ${newBrand.color2})` }} />
+                    <h5 className="text-xs font-bold text-blue-700">"{editTarget.name}" 수정</h5>
+                  </div>
+                  <button
+                    onClick={() => { setEditingBrandId(null); setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans' }); }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6 6 18M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* 왼쪽: 이름 + 색상 */}
+                  <div className="space-y-2.5">
+                    <input
+                      type="text"
+                      placeholder="브랜드 이름"
+                      className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg outline-none focus:border-pink-400 bg-white"
+                      value={newBrand.name}
+                      onChange={e => setNewBrand(p => ({ ...p, name: e.target.value }))}
+                    />
+                    <div className="flex gap-2 items-center">
+                      <label className="text-xs text-gray-500 w-16 flex-shrink-0">주색상</label>
+                      <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5 bg-white flex-shrink-0"
+                        value={newBrand.color1} onChange={e => setNewBrand(p => ({ ...p, color1: e.target.value }))} />
+                      <input type="text" className="flex-1 px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
+                        value={newBrand.color1} onChange={e => setNewBrand(p => ({ ...p, color1: e.target.value }))} />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <label className="text-xs text-gray-500 w-16 flex-shrink-0">보조색상</label>
+                      <input type="color" className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 p-0.5 bg-white flex-shrink-0"
+                        value={newBrand.color2} onChange={e => setNewBrand(p => ({ ...p, color2: e.target.value }))} />
+                      <input type="text" className="flex-1 px-2 py-1.5 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
+                        value={newBrand.color2} onChange={e => setNewBrand(p => ({ ...p, color2: e.target.value }))} />
+                    </div>
+                  </div>
+                  {/* 오른쪽: 폰트 + 미리보기 */}
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1.5">폰트</label>
+                      <div className="flex gap-1.5">
+                        {FONTS.map(f => (
+                          <button key={f}
+                            onClick={() => setNewBrand(p => ({ ...p, font: f }))}
+                            className={`flex-1 py-1.5 text-xs rounded-lg border transition-all
+                              ${newBrand.font === f ? 'border-pink-400 bg-pink-50 text-pink-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}
+                            style={{ fontFamily: FONT_CSS[f] }}
+                          >
+                            {FONT_LABELS[f]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* 미리보기 */}
+                    <div className="flex items-center gap-2 px-3 py-3 bg-white rounded-xl border border-gray-200">
+                      <div className="w-7 h-7 rounded-full shadow-sm flex-shrink-0"
+                        style={{ background: `linear-gradient(135deg, ${newBrand.color1}, ${newBrand.color2})` }} />
+                      <div>
+                        <p className="text-[10px] text-gray-400 leading-none mb-0.5">미리보기</p>
+                        <span className="text-sm font-bold text-gray-800" style={{ fontFamily: FONT_CSS[newBrand.font] }}>
+                          {newBrand.name || '브랜드명'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={saveEditBrand}
+                    className="flex-1 py-2.5 bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold rounded-xl transition-colors">
+                    저장
+                  </button>
+                  <button onClick={() => { setEditingBrandId(null); setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans' }); }}
+                    className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-bold rounded-xl transition-colors">
+                    취소
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
 
           {/* 새 브랜드 폼 */}
           {showBrandForm && (
