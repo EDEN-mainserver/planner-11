@@ -129,7 +129,7 @@ export default function CardNewsTab() {
   const [scheduleSaved, setScheduleSaved] = useState(false);
 
   // 새 브랜드 폼
-  const [newBrand, setNewBrand] = useState({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans' });
+  const [newBrand, setNewBrand] = useState({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans', refImages: [] });
 
   const selectedBrand = brands.find(b => b.id === selectedBrandId) || brands[0] || null;
 
@@ -158,18 +158,38 @@ export default function CardNewsTab() {
     e.stopPropagation();
     setEditingBrandId(brand.id);
     setShowBrandForm(false);
-    setNewBrand({ name: brand.name, color1: brand.color1, color2: brand.color2, font: brand.font || 'sans' });
+    setNewBrand({ name: brand.name, color1: brand.color1, color2: brand.color2, font: brand.font || 'sans', refImages: brand.refImages || [] });
   };
 
   const saveEditBrand = () => {
     if (!newBrand.name.trim()) return;
     const updated = brands.map(b =>
-      b.id === editingBrandId ? { ...b, name: newBrand.name.trim(), color1: newBrand.color1, color2: newBrand.color2, font: newBrand.font } : b
+      b.id === editingBrandId ? { ...b, name: newBrand.name.trim(), color1: newBrand.color1, color2: newBrand.color2, font: newBrand.font, refImages: newBrand.refImages || [] } : b
     );
     setBrands(updated);
     saveBrands(updated);
     setEditingBrandId(null);
-    setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans' });
+    setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans', refImages: [] });
+  };
+
+  // ── 참고 이미지 업로드 ──
+  const handleRefImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    const remaining = 6 - (newBrand.refImages?.length || 0);
+    const toRead = files.slice(0, remaining);
+    toRead.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setNewBrand(p => ({ ...p, refImages: [...(p.refImages || []), ev.target.result] }));
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const removeRefImage = (idx) => {
+    setNewBrand(p => ({ ...p, refImages: p.refImages.filter((_, i) => i !== idx) }));
   };
 
   // ── AI 생성 ──
@@ -374,12 +394,43 @@ JSON 배열만 반환. 다른 텍스트 없이.`;
                     </div>
                   </div>
                 </div>
+                {/* ── 참고 디자인 이미지 ── */}
+                <div className="mt-3 pt-3 border-t border-blue-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-blue-700">참고 디자인</label>
+                    <span className="text-[10px] text-gray-400">{newBrand.refImages?.length || 0}/6장</span>
+                  </div>
+                  {/* 썸네일 목록 */}
+                  {newBrand.refImages?.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {newBrand.refImages.map((src, idx) => (
+                        <div key={idx} className="relative group w-16 h-16 rounded-lg overflow-hidden border border-blue-200 shadow-sm flex-shrink-0">
+                          <img src={src} alt={`참고${idx + 1}`} className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => removeRefImage(idx)}
+                            className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none"
+                          >×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* 업로드 버튼 */}
+                  {(newBrand.refImages?.length || 0) < 6 && (
+                    <label className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-dashed border-blue-200 hover:border-blue-400 cursor-pointer transition-colors group">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-400 group-hover:text-blue-600 transition-colors flex-shrink-0">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                      <span className="text-xs text-blue-500 group-hover:text-blue-700 transition-colors">이미지 업로드 (최대 6장)</span>
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={handleRefImageUpload} />
+                    </label>
+                  )}
+                </div>
                 <div className="flex gap-2 mt-3">
                   <button onClick={saveEditBrand}
                     className="flex-1 py-2.5 bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold rounded-xl transition-colors">
                     저장
                   </button>
-                  <button onClick={() => { setEditingBrandId(null); setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans' }); }}
+                  <button onClick={() => { setEditingBrandId(null); setNewBrand({ name: '', color1: '#7c3aed', color2: '#4f46e5', font: 'sans', refImages: [] }); }}
                     className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-bold rounded-xl transition-colors">
                     취소
                   </button>
