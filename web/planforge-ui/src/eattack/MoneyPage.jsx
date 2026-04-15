@@ -138,6 +138,7 @@ function ESignDetail({ tool, onBack }) {
 // ── 메인 컴포넌트 ──
 export default function MoneyPage({ onBack }) {
   const [activeTool, setActiveTool] = useState(null);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   // 툴 상세 화면
   if (activeTool) {
@@ -174,19 +175,15 @@ export default function MoneyPage({ onBack }) {
             <h3 className="text-lg font-bold text-gray-800">툴 선택</h3>
             <p className="text-sm text-gray-400">사용할 내부 툴을 선택하세요</p>
           </div>
-          <a
-            href="https://github.com/E-ATTACK-/Eden-Crawl"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => setGuideOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 bg-purple-50 text-purple-600 text-xs font-semibold hover:bg-purple-100 hover:border-purple-300 transition-all whitespace-nowrap"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
             </svg>
             확장프로그램 설치 · 가이드
-          </a>
+          </button>
         </div>
 
         {/* 툴 카드 그리드 */}
@@ -201,6 +198,48 @@ export default function MoneyPage({ onBack }) {
         </div>
 
       </div>
+
+      {/* 확장프로그램 설치 가이드 모달 */}
+      {guideOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setGuideOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Eden Crawl 확장 프로그램 설치</h3>
+                  <p className="text-[11px] text-gray-400">Chrome 전용 · 쓰레드 / X / LinkedIn 자동 수집</p>
+                </div>
+              </div>
+              <button onClick={() => setGuideOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              {[
+                { num: 1, title: "GitHub에서 파일 다운로드", desc: (<>아래 링크를 클릭해서 GitHub 페이지로 이동하세요.<a href="https://github.com/EDEN-mainserver/E-ATTACK-" target="_blank" rel="noopener noreferrer" className="block mt-1.5 px-3 py-1.5 bg-gray-900 text-green-400 rounded-lg text-xs font-mono hover:bg-gray-800 transition-all truncate">github.com/EDEN-mainserver/E-ATTACK-</a><span className="block mt-1.5">페이지에서 초록색 <strong>{"<>"} Code</strong> 버튼 → <strong>Download ZIP</strong> 클릭</span></>) },
+                { num: 2, title: "ZIP 압축 해제", desc: (<>다운로드된 ZIP 파일을 압축 해제하세요.<br />압축을 풀면 <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-purple-700">E-ATTACK--master</code> 폴더가 생깁니다. 이 폴더 안에 확장 프로그램 파일들이 있습니다.</>) },
+                { num: 3, title: "Chrome 확장 프로그램 페이지 열기", desc: (<>Chrome 주소창에 아래를 그대로 붙여넣고 엔터를 누르세요.<code className="block mt-1.5 px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-mono text-blue-700">chrome://extensions</code></>) },
+                { num: 4, title: "개발자 모드 켜기", desc: (<>페이지 <strong>우측 상단</strong>에 있는 <strong>개발자 모드</strong> 토글을 클릭해서 <strong>파란색(ON)</strong>으로 켜주세요.</>) },
+                { num: 5, title: "'압축 해제된 확장 프로그램을 로드합니다' 클릭", desc: (<>개발자 모드를 켜면 <strong>좌측 상단</strong>에 버튼이 생깁니다.<br />클릭 후 2단계에서 압축 해제한 <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-purple-700">E-ATTACK--master</code> 폴더를 선택하세요.</>) },
+                { num: 6, title: "각 플랫폼 로그인 후 수집 시작", desc: (<>수집하려는 플랫폼에 미리 로그인한 상태여야 합니다.<div className="mt-1.5 space-y-0.5"><div className="flex items-center gap-1.5"><span className="text-purple-500 font-bold">🧵</span><span>쓰레드: threads.com 로그인</span></div><div className="flex items-center gap-1.5"><span className="font-bold text-gray-800">𝕏</span><span>X(트위터): x.com 로그인</span></div><div className="flex items-center gap-1.5"><span className="font-bold text-blue-600">in</span><span>링크드인: linkedin.com 로그인</span></div></div><span className="block mt-1.5">로그인 후 이 사이트에서 각 탭의 수집 버튼을 누르면 자동으로 수집됩니다.</span></>) },
+              ].map(step => (
+                <div key={step.num} className="flex gap-3">
+                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">{step.num}</div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800 mb-0.5">{step.title}</p>
+                    <div className="text-xs text-gray-500 leading-relaxed">{step.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
