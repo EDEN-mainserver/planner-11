@@ -86,6 +86,114 @@ function SectionHeader({ num, title, desc }) {
   );
 }
 
+// ── 슬라이드 확대 모달 ──
+function SlideModal({ slides, brand, initialIdx, onClose, onEditHeadline, onEditBody }) {
+  const [idx, setIdx] = useState(initialIdx);
+  const slide = slides[idx];
+  const total = slides.length;
+
+  const isLight = slide.bgStyle === 'light';
+  const bgStyle = isLight
+    ? { background: `${brand.color1}18` }
+    : slide.bgStyle === 'solid'
+      ? { background: brand.color1 }
+      : { background: `linear-gradient(135deg, ${brand.color1} 0%, ${brand.color2} 100%)` };
+  const tc = isLight ? brand.color1 : '#ffffff';
+
+  const [headlineVal, setHeadlineVal] = useState(slide.headline);
+  const [bodyVal,     setBodyVal]     = useState(slide.body || '');
+
+  // 슬라이드 전환 시 필드값 동기화
+  const goTo = (nextIdx) => {
+    onEditHeadline(idx, headlineVal);
+    onEditBody(idx, bodyVal);
+    setIdx(nextIdx);
+    setHeadlineVal(slides[nextIdx].headline);
+    setBodyVal(slides[nextIdx].body || '');
+  };
+
+  const handleClose = () => {
+    onEditHeadline(idx, headlineVal);
+    onEditBody(idx, bodyVal);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={handleClose}>
+      <div className="relative flex flex-col items-center gap-4 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+
+        {/* 닫기 버튼 */}
+        <button onClick={handleClose}
+          className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white shadow-lg text-gray-500 hover:text-gray-800 flex items-center justify-center z-10 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+
+        {/* 슬라이드 번호 */}
+        <div className="flex items-center gap-2">
+          {slides.map((_, i) => (
+            <button key={i} onClick={() => goTo(i)}
+              className={`w-2 h-2 rounded-full transition-all ${i === idx ? 'bg-white scale-125' : 'bg-white/40 hover:bg-white/70'}`} />
+          ))}
+        </div>
+
+        {/* 슬라이드 본체 */}
+        <div className="w-full rounded-2xl overflow-hidden shadow-2xl"
+          style={{ ...bgStyle, aspectRatio: '1/1', fontFamily: FONT_CSS[brand.font || 'sans'] }}>
+
+          <span className="absolute top-3 right-4 text-xs font-bold opacity-40" style={{ color: tc }}>{idx + 1}/{total}</span>
+          {slide.emoji && <span className="absolute top-3 left-4 text-2xl leading-none">{slide.emoji}</span>}
+
+          <div className={`absolute inset-0 flex flex-col justify-center px-6 py-10 gap-3
+            ${slide.layout === 'left' ? 'items-start text-left' : 'items-center text-center'}`}>
+
+            {/* 제목 편집 */}
+            <textarea
+              className="w-full bg-transparent resize-none outline-none font-bold leading-snug text-center placeholder:opacity-50"
+              style={{ color: tc, fontSize: '1.05rem', fontFamily: FONT_CSS[brand.font || 'sans'] }}
+              value={headlineVal}
+              onChange={e => setHeadlineVal(e.target.value)}
+              placeholder="제목을 입력하세요"
+              rows={2}
+            />
+
+            {/* 본문 편집 */}
+            <textarea
+              className="w-full bg-transparent resize-none outline-none leading-relaxed text-center placeholder:opacity-40"
+              style={{ color: tc, fontSize: '0.8rem', opacity: 0.9, fontFamily: FONT_CSS[brand.font || 'sans'] }}
+              value={bodyVal}
+              onChange={e => setBodyVal(e.target.value)}
+              placeholder={slide.type === 'content' ? '본문을 입력하세요' : ''}
+              rows={3}
+            />
+          </div>
+
+          {/* 타입 라벨 */}
+          <div className="absolute bottom-2 left-3 text-[9px] font-bold uppercase opacity-30" style={{ color: tc }}>
+            {slide.type === 'cover' ? 'COVER' : slide.type === 'closing' ? 'END' : ''}
+          </div>
+        </div>
+
+        {/* 이전 / 다음 버튼 */}
+        <div className="flex items-center gap-3 w-full">
+          <button onClick={() => idx > 0 && goTo(idx - 1)}
+            disabled={idx === 0}
+            className="flex-1 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold disabled:opacity-30 transition-all flex items-center justify-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m15 18-6-6 6-6"/></svg>
+            이전
+          </button>
+          <button onClick={() => idx < total - 1 && goTo(idx + 1)}
+            disabled={idx === total - 1}
+            className="flex-1 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-sm font-semibold disabled:opacity-30 transition-all flex items-center justify-center gap-1">
+            다음
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ── 슬라이드 카드 ──
 function SlidePreview({ slide, brand, index, total, isSelected, onClick, onEditHeadline, onEditBody }) {
   const [editingField, setEditingField] = useState(null);
@@ -162,6 +270,7 @@ export default function CardNewsTab() {
   // 템플릿 미리보기
   const [templateSlides,  setTemplateSlides]  = useState(saved.templateSlides || []);
   const [isGenTemplate,   setIsGenTemplate]   = useState(false);
+  const [modalIdx,        setModalIdx]        = useState(null); // 확대 모달 슬라이드 인덱스
 
   // 카드뉴스 생성
   const [topic,       setTopic]       = useState('');
@@ -379,14 +488,25 @@ JSON 배열만 반환. 다른 텍스트 없이.`;
       <div>
         <SectionHeader num="1" title="템플릿 미리보기" desc="스타일 설정 후 '템플릿 생성하기'를 누르면 미리보기가 업데이트됩니다" />
         {templateSlides.length > 0 ? (
-          <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1">
-            {templateSlides.map((s, i) => (
-              <div key={i} className="flex-shrink-0" style={{ width: '96px' }}>
-                <SlidePreview slide={s} brand={brand} index={i} total={templateSlides.length}
-                  isSelected={false} onClick={() => {}} onEditHeadline={() => {}} onEditBody={() => {}} />
-              </div>
-            ))}
-          </div>
+          <>
+            <p className="text-[11px] text-gray-400 mb-2 flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+              슬라이드를 클릭하면 크게 보고 수정할 수 있습니다
+            </p>
+            <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1">
+              {templateSlides.map((s, i) => (
+                <div key={i} className="flex-shrink-0 group relative cursor-pointer" style={{ width: '96px' }}
+                  onClick={() => setModalIdx(i)}>
+                  <SlidePreview slide={s} brand={brand} index={i} total={templateSlides.length}
+                    isSelected={false} onClick={() => {}} onEditHeadline={() => {}} onEditBody={() => {}} />
+                  {/* 호버 오버레이 */}
+                  <div className="absolute inset-0 rounded-xl bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="h-28 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-2 bg-gray-50">
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-300">
@@ -552,6 +672,18 @@ JSON 배열만 반환. 다른 텍스트 없이.`;
 
       {genError && (
         <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">{genError}</div>
+      )}
+
+      {/* ── 템플릿 슬라이드 확대 모달 ── */}
+      {modalIdx !== null && templateSlides.length > 0 && (
+        <SlideModal
+          slides={templateSlides}
+          brand={brand}
+          initialIdx={modalIdx}
+          onClose={() => setModalIdx(null)}
+          onEditHeadline={(i, val) => setTemplateSlides(prev => prev.map((s, idx) => idx === i ? { ...s, headline: val } : s))}
+          onEditBody={(i, val) => setTemplateSlides(prev => prev.map((s, idx) => idx === i ? { ...s, body: val } : s))}
+        />
       )}
 
       {/* ── 저장 버튼 ── */}
