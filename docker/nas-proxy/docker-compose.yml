@@ -1,0 +1,31 @@
+# E-Attack NAS 프록시 서버
+# UGREEN NAS Docker에서 실행 — CORS 지원 WebDAV 파일 서버 (dufs)
+#
+# 배포 방법:
+#   UGOS → Docker → Compose → 이 파일 업로드 → 실행
+#
+# 접속: http://[NAS-IP]:5055
+# 저장 위치: NAS의 E-Attack 공유 폴더 내
+
+services:
+  eattack-nas-proxy:
+    image: sigoden/dufs:latest
+    container_name: eattack-nas-proxy
+    restart: unless-stopped
+    ports:
+      - "5055:5000"
+    volumes:
+      # UGREEN NAS 공유 폴더 경로 — UGOS File Manager에서 실제 경로 확인 후 수정
+      # 보통 /mnt/user_data/share/폴더명 또는 /volume1/폴더명
+      - /mnt/user_data/share/E-Attack:/data
+    command: >
+      /data
+      --allow-all
+      --enable-cors
+      --log-format combined
+    # 헬스체크
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

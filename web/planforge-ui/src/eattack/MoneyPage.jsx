@@ -29,6 +29,31 @@ const FREE_TOOLS = [
     screenshots: ["canvas-1", "canvas-2", "canvas-3"],
   },
   {
+    key: "edenflow",
+    label: "에덴플로우",
+    category: "릴스 기획 · 인사이트",
+    iconBg: "from-emerald-400 to-teal-600",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 12C2 6.48 6.48 2 12 2s10 4.48 10 10-4.48 10-10 10S2 17.52 2 12z"/>
+        <path d="M8 12h8M12 8v8"/>
+        <path d="M16 8l-4 4-4-4"/>
+      </svg>
+    ),
+    description: "릴스 기획부터 인사이트 분석까지 — 숏폼 콘텐츠 전략을 에덴 내부에서 체계적으로 관리",
+    longDesc: "에덴플로우는 릴스·숏폼 콘텐츠 기획 및 성과 인사이트를 통합 관리하는 내부 도구입니다. 트렌드 분석, 기획안 자동 생성, 업로드 스케줄 관리, 조회수·참여율 인사이트까지 한 곳에서 처리할 수 있습니다.",
+    version: "v1.0",
+    updateDate: "2026-04-16",
+    updateNote: "최초 릴리즈 — 릴스 기획 템플릿, 인사이트 대시보드, 트렌드 분석 기능 포함",
+    developer: "에덴 에이전트",
+    publisher: "에덴 에이전트",
+    size: "웹 앱 (무료)",
+    replaces: ["notion 수기 기획", "Instagram Insights 수동 확인"],
+    features: ["릴스 기획안 자동 생성", "트렌드 키워드 분석", "업로드 스케줄 관리", "조회수·참여율 인사이트", "콘텐츠 성과 비교", "숏폼 전략 리포트"],
+    isInternal: true,
+    screenshots: ["edenflow-1", "edenflow-2", "edenflow-3"],
+  },
+  {
     key: "esign",
     label: "E-Sign",
     category: "문서 서명",
@@ -103,6 +128,47 @@ function ScreenshotMock({ id }) {
           </div>
         ))}
         <div className="text-[7px] text-indigo-400 font-bold self-end">멀티페이지</div>
+      </div>
+    ),
+    "edenflow-1": (
+      <div className="w-full h-full bg-gradient-to-br from-emerald-50 to-teal-100 flex flex-col p-2 gap-1 overflow-hidden">
+        <div className="flex-shrink-0 text-[7px] text-emerald-600 font-bold">릴스 기획안</div>
+        <div className="flex-1 bg-white/70 rounded p-1 flex flex-col gap-0.5 overflow-hidden">
+          <div className="h-2 bg-emerald-300 rounded w-3/4"/>
+          <div className="h-1.5 bg-gray-200 rounded w-full"/>
+          <div className="h-1.5 bg-gray-200 rounded w-5/6"/>
+          <div className="h-1.5 bg-gray-200 rounded w-2/3"/>
+          <div className="flex gap-0.5 mt-0.5">
+            {["#10b981","#34d399","#6ee7b7"].map((c,i)=><div key={i} style={{background:c}} className="h-1.5 flex-1 rounded"/>)}
+          </div>
+        </div>
+      </div>
+    ),
+    "edenflow-2": (
+      <div className="w-full h-full bg-gradient-to-br from-teal-50 to-emerald-100 flex flex-col p-2 gap-1 overflow-hidden">
+        <div className="flex-shrink-0 text-[7px] text-teal-600 font-bold">인사이트 대시보드</div>
+        <div className="flex-1 flex gap-1 overflow-hidden">
+          <div className="flex-1 bg-white/70 rounded p-1 flex flex-col justify-end gap-0.5">
+            {[40,60,35,80,55,90,70].map((h,i)=>(
+              <div key={i} style={{height:`${h}%`,background:"#10b981",opacity:0.6+(i*0.05)}} className="w-2 rounded-t self-end"/>
+            ))}
+          </div>
+          <div className="flex flex-col gap-0.5 justify-center">
+            <div className="text-[6px] text-emerald-600 font-bold">조회수</div>
+            <div className="text-[8px] text-gray-700 font-bold">12.4K</div>
+            <div className="text-[6px] text-teal-500">+23%</div>
+          </div>
+        </div>
+      </div>
+    ),
+    "edenflow-3": (
+      <div className="w-full h-full bg-gradient-to-br from-green-50 to-teal-100 flex flex-col p-2 gap-1 overflow-hidden">
+        <div className="flex-shrink-0 text-[7px] text-green-600 font-bold">트렌드 키워드</div>
+        <div className="flex-1 flex flex-wrap content-start gap-0.5 overflow-hidden">
+          {[["#10b981","릴스"],["#0d9488","숏폼"],["#059669","트렌드"],["#14b8a6","기획"],["#34d399","인사이트"]].map(([c,t],i)=>(
+            <div key={i} style={{background:c+"22",color:c,border:`1px solid ${c}55`}} className="px-1 py-0.5 rounded text-[6px] font-semibold">{t}</div>
+          ))}
+        </div>
       </div>
     ),
     "esign-1": (
@@ -341,9 +407,15 @@ function ToolRow({ tool, onClick }) {
 
       {/* 실행 버튼 */}
       <div className="flex-shrink-0">
-        <span className="inline-flex items-center gap-1.5 px-5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
-          실행
-        </span>
+        {tool.key === "edenflow" ? (
+          <span className="inline-flex items-center gap-1.5 px-5 py-1.5 bg-gray-200 text-gray-400 text-sm font-semibold rounded-lg cursor-not-allowed">
+            준비 중
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 px-5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+            실행
+          </span>
+        )}
       </div>
     </button>
   );
@@ -364,7 +436,11 @@ function ToolDetail({ tool, onBack }) {
           <p className="text-sm text-gray-400">{tool.category}</p>
         </div>
         <div className="flex-shrink-0">
-          {tool.isInternal ? (
+          {tool.key === "edenflow" ? (
+            <span className="px-7 py-2 bg-gray-200 text-gray-400 text-sm font-bold rounded-xl cursor-not-allowed">
+              준비 중
+            </span>
+          ) : tool.isInternal ? (
             <button
               onClick={onBack}
               className="px-7 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition-colors shadow-sm"

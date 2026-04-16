@@ -332,32 +332,45 @@ export default function EdenCanvas({ onBack }) {
     resizeRef.current = {id, handle, startX:e.clientX, startY:e.clientY, origEl:{...el}};
   };
 
-  const onMouseMove = useCallback((e) => {
+  // ── Handler Ref 패턴: stale closure / race condition 원천 차단 ──
+  // 매 render마다 최신 핸들러를 ref에 저장, window listener는 한 번만 등록
+  const mouseMoveHandlerRef = useRef(null);
+  const mouseUpHandlerRef   = useRef(null);
+
+  // 최신 핸들러 (render마다 갱신 → 항상 최신 scale, setElements 등 참조)
+  mouseMoveHandlerRef.current = (e) => {
     if (resizeRef.current) {
+      // 리사이즈: 필요한 값을 모두 로컬 변수로 추출 후 사용
       const {id, handle, startX, startY, origEl} = resizeRef.current;
       const dx = (e.clientX - startX) / scale;
       const dy = (e.clientY - startY) / scale;
       const MIN = 10;
       let {x, y, w, h} = origEl;
-
       if (handle.includes("e")) w = Math.max(MIN, origEl.w + dx);
       if (handle.includes("s")) h = Math.max(MIN, origEl.h + dy);
       if (handle.includes("w")) { w = Math.max(MIN, origEl.w - dx); x = origEl.x + origEl.w - w; }
       if (handle.includes("n")) { h = Math.max(MIN, origEl.h - dy); y = origEl.y + origEl.h - h; }
-
       setElements(prev => prev.map(el => el.id===id ? {...el, x:Math.round(x), y:Math.round(y), w:Math.round(w), h:Math.round(h)} : el));
       return;
     }
-    if (dragRef.current) {
-      const dx = (e.clientX - dragRef.current.startX) / scale;
-      const dy = (e.clientY - dragRef.current.startY) / scale;
-      setElements(prev => prev.map(el => {
-        if (!dragRef.current.ids.includes(el.id)) return el;
-        const orig = dragRef.current.origPositions[el.id];
-        return {...el, x: orig.x+dx, y: orig.y+dy};
-      }));
+
+    // 드래그: dragRef에서 값을 로컬 변수로 완전히 추출 (ref가 나중에 null이 돼도 안전)
+    const dragSnap = dragRef.current;
+    if (dragSnap) {
+      const { ids, startX, startY, origPositions } = dragSnap;
+      if (ids && origPositions) {
+        const dx = (e.clientX - startX) / scale;
+        const dy = (e.clientY - startY) / scale;
+        setElements(prev => prev.map(el => {
+          if (!ids.includes(el.id)) return el;
+          const orig = origPositions[el.id];
+          if (!orig) return el;
+          return {...el, x: orig.x + dx, y: orig.y + dy};
+        }));
+      }
       return;
     }
+
     // 드래그 선택 박스 업데이트
     if (selBoxRef.current && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
@@ -365,9 +378,9 @@ export default function EdenCanvas({ onBack }) {
       const cy = (e.clientY - rect.top)  / scale;
       setSelBox({ x1: selBoxRef.current.startX, y1: selBoxRef.current.startY, x2: cx, y2: cy });
     }
-  }, [scale, setElements]);
+  };
 
-  const onMouseUp = useCallback((e) => {
+  mouseUpHandlerRef.current = (e) => {
     if (dragRef.current || resizeRef.current) saveHistory();
     dragRef.current   = null;
     resizeRef.current = null;
@@ -385,7 +398,6 @@ export default function EdenCanvas({ onBack }) {
       const maxX = Math.max(startX, endX);
       const minY = Math.min(startY, endY);
       const maxY = Math.max(startY, endY);
-      // 5px 이상 드래그했을 때만 선택 (setState 중첩 금지 → elementsRef 직접 읽기)
       if (maxX - minX > 5 || maxY - minY > 5) {
         const hit = elementsRef.current.filter(el =>
           el.x < maxX && el.x + el.w > minX &&
@@ -394,16 +406,19 @@ export default function EdenCanvas({ onBack }) {
         setSelectedIds(hit.map(el => el.id));
       }
     }
-  }, [saveHistory, scale]);
+  };
 
+  // window listener: 마운트 시 단 한 번만 등록 (deps 없음 → re-register 없음)
   useEffect(() => {
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup",   onMouseUp);
+    const moveHandler = (e) => mouseMoveHandlerRef.current?.(e);
+    const upHandler   = (e) => mouseUpHandlerRef.current?.(e);
+    window.addEventListener("mousemove", moveHandler);
+    window.addEventListener("mouseup",   upHandler);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup",   onMouseUp);
+      window.removeEventListener("mousemove", moveHandler);
+      window.removeEventListener("mouseup",   upHandler);
     };
-  }, [onMouseMove, onMouseUp]);
+  }, []);
 
   // ── 캔버스 빈 영역 mousedown → 드래그 선택 시작 ──
   const onCanvasMouseDown = (e) => {
