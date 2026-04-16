@@ -6,7 +6,8 @@
  * - 커뮤니티 영상 탭
  * - 롱폼을 숏폼으로 탭
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import CommunityTab from "./community/index";
 import {
   getNasConfig,
   saveNasConfig,
@@ -871,23 +872,622 @@ function FullGraphicTab({ nasState, onGoToNas }) {
   );
 }
 
-// ── 커뮤니티 영상 탭 ──────────────────────────────────────────────
-function CommunityTab({ nasState, onGoToNas }) {
+// ── 커뮤니티 영상 탭은 ./community/index.jsx 로 분리됨 ────────────
+
+// ── 배경 영상 프리셋 (레거시 — community 폴더로 이전됨) ───────────
+const BG_PRESETS = [
+  { key: "minecraft", label: "마인크래프트", emoji: "⛏️", category: "게임",
+    color: "from-green-500 to-emerald-600",
+    desc: "파쿠르 & 서바이벌" },
+  { key: "subway",    label: "서브웨이 서퍼", emoji: "🏃", category: "게임",
+    color: "from-orange-500 to-red-500",
+    desc: "무한 달리기 게임" },
+  { key: "cooking",   label: "요리 영상",    emoji: "🍳", category: "요리",
+    color: "from-yellow-500 to-orange-500",
+    desc: "맛있는 요리 과정" },
+  { key: "rain",      label: "빗소리",       emoji: "🌧️", category: "자연",
+    color: "from-blue-400 to-slate-500",
+    desc: "창문 빗소리 ASMR" },
+  { key: "city",      label: "도시 야경",    emoji: "🌃", category: "야경",
+    color: "from-purple-500 to-indigo-600",
+    desc: "빛나는 도시 야경" },
+  { key: "satisfying",label: "새틴파잉",     emoji: "✨", category: "힐링",
+    color: "from-pink-400 to-rose-500",
+    desc: "보는 것만으로 힐링" },
+];
+
+// 자막 폰트 옵션
+const FONT_OPTIONS = [
+  { key: "Noto Sans KR", label: "노토 산스 (기본)" },
+  { key: "Black Han Sans", label: "검은 한 산스 (굵게)" },
+  { key: "Gmarket Sans", label: "지마켓 산스" },
+];
+
+// 하이라이트 색상 프리셋
+const HIGHLIGHT_COLORS = [
+  { key: "#FFE600", label: "노랑" },
+  { key: "#FF3D3D", label: "빨강" },
+  { key: "#00FF9D", label: "연두" },
+  { key: "#00CFFF", label: "하늘" },
+  { key: "#FF6BF5", label: "분홍" },
+  { key: "#FF8800", label: "주황" },
+];
+
+// 텍스트에서 자막 타이밍 자동 생성 (TTS 없이 데모용)
+function generateCaptionsFromText(text) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const MS_PER_CHAR = 80; // 글자당 약 80ms
+  const captions = [];
+  let currentMs = 500; // 0.5초 인트로
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const duration = Math.max(300, word.length * MS_PER_CHAR);
+    captions.push({
+      text: i === 0 ? word : ` ${word}`,
+      startMs: currentMs,
+      endMs: currentMs + duration,
+      timestampMs: currentMs,
+      confidence: 1,
+    });
+    currentMs += duration + 50;
+  }
+  return { captions, totalMs: currentMs + 500 };
+}
+
+// 자막 미리보기 컴포넌트
+function CaptionPreview({ script, highlightColor, fontFamily }) {
+  const words = script.trim().split(/\s+/).filter(Boolean).slice(0, 12);
+  const [activeIdx, setActiveIdx] = useState(0);
+
+  useEffect(() => {
+    if (words.length === 0) return;
+    const interval = setInterval(() => {
+      setActiveIdx(i => (i + 1) % words.length);
+    }, 600);
+    return () => clearInterval(interval);
+  }, [words.length]);
+
+  if (words.length === 0) {
+    return (
+      <div className="text-xs text-gray-400 text-center py-4">
+        스크립트를 입력하면 자막 미리보기가 표시됩니다
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden relative"
+      style={{ aspectRatio: "9/16", maxHeight: 220, background: "#1a1a2e" }}
+    >
+      {/* 배경 그라디언트 시뮬레이션 */}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60" />
+      {/* 자막 */}
+      <div className="absolute inset-0 flex items-center justify-center px-4">
+        <div
+          className="rounded-xl px-4 py-2 text-center"
+          style={{ background: "rgba(0,0,0,0.5)", fontFamily }}
+        >
+          <p className="text-white font-black leading-tight" style={{ fontSize: 18, textShadow: "0 0 8px #000" }}>
+            {words.map((w, i) => (
+              <span
+                key={i}
+                style={{ color: i === activeIdx ? highlightColor : "#fff", transition: "color 0.1s" }}
+              >
+                {i === 0 ? w : ` ${w}`}
+              </span>
+            ))}
+          </p>
+        </div>
+      </div>
+      {/* 9:16 레이블 */}
+      <div className="absolute bottom-2 right-2 text-[9px] text-white/40 font-mono">9:16</div>
+    </div>
+  );
+}
+
+// ── 커뮤니티 영상 탭 (→ ./community/index.jsx 로 이전됨, VideoPage에서 import 사용)
+// eslint-disable-next-line no-unused-vars
+function _CommunityTab_DEPRECATED({ nasState, onGoToNas }) {
+  const [step, setStep]             = useState(1); // 1~4단계
+  const [script, setScript]         = useState("");
+  const [selectedBg, setSelectedBg] = useState("minecraft");
+  const [highlightColor, setHighlightColor] = useState("#FFE600");
+  const [fontFamily, setFontFamily] = useState("Noto Sans KR");
+  const [captionPos, setCaptionPos] = useState("center");
+  const [elevenlabsKey, setElevenlabsKey] = useState("");
+  const [voiceId, setVoiceId]       = useState("cgSgspJ2msm6clMCkdW9"); // ElevenLabs 한국어 기본
+  const [generating, setGenerating] = useState(false);
+  const [generated, setGenerated]   = useState(null); // { remotionUrl, captions, totalMs }
+  const [showKeyInput, setShowKeyInput] = useState(false);
+
+  const scriptLen = script.trim().length;
+  const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
+  const estSeconds = Math.round(wordCount * 0.4); // 분당 약 150단어 기준
+
+  // 영상 생성 시뮬레이션 (실제로는 Remotion 렌더 API 호출)
+  const handleGenerate = async () => {
+    if (!script.trim()) return;
+    setGenerating(true);
+    setGenerated(null);
+
+    // 자막 타이밍 자동 생성
+    const { captions, totalMs } = generateCaptionsFromText(script);
+
+    // Remotion Studio URL 파라미터 구성
+    const params = new URLSearchParams({
+      script: script.slice(0, 200),
+      bg: selectedBg,
+      highlight: highlightColor,
+      font: fontFamily,
+      pos: captionPos,
+    });
+
+    await new Promise(r => setTimeout(r, 1200)); // 생성 시뮬레이션
+
+    setGenerated({
+      captions,
+      totalMs,
+      wordCount,
+      estSeconds,
+      remotionUrl: `http://localhost:3000?${params}`,
+    });
+    setGenerating(false);
+  };
+
+  const bgPreset = BG_PRESETS.find(b => b.key === selectedBg);
+
+  // ── STEP 렌더러 ──
+  const steps = [
+    { num: 1, label: "스크립트" },
+    { num: 2, label: "배경 영상" },
+    { num: 3, label: "자막 스타일" },
+    { num: 4, label: "AI 보이스" },
+  ];
+
   return (
     <div>
-      <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center mb-5 shadow-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
+      <div className="p-6 space-y-6">
+
+        {/* 헤더 */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <div>
+            <h4 className="text-base font-bold text-gray-800">커뮤니티 썰 영상 메이커</h4>
+            <p className="text-xs text-gray-400">텍스트만 입력하면 숏폼 영상이 자동 완성됩니다</p>
+          </div>
         </div>
-        <h4 className="text-base font-semibold text-gray-700 mb-2">커뮤니티 영상</h4>
-        <p className="text-sm text-gray-400 max-w-xs">
-          주제를 입력하면 AI가 커뮤니티 반응형<br />숏폼·릴스 영상을 기획·제작합니다.<br />
-          <span className="text-indigo-500 font-medium">준비 중입니다</span>
-        </p>
+
+        {/* 스텝 네비게이션 */}
+        <div className="flex items-center gap-1">
+          {steps.map((s, i) => (
+            <div key={s.num} className="flex items-center gap-1 flex-1">
+              <button
+                onClick={() => setStep(s.num)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 justify-center ${
+                  step === s.num
+                    ? "bg-indigo-600 text-white shadow"
+                    : step > s.num
+                    ? "bg-indigo-50 text-indigo-600"
+                    : "bg-gray-100 text-gray-400"
+                }`}
+              >
+                <span className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-bold ${
+                  step === s.num ? "bg-white text-indigo-600" :
+                  step > s.num  ? "bg-indigo-200 text-indigo-700" : "bg-gray-300 text-gray-500"
+                }`}>{s.num}</span>
+                {s.label}
+              </button>
+              {i < steps.length - 1 && (
+                <div className={`w-3 h-0.5 rounded flex-shrink-0 ${step > s.num ? "bg-indigo-300" : "bg-gray-200"}`} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* ── STEP 1: 썰 스크립트 입력 ── */}
+        {step === 1 && (
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-semibold text-gray-700">썰 스크립트</label>
+                <span className={`text-xs ${scriptLen > 800 ? "text-red-500" : "text-gray-400"}`}>
+                  {scriptLen} / 1000자 · 약 {estSeconds}초 영상
+                </span>
+              </div>
+              <textarea
+                value={script}
+                onChange={e => setScript(e.target.value)}
+                maxLength={1000}
+                rows={10}
+                placeholder={"커뮤니티에서 가져온 썰을 그대로 붙여넣으세요.\n\n예시:\n아 진짜 오늘 있었던 일 들어봐\n회사 점심시간에 편의점 갔는데\n거기서 진짜 말도 안 되는 상황이 생겼어\n..."}
+                className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 transition-colors resize-none leading-relaxed font-medium"
+                style={{ lineHeight: 1.8 }}
+              />
+              {scriptLen > 0 && (
+                <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                  <span>{wordCount} 단어</span>
+                  <span>예상 영상 길이: <strong className="text-indigo-600">{estSeconds}~{Math.round(estSeconds * 1.3)}초</strong></span>
+                </div>
+              )}
+            </div>
+
+            {/* 예시 썰 버튼 */}
+            <div>
+              <p className="text-xs text-gray-400 mb-2 font-medium">예시 썰로 시작하기</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "직장 상사 썰 🏢", text: "아 진짜 오늘 있었던 일 들어봐\n회사 점심시간에 편의점 갔는데\n거기서 팀장이 나를 발견한 거야\n그런데 팀장 손에 뭐가 있는 줄 알아?\n오이맛 아이스크림이었어\n평소에 그렇게 근엄하게 굴더니\n혼자 편의점에서 그걸 먹고 있는 거 보고\n나도 팀장도 얼어버렸지\n팀장이 먼저 말했어\n오늘 본 거 없는 걸로 하자고" },
+                  { label: "지하철 썰 🚇", text: "어제 지하철에서 진짜 신기한 거 봤어\n자리가 꽉 찼는데 내 옆에 아저씨가\n갑자기 휴대폰으로 뭘 열심히 보더라고\n슬쩍 봤더니 뜨개질 영상이었어\n그리고 가방에서 실이랑 바늘을 꺼내서\n지하철에서 뜨개질을 시작하는 거야\n진짜 너무 자연스럽게\n내리기 전에 보니까 벌써 손바닥만큼 뜬 거 있잖아" },
+                  { label: "편의점 알바 썰 🏪", text: "알바 3년 동안 겪은 거 중에 제일 황당한 거\n손님이 들어오더니 대뜸\n여기 도토리묵 있어요 묻는 거야\n편의점인데 도토리묵을\n없다고 하니까 왜 없냐는 거 있지\n그래서 여기 편의점이라서요 했더니\n편의점에 왜 도토리묵이 없냐며 나가시더라\n나 아직도 그분 생각하면 웃겨" },
+                ].map(ex => (
+                  <button
+                    key={ex.label}
+                    onClick={() => setScript(ex.text)}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                  >
+                    {ex.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setStep(2)}
+              disabled={scriptLen < 10}
+              className="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            >
+              다음: 배경 영상 선택
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* ── STEP 2: 배경 영상 선택 ── */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-1">배경 영상 선택</p>
+              <p className="text-xs text-gray-400 mb-4">썰 영상에 어울리는 배경을 고르세요. 저작권 무료 영상입니다.</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {BG_PRESETS.map(bg => (
+                  <button
+                    key={bg.key}
+                    onClick={() => setSelectedBg(bg.key)}
+                    className={`relative rounded-xl border-2 p-4 text-left transition-all ${
+                      selectedBg === bg.key
+                        ? "border-indigo-400 bg-indigo-50 shadow-md"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${bg.color} flex items-center justify-center mb-2 text-lg shadow-sm`}>
+                      {bg.emoji}
+                    </div>
+                    <p className={`text-xs font-bold ${selectedBg === bg.key ? "text-indigo-700" : "text-gray-800"}`}>
+                      {bg.label}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{bg.desc}</p>
+                    <span className="mt-1.5 inline-block px-1.5 py-0.5 rounded-full text-[9px] bg-gray-100 text-gray-500">{bg.category}</span>
+                    {selectedBg === bg.key && (
+                      <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m20 6-11 11-5-5"/>
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setStep(1)} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                이전
+              </button>
+              <button onClick={() => setStep(3)} className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors">
+                다음: 자막 스타일
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 3: 자막 스타일 ── */}
+        {step === 3 && (
+          <div className="space-y-5">
+            <p className="text-sm font-semibold text-gray-700">자막 스타일 설정</p>
+
+            {/* 실시간 미리보기 */}
+            <div className="flex gap-4 items-start">
+              <div className="flex-shrink-0 w-[120px]">
+                <CaptionPreview
+                  script={script || "지금 말하고 있는 자막 스타일 미리보기입니다"}
+                  highlightColor={highlightColor}
+                  fontFamily={fontFamily}
+                />
+              </div>
+              <div className="flex-1 space-y-4">
+                {/* 폰트 선택 */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">폰트</label>
+                  <div className="space-y-1.5">
+                    {FONT_OPTIONS.map(f => (
+                      <label key={f.key} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="font"
+                          value={f.key}
+                          checked={fontFamily === f.key}
+                          onChange={() => setFontFamily(f.key)}
+                          className="accent-indigo-600"
+                        />
+                        <span className="text-xs text-gray-700">{f.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 하이라이트 색상 */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">하이라이트 색상</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {HIGHLIGHT_COLORS.map(c => (
+                      <button
+                        key={c.key}
+                        onClick={() => setHighlightColor(c.key)}
+                        title={c.label}
+                        className={`w-7 h-7 rounded-full border-2 transition-all ${highlightColor === c.key ? "border-gray-700 scale-110" : "border-transparent"}`}
+                        style={{ background: c.key }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* 자막 위치 */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">자막 위치</label>
+                  <div className="flex gap-2">
+                    {[{ k: "center", l: "중앙" }, { k: "bottom", l: "하단" }].map(p => (
+                      <button
+                        key={p.k}
+                        onClick={() => setCaptionPos(p.k)}
+                        className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
+                          captionPos === p.k ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-semibold" : "border-gray-200 text-gray-600"
+                        }`}
+                      >
+                        {p.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setStep(2)} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                이전
+              </button>
+              <button onClick={() => setStep(4)} className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors">
+                다음: AI 보이스
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 4: AI 보이스 & 생성 ── */}
+        {step === 4 && (
+          <div className="space-y-5">
+            <p className="text-sm font-semibold text-gray-700">AI 보이스 설정</p>
+
+            {/* ElevenLabs API 키 */}
+            <div className="rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">11</div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-gray-800">ElevenLabs TTS</p>
+                  <p className="text-xs text-gray-500 mt-0.5">가장 자연스러운 한국어 AI 목소리 제공</p>
+                </div>
+                <button
+                  onClick={() => setShowKeyInput(o => !o)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${elevenlabsKey ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                >
+                  {elevenlabsKey ? "연결됨 ✓" : "API 키 입력"}
+                </button>
+              </div>
+
+              {showKeyInput && (
+                <div className="space-y-2">
+                  <input
+                    type="password"
+                    value={elevenlabsKey}
+                    onChange={e => setElevenlabsKey(e.target.value)}
+                    placeholder="sk-... ElevenLabs API 키"
+                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-400 font-mono"
+                  />
+                  <p className="text-[10px] text-gray-400">
+                    키는 브라우저에만 저장되며 서버로 전송되지 않습니다.
+                    <a className="text-indigo-500 ml-1 underline" target="_blank" rel="noopener noreferrer"
+                      href="https://elevenlabs.io/app/speech-synthesis">
+                      ElevenLabs에서 무료로 받기 →
+                    </a>
+                  </p>
+                </div>
+              )}
+
+              {/* 보이스 선택 */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">보이스 선택</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: "cgSgspJ2msm6clMCkdW9", name: "서준 (남성)", desc: "차분하고 신뢰감" },
+                    { id: "XB0fDUnXU5powFXDhCwa", name: "채원 (여성)", desc: "밝고 에너지 넘침" },
+                    { id: "iP95p4xoKVk53GoZ742B", name: "민호 (남성)", desc: "낮고 중후함" },
+                    { id: "pFZP5JQG7iQjIQuC4Bku", name: "지아 (여성)", desc: "부드럽고 감성적" },
+                  ].map(v => (
+                    <button
+                      key={v.id}
+                      onClick={() => setVoiceId(v.id)}
+                      className={`text-left p-2.5 rounded-lg border transition-all ${
+                        voiceId === v.id ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <p className={`text-xs font-semibold ${voiceId === v.id ? "text-indigo-700" : "text-gray-800"}`}>
+                        {v.name}
+                      </p>
+                      <p className="text-[10px] text-gray-400">{v.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {!elevenlabsKey && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+                  API 키 없이도 자막 영상을 생성할 수 있습니다. (음성 없음)
+                </div>
+              )}
+            </div>
+
+            {/* 요약 카드 */}
+            <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 space-y-2.5">
+              <p className="text-xs font-bold text-gray-600">영상 생성 요약</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
+                  <p className="text-gray-400">스크립트</p>
+                  <p className="font-semibold text-gray-800 truncate">{wordCount} 단어 · ~{estSeconds}초</p>
+                </div>
+                <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
+                  <p className="text-gray-400">배경 영상</p>
+                  <p className="font-semibold text-gray-800">{bgPreset?.emoji} {bgPreset?.label}</p>
+                </div>
+                <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
+                  <p className="text-gray-400">하이라이트</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full" style={{ background: highlightColor }} />
+                    <span className="font-semibold text-gray-800">{HIGHLIGHT_COLORS.find(c => c.key === highlightColor)?.label}</span>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
+                  <p className="text-gray-400">AI 보이스</p>
+                  <p className="font-semibold text-gray-800">{elevenlabsKey ? "ElevenLabs" : "없음 (자막만)"}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 생성 버튼 */}
+            <div className="flex gap-2">
+              <button onClick={() => setStep(3)} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                이전
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={generating || scriptLen < 10}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-sm font-bold hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-md"
+              >
+                {generating ? (
+                  <>
+                    <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                    영상 생성 중…
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    영상 생성 시작
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* 생성 완료 결과 */}
+            {generated && (
+              <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m20 6-11 11-5-5"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-emerald-800">영상 구성 완료!</p>
+                    <p className="text-xs text-emerald-600">자막 {generated.captions.length}개 · 예상 {generated.estSeconds}초</p>
+                  </div>
+                </div>
+
+                {/* Remotion Studio 안내 */}
+                <div className="rounded-lg bg-white border border-emerald-200 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-gray-700">다음 단계: Remotion Studio에서 미리보기</p>
+                  <div className="rounded-lg bg-gray-900 text-green-400 font-mono text-[11px] p-3 space-y-1">
+                    <p className="text-gray-400"># community-video 폴더에서 실행:</p>
+                    <p>cd web/community-video</p>
+                    <p>npm run dev</p>
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    Remotion Studio(localhost:3000)에서 영상을 미리보고 렌더링하세요.
+                  </p>
+                </div>
+
+                {/* 자막 데이터 미리보기 */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">생성된 자막 ({generated.captions.length}개)</p>
+                  <div className="max-h-32 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                    {generated.captions.slice(0, 20).map((c, i) => (
+                      <div key={i} className="flex items-center gap-3 px-3 py-1.5 border-b border-gray-50 last:border-0">
+                        <span className="text-[10px] text-gray-400 font-mono w-12 flex-shrink-0">
+                          {(c.startMs / 1000).toFixed(1)}s
+                        </span>
+                        <span className="text-xs text-gray-700">{c.text}</span>
+                      </div>
+                    ))}
+                    {generated.captions.length > 20 && (
+                      <div className="px-3 py-1.5 text-[10px] text-gray-400 text-center">
+                        +{generated.captions.length - 20}개 더…
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 액션 버튼 */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([JSON.stringify(generated.captions, null, 2)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "captions.json";
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="flex-1 py-2 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
+                    </svg>
+                    captions.json 저장
+                  </button>
+                  <button
+                    onClick={() => { setGenerated(null); setStep(1); setScript(""); }}
+                    className="flex-1 py-2 rounded-lg bg-indigo-600 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
+                  >
+                    새 영상 만들기
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
       <NasSaveFooter nasState={nasState} subfolder="커뮤니티" onGoToNas={onGoToNas} />
     </div>
   );
