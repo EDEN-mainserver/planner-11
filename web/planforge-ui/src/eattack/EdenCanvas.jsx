@@ -810,6 +810,15 @@ function TopBar({ onBack, canvasSize, showSizeMenu, setShowSizeMenu, onSelectSiz
         </svg>
         PNG 저장
       </button>
+
+      {/* 계정으로 옮기기 */}
+      <button
+        className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors shadow-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        계정으로 옮기기
+      </button>
     </div>
   );
 }
