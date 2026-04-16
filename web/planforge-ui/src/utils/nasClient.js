@@ -115,11 +115,29 @@ export async function listFsFolder(subfolder = '') {
 // ── Docker 프록시 / dufs (2순위, 가장 안정적인 네트워크 방식) ────────
 
 /**
+ * dufs 베이스 URL 생성
+ * - 도메인 호스트(예: nas.teamedenmarketing.com)면 HTTPS, 포트 생략
+ * - IP 또는 localhost면 HTTP + 포트
+ */
+function buildDufsBase(host, port) {
+  if (!host) return '';
+  // 이미 프로토콜 포함된 경우
+  if (host.startsWith('http://') || host.startsWith('https://')) return host.replace(/\/$/, '');
+  // IP 주소 또는 localhost → HTTP + 포트
+  const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host === 'localhost';
+  if (isIp) return `http://${host}:${port}`;
+  // 도메인 → HTTPS, 포트 443이면 생략
+  const p = String(port);
+  if (!p || p === '443' || p === '') return `https://${host}`;
+  return `https://${host}:${port}`;
+}
+
+/**
  * dufs 컨테이너 연결 테스트
- * dufs는 GET / 로 디렉토리 목록을 반환함 (WebDAV PROPFIND도 지원)
  */
 export async function testDufsConnection(host, port) {
-  const url = `http://${host}:${port}/`;
+  const base = buildDufsBase(host, port);
+  const url = `${base}/`;
   try {
     const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(5000) });
     if (res.ok) return { ok: true, message: '프록시 서버 연결 성공' };
@@ -127,7 +145,7 @@ export async function testDufsConnection(host, port) {
   } catch (err) {
     const msg = err.message || '';
     if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-      return { ok: false, cors: true, message: '컨테이너에 접근할 수 없습니다. 포트와 IP를 확인하세요.' };
+      return { ok: false, cors: true, message: '컨테이너에 접근할 수 없습니다. 주소와 포트를 확인하세요.' };
     }
     return { ok: false, message: `연결 오류: ${msg}` };
   }
@@ -135,10 +153,10 @@ export async function testDufsConnection(host, port) {
 
 /**
  * dufs에 파일 업로드 (PUT)
- * dufs는 인증 없이도 동작 (--allow-all 플래그 사용 시)
  */
 export async function uploadToDufs(host, port, remotePath, data, mimeType = 'application/octet-stream') {
-  const url = `http://${host}:${port}/${remotePath.replace(/^\//, '')}`;
+  const base = buildDufsBase(host, port);
+  const url = `${base}/${remotePath.replace(/^\//, '')}`;
   const res = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': mimeType },
@@ -147,17 +165,17 @@ export async function uploadToDufs(host, port, remotePath, data, mimeType = 'app
   if (!res.ok && res.status !== 201 && res.status !== 204) {
     throw new Error(`업로드 실패: HTTP ${res.status}`);
   }
-  return `http://${host}:${port}/${remotePath.replace(/^\//, '')}`;
+  return url;
 }
 
 /**
  * dufs 폴더 생성 (MKCOL — WebDAV)
  */
 export async function createDufsFolder(host, port, folderPath) {
-  const url = `http://${host}:${port}/${folderPath.replace(/^\//, '')}/`;
+  const base = buildDufsBase(host, port);
+  const url = `${base}/${folderPath.replace(/^\//, '')}/`;
   const res = await fetch(url, { method: 'MKCOL' });
   if (res.status !== 201 && res.status !== 405 && res.status !== 200) {
-    // dufs는 자동으로 상위 폴더도 생성하므로 대부분 성공
     console.warn(`MKCOL ${folderPath}: ${res.status}`);
   }
 }
@@ -166,25 +184,24 @@ export async function createDufsFolder(host, port, folderPath) {
  * dufs 파일 목록 조회 (JSON 모드)
  */
 export async function listDufsFolder(host, port, folderPath = '') {
+  const base = buildDufsBase(host, port);
   const path = folderPath.replace(/^\//, '');
-  const url = `http://${host}:${port}/${path}${path ? '/' : ''}`;
+  const url = `${base}/${path}${path ? '/' : ''}`;
   const res = await fetch(url, {
     headers: { Accept: 'application/json' },
   });
   if (!res.ok) throw new Error(`목록 조회 실패: HTTP ${res.status}`);
 
-  // dufs JSON 응답 파싱
   try {
     const data = await res.json();
-    // dufs 응답: { paths: [{ name, path, is_dir, size, ... }] }
     const paths = data.paths || [];
     return paths
-      .filter(p => p.name !== '.') // 현재 디렉토리 항목 제외
+      .filter(p => p.name !== '.')
       .map(p => ({
         name: p.name,
         isDir: p.is_dir,
         size: p.size || 0,
-        href: `http://${host}:${port}/${p.path}`,
+        href: `${base}/${p.path}`,
       }))
       .sort((a, b) => {
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
