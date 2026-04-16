@@ -18,7 +18,7 @@ const TABS: { key: AiType | "all"; label: string }[] = [
 ];
 
 export default function HistoryPage() {
-  const { items, total, page, setPage, search, setSearch, activeType, setActiveType, deleteItem } = useHistory();
+  const { items, totalPages, page, setPage, search, setSearch, activeType, setActiveType, deleteItem } = useHistory();
 
   return (
     <div className="p-8">
@@ -27,7 +27,6 @@ export default function HistoryPage() {
         <SearchInput
           value={search}
           onChange={setSearch}
-          onClear={() => setSearch("")}
           placeholder="제목으로 검색..."
           className="w-72"
         />
@@ -68,7 +67,7 @@ export default function HistoryPage() {
             ))}
           </div>
 
-          <Pagination page={page} total={total} onChange={setPage} />
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         </>
       )}
     </div>

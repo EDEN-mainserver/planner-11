@@ -10,6 +10,8 @@ export function useReels() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const PER_PAGE = 12;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
   useEffect(() => {
     setLoading(true);
@@ -28,5 +30,5 @@ export function useReels() {
       .finally(() => setLoading(false));
   }, [category, search, page]);
 
-  return { reels, loading, category, setCategory, search, setSearch, page, setPage, total };
+  return { reels, loading, category, setCategory, search, setSearch, page, setPage, total, totalPages };
 }

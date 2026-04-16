@@ -1,19 +1,19 @@
 interface ProgressBarProps {
-  value: number; // 0~100
+  value: number
+  max: number
+  className?: string
 }
 
-export default function ProgressBar({ value }: ProgressBarProps) {
-  const clamped = Math.min(100, Math.max(0, value));
+export default function ProgressBar({ value, max, className = '' }: ProgressBarProps) {
+  const isInfinity = max === Infinity
+  const percent = isInfinity ? 100 : Math.min((value / max) * 100, 100)
+
   return (
-    <div className="w-full h-[3px] bg-[#E5E5EF] rounded-full overflow-hidden">
+    <div className={`w-full h-[3px] bg-slate-100 rounded-full overflow-hidden ${className}`}>
       <div
-        className="h-full rounded-full"
-        style={{
-          width: `${clamped}%`,
-          background: "linear-gradient(90deg, #6C63FF, #9B93FF)",
-          transition: "width 0.3s ease",
-        }}
+        className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-500"
+        style={{ width: `${percent}%` }}
       />
     </div>
-  );
+  )
 }

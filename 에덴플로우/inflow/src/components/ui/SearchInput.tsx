@@ -1,38 +1,45 @@
-"use client";
+'use client'
+import { Search, X } from 'lucide-react'
 
 interface SearchInputProps {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  onClear?: () => void;
-  className?: string;
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  className?: string
 }
 
 export default function SearchInput({
   value,
   onChange,
-  placeholder = "검색...",
-  onClear,
-  className = "",
+  placeholder = '검색...',
+  className = ''
 }: SearchInputProps) {
   return (
     <div className={`relative flex items-center ${className}`}>
-      <span className="absolute left-3 text-[#999] text-sm">🔍</span>
+      <Search className="absolute left-4 w-4 h-4 text-slate-400 pointer-events-none" />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-[#F4F4F8] border-none outline-none rounded-[12px] pl-8 pr-8 py-2.5 text-sm text-[#111] placeholder:text-[#999] focus:ring-2 focus:ring-[#6C63FF]"
+        className="
+          w-full pl-10 pr-10 py-3
+          bg-slate-100 rounded-2xl
+          text-sm font-medium text-slate-700
+          placeholder:text-slate-400
+          border-none outline-none
+          focus:ring-2 focus:ring-indigo-200
+          transition-all
+        "
       />
-      {value && onClear && (
+      {value && (
         <button
-          onClick={onClear}
-          className="absolute right-3 text-[#999] hover:text-[#555] text-xs"
+          onClick={() => onChange('')}
+          className="absolute right-4 text-slate-400 hover:text-slate-600"
         >
-          ✕
+          <X className="w-4 h-4" />
         </button>
       )}
     </div>
-  );
+  )
 }

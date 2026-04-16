@@ -1,39 +1,33 @@
-"use client";
+'use client'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface PaginationProps {
-  page: number;
-  total: number;
-  perPage?: number;
-  onChange: (page: number) => void;
+  page: number
+  totalPages: number
+  onChange: (page: number) => void
+  className?: string
 }
 
-export default function Pagination({
-  page,
-  total,
-  perPage = 12,
-  onChange,
-}: PaginationProps) {
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-
+export default function Pagination({ page, totalPages, onChange, className = '' }: PaginationProps) {
   return (
-    <div className="flex items-center justify-center gap-4 py-4 text-sm text-[#555]">
+    <div className={`flex items-center justify-center gap-4 py-6 ${className}`}>
       <button
         onClick={() => onChange(page - 1)}
         disabled={page <= 1}
-        className="disabled:opacity-30 hover:text-[#6C63FF] transition-colors"
+        className="p-2 rounded-xl hover:bg-slate-100 disabled:opacity-30 transition-all"
       >
-        ‹
+        <ChevronLeft className="w-4 h-4 text-slate-600" />
       </button>
-      <span>
+      <span className="text-sm font-bold text-slate-600">
         {page} / {totalPages}
       </span>
       <button
         onClick={() => onChange(page + 1)}
         disabled={page >= totalPages}
-        className="disabled:opacity-30 hover:text-[#6C63FF] transition-colors"
+        className="p-2 rounded-xl hover:bg-slate-100 disabled:opacity-30 transition-all"
       >
-        ›
+        <ChevronRight className="w-4 h-4 text-slate-600" />
       </button>
     </div>
-  );
+  )
 }

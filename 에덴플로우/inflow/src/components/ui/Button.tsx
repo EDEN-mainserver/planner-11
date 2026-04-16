@@ -1,39 +1,50 @@
-import { cn } from "@/lib/utils";
-import type { ButtonHTMLAttributes } from "react";
+import React from 'react'
 
-type Variant = "primary" | "dark" | "outline";
+type Variant = 'primary' | 'dark' | 'outline' | 'ghost'
+type Size = 'sm' | 'md' | 'lg'
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant;
-  fullWidth?: boolean;
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant
+  size?: Size
+  fullWidth?: boolean
+  children: React.ReactNode
 }
 
-const styles: Record<Variant, string> = {
-  primary:
-    "bg-[#6C63FF] hover:bg-[#4B44CC] text-white",
-  dark: "bg-[#111111] hover:bg-[#333] text-white",
-  outline:
-    "border border-[#E5E5EF] bg-white hover:bg-[#F4F4F8] text-[#111111]",
-};
+const variantClass: Record<Variant, string> = {
+  primary: 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200',
+  dark:    'bg-slate-900 text-white hover:bg-slate-800',
+  outline: 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50',
+  ghost:   'bg-transparent text-slate-600 hover:bg-slate-100',
+}
+
+const sizeClass: Record<Size, string> = {
+  sm: 'px-3 py-1.5 text-xs rounded-xl',
+  md: 'px-5 py-3 text-sm rounded-xl',
+  lg: 'px-8 py-4 text-base rounded-2xl',
+}
 
 export default function Button({
-  variant = "primary",
-  fullWidth,
-  className,
+  variant = 'primary',
+  size = 'md',
+  fullWidth = false,
+  className = '',
   children,
   ...props
 }: ButtonProps) {
   return (
     <button
-      className={cn(
-        "h-12 px-6 rounded-[12px] text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2",
-        styles[variant],
-        fullWidth && "w-full",
-        className
-      )}
+      className={`
+        inline-flex items-center justify-center gap-2
+        font-bold transition-all duration-200
+        disabled:opacity-50 disabled:cursor-not-allowed
+        ${variantClass[variant]}
+        ${sizeClass[size]}
+        ${fullWidth ? 'w-full' : ''}
+        ${className}
+      `}
       {...props}
     >
       {children}
     </button>
-  );
+  )
 }

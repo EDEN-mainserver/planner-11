@@ -9,13 +9,13 @@ import { REELS_CATEGORIES } from "@/constants/categories";
 import { useReels } from "@/hooks/useReels";
 
 export default function FindReelsPage() {
-  const { reels, loading, category, setCategory, search, setSearch, page, setPage, total } = useReels();
+  const { reels, loading, category, setCategory, search, setSearch, page, setPage, totalPages } = useReels();
 
   return (
     <div className="p-8">
       <h1 className="text-xl font-bold text-[#111] mb-6">릴스 모음</h1>
 
-      <SearchInput value={search} onChange={setSearch} onClear={() => setSearch("")}
+      <SearchInput value={search} onChange={setSearch}
         placeholder="캡션/해시태그 검색..." className="w-full mb-4" />
 
       <div className="mb-6 overflow-x-auto">
@@ -49,7 +49,7 @@ export default function FindReelsPage() {
               </a>
             ))}
           </div>
-          <Pagination page={page} total={total} onChange={setPage} />
+          <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         </>
       )}
     </div>

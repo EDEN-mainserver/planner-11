@@ -1,33 +1,42 @@
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --primary: #6c63ff;
-  --primary-dark: #4b44cc;
-  --accent: #ff6584;
-  --bg-1: #ffffff;
-  --bg-2: #f4f4f8;
-  --bg-3: #f0f0f6;
-  --border: #e5e5ef;
-  --text-1: #111111;
-  --text-2: #555555;
-  --text-3: #999999;
+@layer base {
+  html {
+    font-family: 'Pretendard', system-ui, -apple-system, sans-serif;
+  }
+  body {
+    @apply text-slate-800 bg-white overflow-x-hidden;
+  }
+  * {
+    box-sizing: border-box;
+  }
 }
 
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #e5e5ef transparent;
-}
-*::-webkit-scrollbar { width: 4px; height: 4px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background-color: #e5e5ef; border-radius: 9999px; }
-
-body {
-  font-family: "Pretendard", "Inter", sans-serif;
-  background-color: var(--bg-2);
-  color: var(--text-1);
-  -webkit-font-smoothing: antialiased;
+@layer utilities {
+  .gradient-text {
+    background: linear-gradient(90deg, #4f46e5, #9333ea);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .gradient-text-pink {
+    background: linear-gradient(90deg, #4f46e5, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .gradient-bg-instagram {
+    background: linear-gradient(135deg, #f9ce34, #ee2a7b, #6228d7);
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }

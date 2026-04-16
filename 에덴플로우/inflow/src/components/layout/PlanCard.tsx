@@ -32,7 +32,6 @@ export default function PlanCard() {
           const limit = PLAN_LIMITS.FREE[key];
           const used = usage[key];
           const isInfinite = limit === Infinity;
-          const pct = isInfinite ? 0 : (used / (limit as number)) * 100;
 
           return (
             <li key={key}>
@@ -45,7 +44,7 @@ export default function PlanCard() {
                   {isInfinite ? "∞" : `${used}/${limit}`}
                 </span>
               </div>
-              {!isInfinite && <ProgressBar value={pct} />}
+              {!isInfinite && <ProgressBar value={used} max={limit as number} />}
             </li>
           );
         })}

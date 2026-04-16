@@ -13,10 +13,11 @@ export function useHistory() {
   const { getFiltered, deleteItem } = useHistoryStore();
   const all = getFiltered(activeType, search);
   const total = all.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const items = all.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   return {
-    items, total, page, setPage,
+    items, total, totalPages, page, setPage,
     search, setSearch,
     activeType, setActiveType,
     deleteItem,
