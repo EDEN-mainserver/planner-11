@@ -60,7 +60,9 @@
       "Bash(curl -s http://localhost:5173)",
       "Bash(kill %1)",
       "Read(//c/Users/gram/AppData/Local/com.vercel.cli/**)",
-      "Read(//c/Users/gram/**)"
+      "Read(//c/Users/gram/**)",
+      "Bash(grep -n \"const U\\\\|let U\\\\|var U\\\\|{U\\\\|= U\\\\|,U\\\\|\\(U\\\\| U\\\\|\\\\[U\" /c/Users/gram/Desktop/planforge_complete/web/planforge-ui/src/eattack/EdenCanvas.jsx)",
+      "Bash(grep -rn \"\\\\bU\\\\b\" /c/Users/gram/Desktop/planforge_complete/web/planforge-ui/src/eattack/*.jsx)"
     ]
   }
 }

@@ -163,8 +163,9 @@ export default function EdenCanvas({ onBack }) {
   const [selBox, setSelBox]         = useState(null); // 드래그 선택 박스 {x1,y1,x2,y2}
 
   // ── Undo / Redo ──
-  const histRef = useRef([]);
-  const futRef  = useRef([]);
+  const histRef     = useRef([]);
+  const futRef      = useRef([]);
+  const elementsRef = useRef([]);     // elements 최신값 (onMouseUp에서 사용, 선언을 사용 위치 앞으로 이동)
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
@@ -223,7 +224,6 @@ export default function EdenCanvas({ onBack }) {
   const resizeRef    = useRef(null);   // { id, handle, startX, startY, origEl }
   const selBoxRef    = useRef(null);   // { startX, startY } 캔버스 좌표
   const clipboardRef = useRef(null);   // copied element
-  const elementsRef  = useRef([]);     // elements 최신값 (onMouseUp에서 사용)
   const [baseScale, setBaseScale] = useState(0.7);
 
   const scale = manualZoom !== null ? manualZoom : baseScale;
