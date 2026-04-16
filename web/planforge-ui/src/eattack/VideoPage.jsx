@@ -4,6 +4,7 @@
  * - 영상편집 자동화 탭
  * - 풀그래픽영상 탭
  * - 커뮤니티 영상 탭
+ * - 롱폼을 숏폼으로 탭
  */
 import { useState } from "react";
 
@@ -56,6 +57,17 @@ const VIDEO_TABS = [
     ),
     gradient: "from-indigo-500 to-blue-600",
     description: "커뮤니티 반응형 숏폼·릴스 영상을 주제에 맞게 자동으로 기획·제작합니다",
+  },
+  {
+    key: "longshort",
+    label: "롱폼을 숏폼으로",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/>
+      </svg>
+    ),
+    gradient: "from-orange-500 to-rose-500",
+    description: "긴 영상을 업로드하면 AI가 핵심 장면을 추출해 숏폼·릴스로 자동 변환합니다",
   },
 ];
 
@@ -134,6 +146,26 @@ function CommunityTab() {
         주제를 입력하면 AI가 커뮤니티 반응형<br />
         숏폼·릴스 영상을 기획·제작합니다.<br />
         <span className="text-indigo-500 font-medium">준비 중입니다</span>
+      </p>
+    </div>
+  );
+}
+
+// ── 롱폼을 숏폼으로 탭 ──
+function LongToShortTab() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center mb-5 shadow-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/>
+        </svg>
+      </div>
+      <h4 className="text-base font-semibold text-gray-700 mb-2">롱폼을 숏폼으로</h4>
+      <p className="text-sm text-gray-400 max-w-xs">
+        긴 영상을 업로드하면 AI가<br />
+        핵심 장면을 자동 추출·편집해<br />
+        숏폼·릴스로 변환합니다.<br />
+        <span className="text-orange-500 font-medium">준비 중입니다</span>
       </p>
     </div>
   );
@@ -231,6 +263,7 @@ export default function VideoPage({ onBack }) {
           {activeTab === "autoedit"     && <AutoEditTab />}
           {activeTab === "fullgraphic"  && <FullGraphicTab />}
           {activeTab === "community"    && <CommunityTab />}
+          {activeTab === "longshort"    && <LongToShortTab />}
         </div>
 
       </div>

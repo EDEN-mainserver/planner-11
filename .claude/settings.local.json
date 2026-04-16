@@ -58,7 +58,9 @@
       "Bash(cp -r \"C:/Users/gram/Desktop/esign-nas/E-Sign.ver2/static\" \"C:/Users/gram/Desktop/planforge_complete/e-sign/\")",
       "Bash(node --input-type=module --eval ':*)",
       "Bash(curl -s http://localhost:5173)",
-      "Bash(kill %1)"
+      "Bash(kill %1)",
+      "Read(//c/Users/gram/AppData/Local/com.vercel.cli/**)",
+      "Read(//c/Users/gram/**)"
     ]
   }
 }

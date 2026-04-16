@@ -57,7 +57,6 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
             { key: 'projects', label: '모든 프로젝트', icon: '📋' },
             { key: 'trash',    label: '휴지통',       icon: '🗑️', badge: trash.length },
             { key: 'admin',    label: '관리자',       icon: '⚙️' },
-            { key: 'billing',  label: '플랜 및 결제', icon: '💳' },
             { key: 'notif',    label: '알림함',       icon: '🔔' },
           ].map(item => (
             <div key={item.key}
