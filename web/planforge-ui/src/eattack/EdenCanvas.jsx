@@ -286,19 +286,25 @@ export default function EdenCanvas({ onBack }) {
   const handleImageUpload = (e) => {
     const file = e.target.files[0]; if (!file) return;
     const isVideo = file.type.startsWith("video/");
-    const reader = new FileReader();
-    reader.onload = (ev) => {
+    if (isVideo) {
+      // 영상은 ObjectURL 사용 (base64 인코딩 시 대용량 파일 처리 불가)
+      const src = URL.createObjectURL(file);
       saveHistory();
       const id = uid();
-      if (isVideo) {
-        setElements(prev => [...prev, {id, type:"video", x:50, y:50, w:400, h:300, src:ev.target.result, opacity:1, strokeColor:"none", strokeWidth:0}]);
-      } else {
-        setElements(prev => [...prev, {id, type:"image", x:50, y:50, w:400, h:300, src:ev.target.result, opacity:1, strokeColor:"none", strokeWidth:0}]);
-      }
+      setElements(prev => [...prev, {id, type:"video", x:50, y:50, w:400, h:300, src, opacity:1, strokeColor:"none", strokeWidth:0}]);
       setSelectedIds([id]);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
+      e.target.value = "";
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        saveHistory();
+        const id = uid();
+        setElements(prev => [...prev, {id, type:"image", x:50, y:50, w:400, h:300, src:ev.target.result, opacity:1, strokeColor:"none", strokeWidth:0}]);
+        setSelectedIds([id]);
+      };
+      reader.readAsDataURL(file);
+      e.target.value = "";
+    }
   };
 
   // ── 배경 이미지 업로드 ──
