@@ -1039,7 +1039,7 @@ function ThumbElement({ el, scale }) {
     return <div style={{...s,...tDashed,...tShape,...tStroke}}/>;
   }
   if (el.type==="image") return <img src={el.src} alt="" draggable={false} style={{...s,objectFit:"cover"}}/>;
-  if (el.type==="video") return <video src={el.src} style={{...s,objectFit:"cover"}} autoPlay loop muted playsInline draggable={false}/>;
+  if (el.type==="video") return <video src={el.src} style={{...s,objectFit:"cover"}} muted playsInline draggable={false}/>;
   if (el.type==="text")  return (
     <div style={{...s, fontSize:el.fontSize*scale, color:el.color, fontWeight:el.fontWeight,
       fontStyle:el.fontStyle||"normal", textDecoration:el.textDecoration||"none",
@@ -1053,7 +1053,9 @@ function ThumbElement({ el, scale }) {
 // 캔버스 요소 + 리사이즈 핸들
 // ─────────────────────────────────────────────
 function CanvasElement({ el, selected, isSingleSelected, editing, onMouseDown, onResizeStart, onDoubleClick, onBlur, onChange }) {
-  const textRef = useRef(null);
+  const textRef  = useRef(null);
+  const videoRef = useRef(null);
+
   useEffect(()=>{
     if (editing && textRef.current) {
       textRef.current.focus();
@@ -1061,6 +1063,13 @@ function CanvasElement({ el, selected, isSingleSelected, editing, onMouseDown, o
       const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
     }
   },[editing]);
+
+  // 영상 요소: src 변경 시 재생 강제 시작 (브라우저 autoplay 정책 우회)
+  useEffect(() => {
+    if (el.type === "video" && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [el.type, el.src]);
 
   // 래퍼 div가 위치·선택 아웃라인 담당
   const wrapperStyle = {
@@ -1088,7 +1097,30 @@ function CanvasElement({ el, selected, isSingleSelected, editing, onMouseDown, o
     inner = <img src={el.src} alt="" draggable={false} style={{...innerBase,objectFit:"cover",display:"block",...strokeStyle}} onMouseDown={onMouseDown}/>;
   } else if (el.type==="video") {
     const strokeStyle = (el.strokeWidth>0&&el.strokeColor&&el.strokeColor!=="none") ? {boxShadow:`inset 0 0 0 ${el.strokeWidth}px ${el.strokeColor}`} : {};
-    inner = <video src={el.src} autoPlay loop muted playsInline draggable={false} style={{...innerBase,objectFit:"cover",display:"block",...strokeStyle}} onMouseDown={onMouseDown}/>;
+    inner = (
+      <div style={{position:"relative", width:"100%", height:"100%", cursor:"move"}} onMouseDown={onMouseDown}>
+        <video
+          ref={videoRef}
+          src={el.src}
+          autoPlay loop muted playsInline draggable={false}
+          style={{...innerBase, objectFit:"cover", display:"block", pointerEvents:"none", ...strokeStyle}}
+        />
+        {/* 영상 표시 뱃지 — 선택 시 표시 */}
+        {selected && (
+          <div style={{
+            position:"absolute", top:6, left:6,
+            background:"rgba(0,0,0,0.55)", borderRadius:4,
+            padding:"2px 6px", display:"flex", alignItems:"center", gap:4,
+            pointerEvents:"none",
+          }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="white" stroke="none">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
+            <span style={{color:"white", fontSize:9, fontWeight:600, letterSpacing:0.5}}>VIDEO</span>
+          </div>
+        )}
+      </div>
+    );
   } else if (el.type==="text") {
     inner = (
       <div ref={textRef} contentEditable={editing} suppressContentEditableWarning
@@ -1321,8 +1353,18 @@ function PropertiesPanel({ el, multiCount, onChange, onDelete, onMoveLayer, onAl
           </Section>
         )}
 
-        {/* 테두리 (도형·이미지 공통) */}
-        {(el.type==="rect"||el.type==="image") && (
+        {/* 영상 속성 */}
+        {el.type==="video" && (
+          <Section label="영상">
+            <div className="w-full h-16 rounded-lg overflow-hidden border border-gray-200 bg-black">
+              <video src={el.src} autoPlay loop muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+            </div>
+            <p className="text-[9px] text-gray-400 mt-1 text-center">자동 재생 · 루프 · 음소거</p>
+          </Section>
+        )}
+
+        {/* 테두리 (도형·이미지·영상 공통) */}
+        {(el.type==="rect"||el.type==="image"||el.type==="video") && (
           <Section label="테두리">
             {/* 활성 토글 + 색상 */}
             <div className="flex items-center gap-2 mb-2">
