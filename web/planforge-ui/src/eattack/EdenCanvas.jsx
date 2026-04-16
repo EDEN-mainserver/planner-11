@@ -282,14 +282,19 @@ export default function EdenCanvas({ onBack }) {
     setSelectedIds([id]);
   };
 
-  // ── 이미지 업로드 ──
+  // ── 이미지/영상 업로드 ──
   const handleImageUpload = (e) => {
     const file = e.target.files[0]; if (!file) return;
+    const isVideo = file.type.startsWith("video/");
     const reader = new FileReader();
     reader.onload = (ev) => {
       saveHistory();
       const id = uid();
-      setElements(prev => [...prev, {id, type:"image", x:50, y:50, w:400, h:300, src:ev.target.result, opacity:1, strokeColor:"none", strokeWidth:0}]);
+      if (isVideo) {
+        setElements(prev => [...prev, {id, type:"video", x:50, y:50, w:400, h:300, src:ev.target.result, opacity:1, strokeColor:"none", strokeWidth:0}]);
+      } else {
+        setElements(prev => [...prev, {id, type:"image", x:50, y:50, w:400, h:300, src:ev.target.result, opacity:1, strokeColor:"none", strokeWidth:0}]);
+      }
       setSelectedIds([id]);
     };
     reader.readAsDataURL(file);
@@ -977,16 +982,16 @@ function Sidebar({ active, setActive, onApplyTemplate, onAddElement, onImageUplo
           {/* 사진 탭 */}
           {active==="photo" && (
             <>
-              <p className="text-[10px] text-gray-400 mb-2">로컬 파일에서 불러오기</p>
+              <p className="text-[10px] text-gray-400 mb-2">로컬 파일에서 불러오기 (이미지 · 영상)</p>
               <button onClick={()=>fileRef.current?.click()}
                 className="w-full flex flex-col items-center gap-2 py-6 rounded-xl border-2 border-dashed border-gray-300 hover:border-violet-400 hover:bg-violet-50 transition-all text-gray-400 hover:text-violet-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                 </svg>
-                <span className="text-xs font-medium">이미지 업로드</span>
-                <span className="text-[10px]">JPG, PNG, GIF, WEBP</span>
+                <span className="text-xs font-medium">이미지 / 영상 업로드</span>
+                <span className="text-[10px]">JPG, PNG, GIF, WEBP · MP4, MOV, WEBM</span>
               </button>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onImageUpload}/>
+              <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onImageUpload}/>
             </>
           )}
         </div>
@@ -1028,6 +1033,7 @@ function ThumbElement({ el, scale }) {
     return <div style={{...s,...tDashed,...tShape,...tStroke}}/>;
   }
   if (el.type==="image") return <img src={el.src} alt="" draggable={false} style={{...s,objectFit:"cover"}}/>;
+  if (el.type==="video") return <video src={el.src} style={{...s,objectFit:"cover"}} autoPlay loop muted playsInline draggable={false}/>;
   if (el.type==="text")  return (
     <div style={{...s, fontSize:el.fontSize*scale, color:el.color, fontWeight:el.fontWeight,
       fontStyle:el.fontStyle||"normal", textDecoration:el.textDecoration||"none",
@@ -1074,6 +1080,9 @@ function CanvasElement({ el, selected, isSingleSelected, editing, onMouseDown, o
   } else if (el.type==="image") {
     const strokeStyle = (el.strokeWidth>0&&el.strokeColor&&el.strokeColor!=="none") ? {boxShadow:`inset 0 0 0 ${el.strokeWidth}px ${el.strokeColor}`} : {};
     inner = <img src={el.src} alt="" draggable={false} style={{...innerBase,objectFit:"cover",display:"block",...strokeStyle}} onMouseDown={onMouseDown}/>;
+  } else if (el.type==="video") {
+    const strokeStyle = (el.strokeWidth>0&&el.strokeColor&&el.strokeColor!=="none") ? {boxShadow:`inset 0 0 0 ${el.strokeWidth}px ${el.strokeColor}`} : {};
+    inner = <video src={el.src} autoPlay loop muted playsInline draggable={false} style={{...innerBase,objectFit:"cover",display:"block",...strokeStyle}} onMouseDown={onMouseDown}/>;
   } else if (el.type==="text") {
     inner = (
       <div ref={textRef} contentEditable={editing} suppressContentEditableWarning
