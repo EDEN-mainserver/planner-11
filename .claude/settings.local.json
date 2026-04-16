@@ -34,7 +34,31 @@
       "Bash(\"C:/Users/gram/AppData/Local/Python/bin/python.exe\" -m pip install uvicorn fastapi pydantic httpx playwright)",
       "Bash(\"C:/Users/gram/AppData/Local/Python/bin/python.exe\" -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload)",
       "Bash(curl -s http://localhost:8001/)",
-      "Bash(node -e \"import\\('@sparticuz/chromium'\\).then\\(m => console.log\\('headless:', m.default.headless, typeof m.default.headless\\)\\).catch\\(e => console.error\\(e.message\\)\\)\")"
+      "Bash(node -e \"import\\('@sparticuz/chromium'\\).then\\(m => console.log\\('headless:', m.default.headless, typeof m.default.headless\\)\\).catch\\(e => console.error\\(e.message\\)\\)\")",
+      "Bash(start:*)",
+      "Bash(node -e \"import\\('./api/threads-crawl.js'\\).catch\\(e => console.log\\('Error:', e.message\\)\\)\")",
+      "Bash(npm uninstall:*)",
+      "Bash(git:*)",
+      "Read(//c/Users/gram/Desktop/**)",
+      "Read(//c/Users/gram/Desktop/에덴 에이전트/**)",
+      "Read(//c/tmp/**)",
+      "Bash(cp \"C:/Users/gram/Desktop/Thread 크롤링_배포.zip\" .)",
+      "Bash(unzip -o \"Thread 크롤링_배포.zip\" -d thread_crawl)",
+      "Read(//tmp/**)",
+      "Bash(VERCEL_PROJECT_ID=prj_wJKsfhWUCCNCgQM1ieGNX3R09HoL VERCEL_ORG_ID=team_c4y0QG3ZT2bioeEND7XIqtbJ vercel deploy --prod)",
+      "Bash(VERCEL_PROJECT_ID=prj_wJKsfhWUCCNCgQM1ieGNX3R09HoL VERCEL_ORG_ID=team_c4y0QG3ZT2bioeEND7XIqtbJ vercel --prod --yes)",
+      "Bash(python3:*)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Bash(unzip:*)",
+      "Bash(cp -r \"C:/Users/gram/Desktop/esign-nas/E-Sign.ver2/blueprints\" \"C:/Users/gram/Desktop/planforge_complete/e-sign/\")",
+      "Bash(cp -r \"C:/Users/gram/Desktop/esign-nas/E-Sign.ver2/services\" \"C:/Users/gram/Desktop/planforge_complete/e-sign/\")",
+      "Bash(cp -r \"C:/Users/gram/Desktop/esign-nas/E-Sign.ver2/templates\" \"C:/Users/gram/Desktop/planforge_complete/e-sign/\")",
+      "Bash(cp -r \"C:/Users/gram/Desktop/esign-nas/E-Sign.ver2/static\" \"C:/Users/gram/Desktop/planforge_complete/e-sign/\")",
+      "Bash(node --input-type=module --eval ':*)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(kill %1)"
     ]
   }
 }
