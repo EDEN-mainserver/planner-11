@@ -6,7 +6,7 @@
  * - 커뮤니티 영상 탭
  * - 롱폼을 숏폼으로 탭
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import {
   getNasConfig,
   saveNasConfig,
