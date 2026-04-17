@@ -1,6 +1,6 @@
 // ── CardNewsTab — AI 카드뉴스 제작 (새 구조) ──
 import { useState, useRef } from "react";
-import { callGemini } from "../utils/gemini";
+import { generateCardnewsTemplate, generateCardnewsSlides } from "../utils/claudeClient";
 
 const TEMPLATE_KEY = 'eden_cn_template_v2';
 const IG_KEY       = 'eden_cn_ig_v1';
@@ -614,40 +614,21 @@ export default function CardNewsTab() {
   const generateTemplate = async () => {
     setIsGenTemplate(true);
     setGenError('');
-    const label = (arr, v) => arr.find(o => o.value === v)?.label || v;
-    const prompt = `너는 인스타그램 카드뉴스 전문 디자이너야.
-아래 설정으로 카드뉴스 디자인 템플릿을 설계해줘.
-
-브랜드: ${brandName || '브랜드'}
-톤/분위기: ${label(TONE_OPTIONS, tone)}
-레이아웃: ${label(LAYOUT_OPTIONS, layoutStyle)}
-색감: ${label(COLOR_OPTIONS, colorScheme)}
-타겟: ${label(TARGET_OPTIONS, target)}
-목적: ${label(PURPOSE_OPTIONS, purpose)}
-${refImages.length > 0 ? `참고 이미지 ${refImages.length}장 첨부 (스타일 참고)` : ''}
-
-응답 형식 (JSON만, 다른 텍스트 없이):
-{
-  "color1": "#주색상hex",
-  "color2": "#보조색상hex",
-  "font": "sans|serif|mono",
-  "slides": [
-    {"type":"cover","headline":"커버 예시 제목","emoji":"🌟","layout":"center","bgStyle":"gradient"},
-    {"type":"content","headline":"내용 예시 제목","body":"본문 예시 텍스트입니다.","emoji":"💡","layout":"center","bgStyle":"gradient"},
-    {"type":"content","headline":"두 번째 내용","body":"추가 내용 예시입니다.","emoji":"✨","layout":"center","bgStyle":"light"},
-    {"type":"closing","headline":"마무리 문구","emoji":"👏","layout":"center","bgStyle":"solid"}
-  ]
-}`;
     try {
-      const raw = await callGemini([{ role: 'user', content: prompt }], '카드뉴스 디자인 전문가. JSON만 반환.');
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error('응답 파싱 실패');
-      const parsed = JSON.parse(match[0]);
-      if (parsed.color1) setColor1(parsed.color1);
-      if (parsed.color2) setColor2(parsed.color2);
-      if (parsed.font)   setFont(parsed.font);
-      if (parsed.slides?.length) {
-        setTemplateSlides(parsed.slides.map((s, i) => ({ ...s, id: i + 1, total: parsed.slides.length })));
+      const result = await generateCardnewsTemplate({
+        brandName,
+        tone,
+        layoutStyle,
+        colorScheme,
+        target,
+        purpose,
+        refImageCount: refImages.length,
+      });
+      if (result.color1) setColor1(result.color1);
+      if (result.color2) setColor2(result.color2);
+      if (result.font)   setFont(result.font);
+      if (result.slides?.length) {
+        setTemplateSlides(result.slides.map((s, i) => ({ ...s, id: i + 1, total: result.slides.length })));
       }
     } catch (e) {
       setGenError('템플릿 생성 실패: ' + e.message);
@@ -661,28 +642,18 @@ ${refImages.length > 0 ? `참고 이미지 ${refImages.length}장 첨부 (스타
     if (!topic.trim()) return;
     setStep('generating');
     setGenError('');
-    const label = (arr, v) => arr.find(o => o.value === v)?.label || '';
-    const prompt = `너는 인스타그램 카드뉴스 전문 기획자야.
-아래 정보로 카드뉴스 슬라이드 ${slideCount}장 구성을 JSON 배열로만 반환해줘.
-
-브랜드명: ${brandName || '브랜드'}
-브랜드 컬러: ${color1}
-톤/분위기: ${label(TONE_OPTIONS, tone)}
-타겟: ${label(TARGET_OPTIONS, target)}
-목적: ${label(PURPOSE_OPTIONS, purpose)}
-주제: ${topic}
-
-각 슬라이드 형식:
-{"type":"cover"|"content"|"closing","headline":"짧고 강렬한 제목(15자이내)","body":"본문(content 슬라이드만,40자이내)","emoji":"관련이모지1개","layout":"center"|"left","bgStyle":"gradient"|"solid"|"light"}
-
-첫 장은 cover, 마지막 장은 closing, 나머지는 content. body는 content 슬라이드에만 포함.
-JSON 배열만 반환. 다른 텍스트 없이.`;
     try {
-      const raw = await callGemini([{ role: 'user', content: prompt }], '카드뉴스 슬라이드 기획 전문가. JSON 배열만 반환.');
-      const match = raw.match(/\[[\s\S]*\]/);
-      if (!match) throw new Error('응답 파싱 실패');
-      const parsed = JSON.parse(match[0]);
-      setSlides(parsed.slice(0, slideCount).map((s, i) => ({ ...s, id: i + 1, total: Math.min(parsed.length, slideCount) })));
+      const result = await generateCardnewsSlides({
+        brandName,
+        color1,
+        tone,
+        target,
+        purpose,
+        topic,
+        slideCount,
+      });
+      const slides = result.slides.map((s, i) => ({ ...s, id: i + 1, total: result.slides.length }));
+      setSlides(slides);
       setSelectedIdx(0);
       setStep('editor');
     } catch (e) {
