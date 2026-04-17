@@ -2,6 +2,7 @@
 // 썰 스크립트 → 배경 영상 + TikTok 자막 → Remotion 숏폼 영상 자동 생성
 import { useState, useCallback } from "react";
 import CaptionPreview from "./CaptionPreview";
+import VideoPreview from "./VideoPreview";
 import {
   BG_PRESETS,
   FONT_OPTIONS,
@@ -58,7 +59,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       totalMs,
       wordCount,
       estSeconds,
-      remotionUrl: `http://localhost:3000?${params}`,
+      backgroundVideoUrl: BG_PRESETS.find(b => b.key === selectedBg)?.videoUrl ?? "",
     });
     setGenerating(false);
   }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds]);
@@ -426,51 +427,29 @@ export default function CommunityTab({ nasState, onGoToNas }) {
               </button>
             </div>
 
-            {/* 생성 완료 결과 */}
+            {/* 생성 완료 결과 — 인앱 영상 프리뷰 */}
             {generated && (
-              <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-5 space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 px-1">
+                  <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m20 6-11 11-5-5"/>
                     </svg>
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-emerald-800">영상 구성 완료!</p>
-                    <p className="text-xs text-emerald-600">자막 {generated.captions.length}개 · 예상 {generated.estSeconds}초</p>
+                    <p className="text-sm font-bold text-gray-800">영상 생성 완료!</p>
+                    <p className="text-xs text-gray-400">자막 {generated.captions.length}개 · 예상 {generated.estSeconds}초</p>
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-white border border-emerald-200 p-3 space-y-2">
-                  <p className="text-xs font-semibold text-gray-700">다음 단계: Remotion Studio에서 미리보기</p>
-                  <div className="rounded-lg bg-gray-900 text-green-400 font-mono text-[11px] p-3 space-y-1">
-                    <p className="text-gray-400"># community-video 폴더에서 실행:</p>
-                    <p>cd web/community-video</p>
-                    <p>npm run dev</p>
-                  </div>
-                  <p className="text-[10px] text-gray-400">
-                    Remotion Studio(localhost:3000)에서 영상을 미리보고 렌더링하세요.
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs font-semibold text-gray-600 mb-2">생성된 자막 ({generated.captions.length}개)</p>
-                  <div className="max-h-32 overflow-y-auto rounded-lg border border-gray-200 bg-white">
-                    {generated.captions.slice(0, 20).map((c, i) => (
-                      <div key={i} className="flex items-center gap-3 px-3 py-1.5 border-b border-gray-50 last:border-0">
-                        <span className="text-[10px] text-gray-400 font-mono w-12 flex-shrink-0">
-                          {(c.startMs / 1000).toFixed(1)}s
-                        </span>
-                        <span className="text-xs text-gray-700">{c.text}</span>
-                      </div>
-                    ))}
-                    {generated.captions.length > 20 && (
-                      <div className="px-3 py-1.5 text-[10px] text-gray-400 text-center">
-                        +{generated.captions.length - 20}개 더…
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <VideoPreview
+                  backgroundVideoUrl={generated.backgroundVideoUrl}
+                  captions={generated.captions}
+                  highlightColor={highlightColor}
+                  fontFamily={fontFamily}
+                  captionPos={captionPos}
+                  totalMs={generated.totalMs}
+                />
 
                 <div className="flex gap-2">
                   <button
@@ -480,7 +459,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
                     </svg>
-                    captions.json 저장
+                    captions.json
                   </button>
                   <button
                     onClick={() => { setGenerated(null); setStep(1); setScript(""); }}
