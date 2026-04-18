@@ -1,25 +1,22 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import Sidebar from "@/components/layout/Sidebar";
-
-export const metadata: Metadata = {
-  title: "INFLOW",
-  description: "인스타그램 AI 기획 툴",
-};
-
+import type { Metadata } from 'next'
+import './globals.css'
+import Sidebar from '@/components/layout/Sidebar'
+import MobileHeader from '@/components/layout/MobileHeader'
+export const metadata: Metadata = { title: 'EDEN FLOW', description: 'AI 인스타그램 성장 플랫폼' }
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body className="bg-[#F4F4F8] text-[#111] antialiased">
-        <div className="flex min-h-screen">
-          {/* 사이드바 260px 고정 */}
+      <body className="bg-[#F8FAFC]">
+        <div className="flex w-full min-h-screen bg-[#F8FAFC]">
           <Sidebar />
-          {/* 메인 콘텐츠 1fr */}
-          <main className="flex-1 min-h-screen overflow-y-auto">
-            {children}
+          <MobileHeader />
+          <main className="flex-1 w-full overflow-y-auto">
+            <div className="pt-16 lg:pt-0 flex flex-col min-h-screen">
+              {children}
+            </div>
           </main>
         </div>
       </body>
     </html>
-  );
+  )
 }

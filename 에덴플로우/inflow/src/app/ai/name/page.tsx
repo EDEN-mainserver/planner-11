@@ -1,75 +1,84 @@
-"use client";
-
-import { useState } from "react";
-import Button from "@/components/ui/Button";
-import LoadingSpinner from "@/components/ui/LoadingSpinner";
-import PlanCard from "@/components/layout/PlanCard";
-import { useAiName } from "@/hooks/useAiName";
-import { usePlanStore } from "@/store/planStore";
-
+'use client'
+import { useState } from 'react'
+import AiPageHero from '@/components/ai/AiPageHero'
+import AiStartButton from '@/components/ai/AiStartButton'
+const STEPS = [
+  { title: '어떤 분야의 계정인가요?', placeholder: '예) 음식/맛집, 뷰티, 여행', key: 'field' },
+  { title: '타겟층은 누구인가요?', placeholder: '예) 20-30대 직장인', key: 'target' },
+  { title: '원하는 계정 분위기는?', placeholder: '예) 감성적, 유머러스, 전문적', key: 'mood' },
+]
 export default function NamePage() {
-  const [started, setStarted] = useState(false);
-  const [keywords, setKeywords] = useState("");
-  const [selected, setSelected] = useState<number | null>(null);
-  const { result, loading, error, generate } = useAiName();
-  const { canUse } = usePlanStore();
-  const canGenerate = canUse("name");
-
-  if (!started) {
-    return (
-      <div className="p-8 flex gap-8">
-        <div className="flex-1">
-          <span className="inline-flex items-center gap-1 px-3 py-1 bg-[#F0EEFF] text-[#6C63FF] text-xs rounded-full mb-4">✦ AI 네이밍 솔루션</span>
-          <h1 className="text-[32px] font-bold text-[#111] mb-3 leading-tight">
-            나에게 딱 맞는 <span className="text-[#6C63FF]">인스타 이름</span>을<br />AI가 추천해 드려요
-          </h1>
-          <p className="text-[14px] text-[#666] mb-8">키워드나 특성을 입력하면 개성 있는 닉네임 7개를 추천합니다.</p>
-          {canGenerate ? (
-            <Button onClick={() => setStarted(true)}>시작하기 →</Button>
-          ) : (
-            <p className="text-sm text-[#FF4444]">사용 횟수를 모두 사용했습니다.</p>
-          )}
-        </div>
-        <PlanCard />
-      </div>
-    );
+  const [started, setStarted] = useState(false)
+  const [step, setStep] = useState(0)
+  const [values, setValues] = useState<Record<string,string>>({})
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<string|null>(null)
+  const handleNext = async () => {
+    if (step < STEPS.length - 1) { setStep(step+1); return }
+    setLoading(true)
+    try {
+      const res = await fetch('/api/ai/name', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(values),
+      })
+      const data = await res.json()
+      setResult(data.result)
+    } catch { setResult('오류가 발생했습니다.') }
+    finally { setLoading(false) }
   }
-
+  if (!started) return (
+    <div className="flex-1 w-full overflow-y-auto">
+      <div className="pt-16 lg:pt-0">
+        <AiPageHero emoji="AA" badge="AI 이름 추천"
+          title={<>분야와 타겟에 맞는<br />계정 이름을 추천해 드려요</>}
+          description="분야, 타겟, 분위기를 입력하면 맞춤 계정 이름을 추천합니다."
+          previewText="추천 계정 이름이 여기에 표시됩니다..." />
+        <div className="px-6 pb-10 max-w-2xl mx-auto">
+          <AiStartButton onClick={()=>setStarted(true)} />
+          <p className="text-center text-xs text-slate-400 mt-3">나의 플랜 FREE</p>
+        </div>
+      </div>
+    </div>
+  )
+  if (result) return (
+    <div className="flex-1 w-full overflow-y-auto">
+      <div className="pt-16 lg:pt-0 px-6 py-10 max-w-2xl mx-auto">
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+          <div className="flex items-center gap-2 mb-6">
+            <span className="text-2xl">AA</span>
+            <h2 className="text-xl font-bold text-slate-800">이름 추천 결과</h2>
+          </div>
+          <div className="whitespace-pre-wrap text-slate-700 leading-relaxed text-sm">{result}</div>
+          <button onClick={()=>{setStarted(false);setStep(0);setValues({});setResult(null)}}
+            className="mt-8 w-full py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition">
+            다시 추천받기
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+  const current = STEPS[step]
   return (
-    <div className="p-8 flex gap-8">
-      <div className="flex-1 max-w-xl">
-        <h2 className="text-[24px] font-bold text-[#111] mb-2">AA 어떤 느낌의 이름을 원하세요?</h2>
-        <p className="text-[14px] text-[#999] mb-6">분야, 특성, 느낌을 자유롭게 입력해주세요.</p>
-        <textarea
-          rows={4}
-          className="w-full bg-[#F9F9FF] border border-dashed border-[#E5E5EF] rounded-[12px] px-4 py-3 text-sm outline-none focus:border-[#6C63FF] resize-none"
-          placeholder="예: 운동, 활발함, 영어 이름, 짧고 기억하기 쉬운 느낌"
-          value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
-        />
-        {error && <p className="mt-2 text-sm text-[#FF4444]">{error}</p>}
-        {loading && <LoadingSpinner />}
-
-        {result && (
-          <div className="mt-6 space-y-3">
-            {result.names.map((n) => (
-              <button key={n.number} onClick={() => setSelected(n.number)}
-                className={`w-full text-left p-4 rounded-xl border transition-all ${selected === n.number ? "border-[#6C63FF] border-2 bg-[#F5F4FF]" : "border-[#E5E5EF] bg-white hover:border-[#6C63FF]"}`}>
-                <span className="text-[#6C63FF] font-bold mr-2">#{n.number}</span>
-                <span className="font-semibold text-[#111] mr-2">{n.name}</span>
-                <span className="text-[13px] text-[#999]">{n.description}</span>
-              </button>
+    <div className="flex-1 w-full overflow-y-auto">
+      <div className="pt-16 lg:pt-0 px-6 py-10 max-w-2xl mx-auto">
+        <div className="mb-6">
+          <div className="flex gap-1 mb-4">
+            {STEPS.map((_,i)=>(
+              <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i<=step?'bg-indigo-600':'bg-slate-200'}`} />
             ))}
           </div>
-        )}
-
-        <div className="mt-6">
-          <Button variant="dark" disabled={!keywords || loading} onClick={() => generate({ keywords })}>
-            생성하기 →
-          </Button>
+          <p className="text-xs text-slate-400 mb-1">{step+1} / {STEPS.length}</p>
+          <h2 className="text-2xl font-bold text-slate-800">{current.title}</h2>
         </div>
+        <textarea className="w-full border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400 min-h-[120px]"
+          placeholder={current.placeholder}
+          value={values[current.key]||''}
+          onChange={e=>setValues({...values,[current.key]:e.target.value})} />
+        <button onClick={handleNext} disabled={!values[current.key]?.trim()||loading}
+          className="mt-4 w-full py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition disabled:opacity-40">
+          {loading?'생성 중...':step<STEPS.length-1?'다음 →':'AI 이름 추천받기 →'}
+        </button>
       </div>
-      <PlanCard />
     </div>
-  );
+  )
 }

@@ -1,20 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { readJson } from "@/lib/db";
-import type { Reel } from "@/types/reels";
-
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const category = searchParams.get("category") ?? "all";
-  const search = searchParams.get("search") ?? "";
-  const page = parseInt(searchParams.get("page") ?? "1");
-  const PER_PAGE = 12;
-
-  let reels = readJson<Reel>("reels.json");
-  if (category !== "all") reels = reels.filter((r) => r.category === category);
-  if (search) reels = reels.filter((r) => r.caption.includes(search) || r.hashtags.some((h) => h.includes(search)));
-
-  const total = reels.length;
-  const sliced = reels.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-
-  return NextResponse.json({ reels: sliced, total, page });
+import { NextResponse } from 'next/server'
+const REELS = Array.from({length:20},(_,i)=>({
+  id: String(i+1),
+  title: `릴스 ${i+1}`,
+  category: ['음식','뷰티','여행','라이프','피트니스','교육','패션','반려동물','방송','비즈니스','기타'][i%11],
+  thumbnail: `https://picsum.photos/seed/${i+20}/300/500`,
+  views: `${((i+1)*3.7).toFixed(1)}만`,
+}))
+export async function GET() {
+  return NextResponse.json({ reels: REELS })
 }

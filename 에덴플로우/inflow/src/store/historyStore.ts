@@ -1,35 +1,18 @@
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import type { HistoryItem, AiType } from "@/types/ai";
-import { generateId } from "@/lib/utils";
-
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import type { AiHistory } from '@/types/ai'
 interface HistoryState {
-  items: HistoryItem[];
-  addItem: (item: Omit<HistoryItem, "id" | "createdAt">) => void;
-  deleteItem: (id: string) => void;
-  getFiltered: (type: AiType | "all", search: string) => HistoryItem[];
+  items: AiHistory[]
+  add: (item: AiHistory) => void
+  clear: () => void
 }
-
 export const useHistoryStore = create<HistoryState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       items: [],
-      addItem: (item) =>
-        set((s) => ({
-          items: [
-            { ...item, id: generateId(), createdAt: new Date().toISOString() },
-            ...s.items,
-          ],
-        })),
-      deleteItem: (id) =>
-        set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
-      getFiltered: (type, search) => {
-        let list = get().items;
-        if (type !== "all") list = list.filter((i) => i.type === type);
-        if (search) list = list.filter((i) => i.title.includes(search));
-        return list;
-      },
+      add: (item) => set((s) => ({ items: [item, ...s.items] })),
+      clear: () => set({ items: [] }),
     }),
-    { name: "inflow-history" }
+    { name: 'history-storage' }
   )
-);
+)

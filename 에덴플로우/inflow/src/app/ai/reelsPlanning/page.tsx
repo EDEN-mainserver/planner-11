@@ -1,148 +1,110 @@
-"use client";
-
-import { useState } from "react";
-import Button from "@/components/ui/Button";
-import LoadingSpinner from "@/components/ui/LoadingSpinner";
-import PlanCard from "@/components/layout/PlanCard";
-import { useAiReels } from "@/hooks/useAiReels";
-import { usePlanStore } from "@/store/planStore";
-
-const JOBS = ["N잡러", "의사", "변호사", "유튜버", "인플루언서", "강사", "쇼핑몰 운영", "직장인", "프리랜서", "학생"];
-const TARGETS = ["10대 청소년", "20대 대학생", "직장인", "주부", "창업자", "시니어"];
-const TONES = ["유익하고 전문적인", "재밌고 가벼운", "감성적인", "도전적이고 에너지 넘치는"];
-
-const TOTAL = 5;
-
+'use client'
+import { useState } from 'react'
+import AiPageHero from '@/components/ai/AiPageHero'
+import AiStartButton from '@/components/ai/AiStartButton'
+const STEPS = [
+  { title: '어떤 주제의 릴스인가요?', placeholder: '예) 서울 숨은 맛집 5곳', key: 'topic' },
+  { title: '타겟 시청자는 누구인가요?', placeholder: '예) 20대 음식 좋아하는 사람들', key: 'target' },
+  { title: '릴스 길이는 얼마나 할까요?', placeholder: '예) 30초, 60초, 90초', key: 'duration' },
+  { title: '원하는 분위기/톤은 어떤가요?', placeholder: '예) 감성적, 유머러스, 정보전달형', key: 'tone' },
+  { title: '특별히 강조할 포인트가 있나요?', placeholder: '예) 가격대비 맛집, 웨이팅 없는 곳', key: 'point' },
+]
+interface Scene { scene:number; duration:string; visual:string; caption:string; bgm:string }
+interface ReelsResult { title:string; hook:string; scenes:Scene[]; cta:string; hashtags:string[] }
 export default function ReelsPlanningPage() {
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState({ job: "", target: "", topic: "", tone: "", request: "" });
-  const { result, loading, error, generate, reset } = useAiReels();
-  const { canUse } = usePlanStore();
-  const canGenerate = canUse("reelsPlanning");
-  const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
-
-  if (step === 0) {
-    return (
-      <div className="p-8 flex gap-8">
-        <div className="flex-1">
-          <span className="inline-flex items-center gap-1 px-3 py-1 bg-[#F0EEFF] text-[#6C63FF] text-xs rounded-full mb-4">✦ AI 릴스 솔루션</span>
-          <h1 className="text-[32px] font-bold text-[#111] mb-3 leading-tight">
-            바이럴 되는 <span className="text-[#6C63FF]">릴스 스토리보드</span>를<br />AI가 완성해 드려요
-          </h1>
-          <p className="text-[14px] text-[#666] mb-8">직업, 타겟, 주제, 톤앤매너를 입력하면 후킹 멘트 + 캡션 + 스토리보드를 생성합니다.</p>
-          {canGenerate ? (
-            <Button onClick={() => setStep(1)}>시작하기 →</Button>
-          ) : (
-            <p className="text-sm text-[#FF4444]">사용 횟수를 모두 사용했습니다.</p>
-          )}
-        </div>
-        <PlanCard />
-      </div>
-    );
+  const [started, setStarted] = useState(false)
+  const [step, setStep] = useState(0)
+  const [values, setValues] = useState<Record<string,string>>({})
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<ReelsResult|null>(null)
+  const handleNext = async () => {
+    if (step < STEPS.length - 1) { setStep(step+1); return }
+    setLoading(true)
+    try {
+      const res = await fetch('/api/ai/reels', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(values),
+      })
+      const data = await res.json()
+      setResult(data.result)
+    } catch { setResult(null) }
+    finally { setLoading(false) }
   }
-
-  if (result) {
-    return (
-      <div className="p-8 max-w-4xl">
-        <div className="bg-white rounded-[20px] shadow-card p-8">
-          <h2 className="text-xl font-bold text-[#111] mb-6">🎬 릴스 기획 결과</h2>
-
-          <div className="mb-6">
-            <h3 className="font-semibold text-[#111] mb-3">✦ 후킹 멘트 5개</h3>
-            <ol className="space-y-2">
-              {result.hooks.map((h, i) => (
-                <li key={i} className="flex gap-2 text-[14px] text-[#555]">
-                  <span className="text-[#6C63FF] font-bold">{i + 1}.</span> {h}
-                </li>
-              ))}
-            </ol>
+  if (!started) return (
+    <div className="flex-1 w-full overflow-y-auto">
+      <div className="pt-16 lg:pt-0">
+        <AiPageHero emoji="🎬" badge="AI 릴스 기획"
+          title={<>AI가 릴스 스토리보드를<br />자동으로 만들어 드려요</>}
+          description="주제, 타겟, 분위기를 입력하면 씬별 스토리보드를 생성합니다."
+          previewText="릴스 스토리보드가 여기에 표시됩니다..." isScreenshot />
+        <div className="px-6 pb-10 max-w-2xl mx-auto">
+          <AiStartButton onClick={()=>setStarted(true)} />
+          <p className="text-center text-xs text-slate-400 mt-3">나의 플랜 FREE</p>
+        </div>
+      </div>
+    </div>
+  )
+  if (result) return (
+    <div className="flex-1 w-full overflow-y-auto">
+      <div className="pt-16 lg:pt-0 px-4 lg:px-8 py-10 max-w-3xl mx-auto">
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 lg:p-8">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">🎬</span>
+            <h2 className="text-xl font-bold text-slate-800">{result.title}</h2>
           </div>
-
-          <div className="mb-6">
-            <h3 className="font-semibold text-[#111] mb-2">📄 캡션</h3>
-            <p className="text-[14px] text-[#555] bg-[#F4F4F8] rounded-xl p-4 whitespace-pre-wrap">{result.caption}</p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-[#111] mb-3">🎬 스토리보드 ({result.storyboard.length}컷)</h3>
-            <div className="space-y-4">
-              {result.storyboard.map((s, i) => (
-                <div key={i} className="border border-[#E5E5EF] rounded-xl p-4">
-                  <p className="text-xs font-semibold text-[#6C63FF] mb-2">{s.scene}</p>
-                  <p className="text-[14px] text-[#111] font-medium mb-2">{s.script}</p>
-                  <div className="grid grid-cols-2 gap-2 text-[12px] text-[#999]">
-                    <span>📐 구도: {s.shootingGuide.angle}</span>
-                    <span>💡 조명: {s.shootingGuide.lighting}</span>
-                    <span>🎭 소품: {s.shootingGuide.props}</span>
-                    <span>🎬 행동: {s.shootingGuide.action}</span>
-                  </div>
+          <p className="text-sm text-indigo-600 font-semibold mb-6">훅: {result.hook}</p>
+          <div className="space-y-4 mb-6">
+            {result.scenes?.map(scene=>(
+              <div key={scene.scene} className="border border-slate-100 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-full">씬 {scene.scene}</span>
+                  <span className="text-xs text-slate-400">{scene.duration}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-8 flex gap-3">
-            <Button variant="outline" onClick={() => { reset(); setStep(1); }}>대본 다시 만들기</Button>
-            <Button variant="outline" onClick={() => { reset(); setStep(0); }}>처음으로</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const STEPS = [
-    { key: "job" as const, label: "현재 직업이 무엇인가요?", icon: "💼", options: JOBS },
-    { key: "target" as const, label: "타겟층을 선택해주세요", icon: "🎯", options: TARGETS },
-    { key: "topic" as const, label: "릴스 주제는 무엇인가요?", icon: "📌", options: [], free: true },
-    { key: "tone" as const, label: "톤앤매너를 선택해주세요", icon: "🎨", options: TONES },
-    { key: "request" as const, label: "특별 요청사항이 있나요?", icon: "💬", options: [], free: true, optional: true },
-  ];
-
-  const cur = STEPS[step - 1];
-  const val = form[cur.key];
-
-  return (
-    <div className="p-8 flex gap-8">
-      <div className="flex-1 max-w-xl">
-        <p className="text-xs text-[#999] tracking-widest mb-6">STEP {step} OF {TOTAL}</p>
-        <h2 className="text-[24px] font-bold text-[#111] mb-6">{cur.icon} {cur.label}</h2>
-
-        {cur.options.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            {cur.options.map((o) => (
-              <button key={o} onClick={() => set(cur.key, o)}
-                className={`p-3 rounded-xl border text-[14px] transition-all ${val === o ? "border-[#6C63FF] border-2 bg-[#F5F4FF]" : "border-[#E5E5EF] bg-white hover:border-[#6C63FF]"}`}>
-                {o}
-              </button>
+                <p className="text-sm font-semibold text-slate-700 mb-1">📷 {scene.visual}</p>
+                <p className="text-sm text-slate-500 mb-1">💬 {scene.caption}</p>
+                <p className="text-xs text-slate-400">🎵 {scene.bgm}</p>
+              </div>
             ))}
           </div>
-        )}
-
-        <input
-          className="w-full bg-[#F9F9FF] border border-dashed border-[#E5E5EF] rounded-[12px] px-4 py-3 text-sm outline-none focus:border-[#6C63FF]"
-          placeholder={cur.optional ? "없으면 비워두세요" : "직접 입력해주세요"}
-          value={val} onChange={(e) => set(cur.key, e.target.value)}
-        />
-
-        {error && <p className="mt-4 text-sm text-[#FF4444]">{error}</p>}
-        {loading && <LoadingSpinner />}
-
-        <div className="flex justify-between mt-8">
-          <button onClick={() => setStep(Math.max(0, step - 1))} className="text-[14px] text-[#555] hover:text-[#111]">
-            &lt; 이전
+          <div className="bg-indigo-50 rounded-2xl p-4 mb-4">
+            <p className="text-sm font-semibold text-indigo-700 mb-1">CTA</p>
+            <p className="text-sm text-slate-600">{result.cta}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {result.hashtags?.map((tag,i)=>(
+              <span key={i} className="bg-slate-100 text-slate-600 text-xs px-3 py-1 rounded-full">{tag}</span>
+            ))}
+          </div>
+          <button onClick={()=>{setStarted(false);setStep(0);setValues({});setResult(null)}}
+            className="mt-8 w-full py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition">
+            다시 기획하기
           </button>
-          {step < TOTAL ? (
-            <Button variant="dark" disabled={!val && !cur.optional} onClick={() => setStep(step + 1)}>
-              다음 단계 →
-            </Button>
-          ) : (
-            <Button variant="dark" disabled={loading} onClick={() => generate(form)}>
-              생성하기 →
-            </Button>
-          )}
         </div>
       </div>
-      <PlanCard />
     </div>
-  );
+  )
+  const current = STEPS[step]
+  return (
+    <div className="flex-1 w-full overflow-y-auto">
+      <div className="pt-16 lg:pt-0 px-6 py-10 max-w-2xl mx-auto">
+        <div className="mb-6">
+          <div className="flex gap-1 mb-4">
+            {STEPS.map((_,i)=>(
+              <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i<=step?'bg-indigo-600':'bg-slate-200'}`} />
+            ))}
+          </div>
+          <p className="text-xs text-slate-400 mb-1">{step+1} / {STEPS.length}</p>
+          <h2 className="text-2xl font-bold text-slate-800">{current.title}</h2>
+        </div>
+        <textarea className="w-full border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400 min-h-[120px]"
+          placeholder={current.placeholder}
+          value={values[current.key]||''}
+          onChange={e=>setValues({...values,[current.key]:e.target.value})} />
+        <button onClick={handleNext} disabled={!values[current.key]?.trim()||loading}
+          className="mt-4 w-full py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition disabled:opacity-40">
+          {loading?'스토리보드 생성 중...':step<STEPS.length-1?'다음 →':'AI 스토리보드 생성하기 →'}
+        </button>
+      </div>
+    </div>
+  )
 }

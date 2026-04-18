@@ -1,60 +1,39 @@
-"use client";
-
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { NAV_GROUPS } from "@/constants/navigation";
-
+'use client'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { NAV_SECTIONS } from '@/constants/navigation'
 export default function SidebarNav() {
-  const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-
-  const toggle = (title: string) =>
-    setCollapsed((prev) => ({ ...prev, [title]: !prev[title] }));
-
+  const pathname = usePathname()
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
-      {NAV_GROUPS.map((group) => {
-        const isCollapsed = collapsed[group.title] ?? false;
-        return (
-          <div key={group.title} className="mb-1">
-            {/* 그룹 헤더 */}
-            <button
-              onClick={() => toggle(group.title)}
-              className="w-full flex items-center justify-between px-2 py-1.5 text-[12px] font-semibold text-[#999] uppercase tracking-[0.05em] hover:text-[#555] transition-colors"
-            >
-              <span>{group.title}</span>
-              <span>{isCollapsed ? "∨" : "∧"}</span>
-            </button>
-
-            {/* 메뉴 아이템 */}
-            {!isCollapsed && (
-              <ul className="mt-0.5 space-y-0.5">
-                {group.items.map((item) => {
-                  const isActive = pathname === item.href;
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        className={`flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-[14px] transition-colors ${
-                          isActive
-                            ? "bg-[#6C63FF] text-white font-medium"
-                            : "text-[#555] hover:bg-[#EEEEF8] hover:text-[#111]"
-                        }`}
-                      >
-                        <span className="w-5 text-center text-base leading-none shrink-0">
-                          {item.icon}
-                        </span>
-                        <span>{item.label}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        );
-      })}
+    <nav className="flex-1 px-4 py-6 overflow-y-auto space-y-6">
+      {NAV_SECTIONS.map(section=>(
+        <div key={section.label}>
+          <p className="text-[12px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2">{section.label}</p>
+          <ul className="space-y-1">
+            {section.items.map(item=>{
+              const isActive = !item.external && pathname === item.href
+              return (
+                <li key={item.href}>
+                  {item.external ? (
+                    <a href={item.href} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm text-slate-600 hover:bg-slate-100 transition">
+                      <span className="text-base">{item.icon}</span>{item.label}
+                    </a>
+                  ) : (
+                    <Link href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm transition ${
+                        isActive ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 font-semibold'
+                        : 'text-slate-600 hover:bg-slate-100'
+                      }`}>
+                      <span className="text-base">{item.icon}</span>{item.label}
+                    </Link>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
     </nav>
-  );
+  )
 }

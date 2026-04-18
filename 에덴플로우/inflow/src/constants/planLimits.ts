@@ -1,12 +1,5 @@
-// FREE 플랜 제한 수치
-
 export const PLAN_LIMITS = {
-  FREE: {
-    diagnosis: 0,
-    direction: 3,
-    name: 3,
-    profile: 10,
-    reelsPlanning: 10,
-    reelsView: Infinity,
-  },
-} as const;
+  FREE: { direction: 1, name: 1, profile: 1, reels: 1 },
+  BASIC: { direction: 10, name: 10, profile: 10, reels: 10 },
+  PRO: { direction: 999, name: 999, profile: 999, reels: 999 },
+}

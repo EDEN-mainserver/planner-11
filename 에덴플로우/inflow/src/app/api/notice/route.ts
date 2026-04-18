@@ -1,28 +1,11 @@
-import { NextResponse } from "next/server";
-import type { Notice } from "@/types/notice";
-
-// 임시 하드코딩 공지사항 데이터
-const NOTICES: Notice[] = [
-  {
-    id: "1",
-    title: "[필독] 인스타그램 성장의 시작, 인플로우에 오신 것을 환영합니다",
-    content: "INFLOW 서비스를 이용해 주셔서 감사합니다. AI 기획 기능을 통해 인스타그램 성장을 도와드리겠습니다.",
-    isPinned: true,
-    createdAt: "2026-02-04T00:00:00.000Z",
-  },
-  {
-    id: "2",
-    title: "전기공사로 인한 일시적 사이트 접속 장애 안내",
-    content: "2026년 3월 15일 새벽 2시~4시 사이 서버 점검으로 일시적인 접속 장애가 발생할 수 있습니다.",
-    isPinned: false,
-    createdAt: "2026-02-04T00:00:00.000Z",
-  },
-];
-
+import { NextResponse } from 'next/server'
+const NOTICES = [
+  { id:'1', title:'[필독] 에덴플로우에 오신 것을 환영합니다', important:true, views:1234, createdAt:'2024.01.10' },
+  { id:'2', title:'전기공사로 인한 일시적 사이트 접속 장애 안내', important:false, views:456, createdAt:'2024.01.08' },
+  { id:'3', title:'AI 기능 업데이트 안내', important:false, views:789, createdAt:'2024.01.05' },
+  { id:'4', title:'[필독] 서비스 이용약관 변경 안내', important:true, views:2341, createdAt:'2023.12.28' },
+  { id:'5', title:'연말 이벤트 안내', important:false, views:567, createdAt:'2023.12.20' },
+]
 export async function GET() {
-  const sorted = [...NOTICES].sort((a, b) => {
-    if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
-  return NextResponse.json(sorted);
+  return NextResponse.json({ notices: NOTICES })
 }

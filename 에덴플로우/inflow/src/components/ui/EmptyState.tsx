@@ -1,14 +1,10 @@
-interface EmptyStateProps {
-  message?: string;
-}
-
-export default function EmptyState({
-  message = "데이터가 없습니다.",
-}: EmptyStateProps) {
+interface Props { emoji?: string; title: string; description?: string }
+export default function EmptyState({ emoji='📭', title, description }: Props) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-[#CCC] gap-2">
-      <span className="text-3xl">📭</span>
-      <p className="text-sm">{message}</p>
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <span className="text-4xl mb-3">{emoji}</span>
+      <p className="font-semibold text-slate-600">{title}</p>
+      {description && <p className="text-sm text-slate-400 mt-1">{description}</p>}
     </div>
-  );
+  )
 }

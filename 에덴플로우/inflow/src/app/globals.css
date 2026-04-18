@@ -1,42 +1,12 @@
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  html {
-    font-family: 'Pretendard', system-ui, -apple-system, sans-serif;
-  }
-  body {
-    @apply text-slate-800 bg-white overflow-x-hidden;
-  }
-  * {
-    box-sizing: border-box;
-  }
-}
+:root { --background: #F8FAFC; }
+body { background: var(--background); font-family: 'Pretendard', sans-serif; }
 
 @layer utilities {
-  .gradient-text {
-    background: linear-gradient(90deg, #4f46e5, #9333ea);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .gradient-text-pink {
-    background: linear-gradient(90deg, #4f46e5, #ec4899);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .gradient-bg-instagram {
-    background: linear-gradient(135deg, #f9ce34, #ee2a7b, #6228d7);
-  }
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
 }

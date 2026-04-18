@@ -29,3 +29,8 @@ secrets/
 credentials/
 
 .vercel
+
+# 대용량 미디어 파일
+*.mp4
+*.mov
+*.avi
