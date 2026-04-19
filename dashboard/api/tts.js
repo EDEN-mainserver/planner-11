@@ -2,11 +2,52 @@
  * ElevenLabs TTS 프록시 — Vercel Serverless Function
  * POST /api/tts  Body: { text, voiceId, voiceSettings? }
  *
- * ELEVENLABS_API_KEY 환경변수에서 키를 읽어 ElevenLabs API를 호출합니다.
- * 프론트에 API 키를 노출하지 않습니다.
+ * with-timestamps 엔드포인트로 오디오 + 단어별 정확한 타이밍을 함께 반환합니다.
+ * Response: { audioBase64: string, captions: { text, startMs, endMs }[] }
  */
 
 export const config = { maxDuration: 30 };
+
+// ElevenLabs 문자 정렬 데이터 → 단어별 타이밍 배열로 변환
+function parseWordTimings(alignment) {
+  const chars      = alignment.characters ?? [];
+  const startTimes = alignment.character_start_times_seconds ?? [];
+  const endTimes   = alignment.character_end_times_seconds ?? [];
+
+  const words = [];
+  let wordChars = "";
+  let wordStart = null;
+  let wordEnd   = null;
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (ch === " " || ch === "\n") {
+      if (wordChars.trim()) {
+        words.push({
+          text:    wordChars,
+          startMs: Math.round(wordStart * 1000),
+          endMs:   Math.round(wordEnd   * 1000),
+        });
+      }
+      wordChars = "";
+      wordStart = null;
+      wordEnd   = null;
+    } else {
+      if (wordStart === null) wordStart = startTimes[i];
+      wordEnd   = endTimes[i];
+      wordChars += ch;
+    }
+  }
+  // 마지막 단어
+  if (wordChars.trim()) {
+    words.push({
+      text:    wordChars,
+      startMs: Math.round(wordStart * 1000),
+      endMs:   Math.round(wordEnd   * 1000),
+    });
+  }
+  return words;
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -24,18 +65,18 @@ export default async function handler(req, res) {
   }
 
   try {
+    // with-timestamps 엔드포인트: 오디오 + 문자별 타이밍 동시 반환
     const elevenRes = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
       {
         method: "POST",
         headers: {
-          "xi-api-key": apiKey,
+          "xi-api-key":   apiKey,
           "Content-Type": "application/json",
-          "Accept": "audio/mpeg",
         },
         body: JSON.stringify({
           text,
-          model_id: "eleven_multilingual_v2",
+          model_id:       "eleven_multilingual_v2",
           voice_settings: voiceSettings ?? { stability: 0.5, similarity_boost: 0.75 },
         }),
       }
@@ -48,10 +89,16 @@ export default async function handler(req, res) {
       });
     }
 
-    const audioBuffer = Buffer.from(await elevenRes.arrayBuffer());
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Length", audioBuffer.length);
-    res.status(200).send(audioBuffer);
+    const data = await elevenRes.json();
+    // data.audio_base64: base64 MP3
+    // data.alignment: { characters[], character_start_times_seconds[], character_end_times_seconds[] }
+
+    const captions = parseWordTimings(data.alignment ?? {});
+
+    res.status(200).json({
+      audioBase64: data.audio_base64,
+      captions,
+    });
 
   } catch (e) {
     res.status(500).json({ error: e.message });

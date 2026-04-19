@@ -54,12 +54,13 @@ export default function CommunityTab({ nasState, onGoToNas }) {
     if (!script.trim()) return;
     setGenerating(true);
     setGenerated(null);
-
-    let { captions, totalMs } = generateCaptionsFromText(script);
-    let audioUrl = null;
     setTtsError("");
 
-    // 백엔드 TTS 프록시 호출 (API 키는 서버 환경변수에서 처리)
+    let captions = [];
+    let totalMs  = 0;
+    let audioUrl = null;
+
+    // 백엔드 TTS 프록시 호출 — with-timestamps로 정확한 단어 타이밍 수신
     try {
       const res = await fetch("/api/tts", {
         method: "POST",
@@ -72,29 +73,30 @@ export default function CommunityTab({ nasState, onGoToNas }) {
         throw new Error(err?.error || `TTS 오류 (${res.status})`);
       }
 
-      const audioBlob = await res.blob();
-      audioUrl = URL.createObjectURL(audioBlob);
+      const { audioBase64, captions: wordTimings } = await res.json();
 
-      // 실제 오디오 길이로 자막 타이밍 보정
-      const actualMs = await new Promise((resolve) => {
-        const audio = new Audio(audioUrl);
-        audio.addEventListener("loadedmetadata", () => resolve(audio.duration * 1000));
-        audio.addEventListener("error", () => resolve(totalMs));
-      });
+      // base64 → Blob URL
+      const binary = atob(audioBase64);
+      const bytes  = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      audioUrl = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
 
-      if (actualMs > 0 && Math.abs(actualMs - totalMs) > 500) {
-        const ratio = actualMs / totalMs;
-        captions = captions.map(c => ({
-          ...c,
-          startMs: Math.round(c.startMs * ratio),
-          endMs: Math.round(c.endMs * ratio),
-          timestampMs: Math.round(c.timestampMs * ratio),
-        }));
-        totalMs = actualMs;
-      }
+      // ElevenLabs가 반환한 정확한 단어 타이밍 사용
+      captions = wordTimings.map((w, i) => ({
+        text:        i === 0 ? w.text : ` ${w.text}`,
+        startMs:     w.startMs,
+        endMs:       w.endMs,
+        timestampMs: w.startMs,
+        confidence:  1,
+      }));
+      totalMs = (captions[captions.length - 1]?.endMs ?? 0) + 300;
 
     } catch (e) {
       setTtsError(e.message);
+      // TTS 실패 시 추정 자막 폴백
+      const fallback = generateCaptionsFromText(script);
+      captions = fallback.captions;
+      totalMs  = fallback.totalMs;
     }
 
     setGenerated({
