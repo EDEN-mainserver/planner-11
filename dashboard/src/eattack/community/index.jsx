@@ -42,27 +42,70 @@ export default function CommunityTab({ nasState, onGoToNas }) {
     setGenerating(true);
     setGenerated(null);
 
-    const { captions, totalMs } = generateCaptionsFromText(script);
+    let { captions, totalMs } = generateCaptionsFromText(script);
+    let audioUrl = null;
 
-    const params = new URLSearchParams({
-      script: script.slice(0, 200),
-      bg: selectedBg,
-      highlight: highlightColor,
-      font: fontFamily,
-      pos: captionPos,
-    });
+    // ElevenLabs TTS 호출 (API 키가 있을 때만)
+    if (elevenlabsKey.trim()) {
+      try {
+        const res = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+          {
+            method: "POST",
+            headers: {
+              "xi-api-key": elevenlabsKey.trim(),
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: script,
+              model_id: "eleven_multilingual_v2",
+              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+            }),
+          }
+        );
 
-    await new Promise(r => setTimeout(r, 1200));
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.detail?.message || `ElevenLabs 오류 (${res.status})`);
+        }
+
+        const audioBlob = await res.blob();
+        audioUrl = URL.createObjectURL(audioBlob);
+
+        // 실제 오디오 길이로 자막 타이밍 보정
+        const actualMs = await new Promise((resolve) => {
+          const audio = new Audio(audioUrl);
+          audio.addEventListener("loadedmetadata", () => resolve(audio.duration * 1000));
+          audio.addEventListener("error", () => resolve(totalMs));
+        });
+
+        // 추정 시간 대비 실제 시간 비율로 자막 타이밍 스케일 조정
+        if (actualMs > 0 && Math.abs(actualMs - totalMs) > 500) {
+          const ratio = actualMs / totalMs;
+          captions = captions.map(c => ({
+            ...c,
+            startMs: Math.round(c.startMs * ratio),
+            endMs: Math.round(c.endMs * ratio),
+            timestampMs: Math.round(c.timestampMs * ratio),
+          }));
+          totalMs = actualMs;
+        }
+
+      } catch (e) {
+        alert(`음성 생성 실패: ${e.message}\n\n자막만으로 계속합니다.`);
+      }
+    }
 
     setGenerated({
       captions,
       totalMs,
       wordCount,
       estSeconds,
+      audioUrl,
       backgroundVideoUrl: BG_PRESETS.find(b => b.key === selectedBg)?.videoUrl ?? "",
     });
     setGenerating(false);
-  }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds]);
+  }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds, elevenlabsKey, voiceId]);
 
   const handleDownloadCaptions = useCallback(() => {
     if (!generated) return;
@@ -444,6 +487,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
 
                 <VideoPreview
                   backgroundVideoUrl={generated.backgroundVideoUrl}
+                  audioUrl={generated.audioUrl}
                   captions={generated.captions}
                   highlightColor={highlightColor}
                   fontFamily={fontFamily}

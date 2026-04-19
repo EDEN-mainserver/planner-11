@@ -22,6 +22,7 @@ function buildPages(captions) {
 
 export default function VideoPreview({
   backgroundVideoUrl,
+  audioUrl,
   captions,
   highlightColor,
   fontFamily,
@@ -29,6 +30,7 @@ export default function VideoPreview({
   totalMs,
 }) {
   const videoRef                          = useRef(null);
+  const audioRef                          = useRef(null);
   const intervalRef                       = useRef(null);
   const [playing, setPlaying]             = useState(false);
   const [currentMs, setCurrentMs]         = useState(0);
@@ -38,18 +40,43 @@ export default function VideoPreview({
   const pages      = useMemo(() => buildPages(captions), [captions]);
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
 
-  // 영상 → currentMs 동기화
+  // audioUrl 변경 시 audio 엘리먼트 생성/교체
   useEffect(() => {
+    if (!audioUrl) { audioRef.current = null; return; }
+    const audio = new Audio(audioUrl);
+    audio.preload = "auto";
+    audioRef.current = audio;
+    return () => { audio.pause(); };
+  }, [audioUrl]);
+
+  // 오디오 → currentMs 동기화 (audioUrl 있을 때 주 타이머 역할)
+  useEffect(() => {
+    if (!audioUrl) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => setCurrentMs(audio.currentTime * 1000);
+    const onEnded = () => { setPlaying(false); setCurrentMs(0); };
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnded);
+    return () => {
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, [audioUrl]);
+
+  // 배경 영상 → currentMs 동기화 (audioUrl 없을 때만)
+  useEffect(() => {
+    if (audioUrl) return;
     const video = videoRef.current;
     if (!video) return;
     const onTime = () => setCurrentMs(video.currentTime * 1000);
     video.addEventListener("timeupdate", onTime);
     return () => video.removeEventListener("timeupdate", onTime);
-  }, [videoLoaded]);
+  }, [videoLoaded, audioUrl]);
 
-  // 영상 실패 시 폴백 타이머 (자막 싱크용)
+  // 오디오도 없고 영상도 실패 시 폴백 타이머
   useEffect(() => {
-    if (!videoError || !playing) return;
+    if (!videoError || !playing || audioUrl) return;
     intervalRef.current = setInterval(() => {
       setCurrentMs(prev => {
         const next = prev + 100;
@@ -58,7 +85,7 @@ export default function VideoPreview({
       });
     }, 100);
     return () => clearInterval(intervalRef.current);
-  }, [videoError, playing, durationMs]);
+  }, [videoError, playing, durationMs, audioUrl]);
 
   const currentPage = useMemo(() => {
     let found = null;
@@ -72,15 +99,22 @@ export default function VideoPreview({
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
-    if (video && !videoError) {
-      if (playing) {
-        video.pause(); setPlaying(false);
-      } else {
-        video.play().catch(() => { setVideoError(true); setPlaying(true); });
-        setPlaying(true);
-      }
+    const audio = audioRef.current;
+
+    if (playing) {
+      video?.pause();
+      audio?.pause();
+      setPlaying(false);
     } else {
-      setPlaying(p => !p);
+      // 배경 영상은 음소거 루프로 재생 (오디오 있으면 소리는 audio 담당)
+      if (video && !videoError) {
+        video.play().catch(() => setVideoError(true));
+      }
+      if (audio) {
+        audio.play().catch(() => {});
+      }
+      if (!video && !audio) setPlaying(p => !p);
+      setPlaying(true);
     }
   }, [playing, videoError]);
 
@@ -88,6 +122,7 @@ export default function VideoPreview({
     const ms = Number(e.target.value);
     setCurrentMs(ms);
     if (videoRef.current && !videoError) videoRef.current.currentTime = ms / 1000;
+    if (audioRef.current) audioRef.current.currentTime = ms / 1000;
   }, [videoError]);
 
   const captionStyle =
