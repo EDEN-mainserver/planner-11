@@ -2,20 +2,36 @@
 // 배경영상 + TikTok 스타일 단어 하이라이트 자막 실시간 렌더링
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 
-// 한 페이지에 표시할 최대 단어 수 (1줄 유지, 한국어 기준 2단어가 안전)
-const MAX_WORDS_PER_PAGE = 2;
+// 한 페이지 최대 글자 수 (공백 제외, 한국어 읽기 단위 기준)
+const MAX_CHARS_PER_PAGE = 10;
+// 구두점: 이 문자 뒤에선 무조건 새 페이지
+const PUNCT_BREAK = /[.!?,。\n]/;
 
 function buildPages(captions) {
   if (!captions || captions.length === 0) return [];
   const pages = [];
   let page = null;
+  let pageChars = 0;
+
   for (const cap of captions) {
-    if (!page || page.tokens.length >= MAX_WORDS_PER_PAGE) {
+    const wordLen = cap.text.trim().length;
+
+    // 글자 수 초과 or 직전 토큰이 구두점으로 끝난 경우 → 새 페이지
+    if (!page || pageChars + wordLen > MAX_CHARS_PER_PAGE) {
       page = { startMs: cap.startMs, endMs: cap.endMs, tokens: [] };
       pages.push(page);
+      pageChars = 0;
     }
+
     page.tokens.push({ text: cap.text, fromMs: cap.startMs, toMs: cap.endMs });
     page.endMs = Math.max(page.endMs, cap.endMs);
+    pageChars += wordLen;
+
+    // 구두점으로 끝나면 다음 단어는 새 페이지
+    if (PUNCT_BREAK.test(cap.text)) {
+      page = null;
+      pageChars = 0;
+    }
   }
   return pages;
 }
@@ -179,8 +195,8 @@ export default function VideoPreview({
           ...captionStyle,
         }}>
           {currentPage && (
-            <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "7px 14px" }}>
-              <p style={{ fontFamily, fontSize: 18, fontWeight: 900, lineHeight: 1.2, margin: 0, whiteSpace: "nowrap", textAlign: "center" }}>
+            <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "7px 12px" }}>
+              <p style={{ fontFamily, fontSize: 17, fontWeight: 900, lineHeight: 1.25, margin: 0, whiteSpace: "nowrap", textAlign: "center" }}>
                 {currentPage.tokens.map((token, i) => {
                   const isActive = token.fromMs <= currentMs && token.toMs > currentMs;
                   return (
