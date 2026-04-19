@@ -105,7 +105,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       wordCount,
       estSeconds,
       audioUrl,
-      backgroundVideoUrl: BG_PRESETS.find(b => b.key === selectedBg)?.videoUrl ?? "",
+      bgPreset: BG_PRESETS.find(b => b.key === selectedBg),
     });
     setGenerating(false);
   }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds, voiceId]);
@@ -470,7 +470,8 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                 </div>
 
                 <VideoPreview
-                  backgroundVideoUrl={generated.backgroundVideoUrl}
+                  bgPreset={generated.bgPreset}
+                  script={script}
                   audioUrl={generated.audioUrl}
                   captions={generated.captions}
                   highlightColor={highlightColor}

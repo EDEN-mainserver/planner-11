@@ -1,26 +1,31 @@
 // 커뮤니티 영상 자동화 — 상수 정의
 
-// videoUrl: Mixkit CDN 직접 MP4 링크 (https://assets.mixkit.co/videos/{id}/{id}-720.mp4)
-// Pexels /download/ URL은 404 반환으로 인해 Mixkit으로 교체
+// bgPreset: site(커뮤니티 사이트 정보) + character(애니 캐릭터 감정/색상) 조합
 export const BG_PRESETS = [
-  { key: "minecraft", label: "마인크래프트", emoji: "⛏️", category: "게임",
-    color: "from-green-500 to-emerald-600", desc: "파쿠르 & 서바이벌",
-    videoUrl: "https://assets.mixkit.co/videos/5444/5444-720.mp4" },
-  { key: "subway",    label: "서브웨이 서퍼", emoji: "🏃", category: "게임",
-    color: "from-orange-500 to-red-500", desc: "무한 달리기 게임",
-    videoUrl: "https://assets.mixkit.co/videos/1622/1622-720.mp4" },
-  { key: "cooking",   label: "요리 영상",    emoji: "🍳", category: "요리",
-    color: "from-yellow-500 to-orange-500", desc: "맛있는 요리 과정",
-    videoUrl: "https://assets.mixkit.co/videos/3806/3806-720.mp4" },
-  { key: "rain",      label: "빗소리",       emoji: "🌧️", category: "자연",
-    color: "from-blue-400 to-slate-500", desc: "창문 빗소리 ASMR",
-    videoUrl: "https://assets.mixkit.co/videos/2716/2716-720.mp4" },
-  { key: "city",      label: "도시 야경",    emoji: "🌃", category: "야경",
-    color: "from-purple-500 to-indigo-600", desc: "빛나는 도시 야경",
-    videoUrl: "https://assets.mixkit.co/videos/11/11-720.mp4" },
-  { key: "satisfying", label: "새틴파잉",    emoji: "✨", category: "힐링",
-    color: "from-pink-400 to-rose-500", desc: "보는 것만으로 힐링",
-    videoUrl: "https://assets.mixkit.co/videos/1706/1706-720.mp4" },
+  { key: "fmkorea_angry",   label: "에펨코리아 열혈글", emoji: "🔥", category: "커뮤니티",
+    color: "from-blue-600 to-blue-800",      desc: "FM코리아 분노 썰",
+    site: { name: "에펨코리아",   color: "#1e6dc8" },
+    character: { mood: "angry",   hairColor: "#2c1a0e", clothesColor: "#dc2626" } },
+  { key: "ruliweb_shocked", label: "루리웹 경악글",     emoji: "😱", category: "커뮤니티",
+    color: "from-orange-500 to-red-500",     desc: "루리웹 황당 썰",
+    site: { name: "루리웹",       color: "#e8500a" },
+    character: { mood: "shocked", hairColor: "#1a1a2e", clothesColor: "#7c3aed" } },
+  { key: "dcinside_laugh",  label: "디씨 웃긴 글",     emoji: "😂", category: "커뮤니티",
+    color: "from-yellow-500 to-orange-500",  desc: "디씨인사이드 병맛 썰",
+    site: { name: "디씨인사이드", color: "#0066cc" },
+    character: { mood: "laugh",   hairColor: "#4a3728", clothesColor: "#16a34a" } },
+  { key: "theqoo_happy",    label: "더쿠 수다글",       emoji: "💬", category: "커뮤니티",
+    color: "from-pink-400 to-rose-500",      desc: "더쿠 연예인 수다",
+    site: { name: "더쿠",         color: "#e91e8c" },
+    character: { mood: "happy",   hairColor: "#7c2d12", clothesColor: "#ec4899" } },
+  { key: "instiz_sad",      label: "인스티즈 공감글",   emoji: "😢", category: "커뮤니티",
+    color: "from-blue-400 to-slate-500",     desc: "인스티즈 감성 공감",
+    site: { name: "인스티즈",     color: "#4c75af" },
+    character: { mood: "sad",     hairColor: "#374151", clothesColor: "#3b82f6" } },
+  { key: "blind_work",      label: "블라인드 직장 썰",  emoji: "🏢", category: "직장",
+    color: "from-gray-600 to-gray-800",      desc: "블라인드 직장 공감 썰",
+    site: { name: "블라인드",     color: "#222222" },
+    character: { mood: "angry",   hairColor: "#1c1c1c", clothesColor: "#374151" } },
 ];
 
 export const FONT_OPTIONS = [
