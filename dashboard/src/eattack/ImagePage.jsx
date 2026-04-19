@@ -5,6 +5,7 @@
  */
 import { useState } from "react";
 import CardNewsTab from "./CardNewsTab";
+import ProposalTab from "./ProposalTab";
 
 // ── 탭 정의 ──
 const IMAGE_TABS = [
@@ -44,25 +45,6 @@ const IMAGE_TABS = [
   },
 ];
 
-
-// ── 제안서 자동화 탭 ──
-function ProposalTab() {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mb-5 shadow-lg">
-        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
-        </svg>
-      </div>
-      <h4 className="text-base font-semibold text-gray-700 mb-2">제안서 자동화 기능</h4>
-      <p className="text-sm text-gray-400 max-w-xs">
-        클라이언트 정보와 요구사항을 입력하면 AI가 맞춤형<br />
-        제안서를 자동으로 구성하고 완성합니다.<br />
-        <span className="text-violet-500 font-medium">준비 중입니다</span>
-      </p>
-    </div>
-  );
-}
 
 // ── 상세페이지 탭 ──
 function DetailPageTab() {
