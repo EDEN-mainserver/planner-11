@@ -1,31 +1,6 @@
 // 9:16 인앱 영상 프리뷰 컴포넌트
 // 커뮤니티 썰 UI 배경 + 자막을 게시물 카드 본문에 실시간 렌더링
-import { useRef, useState, useEffect, useMemo, useCallback } from "react";
-
-// ─── 자막 페이지 빌더 ───────────────────────────────────────────────────────
-const MAX_CHARS_PER_PAGE = 10;
-const PUNCT_BREAK = /[.!?,。\n]/;
-
-function buildPages(captions) {
-  if (!captions || captions.length === 0) return [];
-  const pages = [];
-  let page = null;
-  let pageChars = 0;
-
-  for (const cap of captions) {
-    const wordLen = cap.text.trim().length;
-    if (!page || pageChars + wordLen > MAX_CHARS_PER_PAGE) {
-      page = { startMs: cap.startMs, endMs: cap.endMs, tokens: [] };
-      pages.push(page);
-      pageChars = 0;
-    }
-    page.tokens.push({ text: cap.text, fromMs: cap.startMs, toMs: cap.endMs });
-    page.endMs = Math.max(page.endMs, cap.endMs);
-    pageChars += wordLen;
-    if (PUNCT_BREAK.test(cap.text)) { page = null; pageChars = 0; }
-  }
-  return pages;
-}
+import { useRef, useState, useEffect, useCallback } from "react";
 
 // ─── 커뮤니티 UI 배경 ────────────────────────────────────────────────────────
 function hashInt(str, min, max) {
@@ -34,7 +9,7 @@ function hashInt(str, min, max) {
   return min + (Math.abs(h) % (max - min));
 }
 
-function CommunityBg({ bgPreset, titleExcerpt, currentPage, fontFamily }) {
+function CommunityBg({ bgPreset, titleExcerpt, captions, currentMs, fontFamily }) {
   const { site, key } = bgPreset ?? {};
   const siteName  = site?.name  ?? "커뮤니티";
   const siteColor = site?.color ?? "#1e6dc8";
@@ -46,9 +21,10 @@ function CommunityBg({ bgPreset, titleExcerpt, currentPage, fontFamily }) {
   const today = new Date();
   const dateStr = `${today.getFullYear()}.${String(today.getMonth()+1).padStart(2,"0")}.${String(today.getDate()).padStart(2,"0")}`;
 
-  const captionText = currentPage
-    ? currentPage.tokens.map(t => t.text).join("")
-    : "";
+  // 현재 재생 위치 기준으로 active 단어 판별
+  const activeIdx = captions
+    ? captions.findIndex(c => currentMs >= c.startMs && currentMs < c.endMs)
+    : -1;
 
   return (
     <div style={{ position: "absolute", inset: 0, background: "#f0f0f2", overflow: "hidden", fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -82,14 +58,25 @@ function CommunityBg({ bgPreset, titleExcerpt, currentPage, fontFamily }) {
           {titleExcerpt || "제목 없음"}
         </div>
         {/* 자막 — 제목 아래 본문 영역 */}
-        <div style={{ marginTop: 8, minHeight: 36, borderTop: "1px solid #f0f0f0", paddingTop: 7 }}>
-          <p style={{
-            fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
-            fontSize: 13, fontWeight: 700, color: "#111",
-            lineHeight: 1.65, margin: 0,
-          }}>
-            {captionText || <span style={{ color: "#ccc", fontWeight: 400 }}>재생하면 자막이 여기에 표시됩니다</span>}
-          </p>
+        <div style={{ marginTop: 8, borderTop: "1px solid #f0f0f0", paddingTop: 7,
+          maxHeight: 200, overflowY: "auto" }}>
+          {captions && captions.length > 0 ? (
+            <p style={{
+              fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
+              fontSize: 12, fontWeight: 500, color: "#444",
+              lineHeight: 1.8, margin: 0,
+            }}>
+              {captions.map((c, i) => (
+                <span key={i} style={{
+                  fontWeight: i === activeIdx ? 800 : 500,
+                  color: i === activeIdx ? "#111" : "#666",
+                  transition: "color 0.1s, font-weight 0.1s",
+                }}>{c.text}</span>
+              ))}
+            </p>
+          ) : (
+            <p style={{ color: "#ccc", fontSize: 11, margin: 0 }}>재생하면 자막이 여기에 표시됩니다</p>
+          )}
         </div>
         {/* 반응 */}
         <div style={{ marginTop: 8, display: "flex", gap: 10 }}>
@@ -125,7 +112,6 @@ export default function VideoPreview({
   const [playing, setPlaying]     = useState(false);
   const [currentMs, setCurrentMs] = useState(0);
 
-  const pages      = useMemo(() => buildPages(captions), [captions]);
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
 
   // title이 없으면 스크립트 앞부분을 폴백으로 사용
@@ -162,16 +148,6 @@ export default function VideoPreview({
     return () => clearInterval(intervalRef.current);
   }, [audioUrl, playing, durationMs]);
 
-  const currentPage = useMemo(() => {
-    let found = null;
-    for (const p of pages) {
-      if (currentMs >= p.startMs) found = p;
-      else break;
-    }
-    if (found && currentMs <= found.endMs + 400) return found;
-    return null;
-  }, [pages, currentMs]);
-
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (playing) {
@@ -199,7 +175,8 @@ export default function VideoPreview({
         <CommunityBg
           bgPreset={bgPreset}
           titleExcerpt={titleExcerpt}
-          currentPage={currentPage}
+          captions={captions}
+          currentMs={currentMs}
           fontFamily={fontFamily}
         />
 
