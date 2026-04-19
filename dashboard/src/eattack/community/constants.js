@@ -24,9 +24,9 @@ export const BG_PRESETS = [
 ];
 
 export const FONT_OPTIONS = [
-  { key: "Noto Sans KR",    label: "노토 산스 (기본)" },
-  { key: "Black Han Sans",  label: "검은 한 산스 (굵게)" },
-  { key: "Gmarket Sans",    label: "지마켓 산스" },
+  { key: "Noto Sans KR",   label: "노토 산스 (기본)" },
+  { key: "Black Han Sans", label: "검은 한 산스 (굵게)" },
+  { key: "Nanum Gothic",   label: "나눔 고딕" },
 ];
 
 export const HIGHLIGHT_COLORS = [
