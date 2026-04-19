@@ -55,6 +55,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
             headers: {
               "xi-api-key": elevenlabsKey.trim(),
               "Content-Type": "application/json",
+              "Accept": "audio/mpeg",
             },
             body: JSON.stringify({
               text: script,

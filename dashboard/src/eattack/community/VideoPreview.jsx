@@ -40,27 +40,25 @@ export default function VideoPreview({
   const pages      = useMemo(() => buildPages(captions), [captions]);
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
 
-  // audioUrl 변경 시 audio 엘리먼트 생성/교체
+  // audioUrl → Audio 생성 + 리스너 + currentMs 동기화 (하나로 통합)
   useEffect(() => {
     if (!audioUrl) { audioRef.current = null; return; }
+
     const audio = new Audio(audioUrl);
     audio.preload = "auto";
     audioRef.current = audio;
-    return () => { audio.pause(); };
-  }, [audioUrl]);
 
-  // 오디오 → currentMs 동기화 (audioUrl 있을 때 주 타이머 역할)
-  useEffect(() => {
-    if (!audioUrl) return;
-    const audio = audioRef.current;
-    if (!audio) return;
-    const onTime = () => setCurrentMs(audio.currentTime * 1000);
+    const onTime  = () => setCurrentMs(audio.currentTime * 1000);
     const onEnded = () => { setPlaying(false); setCurrentMs(0); };
+
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("ended", onEnded);
+
     return () => {
+      audio.pause();
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("ended", onEnded);
+      audioRef.current = null;
     };
   }, [audioUrl]);
 
@@ -111,7 +109,7 @@ export default function VideoPreview({
         video.play().catch(() => setVideoError(true));
       }
       if (audio) {
-        audio.play().catch(() => {});
+        audio.play().catch(e => console.error("[VideoPreview] audio.play() 실패:", e));
       }
       if (!video && !audio) setPlaying(p => !p);
       setPlaying(true);
