@@ -20,6 +20,7 @@ const STEPS = [
 
 export default function CommunityTab({ nasState, onGoToNas }) {
   const [step, setStep]                     = useState(1);
+  const [title, setTitle]                   = useState("");
   const [script, setScript]                 = useState("");
   const [selectedBg, setSelectedBg]         = useState("minecraft");
   const [highlightColor, setHighlightColor] = useState("#FFE600");
@@ -106,6 +107,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       estSeconds,
       audioUrl,
       bgPreset: BG_PRESETS.find(b => b.key === selectedBg),
+      title,
     });
     setGenerating(false);
   }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds, voiceId]);
@@ -171,6 +173,18 @@ export default function CommunityTab({ nasState, onGoToNas }) {
         {/* ── STEP 1: 썰 스크립트 입력 ── */}
         {step === 1 && (
           <div className="space-y-4">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-2">게시물 제목</label>
+              <input
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                maxLength={60}
+                placeholder="예: 회사 팀장이 편의점에서 한 짓"
+                className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 transition-colors font-medium"
+              />
+              <p className="text-[11px] text-gray-400 mt-1 text-right">{title.length}/60자</p>
+            </div>
+
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-semibold text-gray-700">썰 스크립트</label>
@@ -471,6 +485,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
 
                 <VideoPreview
                   bgPreset={generated.bgPreset}
+                  title={generated.title}
                   script={script}
                   audioUrl={generated.audioUrl}
                   captions={generated.captions}
@@ -491,7 +506,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                     captions.json
                   </button>
                   <button
-                    onClick={() => { setGenerated(null); setStep(1); setScript(""); }}
+                    onClick={() => { setGenerated(null); setStep(1); setTitle(""); setScript(""); }}
                     className="flex-1 py-2 rounded-lg bg-indigo-600 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
                   >
                     새 영상 만들기

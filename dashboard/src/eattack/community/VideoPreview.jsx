@@ -184,6 +184,7 @@ function CommunityBg({ bgPreset, titleExcerpt }) {
 // ─── 메인 컴포넌트 ───────────────────────────────────────────────────────────
 export default function VideoPreview({
   bgPreset,
+  title,
   script,
   audioUrl,
   captions,
@@ -200,8 +201,8 @@ export default function VideoPreview({
   const pages      = useMemo(() => buildPages(captions), [captions]);
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
 
-  // 스크립트 앞부분을 게시물 제목으로 사용
-  const titleExcerpt = useMemo(() => script?.trim().slice(0, 60) ?? "", [script]);
+  // title이 없으면 스크립트 앞부분을 폴백으로 사용
+  const titleExcerpt = title?.trim() || script?.trim().slice(0, 60) || "";
 
   // 오디오 설정 + currentMs 동기화
   useEffect(() => {
