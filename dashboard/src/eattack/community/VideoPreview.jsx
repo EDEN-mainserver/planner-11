@@ -155,20 +155,6 @@ function CommunityBg({ bgPreset, titleExcerpt }) {
         </div>
       </div>
 
-      {/* 게시물 목록 스켈레톤 (분위기용) */}
-      {[0,1,2].map(i => (
-        <div key={i} style={{ margin: "0 8px 3px", background: "white", borderRadius: 8,
-          padding: "8px 12px", opacity: 0.55 + i * 0.08 }}>
-          <div style={{ height: 7, background: "#f0f0f0", borderRadius: 3, width: `${72 - i * 12}%`, marginBottom: 4 }}/>
-          <div style={{ height: 5, background: "#f5f5f5", borderRadius: 3, width: "35%" }}/>
-        </div>
-      ))}
-
-      {/* 캐릭터 */}
-      <div style={{ position: "absolute", bottom: 46, left: "50%", transform: "translateX(-50%)" }}>
-        {character && <AnimeCharacter {...character}/>}
-      </div>
-
       {/* 하단 네비게이션 바 */}
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 44,
         background: "white", borderTop: "1px solid #e9ecef",
