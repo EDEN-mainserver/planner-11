@@ -2,14 +2,15 @@
 // 배경영상 + TikTok 스타일 단어 하이라이트 자막 실시간 렌더링
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 
-const SWITCH_EVERY_MS = 1500;
+// 한 페이지에 표시할 최대 단어 수 (1줄 유지)
+const MAX_WORDS_PER_PAGE = 3;
 
 function buildPages(captions) {
   if (!captions || captions.length === 0) return [];
   const pages = [];
   let page = null;
   for (const cap of captions) {
-    if (!page || cap.startMs - page.startMs >= SWITCH_EVERY_MS) {
+    if (!page || page.tokens.length >= MAX_WORDS_PER_PAGE) {
       page = { startMs: cap.startMs, endMs: cap.endMs, tokens: [] };
       pages.push(page);
     }
@@ -145,8 +146,8 @@ export default function VideoPreview({
           ...captionStyle,
         }}>
           {currentPage && (
-            <div style={{ background: "rgba(0,0,0,0.5)", borderRadius: 10, padding: "9px 14px", maxWidth: "92%", textAlign: "center" }}>
-              <p style={{ fontFamily, fontSize: 19, fontWeight: 900, lineHeight: 1.35, margin: 0, whiteSpace: "pre-wrap" }}>
+            <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "8px 16px", maxWidth: "96%" }}>
+              <p style={{ fontFamily, fontSize: 20, fontWeight: 900, lineHeight: 1.2, margin: 0, whiteSpace: "nowrap", textAlign: "center" }}>
                 {currentPage.tokens.map((token, i) => {
                   const isActive = token.fromMs <= currentMs && token.toMs > currentMs;
                   return (
