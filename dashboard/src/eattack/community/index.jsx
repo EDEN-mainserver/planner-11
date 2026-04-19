@@ -1,13 +1,12 @@
 // 커뮤니티 영상 자동화 탭
 // 썰 스크립트 → 배경 영상 + TikTok 자막 → Remotion 숏폼 영상 자동 생성
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import CaptionPreview from "./CaptionPreview";
 import VideoPreview from "./VideoPreview";
 import {
   BG_PRESETS,
   FONT_OPTIONS,
   HIGHLIGHT_COLORS,
-  VOICE_OPTIONS,
   EXAMPLE_SCRIPTS,
 } from "./constants";
 import { generateCaptionsFromText, estimateSeconds } from "./utils";
@@ -26,10 +25,25 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [highlightColor, setHighlightColor] = useState("#FFE600");
   const [fontFamily, setFontFamily]         = useState("Noto Sans KR");
   const [captionPos, setCaptionPos]         = useState("center");
-  const [voiceId, setVoiceId]               = useState(VOICE_OPTIONS[0].id);
+  const [voices, setVoices]                 = useState([]);
+  const [voicesLoading, setVoicesLoading]   = useState(true);
+  const [voiceId, setVoiceId]               = useState("");
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
   const [ttsError, setTtsError]             = useState("");
+
+  // 컴포넌트 마운트 시 보이스 목록 로드
+  useEffect(() => {
+    fetch("/api/voices")
+      .then(r => r.json())
+      .then(data => {
+        const list = data.voices ?? [];
+        setVoices(list);
+        if (list.length > 0) setVoiceId(list[0].id);
+      })
+      .catch(() => {})
+      .finally(() => setVoicesLoading(false));
+  }, []);
 
   const scriptLen  = script.trim().length;
   const wordCount  = script.trim().split(/\s+/).filter(Boolean).length;
@@ -352,21 +366,33 @@ export default function CommunityTab({ nasState, onGoToNas }) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-2">보이스 선택</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {VOICE_OPTIONS.map(v => (
-                    <button
-                      key={v.id}
-                      onClick={() => setVoiceId(v.id)}
-                      className={`text-left p-2.5 rounded-lg border transition-all ${
-                        voiceId === v.id ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <p className={`text-xs font-semibold ${voiceId === v.id ? "text-indigo-700" : "text-gray-800"}`}>{v.name}</p>
-                      <p className="text-[10px] text-gray-400">{v.desc}</p>
-                    </button>
-                  ))}
-                </div>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">
+                  보이스 선택 {!voicesLoading && <span className="text-gray-400 font-normal">({voices.length}개)</span>}
+                </label>
+                {voicesLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                    <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    보이스 목록 불러오는 중…
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                    {voices.map(v => (
+                      <button
+                        key={v.id}
+                        onClick={() => setVoiceId(v.id)}
+                        className={`text-left p-2.5 rounded-lg border transition-all ${
+                          voiceId === v.id ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <p className={`text-xs font-semibold truncate ${voiceId === v.id ? "text-indigo-700" : "text-gray-800"}`}>{v.name}</p>
+                        <p className="text-[10px] text-gray-400 truncate">
+                          {v.labels?.gender ?? ""}{v.labels?.accent ? ` · ${v.labels.accent}` : ""}
+                          {v.category === "cloned" ? " · 클론" : ""}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {ttsError && (
@@ -397,7 +423,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                 </div>
                 <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
                   <p className="text-gray-400">AI 보이스</p>
-                  <p className="font-semibold text-gray-800">ElevenLabs · {VOICE_OPTIONS.find(v => v.id === voiceId)?.name}</p>
+                  <p className="font-semibold text-gray-800">ElevenLabs · {voices.find(v => v.id === voiceId)?.name ?? voiceId}</p>
                 </div>
               </div>
             </div>
