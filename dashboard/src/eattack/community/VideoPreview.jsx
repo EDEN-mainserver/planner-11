@@ -2,8 +2,8 @@
 // 배경영상 + TikTok 스타일 단어 하이라이트 자막 실시간 렌더링
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 
-// 한 페이지에 표시할 최대 단어 수 (1줄 유지)
-const MAX_WORDS_PER_PAGE = 3;
+// 한 페이지에 표시할 최대 단어 수 (1줄 유지, 한국어 기준 2단어가 안전)
+const MAX_WORDS_PER_PAGE = 2;
 
 function buildPages(captions) {
   if (!captions || captions.length === 0) return [];
@@ -179,8 +179,8 @@ export default function VideoPreview({
           ...captionStyle,
         }}>
           {currentPage && (
-            <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "8px 16px", maxWidth: "96%" }}>
-              <p style={{ fontFamily, fontSize: 20, fontWeight: 900, lineHeight: 1.2, margin: 0, whiteSpace: "nowrap", textAlign: "center" }}>
+            <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "7px 14px" }}>
+              <p style={{ fontFamily, fontSize: 18, fontWeight: 900, lineHeight: 1.2, margin: 0, whiteSpace: "nowrap", textAlign: "center" }}>
                 {currentPage.tokens.map((token, i) => {
                   const isActive = token.fromMs <= currentMs && token.toMs > currentMs;
                   return (
