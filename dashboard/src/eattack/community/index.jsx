@@ -23,7 +23,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [script, setScript]                 = useState("");
   const [selectedBg, setSelectedBg]         = useState("minecraft");
   const [fontFamily, setFontFamily]         = useState("Noto Sans KR");
-  const [captionPos, setCaptionPos]         = useState("center");
   const [voices, setVoices]                 = useState([]);
   const [voicesLoading, setVoicesLoading]   = useState(true);
   const [voiceId, setVoiceId]               = useState("");
@@ -108,7 +107,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       title,
     });
     setGenerating(false);
-  }, [script, selectedBg, fontFamily, captionPos, wordCount, estSeconds, voiceId, title]);
+  }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title]);
 
   const handleDownloadCaptions = useCallback(() => {
     if (!generated) return;
@@ -316,23 +315,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   </div>
                 </div>
 
-                {/* 자막 위치 */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">자막 위치</label>
-                  <div className="flex gap-2">
-                    {[{ k: "center", l: "중앙" }, { k: "bottom", l: "하단" }].map(p => (
-                      <button
-                        key={p.k}
-                        onClick={() => setCaptionPos(p.k)}
-                        className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
-                          captionPos === p.k ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-semibold" : "border-gray-200 text-gray-600"
-                        }`}
-                      >
-                        {p.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -464,7 +446,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   audioUrl={generated.audioUrl}
                   captions={generated.captions}
                   fontFamily={fontFamily}
-                  captionPos={captionPos}
                   totalMs={generated.totalMs}
                 />
 
