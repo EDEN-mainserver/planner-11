@@ -26,11 +26,10 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [highlightColor, setHighlightColor] = useState("#FFE600");
   const [fontFamily, setFontFamily]         = useState("Noto Sans KR");
   const [captionPos, setCaptionPos]         = useState("center");
-  const [elevenlabsKey, setElevenlabsKey]   = useState("");
   const [voiceId, setVoiceId]               = useState(VOICE_OPTIONS[0].id);
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
-  const [showKeyInput, setShowKeyInput]     = useState(false);
+  const [ttsError, setTtsError]             = useState("");
 
   const scriptLen  = script.trim().length;
   const wordCount  = script.trim().split(/\s+/).filter(Boolean).length;
@@ -44,57 +43,44 @@ export default function CommunityTab({ nasState, onGoToNas }) {
 
     let { captions, totalMs } = generateCaptionsFromText(script);
     let audioUrl = null;
+    setTtsError("");
 
-    // ElevenLabs TTS 호출 (API 키가 있을 때만)
-    if (elevenlabsKey.trim()) {
-      try {
-        const res = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-          {
-            method: "POST",
-            headers: {
-              "xi-api-key": elevenlabsKey.trim(),
-              "Content-Type": "application/json",
-              "Accept": "audio/mpeg",
-            },
-            body: JSON.stringify({
-              text: script,
-              model_id: "eleven_multilingual_v2",
-              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-            }),
-          }
-        );
+    // 백엔드 TTS 프록시 호출 (API 키는 서버 환경변수에서 처리)
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: script, voiceId }),
+      });
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err?.detail?.message || `ElevenLabs 오류 (${res.status})`);
-        }
-
-        const audioBlob = await res.blob();
-        audioUrl = URL.createObjectURL(audioBlob);
-
-        // 실제 오디오 길이로 자막 타이밍 보정
-        const actualMs = await new Promise((resolve) => {
-          const audio = new Audio(audioUrl);
-          audio.addEventListener("loadedmetadata", () => resolve(audio.duration * 1000));
-          audio.addEventListener("error", () => resolve(totalMs));
-        });
-
-        // 추정 시간 대비 실제 시간 비율로 자막 타이밍 스케일 조정
-        if (actualMs > 0 && Math.abs(actualMs - totalMs) > 500) {
-          const ratio = actualMs / totalMs;
-          captions = captions.map(c => ({
-            ...c,
-            startMs: Math.round(c.startMs * ratio),
-            endMs: Math.round(c.endMs * ratio),
-            timestampMs: Math.round(c.timestampMs * ratio),
-          }));
-          totalMs = actualMs;
-        }
-
-      } catch (e) {
-        alert(`음성 생성 실패: ${e.message}\n\n자막만으로 계속합니다.`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `TTS 오류 (${res.status})`);
       }
+
+      const audioBlob = await res.blob();
+      audioUrl = URL.createObjectURL(audioBlob);
+
+      // 실제 오디오 길이로 자막 타이밍 보정
+      const actualMs = await new Promise((resolve) => {
+        const audio = new Audio(audioUrl);
+        audio.addEventListener("loadedmetadata", () => resolve(audio.duration * 1000));
+        audio.addEventListener("error", () => resolve(totalMs));
+      });
+
+      if (actualMs > 0 && Math.abs(actualMs - totalMs) > 500) {
+        const ratio = actualMs / totalMs;
+        captions = captions.map(c => ({
+          ...c,
+          startMs: Math.round(c.startMs * ratio),
+          endMs: Math.round(c.endMs * ratio),
+          timestampMs: Math.round(c.timestampMs * ratio),
+        }));
+        totalMs = actualMs;
+      }
+
+    } catch (e) {
+      setTtsError(e.message);
     }
 
     setGenerated({
@@ -106,7 +92,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       backgroundVideoUrl: BG_PRESETS.find(b => b.key === selectedBg)?.videoUrl ?? "",
     });
     setGenerating(false);
-  }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds, elevenlabsKey, voiceId]);
+  }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds, voiceId]);
 
   const handleDownloadCaptions = useCallback(() => {
     if (!generated) return;
@@ -356,42 +342,14 @@ export default function CommunityTab({ nasState, onGoToNas }) {
             <p className="text-sm font-semibold text-gray-700">AI 보이스 설정</p>
 
             <div className="rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
-              <div className="flex items-start gap-3">
+              <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">11</div>
                 <div className="flex-1">
                   <p className="text-sm font-bold text-gray-800">ElevenLabs TTS</p>
                   <p className="text-xs text-gray-500 mt-0.5">가장 자연스러운 한국어 AI 목소리 제공</p>
                 </div>
-                <button
-                  onClick={() => setShowKeyInput(o => !o)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${elevenlabsKey ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-                >
-                  {elevenlabsKey ? "연결됨 ✓" : "API 키 입력"}
-                </button>
+                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700">연결됨 ✓</span>
               </div>
-
-              {showKeyInput && (
-                <div className="space-y-2">
-                  <input
-                    type="password"
-                    value={elevenlabsKey}
-                    onChange={e => setElevenlabsKey(e.target.value)}
-                    placeholder="sk-... ElevenLabs API 키"
-                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-400 font-mono"
-                  />
-                  <p className="text-[10px] text-gray-400">
-                    키는 브라우저에만 저장되며 서버로 전송되지 않습니다.{" "}
-                    <a
-                      className="text-indigo-500 underline"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      href="https://elevenlabs.io/app/speech-synthesis"
-                    >
-                      ElevenLabs에서 무료로 받기 →
-                    </a>
-                  </p>
-                </div>
-              )}
 
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-2">보이스 선택</label>
@@ -411,9 +369,9 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                 </div>
               </div>
 
-              {!elevenlabsKey && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-                  API 키 없이도 자막 영상을 생성할 수 있습니다. (음성 없음)
+              {ttsError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                  음성 생성 실패: {ttsError} · 자막만으로 계속합니다.
                 </div>
               )}
             </div>
@@ -439,7 +397,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                 </div>
                 <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
                   <p className="text-gray-400">AI 보이스</p>
-                  <p className="font-semibold text-gray-800">{elevenlabsKey ? "ElevenLabs" : "없음 (자막만)"}</p>
+                  <p className="font-semibold text-gray-800">ElevenLabs · {VOICE_OPTIONS.find(v => v.id === voiceId)?.name}</p>
                 </div>
               </div>
             </div>
