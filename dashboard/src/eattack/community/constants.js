@@ -1,24 +1,26 @@
 // 커뮤니티 영상 자동화 — 상수 정의
 
+// videoUrl: Mixkit CDN 직접 MP4 링크 (https://assets.mixkit.co/videos/{id}/{id}-720.mp4)
+// Pexels /download/ URL은 404 반환으로 인해 Mixkit으로 교체
 export const BG_PRESETS = [
   { key: "minecraft", label: "마인크래프트", emoji: "⛏️", category: "게임",
     color: "from-green-500 to-emerald-600", desc: "파쿠르 & 서바이벌",
-    videoUrl: "https://www.pexels.com/video/854221/download/" },
+    videoUrl: "https://assets.mixkit.co/videos/5444/5444-720.mp4" },
   { key: "subway",    label: "서브웨이 서퍼", emoji: "🏃", category: "게임",
     color: "from-orange-500 to-red-500", desc: "무한 달리기 게임",
-    videoUrl: "https://www.pexels.com/video/2278095/download/" },
+    videoUrl: "https://assets.mixkit.co/videos/1622/1622-720.mp4" },
   { key: "cooking",   label: "요리 영상",    emoji: "🍳", category: "요리",
     color: "from-yellow-500 to-orange-500", desc: "맛있는 요리 과정",
-    videoUrl: "https://www.pexels.com/video/8485248/download/" },
+    videoUrl: "https://assets.mixkit.co/videos/3806/3806-720.mp4" },
   { key: "rain",      label: "빗소리",       emoji: "🌧️", category: "자연",
     color: "from-blue-400 to-slate-500", desc: "창문 빗소리 ASMR",
-    videoUrl: "https://www.pexels.com/video/1448735/download/" },
+    videoUrl: "https://assets.mixkit.co/videos/2716/2716-720.mp4" },
   { key: "city",      label: "도시 야경",    emoji: "🌃", category: "야경",
     color: "from-purple-500 to-indigo-600", desc: "빛나는 도시 야경",
-    videoUrl: "https://www.pexels.com/video/3571264/download/" },
+    videoUrl: "https://assets.mixkit.co/videos/11/11-720.mp4" },
   { key: "satisfying", label: "새틴파잉",    emoji: "✨", category: "힐링",
     color: "from-pink-400 to-rose-500", desc: "보는 것만으로 힐링",
-    videoUrl: "https://www.pexels.com/video/3129671/download/" },
+    videoUrl: "https://assets.mixkit.co/videos/1706/1706-720.mp4" },
 ];
 
 export const FONT_OPTIONS = [
