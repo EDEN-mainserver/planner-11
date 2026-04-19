@@ -28,13 +28,35 @@ export default async function handler(req, res) {
 
     const data = await elevenRes.json();
 
-    // 필요한 필드만 추려서 반환
-    const voices = (data.voices ?? []).map(v => ({
-      id: v.voice_id,
-      name: v.name,
-      category: v.category,       // "premade" | "cloned" | "generated"
-      labels: v.labels ?? {},     // accent, description, age, gender, use_case 등
-    }));
+    const GENDER_KO   = { male: "남성", female: "여성" };
+    const ACCENT_KO   = {
+      american: "미국식", british: "영국식", australian: "호주식",
+      irish: "아일랜드식", african: "아프리카식", indian: "인도식",
+    };
+    const AGE_KO      = { young: "젊음", "middle aged": "중간", old: "노년" };
+    const USECASE_KO  = {
+      narration: "내레이션", news: "뉴스", meditation: "명상",
+      "social media": "SNS", conversational: "대화형",
+      characters: "캐릭터", audiobook: "오디오북",
+    };
+
+    // 클론/커스텀 제외 — premade만
+    const voices = (data.voices ?? [])
+      .filter(v => v.category === "premade")
+      .map(v => {
+        const lb = v.labels ?? {};
+        const tags = [
+          GENDER_KO[lb.gender],
+          ACCENT_KO[lb.accent],
+          AGE_KO[lb.age],
+          USECASE_KO[lb.use_case],
+        ].filter(Boolean);
+        return {
+          id: v.voice_id,
+          name: v.name,
+          desc: tags.join(" · ") || lb.description || "",
+        };
+      });
 
     res.setHeader("Cache-Control", "s-maxage=300"); // 5분 캐시
     res.status(200).json({ voices });

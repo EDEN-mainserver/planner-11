@@ -385,10 +385,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                         }`}
                       >
                         <p className={`text-xs font-semibold truncate ${voiceId === v.id ? "text-indigo-700" : "text-gray-800"}`}>{v.name}</p>
-                        <p className="text-[10px] text-gray-400 truncate">
-                          {v.labels?.gender ?? ""}{v.labels?.accent ? ` · ${v.labels.accent}` : ""}
-                          {v.category === "cloned" ? " · 클론" : ""}
-                        </p>
+                        <p className="text-[10px] text-gray-400 truncate">{v.desc}</p>
                       </button>
                     ))}
                   </div>
