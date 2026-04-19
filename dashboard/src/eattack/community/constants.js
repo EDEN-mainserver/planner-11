@@ -34,14 +34,6 @@ export const FONT_OPTIONS = [
   { key: "Nanum Gothic",   label: "나눔 고딕" },
 ];
 
-export const HIGHLIGHT_COLORS = [
-  { key: "#FFE600", label: "노랑" },
-  { key: "#FF3D3D", label: "빨강" },
-  { key: "#00FF9D", label: "연두" },
-  { key: "#00CFFF", label: "하늘" },
-  { key: "#FF6BF5", label: "분홍" },
-  { key: "#FF8800", label: "주황" },
-];
 
 export const VOICE_OPTIONS = [
   { id: "cgSgspJ2msm6clMCkdW9", name: "서준 (남성)", desc: "차분하고 신뢰감" },

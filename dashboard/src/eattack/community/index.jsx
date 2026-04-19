@@ -6,7 +6,6 @@ import VideoPreview from "./VideoPreview";
 import {
   BG_PRESETS,
   FONT_OPTIONS,
-  HIGHLIGHT_COLORS,
   EXAMPLE_SCRIPTS,
 } from "./constants";
 import { generateCaptionsFromText, estimateSeconds } from "./utils";
@@ -23,7 +22,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [title, setTitle]                   = useState("");
   const [script, setScript]                 = useState("");
   const [selectedBg, setSelectedBg]         = useState("minecraft");
-  const [highlightColor, setHighlightColor] = useState("#FFE600");
   const [fontFamily, setFontFamily]         = useState("Noto Sans KR");
   const [captionPos, setCaptionPos]         = useState("center");
   const [voices, setVoices]                 = useState([]);
@@ -110,7 +108,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       title,
     });
     setGenerating(false);
-  }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds, voiceId]);
+  }, [script, selectedBg, fontFamily, captionPos, wordCount, estSeconds, voiceId, title]);
 
   const handleDownloadCaptions = useCallback(() => {
     if (!generated) return;
@@ -294,7 +292,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
               <div className="flex-shrink-0 w-[120px]">
                 <CaptionPreview
                   script={script || "지금 말하고 있는 자막 스타일 미리보기입니다"}
-                  highlightColor={highlightColor}
                   fontFamily={fontFamily}
                 />
               </div>
@@ -315,22 +312,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                         />
                         <span className="text-xs text-gray-700">{f.label}</span>
                       </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 하이라이트 색상 */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">하이라이트 색상</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {HIGHLIGHT_COLORS.map(c => (
-                      <button
-                        key={c.key}
-                        onClick={() => setHighlightColor(c.key)}
-                        title={c.label}
-                        className={`w-7 h-7 rounded-full border-2 transition-all ${highlightColor === c.key ? "border-gray-700 scale-110" : "border-transparent"}`}
-                        style={{ background: c.key }}
-                      />
                     ))}
                   </div>
                 </div>
@@ -428,13 +409,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   <p className="font-semibold text-gray-800">{bgPreset?.emoji} {bgPreset?.label}</p>
                 </div>
                 <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
-                  <p className="text-gray-400">하이라이트</p>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full" style={{ background: highlightColor }} />
-                    <span className="font-semibold text-gray-800">{HIGHLIGHT_COLORS.find(c => c.key === highlightColor)?.label}</span>
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
                   <p className="text-gray-400">AI 보이스</p>
                   <p className="font-semibold text-gray-800">ElevenLabs · {voices.find(v => v.id === voiceId)?.name ?? voiceId}</p>
                 </div>
@@ -489,7 +463,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   script={script}
                   audioUrl={generated.audioUrl}
                   captions={generated.captions}
-                  highlightColor={highlightColor}
                   fontFamily={fontFamily}
                   captionPos={captionPos}
                   totalMs={generated.totalMs}

@@ -188,7 +188,6 @@ export default function VideoPreview({
   script,
   audioUrl,
   captions,
-  highlightColor,
   fontFamily,
   captionPos,
   totalMs,
@@ -286,16 +285,9 @@ export default function VideoPreview({
           {currentPage && (
             <div style={{ background: "rgba(0,0,0,0.0)", borderRadius: 10, padding: "4px 10px" }}>
               <p style={{ fontFamily, fontSize: 17, fontWeight: 900, lineHeight: 1.25, margin: 0, whiteSpace: "nowrap", textAlign: "center" }}>
-                {currentPage.tokens.map((token, i) => {
-                  const isActive = token.fromMs <= currentMs && token.toMs > currentMs;
-                  return (
-                    <span key={i} style={{
-                      color: isActive ? highlightColor : "#ffffff",
-                      textShadow: "-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 2px 0 #000, 0 -2px 0 #000",
-                      transition: "color 0.05s",
-                    }}>{token.text}</span>
-                  );
-                })}
+                {currentPage.tokens.map((token, i) => (
+                  <span key={i} style={{ color: "#111" }}>{token.text}</span>
+                ))}
               </p>
             </div>
           )}
