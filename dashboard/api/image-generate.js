@@ -19,8 +19,8 @@ export default async function handler(req, res) {
   if (!prompt) return res.status(400).json({ error: 'prompt가 필요합니다.' });
 
   try {
-    // Imagen 3 호출
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_KEY}`;
+    // Imagen 4 Fast 호출 (imagen-3 → imagen-4로 업그레이드됨)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key=${GEMINI_KEY}`;
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
