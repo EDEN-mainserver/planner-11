@@ -100,49 +100,148 @@ async function generateOneImage(prompt) {
   return (await res.json()).imageUrl;
 }
 
-async function runHtmlGen(topic, plan, images, brandName, color) {
-  const slidesDesc = plan.slides
-    .map(
-      (s, i) =>
-        `슬라이드${s.num}(${s.part}): 제목="${s.headline}" 본문="${s.body || ""}" 이미지src="__IMG_${i}__"`
-    )
+// HTML 카드뉴스를 코드로 직접 빌드 (Gemini 의존 없음 → 구조 보장)
+function buildHtmlCardNews(topic, plan, images, brandName, color) {
+  const slides = plan.slides;
+  const brand = brandName || "브랜드";
+
+  const escHtml = (s) =>
+    String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const cards = slides
+    .map((slide, i) => {
+      const isDark = i % 2 === 0;
+      const bg = isDark ? "#0A0A0A" : "#FAFAFA";
+      const tc = isDark ? "#ffffff" : "#0A0A0A";
+      const img = images[i];
+      const isCover = slide.part === "표지";
+      const isClosing = slide.part === "마무리";
+
+      const imgBlock = img
+        ? `<div class="img-wrap">
+            <img src="${img}" alt="${escHtml(slide.headline)}" />
+            <div class="img-ov"></div>
+          </div>`
+        : `<div class="img-placeholder" style="background:linear-gradient(135deg,${color}cc,${color}55)"></div>`;
+
+      return `
+  <div class="card" style="background:${bg};color:${tc}">
+    ${isClosing ? "" : imgBlock}
+    ${isClosing
+      ? `<div class="card-inner closing" style="background:linear-gradient(160deg,${color},${color}88)">
+          <p class="num" style="color:rgba(255,255,255,0.5)">${i + 1} / ${slides.length}</p>
+          <h2 class="headline" style="color:#fff">${escHtml(slide.headline)}</h2>
+          ${slide.body ? `<p class="body" style="color:rgba(255,255,255,0.85)">${escHtml(slide.body)}</p>` : ""}
+          <p class="brand-name" style="color:#fff">${escHtml(brand)}</p>
+        </div>`
+      : `<div class="card-inner ${isCover ? "cover" : "content"}">
+          <p class="num" style="color:${isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"}">${i + 1} / ${slides.length}</p>
+          <h2 class="headline" style="color:${isCover ? "#fff" : tc}">${escHtml(slide.headline)}</h2>
+          ${slide.body ? `<p class="body" style="color:${isCover ? "rgba(255,255,255,0.9)" : isDark ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.7)"}">${escHtml(slide.body)}</p>` : ""}
+          ${i === slides.length - 1 ? `<p class="brand-name" style="color:${color}">${escHtml(brand)}</p>` : ""}
+        </div>`
+    }
+  </div>`;
+    })
     .join("\n");
 
-  const raw = await callGemini(
-    [
-      {
-        role: "user",
-        content: `에디토리얼 매거진 스타일 HTML 카드뉴스를 생성해줘.
-
-주제: "${topic}" | 브랜드: ${brandName || "브랜드"} | 포인트컬러: ${color}
-
-슬라이드:
-${slidesDesc}
-
-HTML 규칙:
-- 각 .card: width:1080px, height:1350px, position:relative, overflow:hidden, display:inline-block, margin:8px, vertical-align:top
-- 홀수 카드(다크): background:#0A0A0A, 텍스트 #fff / 짝수 카드(라이트): background:#FAFAFA, 텍스트 #0A0A0A
-- 이미지 <img>: width:100%, height:55%, object-fit:cover. src는 반드시 __IMG_0__, __IMG_1__ 등 플레이스홀더 유지
-- 이미지 위 그라디언트 오버레이: position:absolute, bottom:0, 그라디언트 transparent→rgba(0,0,0,0.7)
-- 제목: font-family:'Georgia',serif, font-size:72px, font-weight:700, line-height:1.2
-- 본문: font-size:42px, font-family:system-ui, line-height:1.6
-- 페이지번호: position:absolute, bottom:30px, width:100%, text-align:center, font-size:28px, opacity:0.4
-- 이미지 없는 카드(마무리): 포인트컬러 그라디언트 배경, 이미지 태그 없이
-- 브랜드명: 마지막 카드 하단, 포인트컬러, font-size:32px
-- wrapper div에 white-space:nowrap, 모든 CSS는 <style>에 포함
-
-완전한 HTML 코드만 반환 (마크다운 없이).`,
-      },
-    ],
-    "HTML/CSS 전문가. 에디토리얼 카드뉴스 HTML 생성. 코드만 반환."
-  );
-
-  let html = raw.replace(/```html\n?/gi, "").replace(/```\n?/g, "").trim();
-  images.forEach((dataUrl, i) => {
-    if (dataUrl) html = html.replaceAll(`__IMG_${i}__`, dataUrl);
-    else html = html.replace(new RegExp(`<img[^>]*src="__IMG_${i}__"[^>]*>`, "g"), "");
-  });
-  return html;
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>${escHtml(topic)} — 카드뉴스</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #111;
+    padding: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  .card {
+    width: 1080px;
+    height: 1350px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    border-radius: 4px;
+  }
+  .img-wrap {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 58%;
+  }
+  .img-wrap img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .img-ov {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 70%;
+    background: linear-gradient(transparent, rgba(0,0,0,0.75));
+  }
+  .img-placeholder {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .card-inner {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 56px 60px;
+    z-index: 10;
+  }
+  .card-inner.cover {
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .card-inner.content {
+    top: auto;
+  }
+  .card-inner.closing {
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .num {
+    font-size: 28px;
+    margin-bottom: 24px;
+    letter-spacing: 0.05em;
+  }
+  .headline {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 72px;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 28px;
+    word-break: keep-all;
+  }
+  .body {
+    font-size: 40px;
+    line-height: 1.7;
+    word-break: keep-all;
+    margin-bottom: 20px;
+  }
+  .brand-name {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-top: 20px;
+  }
+</style>
+</head>
+<body>
+${cards}
+</body>
+</html>`;
 }
 
 // ── 공통 UI ──
@@ -237,7 +336,7 @@ export default function ContentPipelineTab() {
 
   const startHtml = () => run(async () => {
     setStep(4);
-    const html = await runHtmlGen(topic, plan, images, brandName, color);
+    const html = buildHtmlCardNews(topic, plan, images, brandName, color);
     setHtmlContent(html);
   });
 
@@ -530,7 +629,7 @@ export default function ContentPipelineTab() {
                 </button>
               </div>
 
-              {/* 미리보기 */}
+              {/* 미리보기 — 카드 1장(1080×1350) 기준 scale 축소 */}
               <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="px-3 py-2 bg-gray-800 flex items-center gap-2">
                   <div className="flex gap-1.5">
@@ -538,12 +637,20 @@ export default function ContentPipelineTab() {
                     <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
                     <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
                   </div>
-                  <p className="text-[11px] text-gray-400 ml-1">에디토리얼 카드뉴스 미리보기</p>
+                  <p className="text-[11px] text-gray-400 ml-1">에디토리얼 카드뉴스 미리보기 (1080×1350 축소)</p>
                 </div>
-                <div className="overflow-auto bg-gray-200" style={{ maxHeight: "480px" }}>
+                <div className="bg-gray-900" style={{ position: "relative", width: "100%", height: "370px", overflow: "hidden" }}>
                   <iframe
                     srcDoc={htmlContent}
-                    style={{ border: "none", width: "100%", minHeight: "420px", display: "block" }}
+                    style={{
+                      border: "none",
+                      width: "1080px",
+                      height: "1350px",
+                      display: "block",
+                      transformOrigin: "top left",
+                      transform: "scale(0.3)",
+                      pointerEvents: "none",
+                    }}
                     title="카드뉴스 미리보기"
                     sandbox="allow-same-origin"
                   />
