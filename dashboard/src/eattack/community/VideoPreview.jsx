@@ -2,25 +2,27 @@
 // 커뮤니티 썰 UI 배경 + 자막 한 문장씩 카드 본문에 실시간 렌더링
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 
-// ─── 문장 단위 자막 빌더 ─────────────────────────────────────────────────────
-// 줄바꿈이나 문장부호를 기준으로 한 문장씩 묶음
-const PUNCT_BREAK = /[.!?,。\n]/;
+// ─── 2-3단어 단위 자막 빌더 ─────────────────────────────────────────────────
+const WORDS_PER_CHUNK = 3;
 
-function buildSentences(captions) {
+function buildChunks(captions) {
   if (!captions || captions.length === 0) return [];
-  const sentences = [];
+  const chunks = [];
   let cur = null;
+  let wordCount = 0;
 
   for (const cap of captions) {
     if (!cur) {
       cur = { startMs: cap.startMs, endMs: cap.endMs, text: "" };
-      sentences.push(cur);
+      chunks.push(cur);
+      wordCount = 0;
     }
     cur.text += cap.text;
     cur.endMs = Math.max(cur.endMs, cap.endMs);
-    if (PUNCT_BREAK.test(cap.text)) { cur = null; }
+    if (cap.text.trim()) wordCount++;
+    if (wordCount >= WORDS_PER_CHUNK) { cur = null; }
   }
-  return sentences;
+  return chunks;
 }
 
 // ─── 커뮤니티 UI 배경 ────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ export default function VideoPreview({
   const [playing, setPlaying]     = useState(false);
   const [currentMs, setCurrentMs] = useState(0);
 
-  const sentences  = useMemo(() => buildSentences(captions), [captions]);
+  const sentences  = useMemo(() => buildChunks(captions), [captions]);
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
 
   const titleExcerpt = title?.trim() || script?.trim().slice(0, 60) || "";
