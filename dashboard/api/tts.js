@@ -84,9 +84,17 @@ export default async function handler(req, res) {
 
     if (!elevenRes.ok) {
       const err = await elevenRes.json().catch(() => ({}));
-      return res.status(elevenRes.status).json({
-        error: err?.detail?.message || `ElevenLabs 오류 (${elevenRes.status})`,
-      });
+      const msg = err?.detail?.message || `ElevenLabs 오류 (${elevenRes.status})`;
+      // 크레딧 부족 에러를 한국어로 안내
+      if (msg.includes("quota") || msg.includes("credits")) {
+        const match = msg.match(/(\d+) credits remaining.*?(\d+) credits are required/);
+        if (match) {
+          return res.status(402).json({
+            error: `크레딧 부족 — 남은 크레딧: ${match[1]}자, 필요 크레딧: ${match[2]}자. 스크립트를 ${match[2] - match[1]}자 줄이거나 ElevenLabs에서 크레딧을 충전해주세요.`,
+          });
+        }
+      }
+      return res.status(elevenRes.status).json({ error: msg });
     }
 
     const data = await elevenRes.json();

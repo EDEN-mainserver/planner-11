@@ -187,8 +187,8 @@ export default function CommunityTab({ nasState, onGoToNas }) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-semibold text-gray-700">썰 스크립트</label>
-                <span className={`text-xs ${scriptLen > 800 ? "text-red-500" : "text-gray-400"}`}>
-                  {scriptLen} / 1000자 · 약 {estSeconds}초 영상
+                <span className={`text-xs ${scriptLen > 800 ? "text-red-500" : scriptLen > 500 ? "text-orange-400" : "text-gray-400"}`}>
+                  {scriptLen}자 · 약 {estSeconds}초
                 </span>
               </div>
               <textarea
