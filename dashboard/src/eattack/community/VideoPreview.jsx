@@ -1,6 +1,27 @@
 // 9:16 인앱 영상 프리뷰 컴포넌트
-// 커뮤니티 썰 UI 배경 + 자막을 게시물 카드 본문에 실시간 렌더링
-import { useRef, useState, useEffect, useCallback } from "react";
+// 커뮤니티 썰 UI 배경 + 자막 한 문장씩 카드 본문에 실시간 렌더링
+import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+
+// ─── 문장 단위 자막 빌더 ─────────────────────────────────────────────────────
+// 줄바꿈이나 문장부호를 기준으로 한 문장씩 묶음
+const PUNCT_BREAK = /[.!?,。\n]/;
+
+function buildSentences(captions) {
+  if (!captions || captions.length === 0) return [];
+  const sentences = [];
+  let cur = null;
+
+  for (const cap of captions) {
+    if (!cur) {
+      cur = { startMs: cap.startMs, endMs: cap.endMs, text: "" };
+      sentences.push(cur);
+    }
+    cur.text += cap.text;
+    cur.endMs = Math.max(cur.endMs, cap.endMs);
+    if (PUNCT_BREAK.test(cap.text)) { cur = null; }
+  }
+  return sentences;
+}
 
 // ─── 커뮤니티 UI 배경 ────────────────────────────────────────────────────────
 function hashInt(str, min, max) {
@@ -9,7 +30,7 @@ function hashInt(str, min, max) {
   return min + (Math.abs(h) % (max - min));
 }
 
-function CommunityBg({ bgPreset, titleExcerpt, captions, currentMs, fontFamily }) {
+function CommunityBg({ bgPreset, titleExcerpt, currentSentence, fontFamily }) {
   const { site, key } = bgPreset ?? {};
   const siteName  = site?.name  ?? "커뮤니티";
   const siteColor = site?.color ?? "#1e6dc8";
@@ -20,11 +41,6 @@ function CommunityBg({ bgPreset, titleExcerpt, captions, currentMs, fontFamily }
 
   const today = new Date();
   const dateStr = `${today.getFullYear()}.${String(today.getMonth()+1).padStart(2,"0")}.${String(today.getDate()).padStart(2,"0")}`;
-
-  // 현재 재생 위치 기준으로 active 단어 판별
-  const activeIdx = captions
-    ? captions.findIndex(c => currentMs >= c.startMs && currentMs < c.endMs)
-    : -1;
 
   return (
     <div style={{ position: "absolute", inset: 0, background: "#f0f0f2", overflow: "hidden", fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -57,26 +73,15 @@ function CommunityBg({ bgPreset, titleExcerpt, captions, currentMs, fontFamily }
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
           {titleExcerpt || "제목 없음"}
         </div>
-        {/* 자막 — 제목 아래 본문 영역 */}
-        <div style={{ marginTop: 8, borderTop: "1px solid #f0f0f0", paddingTop: 7,
-          maxHeight: 200, overflowY: "auto" }}>
-          {captions && captions.length > 0 ? (
-            <p style={{
-              fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
-              fontSize: 12, fontWeight: 500, color: "#444",
-              lineHeight: 1.8, margin: 0,
-            }}>
-              {captions.map((c, i) => (
-                <span key={i} style={{
-                  fontWeight: i === activeIdx ? 800 : 500,
-                  color: i === activeIdx ? "#111" : "#666",
-                  transition: "color 0.1s, font-weight 0.1s",
-                }}>{c.text}</span>
-              ))}
-            </p>
-          ) : (
-            <p style={{ color: "#ccc", fontSize: 11, margin: 0 }}>재생하면 자막이 여기에 표시됩니다</p>
-          )}
+        {/* 자막 — 한 문장씩 */}
+        <div style={{ marginTop: 8, borderTop: "1px solid #f0f0f0", paddingTop: 8, minHeight: 32 }}>
+          <p style={{
+            fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
+            fontSize: 13, fontWeight: 600, color: "#222",
+            lineHeight: 1.7, margin: 0,
+          }}>
+            {currentSentence ?? <span style={{ color: "#ccc", fontWeight: 400, fontSize: 11 }}>재생 시 자막이 표시됩니다</span>}
+          </p>
         </div>
         {/* 반응 */}
         <div style={{ marginTop: 8, display: "flex", gap: 10 }}>
@@ -112,9 +117,9 @@ export default function VideoPreview({
   const [playing, setPlaying]     = useState(false);
   const [currentMs, setCurrentMs] = useState(0);
 
+  const sentences  = useMemo(() => buildSentences(captions), [captions]);
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
 
-  // title이 없으면 스크립트 앞부분을 폴백으로 사용
   const titleExcerpt = title?.trim() || script?.trim().slice(0, 60) || "";
 
   // 오디오 설정 + currentMs 동기화
@@ -148,6 +153,18 @@ export default function VideoPreview({
     return () => clearInterval(intervalRef.current);
   }, [audioUrl, playing, durationMs]);
 
+  // 현재 문장 계산
+  const currentSentence = useMemo(() => {
+    if (!sentences.length) return null;
+    let found = null;
+    for (const s of sentences) {
+      if (currentMs >= s.startMs) found = s;
+      else break;
+    }
+    if (found && currentMs <= found.endMs + 500) return found.text;
+    return null;
+  }, [sentences, currentMs]);
+
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (playing) {
@@ -171,12 +188,10 @@ export default function VideoPreview({
       <div className="relative overflow-hidden rounded-2xl shadow-2xl"
         style={{ width: 270, height: 480, background: "#f0f0f2", flexShrink: 0 }}>
 
-        {/* 커뮤니티 배경 + 자막 */}
         <CommunityBg
           bgPreset={bgPreset}
           titleExcerpt={titleExcerpt}
-          captions={captions}
-          currentMs={currentMs}
+          currentSentence={currentSentence}
           fontFamily={fontFamily}
         />
 
