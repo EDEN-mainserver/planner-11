@@ -1,7 +1,7 @@
 # Eden Dashboard 백엔드 서버
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import ai, video, schedule
+from routers import ai, video, schedule, coupang
 
 app = FastAPI(title="Eden Dashboard API", version="0.1.0")
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(ai.router)
 app.include_router(video.router)
 app.include_router(schedule.router)
+app.include_router(coupang.router)
 
 @app.get("/health")
 def health():
