@@ -25,6 +25,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [fontFamily, setFontFamily]         = useState("Noto Sans KR");
   const [voices, setVoices]                 = useState([]);
   const [voicesLoading, setVoicesLoading]   = useState(true);
+  const [voicesError, setVoicesError]       = useState("");
   const [voiceId, setVoiceId]               = useState("");
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
@@ -35,11 +36,12 @@ export default function CommunityTab({ nasState, onGoToNas }) {
     fetch("/api/voices")
       .then(r => r.json())
       .then(data => {
+        if (data.error) throw new Error(data.error);
         const list = data.voices ?? [];
         setVoices(list);
         if (list.length > 0) setVoiceId(list[0].id);
       })
-      .catch(() => {})
+      .catch(e => setVoicesError(e.message))
       .finally(() => setVoicesLoading(false));
   }, []);
 
@@ -352,6 +354,10 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
                     <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     보이스 목록 불러오는 중…
+                  </div>
+                ) : voicesError ? (
+                  <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                    보이스 로딩 실패: {voicesError}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">

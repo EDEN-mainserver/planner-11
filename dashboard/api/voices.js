@@ -40,9 +40,8 @@ export default async function handler(req, res) {
       characters: "캐릭터", audiobook: "오디오북",
     };
 
-    // 클론/커스텀 제외 — premade만
+    // 계정 내 모든 보이스 반환
     const voices = (data.voices ?? [])
-      .filter(v => v.category === "premade")
       .map(v => {
         const lb = v.labels ?? {};
         const tags = [
