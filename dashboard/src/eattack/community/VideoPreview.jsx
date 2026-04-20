@@ -60,9 +60,8 @@ function CommunityBg({ bgPreset, titleExcerpt, currentSentence, fontFamily }) {
         </svg>
       </div>
 
-      {/* 게시물 카드 */}
+      {/* 게시물 카드 — 제목만 */}
       <div style={{ margin: "8px 8px 4px", background: "white", borderRadius: 10, padding: "10px 12px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-        {/* 메타 정보 */}
         <div style={{ fontSize: 9, color: "#aaa", marginBottom: 6, display: "flex", gap: 5 }}>
           <span style={{ color: "#888", fontWeight: 600 }}>익명</span>
           <span>·</span>
@@ -70,26 +69,25 @@ function CommunityBg({ bgPreset, titleExcerpt, currentSentence, fontFamily }) {
           <span>·</span>
           <span>조회 {views}</span>
         </div>
-        {/* 제목 */}
         <div style={{ fontSize: 12, fontWeight: 700, color: "#111", lineHeight: 1.55,
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
           {titleExcerpt || "제목 없음"}
         </div>
-        {/* 자막 — 한 문장씩 */}
-        <div style={{ marginTop: 8, borderTop: "1px solid #f0f0f0", paddingTop: 8, minHeight: 32 }}>
-          <p style={{
-            fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
-            fontSize: 13, fontWeight: 600, color: "#222",
-            lineHeight: 1.7, margin: 0,
-          }}>
-            {currentSentence ?? <span style={{ color: "#ccc", fontWeight: 400, fontSize: 11 }}>재생 시 자막이 표시됩니다</span>}
-          </p>
-        </div>
-        {/* 반응 */}
-        <div style={{ marginTop: 8, display: "flex", gap: 10 }}>
+        <div style={{ marginTop: 7, display: "flex", gap: 10 }}>
           <span style={{ fontSize: 9, color: "#e03131", fontWeight: 600 }}>👍 {likes}</span>
           <span style={{ fontSize: 9, color: "#868e96" }}>💬 {comments}</span>
         </div>
+      </div>
+
+      {/* 자막 박스 — 제목 카드와 분리 */}
+      <div style={{ margin: "0 8px", background: "white", borderRadius: 10, padding: "10px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", minHeight: 48, display: "flex", alignItems: "center" }}>
+        <p style={{
+          fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
+          fontSize: 14, fontWeight: 700, color: "#111",
+          lineHeight: 1.6, margin: 0, width: "100%",
+        }}>
+          {currentSentence ?? <span style={{ color: "#ccc", fontWeight: 400, fontSize: 11 }}>재생하면 자막이 표시됩니다</span>}
+        </p>
       </div>
 
       {/* 하단 네비게이션 바 */}
