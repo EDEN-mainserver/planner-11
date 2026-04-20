@@ -90,7 +90,7 @@ async function generateOneImage(prompt) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt: `${prompt}, no text, no watermark, photorealistic, high quality`,
-      aspectRatio: "4:5",
+      aspectRatio: "3:4",
     }),
   });
   if (!res.ok) {
