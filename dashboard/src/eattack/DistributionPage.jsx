@@ -1,5 +1,5 @@
 // 유통 페이지 — 대표전용 툴
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -41,21 +41,33 @@ function Badge({ children, color = 'gray' }) {
 }
 
 // ── 원가 저장 ─────────────────────────────────────────────────
-const COST_MAP_KEY = 'eden_coupang_cost_map';
+const COST_MAP_KEY  = 'eden_coupang_cost_map';
+const CREDS_KEY     = 'eden_coupang_creds';
+
 function loadCostMap() {
   try { return JSON.parse(localStorage.getItem(COST_MAP_KEY)) || {}; } catch { return {}; }
 }
 function saveCostMap(map) {
   localStorage.setItem(COST_MAP_KEY, JSON.stringify(map));
 }
+function loadCreds() {
+  try { return JSON.parse(localStorage.getItem(CREDS_KEY)) || null; } catch { return null; }
+}
+function saveCreds(creds) {
+  localStorage.setItem(CREDS_KEY, JSON.stringify(creds));
+}
+function deleteCreds() {
+  localStorage.removeItem(CREDS_KEY);
+}
 
 // ── 실시간 대시보드 ───────────────────────────────────────────
 function RealtimeTab() {
-  const [accessKey,   setAccessKey]   = useState('');
-  const [secretKey,   setSecretKey]   = useState('');
-  const [vendorId,    setVendorId]    = useState('');
+  const saved = loadCreds();
+  const [accessKey,   setAccessKey]   = useState(saved?.access_key || '');
+  const [secretKey,   setSecretKey]   = useState(saved?.secret_key || '');
+  const [vendorId,    setVendorId]    = useState(saved?.vendor_id  || '');
   const [days,        setDays]        = useState('7');
-  const [connected,   setConnected]   = useState(false);
+  const [connected,   setConnected]   = useState(!!saved);
   const [connecting,  setConnecting]  = useState(false);
   const [loading,     setLoading]     = useState(false);
   const [data,        setData]        = useState(null);
@@ -79,6 +91,7 @@ function RealtimeTab() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.detail || '연결 실패');
+      saveCreds({ access_key: accessKey, secret_key: secretKey, vendor_id: vendorId });
       setConnected(true);
     } catch (e) {
       setError(e.message);
@@ -127,10 +140,28 @@ function RealtimeTab() {
           <Field label="Vendor ID" sub="(판매자 ID)" value={vendorId} onChange={setVendorId} type="text" unit="" placeholder="A00xxxxxx" />
         </div>
         {error && <p className="mt-3 text-xs text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{error}</p>}
-        <button onClick={handleConnect} disabled={connecting}
-          className="mt-4 w-full py-3 bg-gradient-to-r from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all shadow-md">
-          {connecting ? '연결 중...' : '🔗 API 연결하기'}
-        </button>
+        <div className="mt-4 flex gap-2">
+          <button onClick={handleConnect} disabled={connecting}
+            className="flex-1 py-3 bg-gradient-to-r from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-all shadow-md">
+            {connecting ? '연결 중...' : '🔗 API 연결하기'}
+          </button>
+          {loadCreds() && (
+            <button
+              onClick={() => {
+                deleteCreds();
+                setAccessKey(''); setSecretKey(''); setVendorId('');
+                setError('');
+              }}
+              className="px-4 py-3 text-xs font-bold text-red-400 border border-red-200 rounded-xl hover:bg-red-50 transition-colors whitespace-nowrap">
+              🗑 저장 삭제
+            </button>
+          )}
+        </div>
+        {loadCreds() && (
+          <p className="mt-1.5 text-[10px] text-green-600 flex items-center gap-1">
+            <span>✓</span> 저장된 API 키가 자동으로 불러와졌습니다
+          </p>
+        )}
       </div>
       <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
         <p className="text-xs font-bold text-amber-700 mb-1">Wing API 키 발급 방법</p>
@@ -162,9 +193,14 @@ function RealtimeTab() {
             className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors">
             {loading ? '조회 중...' : '🔄 조회'}
           </button>
-          <button onClick={() => { setConnected(false); setData(null); }}
-            className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg transition-colors">
-            해제
+          <button
+            onClick={() => {
+              deleteCreds();
+              setConnected(false); setData(null);
+              setAccessKey(''); setSecretKey(''); setVendorId('');
+            }}
+            className="px-3 py-1.5 text-xs text-red-400 hover:text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+            🗑 연결 해제
           </button>
         </div>
       </div>
