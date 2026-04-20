@@ -5,6 +5,7 @@
  */
 import { useState } from "react";
 import CardNewsTab from "./CardNewsTab";
+import ContentPipelineTab from "./ContentPipelineTab";
 import ProposalTab from "./ProposalTab";
 
 // ── 탭 정의 ──
@@ -31,6 +32,18 @@ const IMAGE_TABS = [
     ),
     gradient: "from-orange-500 to-amber-500",
     description: "제품·서비스를 구매로 이어지는 설득력 있는 상세페이지로 제작합니다",
+  },
+  {
+    key: "pipeline",
+    label: "콘텐츠 파이프라인",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M2 12h3m14 0h3M4.22 19.78l2.12-2.12M18.66 5.34l-2.12 2.12"/>
+      </svg>
+    ),
+    gradient: "from-violet-500 to-indigo-600",
+    description: "주제 → 리서치 → 기획 → AI 이미지 → 에디토리얼 HTML 카드뉴스 자동 생성",
+    badge: "NEW",
   },
   {
     key: "proposal",
@@ -99,7 +112,7 @@ export default function ImagePage({ onBack }) {
         </div>
 
         {/* 탭 선택 카드 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {IMAGE_TABS.map(tab => (
             <button
               key={tab.key}
@@ -110,7 +123,12 @@ export default function ImagePage({ onBack }) {
                   : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
               }`}
             >
-              <div className="flex items-start gap-4">
+              {tab.badge && (
+                <span className="absolute top-3 right-3 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-500 text-white">
+                  {tab.badge}
+                </span>
+              )}
+              <div className="flex items-start gap-3">
                 <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tab.gradient} flex items-center justify-center shadow-sm flex-shrink-0 text-white`}>
                   {tab.icon}
                 </div>
@@ -135,12 +153,12 @@ export default function ImagePage({ onBack }) {
         {/* 탭 컨텐츠 */}
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           {/* 탭 바 */}
-          <div className="flex border-b border-gray-100">
+          <div className="flex border-b border-gray-100 overflow-x-auto">
             {IMAGE_TABS.map(tab => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-all border-b-2 -mb-px ${
+                className={`flex items-center gap-1.5 px-4 py-3.5 text-sm font-medium transition-all border-b-2 -mb-px whitespace-nowrap ${
                   activeTab === tab.key
                     ? "border-pink-500 text-pink-600"
                     : "border-transparent text-gray-500 hover:text-gray-700"
@@ -150,12 +168,18 @@ export default function ImagePage({ onBack }) {
                   {tab.icon}
                 </span>
                 {tab.label}
+                {tab.badge && (
+                  <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-500 text-white">
+                    {tab.badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>
 
           {/* 탭 내용 */}
           {activeTab === "cardnews"  && <CardNewsTab />}
+          {activeTab === "pipeline"  && <ContentPipelineTab />}
           {activeTab === "detail"    && <DetailPageTab />}
           {activeTab === "proposal"  && <ProposalTab />}
         </div>

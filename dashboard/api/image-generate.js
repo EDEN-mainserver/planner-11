@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const { prompt } = req.body;
+  const { prompt, aspectRatio = '16:9' } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt가 필요합니다.' });
 
   try {
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
         instances: [{ prompt }],
         parameters: {
           sampleCount: 1,
-          aspectRatio: '16:9',  // 블로그 이미지에 적합한 비율
+          aspectRatio,
           safetyFilterLevel: 'BLOCK_ONLY_HIGH',
         },
       }),
