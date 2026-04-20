@@ -4,6 +4,8 @@ import { relativeTime } from "../utils/storage";
 import { IconArrowUp } from "../components/Icons";
 import EAttackPage from "../eattack/EAttackPage";
 import MoneyPage from "../eattack/MoneyPage";
+import DistributionPage from "../eattack/DistributionPage";
+import GrowthDBPage from "../eattack/GrowthDBPage";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [idea, setIdea] = useState('');
@@ -100,6 +102,26 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
               ${activePage === 'money' ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
             <span className="text-base">💸</span>
             이걸 돈내고 써?
+          </div>
+        </div>
+        {/* 대표전용 툴 섹션 */}
+        <div className="px-2 mt-6 pt-4 border-t border-gray-200">
+          <div className="px-2 mb-2">
+            <div className="text-xs text-gray-400 font-medium">대표전용 툴</div>
+          </div>
+          <div
+            onClick={() => setActivePage('distribution')}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+              ${activePage === 'distribution' ? 'bg-orange-50 text-orange-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
+            <span className="text-base">🛒</span>
+            유통
+          </div>
+          <div
+            onClick={() => setActivePage('growthdb')}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+              ${activePage === 'growthdb' ? 'bg-orange-50 text-orange-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
+            <span className="text-base">📊</span>
+            에쿠 GrowthDB
           </div>
         </div>
         <div className="mt-auto px-4 py-3 border-t border-gray-100">
@@ -329,6 +351,16 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
         {/* ════ 이걸 돈내고 써? 화면 ════ */}
         {activePage === 'money' && (
           <MoneyPage onBack={() => setActivePage('eattack')} />
+        )}
+
+        {/* ════ 유통 화면 ════ */}
+        {activePage === 'distribution' && (
+          <DistributionPage onBack={() => setActivePage('home')} />
+        )}
+
+        {/* ════ 에쿠 GrowthDB ════ */}
+        {activePage === 'growthdb' && (
+          <GrowthDBPage />
         )}
 
         {/* ════ 홈 화면 ════ */}
