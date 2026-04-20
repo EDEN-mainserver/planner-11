@@ -4,6 +4,14 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "functions": {
+    "api/image-generate.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/gemini.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
     "api/threads-crawl.js": {
       "maxDuration": 60,
       "memory": 1024

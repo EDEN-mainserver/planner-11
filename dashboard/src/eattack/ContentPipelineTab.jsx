@@ -95,7 +95,7 @@ async function generateOneImage(prompt) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || "이미지 생성 실패");
+    throw new Error(err.error || err.message || `이미지 API 오류 ${res.status}`);
   }
   return (await res.json()).imageUrl;
 }

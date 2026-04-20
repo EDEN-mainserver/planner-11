@@ -35,13 +35,16 @@ export default async function handler(req, res) {
     });
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Imagen API 오류 ${resp.status}`);
+      const errBody = await resp.json().catch(() => ({}));
+      const msg = errBody.error?.message || errBody.error?.status || JSON.stringify(errBody);
+      console.error('[image-generate] Imagen API error:', resp.status, msg);
+      throw new Error(`Imagen ${resp.status}: ${msg}`);
     }
 
     const data = await resp.json();
     const prediction = data.predictions?.[0];
     if (!prediction?.bytesBase64Encoded) {
+      console.error('[image-generate] No image data in response:', JSON.stringify(data).slice(0, 200));
       throw new Error('이미지 데이터를 받지 못했습니다.');
     }
 
