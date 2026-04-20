@@ -69,7 +69,7 @@ function CommunityBg({ bgPreset, titleExcerpt, fontFamily }) {
           <span>·</span>
           <span>조회 {views}</span>
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#111", lineHeight: 1.55,
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#111", lineHeight: 1.4,
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
           {titleExcerpt || "제목 없음"}
         </div>
@@ -193,7 +193,7 @@ export default function VideoPreview({
           }}>
             <p style={{
               fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
-              fontSize: 18, fontWeight: 800, color: "#111",
+              fontSize: 13, fontWeight: 700, color: "#111",
               textAlign: "center", margin: 0,
               lineHeight: 1.5,
             }}>
