@@ -184,17 +184,17 @@ export default function VideoPreview({
           fontFamily={fontFamily}
         />
 
-        {/* 자막 — 화면 중앙 오버레이 */}
+        {/* 자막 — 제목 카드 바로 아래 중앙 정렬 */}
         {currentSentence && (
           <div style={{
-            position: "absolute", inset: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            pointerEvents: "none",
+            position: "absolute", top: 155, left: 0, right: 0,
+            display: "flex", justifyContent: "center",
+            pointerEvents: "none", padding: "0 20px",
           }}>
             <p style={{
               fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
               fontSize: 18, fontWeight: 800, color: "#111",
-              textAlign: "center", margin: 0, padding: "0 20px",
+              textAlign: "center", margin: 0,
               lineHeight: 1.5,
             }}>
               {currentSentence}
