@@ -32,7 +32,7 @@ function hashInt(str, min, max) {
   return min + (Math.abs(h) % (max - min));
 }
 
-function CommunityBg({ bgPreset, titleExcerpt, currentSentence, fontFamily }) {
+function CommunityBg({ bgPreset, titleExcerpt, fontFamily }) {
   const { site, key } = bgPreset ?? {};
   const siteName  = site?.name  ?? "커뮤니티";
   const siteColor = site?.color ?? "#1e6dc8";
@@ -79,16 +79,6 @@ function CommunityBg({ bgPreset, titleExcerpt, currentSentence, fontFamily }) {
         </div>
       </div>
 
-      {/* 자막 박스 — 제목 카드와 분리 */}
-      <div style={{ margin: "0 8px", background: "white", borderRadius: 10, padding: "10px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", minHeight: 48, display: "flex", alignItems: "center" }}>
-        <p style={{
-          fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
-          fontSize: 14, fontWeight: 700, color: "#111",
-          lineHeight: 1.6, margin: 0, width: "100%",
-        }}>
-          {currentSentence ?? <span style={{ color: "#ccc", fontWeight: 400, fontSize: 11 }}>재생하면 자막이 표시됩니다</span>}
-        </p>
-      </div>
 
       {/* 하단 네비게이션 바 */}
       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 44,
@@ -191,9 +181,26 @@ export default function VideoPreview({
         <CommunityBg
           bgPreset={bgPreset}
           titleExcerpt={titleExcerpt}
-          currentSentence={currentSentence}
           fontFamily={fontFamily}
         />
+
+        {/* 자막 — 화면 중앙 오버레이 */}
+        {currentSentence && (
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            pointerEvents: "none",
+          }}>
+            <p style={{
+              fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
+              fontSize: 18, fontWeight: 800, color: "#111",
+              textAlign: "center", margin: 0, padding: "0 20px",
+              lineHeight: 1.5,
+            }}>
+              {currentSentence}
+            </p>
+          </div>
+        )}
 
         {/* 일시정지 시 재생 버튼 */}
         {!playing && (
