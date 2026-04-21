@@ -1,5 +1,4 @@
-// Gemini API 호출 — 로컬: 직접 호출, Vercel: 서버 함수 경유
-const IS_LOCAL = import.meta.env.DEV;
+// Gemini API 호출 — VITE_GEMINI_API_KEY 있으면 직접 호출, 없으면 서버 함수 경유
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 // 브라우저 사이드 이미지 → base64 변환 (CORS 허용 이미지에만 동작)
@@ -21,8 +20,8 @@ async function fetchImageB64Client(url) {
 }
 
 export async function callGemini(history, systemPrompt) {
-  // 로컬 개발환경: 직접 Google API 호출
-  if (IS_LOCAL && GEMINI_KEY) {
+  // VITE_GEMINI_API_KEY가 있으면 직접 Google API 호출
+  if (GEMINI_KEY) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
     const contents = await Promise.all(history.map(async m => {
       const parts = [{ text: m.content }];
