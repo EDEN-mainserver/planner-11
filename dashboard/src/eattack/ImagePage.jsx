@@ -1,26 +1,26 @@
 /**
  * 이미지 콘텐츠 페이지
- * - 카드뉴스 만들기 탭
+ * - 통합 파이프라인 탭 (리서치 → 기획 → 이미지 → 조립 → 배포)
  * - 상세페이지 만들기 탭
+ * - 제안서 자동화 탭
  */
 import { useState } from "react";
-import CardNewsTab from "./CardNewsTab";
-import ContentPipelineTab from "./ContentPipelineTab";
+import UnifiedPipelineTab from "./UnifiedPipelineTab";
 import ProposalTab from "./ProposalTab";
 
 // ── 탭 정의 ──
 const IMAGE_TABS = [
   {
-    key: "cardnews",
-    label: "카드뉴스 만들기",
+    key: "unified",
+    label: "통합 파이프라인",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/>
-        <rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
+        <circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M2 12h3m14 0h3M4.22 19.78l2.12-2.12M18.66 5.34l-2.12 2.12"/>
       </svg>
     ),
-    gradient: "from-pink-500 to-rose-500",
-    description: "여러 장의 슬라이드 이미지로 핵심 정보를 시각적으로 전달합니다",
+    gradient: "from-violet-500 to-pink-500",
+    description: "리서치 → 기획 → AI 이미지 → 카드 조립 → 배포 — 하나의 통합 흐름",
+    badge: "NEW",
   },
   {
     key: "detail",
@@ -32,18 +32,6 @@ const IMAGE_TABS = [
     ),
     gradient: "from-orange-500 to-amber-500",
     description: "제품·서비스를 구매로 이어지는 설득력 있는 상세페이지로 제작합니다",
-  },
-  {
-    key: "pipeline",
-    label: "콘텐츠 파이프라인",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.22 4.22l2.12 2.12m11.32 11.32 2.12 2.12M2 12h3m14 0h3M4.22 19.78l2.12-2.12M18.66 5.34l-2.12 2.12"/>
-      </svg>
-    ),
-    gradient: "from-violet-500 to-indigo-600",
-    description: "주제 → 리서치 → 기획 → AI 이미지 → 에디토리얼 HTML 카드뉴스 자동 생성",
-    badge: "NEW",
   },
   {
     key: "proposal",
@@ -80,7 +68,7 @@ function DetailPageTab() {
 
 // ─────────────────────── 메인 컴포넌트 ───────────────────────
 export default function ImagePage({ onBack }) {
-  const [activeTab, setActiveTab] = useState("cardnews");
+  const [activeTab, setActiveTab] = useState("unified");
 
   const currentTab = IMAGE_TABS.find(t => t.key === activeTab);
 
@@ -112,7 +100,7 @@ export default function ImagePage({ onBack }) {
         </div>
 
         {/* 탭 선택 카드 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           {IMAGE_TABS.map(tab => (
             <button
               key={tab.key}
@@ -178,8 +166,7 @@ export default function ImagePage({ onBack }) {
           </div>
 
           {/* 탭 내용 */}
-          {activeTab === "cardnews"  && <CardNewsTab />}
-          {activeTab === "pipeline"  && <ContentPipelineTab />}
+          {activeTab === "unified"   && <UnifiedPipelineTab />}
           {activeTab === "detail"    && <DetailPageTab />}
           {activeTab === "proposal"  && <ProposalTab />}
         </div>
