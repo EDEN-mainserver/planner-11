@@ -24,7 +24,7 @@ export default async function handler(req, res) {
 
   try {
     const klipyRes = await fetch(
-      `https://api.klipy.co/api/v1/gifs/search?q=${encodeURIComponent(q)}&api_key=${apiKey}&limit=1`,
+      `https://api.klipy.com/api/v1/${apiKey}/gifs/search?q=${encodeURIComponent(q)}&per_page=1`,
       { headers: { "Accept": "application/json" } }
     );
 
@@ -33,16 +33,19 @@ export default async function handler(req, res) {
     }
 
     const data = await klipyRes.json();
-    const item = data?.data?.[0];
+    // Klipy 응답: { result: true, data: { data: [...] } }
+    const item = data?.data?.data?.[0] ?? data?.data?.[0];
 
     if (!item) {
       return res.status(200).json({ url: null });
     }
 
-    // Klipy 응답 구조에 맞게 URL 추출
+    // Klipy 응답 구조: files 객체 또는 media_formats 객체
+    const files = item?.files ?? item?.media_formats ?? {};
     const url =
-      item?.media_formats?.gif?.url ||
-      item?.media_formats?.mp4?.url ||
+      files?.gif?.url ||
+      files?.mp4?.url ||
+      files?.original?.url ||
       item?.url ||
       null;
 
