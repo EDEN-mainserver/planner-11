@@ -56,7 +56,21 @@ const INITIAL_FORM = {
   conversionGoal: "구매",
   funnelStage: "TOFU",
   platform: "naver",
+  refBlog: "",
 };
+
+// 마크다운 기호 제거 (AI가 무시하고 넣는 경우 대비)
+function stripMarkdown(text) {
+  if (!text) return text;
+  return text
+    .replace(/^#{1,6}\s+/gm, '')   // ## 제목
+    .replace(/\*\*(.+?)\*\*/g, '$1') // **볼드**
+    .replace(/\*(.+?)\*/g, '$1')    // *이탤릭*
+    .replace(/^>\s+/gm, '')         // > 인용
+    .replace(/^---+$/gm, '')        // ---
+    .replace(/`{1,3}[^`]*`{1,3}/g, '') // `코드`
+    .trim();
+}
 
 // ─── 뒤로가기 버튼 ───
 function BackButton({ onClick }) {

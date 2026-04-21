@@ -1,6 +1,7 @@
 // 로그인 모달
-// /api/auth 로 인증 후 localStorage에 세션 저장
+// src/config/users.js 에서 계정 관리
 import { useState } from "react";
+import { USERS } from "../config/users";
 
 const SESSION_KEY = "eden_auth_v1";
 
@@ -22,30 +23,26 @@ export default function LoginModal({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return;
     setLoading(true);
     setError("");
-    try {
-      const res = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "로그인 실패");
-        return;
-      }
-      const session = { username: data.username, displayName: data.displayName };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      onLogin(session);
-    } catch {
-      setError("서버 연결 오류");
-    } finally {
+
+    const user = USERS.find(
+      (u) => u.username === username.trim() && u.password === password
+    );
+
+    if (!user) {
+      setError("아이디 또는 비밀번호가 올바르지 않습니다");
       setLoading(false);
+      return;
     }
+
+    const session = { username: user.username, displayName: user.displayName };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    onLogin(session);
+    setLoading(false);
   };
 
   return (
