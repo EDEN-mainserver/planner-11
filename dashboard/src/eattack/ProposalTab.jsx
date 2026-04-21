@@ -1,12 +1,13 @@
 /**
  * 제안서 자동화 탭
- * 흐름: URL 입력 → 고객사 분석 → 보고서 편집 → 제안서 생성
+ * 흐름: URL 입력 → 고객사 분석 → 보고서 편집 → 제안서 생성 → PPT 다운로드
  */
 import { useState, useRef } from "react";
 import { callGemini } from "../utils/gemini";
 
 // ── 상수 ──
 const LS_KEY = "eden_proposal_v1";
+const LS_TEMPLATE_KEY = "eden_pdf_template_v1";
 
 const SYSTEM_PROMPT = `
 당신은 10년차 콘텐츠 마케터이자 퍼포먼스 마케터입니다.
@@ -20,7 +21,7 @@ const PROPOSAL_SYSTEM_PROMPT = `
 에덴은 콘텐츠 마케팅, SNS 운영, 퍼포먼스 마케팅을 제공하는 마케팅 대행사입니다.
 
 ## 출력 형식 — PPT 슬라이드 단위 (필수)
-- 각 슬라이드는 아래 형식으로 작성:
+각 슬라이드는 아래 형식으로 작성:
 
 ---SLIDE---
 ### [슬라이드 N] Action Title (인사이트 중심 제목)
@@ -101,13 +102,21 @@ const PROPOSAL_PHASES = [
   },
 ];
 
-// 로컬스토리지 저장/로드
+// ── 로컬스토리지 ──
 function saveDraft(data) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {}
 }
 function loadDraft() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)); } catch { return null; }
 }
+function saveTemplate(data) {
+  try { localStorage.setItem(LS_TEMPLATE_KEY, JSON.stringify(data)); } catch {}
+}
+function loadSavedTemplate() {
+  try { return JSON.parse(localStorage.getItem(LS_TEMPLATE_KEY)); } catch { return null; }
+}
+
+// ── 파싱 유틸 ──
 
 // JSON 블록 파싱 (Win Themes 추출)
 function parseAnalysisJson(raw) {
@@ -135,11 +144,63 @@ function parseSections(text) {
     }
   }
   if (current) sections.push(current);
-  // 섹션이 없으면 전체를 하나로
   if (sections.length === 0) {
     sections.push({ title: "분석 결과", content: text });
   }
   return sections.map(s => ({ ...s, content: s.content.trim() }));
+}
+
+// ---SLIDE--- 블록 파싱 → PptxGenJS용 슬라이드 배열
+function parseSlidesFromProposal(text) {
+  const allSlides = [];
+
+  // Phase 블록 단위로 분리 (--- 구분선 기준)
+  const phaseBlocks = text.split(/\n---\n/);
+
+  for (const block of phaseBlocks) {
+    // Phase 제목/부제목 추출
+    const phaseTitleMatch = block.match(/^# (.+)/m);
+    const phaseSubtitleMatch = block.match(/^> (.+)/m);
+
+    if (phaseTitleMatch) {
+      allSlides.push({
+        type: 'section',
+        title: phaseTitleMatch[1].trim(),
+        subtitle: phaseSubtitleMatch ? phaseSubtitleMatch[1].trim() : ''
+      });
+    }
+
+    // SLIDE 블록들 추출
+    const slideMatches = [...block.matchAll(/---SLIDE---([\s\S]*?)---END_SLIDE---/g)];
+    for (const match of slideMatches) {
+      const content = match[1].trim();
+      const lines = content.split('\n');
+
+      const titleLine = lines.find(l => l.startsWith('### '));
+      const title = titleLine
+        ? titleLine.replace(/^### \[슬라이드 \d+\]\s*/, '').trim()
+        : '슬라이드';
+
+      const bullets = lines
+        .filter(l => l.startsWith('- '))
+        .map(l => l.replace(/^- /, '').trim())
+        .filter(Boolean);
+
+      const emphasisLine = lines.find(l => l.startsWith('📌'));
+      const emphasis = emphasisLine
+        ? emphasisLine.replace(/^📌\s*핵심 수치\/강조:\s*/, '').trim()
+        : '';
+
+      const noteLine = lines.find(l => l.startsWith('💬'));
+      const note = noteLine
+        ? noteLine.replace(/^💬\s*발표 멘트:\s*[""]?/, '').replace(/[""]$/, '').trim()
+        : '';
+
+      allSlides.push({ type: 'content', title, bullets, emphasis, note });
+    }
+  }
+
+  return allSlides;
 }
 
 // Phase별 프롬프트 빌더
@@ -211,20 +272,26 @@ export default function ProposalTab() {
   const [error, setError] = useState("");
 
   // Step 3 - 보고서
-  const [sections, setSections] = useState([]); // [{ title, content }]
+  const [sections, setSections] = useState([]);
   const [clientInfo, setClientInfo] = useState({ domain: "", title: "" });
-  const [winThemes, setWinThemes] = useState([]);   // Win Theme 3개
-  const [painPoints, setPainPoints] = useState([]); // Pain Point 목록
+  const [winThemes, setWinThemes] = useState([]);
+  const [painPoints, setPainPoints] = useState([]);
 
   // Step 4 - 제안서
   const [templateContent, setTemplateContent] = useState("");
   const [templateFileName, setTemplateFileName] = useState("");
   const [proposal, setProposal] = useState("");
   const [proposalEditable, setProposalEditable] = useState("");
-  const [phaseProgress, setPhaseProgress] = useState(0); // 0~6
+  const [phaseProgress, setPhaseProgress] = useState(0);
 
-  const fileInputRef = useRef(null);
+  // PDF 디자인 템플릿
+  const [pdfTemplate, setPdfTemplate] = useState(() => loadSavedTemplate());
+  const [pdfTemplateName, setPdfTemplateName] = useState(() => loadSavedTemplate()?.fileName || "");
+  const [pdfAnalyzing, setPdfAnalyzing] = useState(false);
+  const [pptxGenerating, setPptxGenerating] = useState(false);
+
   const tplInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
 
   // ── Step 1 → 2: 분석 시작 ──
   async function handleAnalyze() {
@@ -238,7 +305,6 @@ export default function ProposalTab() {
     setAnalyzeMsg("홈페이지 크롤링 중...");
 
     try {
-      // 1. URL 크롤링
       const crawlResp = await fetch("/api/crawl-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -253,7 +319,6 @@ export default function ProposalTab() {
 
       setAnalyzeMsg("Gemini가 분석 중입니다... (10~30초 소요)");
 
-      // 2. Gemini 분석
       const prompt = `
 다음은 고객사 홈페이지(${crawlData.domain})에서 추출한 정보입니다.
 
@@ -301,7 +366,6 @@ ${crawlData.text}
 
       const raw = await callGemini([{ role: "user", content: prompt }], SYSTEM_PROMPT);
 
-      // Win Theme 추출 및 마크다운 섹션 분리
       const structuredData = parseAnalysisJson(raw);
       const cleanRaw = stripJsonBlock(raw);
       const parsed = parseSections(cleanRaw);
@@ -321,7 +385,173 @@ ${crawlData.text}
     }
   }
 
-  // 섹션 내용 수정
+  // ── PDF 디자인 템플릿 업로드 ──
+  async function handlePdfTemplateUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      alert('PDF 파일만 업로드 가능합니다.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      alert('파일 크기가 3MB를 초과합니다. 더 작은 PDF를 사용해 주세요.');
+      return;
+    }
+
+    setPdfAnalyzing(true);
+    try {
+      // PDF → base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const result = ev.target?.result;
+          // data:application/pdf;base64,XXX 에서 XXX만 추출
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const resp = await fetch('/api/parse-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdfBase64: base64 })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || 'PDF 분석 실패');
+      }
+
+      const data = await resp.json();
+      const templateData = { ...data.template, fileName: file.name };
+      setPdfTemplate(templateData);
+      setPdfTemplateName(file.name);
+      saveTemplate(templateData);
+
+    } catch (err) {
+      alert(`PDF 분석 실패: ${err.message}`);
+    } finally {
+      setPdfAnalyzing(false);
+      // input 초기화 (같은 파일 재업로드 허용)
+      e.target.value = '';
+    }
+  }
+
+  // ── PPT 다운로드 ──
+  async function handleDownloadPptx() {
+    setPptxGenerating(true);
+    try {
+      const { default: PptxGenJS } = await import('pptxgenjs');
+      const pptx = new PptxGenJS();
+      pptx.layout = 'LAYOUT_16x9';
+
+      // 디자인 템플릿 색상 적용 (없으면 에덴 기본 보라 계열)
+      const primary = (pdfTemplate?.primaryColor || '#4F46E5').replace('#', '');
+      const accent = (pdfTemplate?.accentColor || '#7C3AED').replace('#', '');
+      const bg = (pdfTemplate?.backgroundColor || '#FFFFFF').replace('#', '');
+      const titleTextColor = pdfTemplate?.titleColor
+        ? pdfTemplate.titleColor.replace('#', '')
+        : 'FFFFFF';
+
+      // ─ 표지 슬라이드 ─
+      const cover = pptx.addSlide();
+      cover.background = { color: primary };
+      cover.addText(clientInfo.title || clientInfo.domain, {
+        x: 0.5, y: 1.0, w: 9, h: 1.2,
+        fontSize: 34, bold: true, color: 'FFFFFF', align: 'center'
+      });
+      cover.addText('마케팅 서비스 제안서', {
+        x: 0.5, y: 2.4, w: 9, h: 0.8,
+        fontSize: 22, color: 'FFFFFF', align: 'center'
+      });
+      if (pdfTemplate?.styleDescription) {
+        cover.addText(pdfTemplate.styleDescription, {
+          x: 0.5, y: 3.4, w: 9, h: 0.5,
+          fontSize: 13, color: 'FFFFFF', align: 'center', italic: true
+        });
+      }
+      cover.addText('에덴 마케팅', {
+        x: 0.5, y: 4.7, w: 9, h: 0.4,
+        fontSize: 13, color: 'FFFFFF', align: 'center'
+      });
+
+      // ─ 슬라이드 파싱 ─
+      const slides = parseSlidesFromProposal(proposalEditable);
+
+      for (const slide of slides) {
+        const s = pptx.addSlide();
+        s.background = { color: bg };
+
+        if (slide.type === 'section') {
+          // 섹션 구분 슬라이드
+          s.background = { color: primary };
+          s.addText(slide.title, {
+            x: 0.5, y: 1.6, w: 9, h: 1.0,
+            fontSize: 36, bold: true, color: 'FFFFFF', align: 'center'
+          });
+          if (slide.subtitle) {
+            s.addText(slide.subtitle, {
+              x: 0.5, y: 2.8, w: 9, h: 0.6,
+              fontSize: 18, color: 'FFFFFF', align: 'center'
+            });
+          }
+        } else {
+          // 내용 슬라이드
+
+          // 상단 타이틀 바 (컬러 배경 + 제목 텍스트)
+          s.addText(slide.title, {
+            x: 0, y: 0, w: '100%', h: 1.15,
+            fill: { color: primary },
+            color: titleTextColor,
+            fontSize: 19, bold: true,
+            valign: 'middle',
+            margin: [0, 0.5, 0, 0.5]
+          });
+
+          // 불릿 목록
+          if (slide.bullets.length > 0) {
+            const bulletItems = slide.bullets.map(b => ({
+              text: b,
+              options: { bullet: { type: 'bullet' }, indentLevel: 0 }
+            }));
+            s.addText(bulletItems, {
+              x: 0.5, y: 1.3, w: 8.8,
+              h: slide.emphasis ? 2.8 : 3.5,
+              fontSize: 17, color: '1F2937',
+              lineSpacingMultiple: 1.6,
+              valign: 'top'
+            });
+          }
+
+          // 강조 박스
+          if (slide.emphasis) {
+            s.addText('📌 ' + slide.emphasis, {
+              x: 0.4, y: 4.35, w: 9.2, h: 0.75,
+              fill: { color: 'F5F3FF' },
+              line: { color: accent, width: 0.75 },
+              fontSize: 13, bold: true, color: accent,
+              valign: 'middle', margin: [0, 0.3, 0, 0.3]
+            });
+          }
+
+          // 발표 멘트 → 발표자 노트
+          if (slide.note) {
+            s.addNotes(slide.note);
+          }
+        }
+      }
+
+      await pptx.writeFile({ fileName: `제안서_${clientInfo.domain}_${Date.now()}.pptx` });
+
+    } catch (err) {
+      alert(`PPT 생성 실패: ${err.message}`);
+    } finally {
+      setPptxGenerating(false);
+    }
+  }
+
+  // ── 섹션 수정 ──
   function updateSection(idx, newContent) {
     setSections(prev => {
       const next = prev.map((s, i) => i === idx ? { ...s, content: newContent } : s);
@@ -330,13 +560,11 @@ ${crawlData.text}
     });
   }
 
-  // 보고서 저장 (로컬)
   function handleSaveReport() {
     saveDraft({ url, edenServices, sections, clientInfo });
     alert("보고서가 저장되었습니다.");
   }
 
-  // 보고서 MD 다운로드
   function handleDownloadReport() {
     const md = sections.map(s => `## ${s.title}\n\n${s.content}`).join("\n\n---\n\n");
     const full = `# 고객사 분석 보고서 — ${clientInfo.title}\n\n${md}`;
@@ -348,7 +576,6 @@ ${crawlData.text}
     URL.revokeObjectURL(a.href);
   }
 
-  // 템플릿 파일 업로드
   function handleTemplateUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -358,7 +585,7 @@ ${crawlData.text}
     reader.readAsText(file, "utf-8");
   }
 
-  // ── Step 4: 제안서 생성 (Phase별 순차 생성) ──
+  // ── Step 4: 제안서 생성 ──
   async function handleGenerateProposal() {
     setStep("generating");
     setPhaseProgress(0);
@@ -384,7 +611,6 @@ ${crawlData.text}
     }
   }
 
-  // 제안서 다운로드
   function handleDownloadProposal() {
     const blob = new Blob([proposalEditable], { type: "text/markdown;charset=utf-8" });
     const a = document.createElement("a");
@@ -394,7 +620,6 @@ ${crawlData.text}
     URL.revokeObjectURL(a.href);
   }
 
-  // 초안 불러오기
   function handleLoadDraft() {
     const draft = loadDraft();
     if (!draft) return;
@@ -425,33 +650,27 @@ ${crawlData.text}
             </div>
             <div>
               <h4 className="text-base font-bold text-gray-800">제안서 자동화</h4>
-              <p className="text-xs text-gray-400">고객사 홈페이지를 분석하고 맞춤형 제안서를 생성합니다</p>
+              <p className="text-xs text-gray-400">고객사 홈페이지를 분석하고 맞춤형 PPT 제안서를 생성합니다</p>
             </div>
           </div>
 
-          {/* 고객사 URL */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               고객사 홈페이지 URL
-              <span className="ml-1 text-xs font-normal text-gray-400">분석할 사이트 주소를 입력하세요</span>
             </label>
-            <div className="flex gap-2">
-              <input
-                type="url"
-                value={url}
-                onChange={e => setUrl(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleAnalyze()}
-                placeholder="https://example.com"
-                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
-              />
-            </div>
+            <input
+              type="url"
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleAnalyze()}
+              placeholder="https://example.com"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+            />
           </div>
 
-          {/* 에덴 서비스 */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               에덴의 서비스
-              <span className="ml-1 text-xs font-normal text-gray-400">고객사에 제안할 우리 서비스를 입력하세요</span>
             </label>
             <textarea
               value={edenServices}
@@ -539,7 +758,6 @@ ${crawlData.text}
       {/* ── Step: report ── */}
       {step === "report" && (
         <div className="space-y-5">
-          {/* 헤더 */}
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-base font-bold text-gray-800">분석 보고서</h4>
@@ -555,7 +773,7 @@ ${crawlData.text}
 
           {/* Win Theme 배지 */}
           {winThemes.length > 0 && (
-            <div className="mb-6">
+            <div className="mb-2">
               <h3 className="text-sm font-bold text-gray-700 mb-3">🏆 Win Theme (수주 핵심 메시지)</h3>
               <div className="grid grid-cols-3 gap-3">
                 {winThemes.map((wt, i) => (
@@ -567,6 +785,83 @@ ${crawlData.text}
               </div>
             </div>
           )}
+
+          {/* PDF 디자인 템플릿 섹션 */}
+          <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+                </svg>
+                <span className="text-sm font-semibold text-blue-700">PPT 디자인 템플릿</span>
+                <span className="text-xs text-blue-500">기존 제안서 PDF를 업로드하면 디자인을 분석해 재사용합니다</span>
+              </div>
+              <button
+                onClick={() => pdfInputRef.current?.click()}
+                disabled={pdfAnalyzing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all disabled:opacity-50"
+              >
+                {pdfAnalyzing ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    분석 중...
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    PDF 업로드
+                  </>
+                )}
+              </button>
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={handlePdfTemplateUpload}
+              />
+            </div>
+
+            {/* 분석된 템플릿 정보 표시 */}
+            {pdfTemplate && (
+              <div className="mt-2 pt-2 border-t border-blue-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold text-blue-700">✅ {pdfTemplateName}</span>
+                  <span className="text-xs text-blue-500">— {pdfTemplate.styleDescription}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* 색상 스와치 */}
+                  <div className="flex items-center gap-1.5">
+                    {[pdfTemplate.primaryColor, pdfTemplate.accentColor, pdfTemplate.backgroundColor].filter(Boolean).map((color, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        <div
+                          className="w-4 h-4 rounded-full border border-white shadow-sm"
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                        <span className="text-[10px] text-gray-500">{color}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <span className="text-xs text-gray-500">·</span>
+                  <span className="text-xs text-gray-600">{pdfTemplate.slideCount}장 구성</span>
+                  <span className="text-xs text-gray-500">·</span>
+                  <span className="text-xs text-gray-600">{pdfTemplate.layoutStyle}</span>
+                  <button
+                    onClick={() => { setPdfTemplate(null); setPdfTemplateName(""); localStorage.removeItem(LS_TEMPLATE_KEY); }}
+                    className="ml-auto text-[10px] text-gray-400 hover:text-red-500 underline"
+                  >
+                    제거
+                  </button>
+                </div>
+              </div>
+            )}
+            {!pdfTemplate && (
+              <p className="text-xs text-blue-400 mt-1">업로드하지 않으면 에덴 기본 보라 계열 디자인으로 생성됩니다</p>
+            )}
+          </div>
 
           {/* 섹션들 */}
           {sections.map((sec, idx) => (
@@ -590,7 +885,6 @@ ${crawlData.text}
             </div>
           )}
 
-          {/* 액션 버튼 */}
           <div className="flex gap-3 pt-2">
             <button
               onClick={handleSaveReport}
@@ -611,7 +905,6 @@ ${crawlData.text}
               MD 다운로드
             </button>
 
-            {/* 제안서 만들기 */}
             <div className="flex-1 flex flex-col gap-2">
               <div className="flex gap-2">
                 <button
@@ -621,7 +914,7 @@ ${crawlData.text}
                   <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
-                  {templateFileName || "템플릿 첨부"}
+                  {templateFileName || "내용 템플릿"}
                 </button>
                 <input
                   ref={tplInputRef}
@@ -640,12 +933,7 @@ ${crawlData.text}
                   제안서 만들기
                 </button>
               </div>
-              {templateFileName && (
-                <p className="text-xs text-violet-500 pl-1">템플릿: {templateFileName}</p>
-              )}
-              {!templateFileName && (
-                <p className="text-xs text-gray-400 pl-1">PPT 대면 제안서 · 총 ~16장 슬라이드</p>
-              )}
+              <p className="text-xs text-gray-400 pl-1">PPT 대면 제안서 · 총 ~16장 슬라이드</p>
             </div>
           </div>
         </div>
@@ -654,27 +942,46 @@ ${crawlData.text}
       {/* ── Step: proposal ── */}
       {step === "proposal" && (
         <div className="space-y-5">
-          {/* 헤더 */}
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-base font-bold text-gray-800">제안서</h4>
-              <p className="text-xs text-gray-400">{clientInfo.title || clientInfo.domain} — 내용을 직접 수정 후 다운로드하세요</p>
+              <p className="text-xs text-gray-400">{clientInfo.title || clientInfo.domain} — 수정 후 PPT로 다운로드하세요</p>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setStep("report")}
-                className="text-xs text-gray-400 hover:text-gray-600 underline"
-              >
-                보고서로 돌아가기
+            <button
+              onClick={() => setStep("report")}
+              className="text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              보고서로 돌아가기
+            </button>
+          </div>
+
+          {/* 디자인 템플릿 상태 표시 */}
+          {pdfTemplate ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+              </svg>
+              디자인 템플릿 적용됨: <strong>{pdfTemplateName}</strong>
+              <span className="flex gap-1 ml-1">
+                {[pdfTemplate.primaryColor, pdfTemplate.accentColor].filter(Boolean).map((c, i) => (
+                  <span key={i} className="w-3 h-3 rounded-full border border-white shadow-sm inline-block" style={{ backgroundColor: c }} />
+                ))}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-500">
+              디자인 템플릿 없음 — 에덴 기본 보라 계열로 PPT 생성됩니다
+              <button onClick={() => setStep("report")} className="ml-auto text-violet-500 hover:text-violet-700 underline">
+                PDF 템플릿 추가
               </button>
             </div>
-          </div>
+          )}
 
           {/* 제안서 편집 */}
           <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-              <span className="text-sm font-semibold text-gray-700">제안서 내용</span>
-              <span className="text-xs text-gray-400">자유롭게 수정 가능</span>
+              <span className="text-sm font-semibold text-gray-700">슬라이드 스크립트</span>
+              <span className="text-xs text-gray-400">수정 후 PPT 다운로드</span>
             </div>
             <textarea
               value={proposalEditable}
@@ -686,15 +993,39 @@ ${crawlData.text}
 
           {/* 액션 */}
           <div className="flex gap-3">
+            {/* PPT 다운로드 — 메인 */}
+            <button
+              onClick={handleDownloadPptx}
+              disabled={pptxGenerating}
+              className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 text-white text-sm font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+            >
+              {pptxGenerating ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  PPT 생성 중...
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+                  </svg>
+                  PPT 다운로드 (.pptx)
+                </>
+              )}
+            </button>
+
+            {/* MD 다운로드 */}
             <button
               onClick={handleDownloadProposal}
-              className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm font-semibold shadow-md hover:shadow-lg transition-all"
+              className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-all"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              MD 다운로드
+              MD
             </button>
+
+            {/* 복사 */}
             <button
               onClick={() => {
                 navigator.clipboard.writeText(proposalEditable);
@@ -707,6 +1038,8 @@ ${crawlData.text}
               </svg>
               복사
             </button>
+
+            {/* 재생성 */}
             <button
               onClick={handleGenerateProposal}
               className="flex items-center gap-2 px-4 py-3 rounded-xl border border-violet-200 text-sm text-violet-600 hover:bg-violet-50 transition-all"

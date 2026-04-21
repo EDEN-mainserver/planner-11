@@ -4,6 +4,10 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "functions": {
+    "api/parse-pdf.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
     "api/image-generate.js": {
       "maxDuration": 60,
       "memory": 1024
