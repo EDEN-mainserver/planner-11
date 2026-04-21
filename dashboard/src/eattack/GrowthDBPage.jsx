@@ -109,9 +109,16 @@ function SalesTab({ data, onClear }) {
       {/* 상품 목록 */}
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-          <div className="text-4xl mb-3">📊</div>
-          <p className="text-sm font-medium">수집된 판매 데이터가 없습니다</p>
-          <p className="text-xs mt-1">에쿠 확장 프로그램에서 링크 수집(판매량)을 실행하세요</p>
+          <div className="text-5xl mb-4">📊</div>
+          <p className="text-sm font-semibold text-gray-600 mb-1">수집된 판매 데이터가 없습니다</p>
+          <p className="text-xs text-gray-400 mb-4 text-center leading-relaxed">
+            에쿠 확장 프로그램 → 쿠팡 상품 페이지에서<br/>
+            <strong className="text-orange-500">링크 수집(판매량)</strong> 버튼을 클릭하면 자동으로 여기에 표시됩니다.
+          </p>
+          <div className="flex items-center gap-2 text-xs text-orange-500 bg-orange-50 border border-orange-200 rounded-lg px-4 py-2">
+            <span>⚡</span>
+            <span>확장 프로그램 → 수집 실행 → 자동 동기화</span>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">
@@ -506,10 +513,10 @@ export default function GrowthDBPage() {
   }, []);
 
   const TABS = [
-    { key: "sales",    label: "📊 판매량 추적" },
-    { key: "ranking",  label: "📈 랭킹 추적" },
-    { key: "review",   label: "💬 리뷰 분석" },
-    { key: "margin",   label: "🧮 마진계산기" },
+    { key: "sales",    label: "📊 판매량 추적", count: salesData.length },
+    { key: "ranking",  label: "📈 랭킹 추적",   count: rankingData.length },
+    { key: "review",   label: "💬 리뷰 분석",   count: reviewData.length },
+    { key: "margin",   label: "🧮 마진계산기",  count: null },
   ];
 
   const totalTracking = salesData.length + rankingData.length + reviewData.length;
@@ -539,11 +546,17 @@ export default function GrowthDBPage() {
         <div className="flex gap-1 mt-4">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors
                 ${tab === t.key
-                  ? "bg-purple-600 text-white"
+                  ? "bg-orange-500 text-white"
                   : "text-gray-500 hover:bg-gray-100"}`}>
               {t.label}
+              {t.count !== null && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold
+                  ${tab === t.key ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"}`}>
+                  {t.count}
+                </span>
+              )}
             </button>
           ))}
         </div>
