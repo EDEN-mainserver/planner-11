@@ -164,25 +164,21 @@ export default function VideoPreview({
     if (!q || q === prevQueryRef.current) return;
     prevQueryRef.current = q;
     fetch(`/api/klipy?q=${encodeURIComponent(q)}`)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const ct = r.headers.get("content-type") || "";
-        if (!ct.includes("application/json")) throw new Error("non-JSON response");
-        return r.json();
-      })
+      .then(r => r.json())
       .then(d => {
-        if (d.url) { setGifUrl(d.url); setGifError(null); }
-        else setGifError("결과 없음: " + (d.keyword || q));
+        if (d && d.url) { setGifUrl(d.url); setGifError(null); }
+        else setGifError("no result");
       })
-      .catch(e => setGifError(e.message));
+      .catch(e => setGifError(String(e)));
   }, []);
 
   // 마운트 시 제목/스크립트 기반으로 초기 GIF 로드
   useEffect(() => {
-    const q = title?.trim() || script?.trim().slice(0, 30) || "";
+    const titleStr = (typeof title === "string" ? title : "").trim();
+    const scriptStr = (typeof script === "string" ? script : "").trim();
+    const q = titleStr || scriptStr.slice(0, 30);
     if (q) fetchGif(q);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, script]);
+  }, [title, script, fetchGif]);
 
   // 재생 중 자막 청크가 바뀔 때마다 업데이트
   useEffect(() => {
