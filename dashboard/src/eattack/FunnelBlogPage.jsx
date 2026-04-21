@@ -397,28 +397,81 @@ export default function FunnelBlogPage({ onBack }) {
 
             {/* 레퍼런스 블로그 글 */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
                 레퍼런스 블로그 글
-                <span className="ml-2 text-xs font-normal text-gray-400">선택사항 — 말투·흐름을 참고할 블로그 글을 붙여넣으세요</span>
+                <span className="ml-2 text-xs font-normal text-gray-400">선택사항 — 말투·흐름을 AI가 참고합니다</span>
               </label>
-              <textarea
-                value={form.refBlog}
-                onChange={(e) => setField("refBlog", e.target.value)}
-                placeholder={"참고하고 싶은 블로그 글을 여기에 붙여넣으세요.\nAI가 해당 글의 말투, 문장 호흡, 흐름을 참고해서 글을 작성합니다."}
-                rows={6}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition resize-none leading-relaxed"
-              />
-              {form.refBlog && (
-                <div className="flex items-center justify-between mt-1.5">
-                  <span className="text-xs text-gray-400">{form.refBlog.length.toLocaleString()}자 입력됨</span>
-                  <button
-                    type="button"
-                    onClick={() => setField("refBlog", "")}
-                    className="text-xs text-gray-400 hover:text-red-400 transition-colors"
-                  >
-                    지우기
-                  </button>
-                </div>
+
+              {/* URL 입력 */}
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="url"
+                  value={urlInput}
+                  onChange={(e) => { setUrlInput(e.target.value); setUrlError(null); }}
+                  onKeyDown={(e) => e.key === "Enter" && handleFetchUrl()}
+                  placeholder="블로그 URL 붙여넣기 (네이버·티스토리·브런치 등)"
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
+                />
+                <button
+                  type="button"
+                  onClick={handleFetchUrl}
+                  disabled={!urlInput.trim() || urlLoading}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 flex-shrink-0
+                    ${!urlInput.trim() || urlLoading
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                      : "bg-gray-900 text-white hover:bg-gray-700"
+                    }`}
+                >
+                  {urlLoading ? (
+                    <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                  )}
+                  {urlLoading ? "불러오는 중..." : "불러오기"}
+                </button>
+              </div>
+
+              {/* URL 에러 */}
+              {urlError && (
+                <p className="text-xs text-red-500 mb-2 pl-1">{urlError}</p>
+              )}
+
+              {/* 직접 붙여넣기 */}
+              <div className="relative">
+                <textarea
+                  value={form.refBlog}
+                  onChange={(e) => setField("refBlog", e.target.value)}
+                  placeholder={"또는 블로그 글 텍스트를 직접 붙여넣으세요.\nAI가 말투, 문장 호흡, 흐름을 참고해서 글을 작성합니다."}
+                  rows={form.refBlog ? 7 : 4}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition resize-none leading-relaxed"
+                />
+                {form.refBlog && (
+                  <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                    <span className="text-xs text-gray-300">{form.refBlog.length.toLocaleString()}자</span>
+                    <button
+                      type="button"
+                      onClick={() => setField("refBlog", "")}
+                      className="text-xs text-gray-300 hover:text-red-400 transition-colors bg-white"
+                    >
+                      지우기
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 성공 표시 */}
+              {form.refBlog && !urlLoading && (
+                <p className="text-xs text-emerald-500 mt-1.5 pl-1 flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6 9 17l-5-5"/>
+                  </svg>
+                  레퍼런스 글 준비됨 — AI가 이 글의 말투와 흐름을 참고합니다
+                </p>
               )}
             </div>
 
