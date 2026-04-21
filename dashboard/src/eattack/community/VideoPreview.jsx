@@ -157,33 +157,26 @@ export default function VideoPreview({
 
   // Klipy GIF
   const [gifUrl, setGifUrl] = useState(null);
-  const [gifError, setGifError] = useState(null);
-  const prevQueryRef = useRef(null);
 
-  const fetchGif = useCallback((q) => {
-    if (!q || q === prevQueryRef.current) return;
-    prevQueryRef.current = q;
+  // 마운트 시 제목/스크립트 기반 초기 GIF
+  useEffect(() => {
+    const q = (title || "").trim() || (script || "").trim().slice(0, 30);
+    if (!q) return;
     fetch(`/api/klipy?q=${encodeURIComponent(q)}`)
       .then(r => r.json())
-      .then(d => {
-        if (d && d.url) { setGifUrl(d.url); setGifError(null); }
-        else setGifError("no result");
-      })
-      .catch(e => setGifError(String(e)));
+      .then(d => { if (d?.url) setGifUrl(d.url); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 마운트 시 제목/스크립트 기반으로 초기 GIF 로드
-  useEffect(() => {
-    const titleStr = (typeof title === "string" ? title : "").trim();
-    const scriptStr = (typeof script === "string" ? script : "").trim();
-    const q = titleStr || scriptStr.slice(0, 30);
-    if (q) fetchGif(q);
-  }, [title, script, fetchGif]);
 
   // 재생 중 자막 청크가 바뀔 때마다 업데이트
   useEffect(() => {
-    if (currentSentence) fetchGif(currentSentence);
-  }, [currentSentence, fetchGif]);
+    if (!currentSentence) return;
+    fetch(`/api/klipy?q=${encodeURIComponent(currentSentence)}`)
+      .then(r => r.json())
+      .then(d => { if (d?.url) setGifUrl(d.url); })
+      .catch(() => {});
+  }, [currentSentence]);
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
@@ -231,20 +224,13 @@ export default function VideoPreview({
           )}
 
           {/* Klipy GIF — 마운트 시 제목 기반 / 재생 중 자막 기반 */}
-          {gifUrl ? (
+          {gifUrl && (
             <img
               src={gifUrl}
               alt="reaction"
-              style={{
-                width: 160, borderRadius: 10,
-                boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-              }}
+              style={{ width: 160, borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}
             />
-          ) : gifError ? (
-            <div style={{ fontSize: 9, color: "red", background: "rgba(255,255,255,0.85)", padding: "2px 6px", borderRadius: 6, maxWidth: 160, wordBreak: "break-all" }}>
-              {gifError}
-            </div>
-          ) : null}
+          )}
         </div>
 
         {/* 일시정지 시 재생 버튼 */}
