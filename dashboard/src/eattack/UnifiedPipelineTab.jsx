@@ -836,6 +836,7 @@ export default function UnifiedPipelineTab() {
   if (step === "images")
     return (
       <div className="p-6 space-y-4">
+        <UserBar />
         <StepBar />
 
         <div className="flex items-center justify-between">
@@ -928,6 +929,7 @@ export default function UnifiedPipelineTab() {
   if (step === "assembly")
     return (
       <div className="p-6 space-y-4">
+        <UserBar />
         <StepBar />
 
         <div className="flex items-center justify-between">
@@ -1043,39 +1045,44 @@ export default function UnifiedPipelineTab() {
   if (step === "deploy")
     return (
       <div className="p-6 space-y-5">
+        <UserBar />
         <StepBar />
 
+        {/* 상단: 제목 + HTML 다운로드 */}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-gray-800">배포</p>
-            <p className="text-xs text-gray-400">
-              {cards.length}장 · {topic}
-            </p>
+            <p className="text-xs text-gray-400">{cards.length}장 · {topic}</p>
           </div>
           <button
             onClick={downloadHtml}
             className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-gray-700 transition-all shadow-sm"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
             HTML 다운로드
           </button>
         </div>
 
-        {/* 인스타그램 API 설정 */}
+        {/* 인스타그램 설정 */}
         <div className="space-y-3 bg-gray-50 border border-gray-100 rounded-2xl p-4">
-          <p className="text-xs font-bold text-gray-700">인스타그램 자동 업로드</p>
+          <div className="flex items-center gap-2 mb-1">
+            {/* 인스타그램 아이콘 */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500">
+              <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+            </svg>
+            <p className="text-xs font-bold text-gray-700">인스타그램 자동 게시</p>
+            <span className="text-[10px] text-violet-600 font-semibold bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5">
+              {session.displayName} 계정
+            </span>
+          </div>
+
+          {/* 계정 ID */}
           <div>
             <label className="text-xs font-bold text-gray-600 block mb-1.5">
               비즈니스 계정 ID
@@ -1088,10 +1095,12 @@ export default function UnifiedPipelineTab() {
               onChange={(e) => {
                 const next = { ...igConfig, accountId: e.target.value };
                 setIgConfig(next);
-                localStorage.setItem(IG_KEY, JSON.stringify(next));
+                saveIg(session.username, next);
               }}
             />
           </div>
+
+          {/* 액세스 토큰 */}
           <div>
             <label className="text-xs font-bold text-gray-600 block mb-1.5">
               액세스 토큰 (Access Token)
@@ -1104,25 +1113,75 @@ export default function UnifiedPipelineTab() {
               onChange={(e) => {
                 const next = { ...igConfig, accessToken: e.target.value };
                 setIgConfig(next);
-                localStorage.setItem(IG_KEY, JSON.stringify(next));
+                saveIg(session.username, next);
               }}
             />
           </div>
+
+          {/* 캡션 */}
+          <div>
+            <label className="text-xs font-bold text-gray-600 block mb-1.5">
+              게시 캡션 <span className="font-normal text-gray-400">(선택 — 비우면 주제 사용)</span>
+            </label>
+            <textarea
+              rows={3}
+              placeholder={`예: ${topic}\n\n#카드뉴스 #정보 #트렌드`}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white resize-none leading-relaxed"
+              value={postCaption}
+              onChange={(e) => setPostCaption(e.target.value)}
+            />
+          </div>
+
           <p className="text-[11px] text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
-            🔒 API 키는 브라우저 로컬에만 저장되며, 외부 서버로 전송되지 않습니다.
+            🔒 API 정보는 사용자별로 브라우저 로컬에 저장됩니다. 이미지는 서버에 임시 업로드 후 즉시 삭제됩니다.
           </p>
+
+          {/* 게시 버튼 */}
           <button
             onClick={postToInstagram}
             disabled={igPosting || !igConfig.accountId || !igConfig.accessToken}
-            className="w-full py-2.5 bg-gradient-to-r from-fuchsia-500 to-pink-500 hover:from-fuchsia-600 hover:to-pink-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all"
+            className="w-full py-3 bg-gradient-to-r from-fuchsia-500 to-pink-500 hover:from-fuchsia-600 hover:to-pink-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
           >
-            {igPosting ? "게시 중..." : "📸 인스타그램에 게시하기"}
+            {igPosting ? (
+              <>
+                <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                인스타그램에 게시 중...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+                </svg>
+                인스타그램에 게시하기
+              </>
+            )}
           </button>
+
+          {/* 게시 결과 */}
           {igResult && (
-            <div
-              className={`px-3 py-2 rounded-lg text-xs ${igResult.status === "info" ? "bg-blue-50 border border-blue-200 text-blue-700" : "bg-green-50 border border-green-200 text-green-700"}`}
-            >
-              {igResult.message}
+            <div className={`px-3 py-2.5 rounded-xl text-xs font-medium flex items-start gap-2 ${
+              igResult.status === "success"
+                ? "bg-green-50 border border-green-200 text-green-700"
+                : "bg-blue-50 border border-blue-200 text-blue-700"
+            }`}>
+              <span>{igResult.status === "success" ? "✅" : "ℹ️"}</span>
+              <div>
+                <span>{igResult.message}</span>
+                {igResult.permalink && (
+                  <a
+                    href={igResult.permalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block mt-1 underline"
+                  >
+                    게시물 보기
+                  </a>
+                )}
+              </div>
             </div>
           )}
         </div>
