@@ -163,6 +163,11 @@ export default function EAttackPage() {
     return <CrawlingPage onBack={() => setDepth("root")} />;
   }
 
+  // 아이보스 대시보드
+  if (depth === "iboss") {
+    return <IbossPage onBack={() => setDepth("text")} />;
+  }
+
   // 퍼널 블로그 생성
   if (depth === "funnelblog") {
     return <FunnelBlogPage onBack={() => setDepth("text")} />;
