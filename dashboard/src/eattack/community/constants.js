@@ -28,6 +28,19 @@ export const BG_PRESETS = [
     character: { mood: "angry",   hairColor: "#1c1c1c", clothesColor: "#374151" } },
 ];
 
+// BGM 프리셋 — public/bgm/ 폴더의 파일 기반
+// 새 파일 추가 시: public/bgm/ 에 MP3 넣고 아래 목록에 추가
+export const BGM_LIST = [
+  { key: "none",          label: "없음",                file: null },
+  { key: "brain_trust",   label: "Brain Trust",         file: "/bgm/Brain Trust - Wayne Jones.mp3",                                   mood: "경쾌" },
+  { key: "humorous",      label: "Humorous Escalation", file: "/bgm/Humorous Escalation - Creable Music - Julieta Alcantara Kids.mp3", mood: "개그" },
+  { key: "mystery_box",   label: "Mystery Box",         file: "/bgm/Mystery box - VML.mp3",                                           mood: "긴장" },
+  { key: "omc",           label: "OMC",                 file: "/bgm/OMC - VML.mp3",                                                   mood: "경쾌" },
+  { key: "white_color",   label: "White Color",         file: "/bgm/White Color - Lunatic Souls.mp3",                                 mood: "감성" },
+  { key: "coral",         label: "🪸 Eliza Ivanova",   file: "/bgm/🪸 - Eliza Ivanova.mp3",                                         mood: "감성" },
+  { key: "rabbit",        label: "엉뚱한토끼",           file: "/bgm/엉뚱한토끼 - VML (1).mp3",                                       mood: "개그" },
+];
+
 export const FONT_OPTIONS = [
   { key: "Noto Sans KR",   label: "노토 산스 (기본)" },
   { key: "Black Han Sans", label: "검은 한 산스 (굵게)" },

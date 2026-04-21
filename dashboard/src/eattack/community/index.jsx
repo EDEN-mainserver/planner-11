@@ -5,6 +5,7 @@ import CaptionPreview from "./CaptionPreview";
 import VideoPreview from "./VideoPreview";
 import {
   BG_PRESETS,
+  BGM_LIST,
   FONT_OPTIONS,
   EXAMPLE_SCRIPTS,
 } from "./constants";
@@ -27,6 +28,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [voicesLoading, setVoicesLoading]   = useState(true);
   const [voicesError, setVoicesError]       = useState("");
   const [voiceId, setVoiceId]               = useState("");
+  const [bgmKey, setBgmKey]                 = useState("none");
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
   const [ttsError, setTtsError]             = useState("");
@@ -108,6 +110,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       bgPreset: BG_PRESETS.find(b => b.key === selectedBg),
       title,
       gifQuery: title.trim() || script.trim().slice(0, 40),
+      bgmFile: BGM_LIST.find(b => b.key === bgmKey)?.file ?? null,
     });
     setGenerating(false);
   }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title]);
@@ -321,6 +324,27 @@ export default function CommunityTab({ nasState, onGoToNas }) {
               </div>
             </div>
 
+            {/* BGM 선택 */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-2">배경 음악 (BGM)</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BGM_LIST.map(b => (
+                  <button
+                    key={b.key}
+                    onClick={() => setBgmKey(b.key)}
+                    className={`px-3 py-2 rounded-lg border text-left transition-colors ${
+                      bgmKey === b.key
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <p className="text-xs font-semibold truncate">{b.label}</p>
+                    {b.mood && <p className="text-[10px] text-gray-400">{b.mood}</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <button onClick={() => setStep(2)} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                 이전
@@ -455,6 +479,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   fontFamily={fontFamily}
                   totalMs={generated.totalMs}
                   gifQuery={generated.gifQuery}
+                  bgmFile={generated.bgmFile}
                 />
 
                 <div className="flex gap-2">

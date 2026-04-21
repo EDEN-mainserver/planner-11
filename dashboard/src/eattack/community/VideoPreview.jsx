@@ -102,8 +102,10 @@ export default function VideoPreview({
   fontFamily,
   totalMs,
   gifQuery,
+  bgmFile,
 }) {
   const audioRef    = useRef(null);
+  const bgmRef      = useRef(null);
   const intervalRef = useRef(null);
   const [playing, setPlaying]     = useState(false);
   const [currentMs, setCurrentMs] = useState(0);
@@ -113,7 +115,7 @@ export default function VideoPreview({
 
   const titleExcerpt = title?.trim() || script?.trim().slice(0, 60) || "";
 
-  // 오디오 설정 + currentMs 동기화
+  // TTS 오디오 설정 + currentMs 동기화
   useEffect(() => {
     if (!audioUrl) { audioRef.current = null; return; }
     const audio = new Audio(audioUrl);
@@ -130,6 +132,16 @@ export default function VideoPreview({
       audioRef.current = null;
     };
   }, [audioUrl]);
+
+  // BGM 설정 (볼륨 30%, 루프)
+  useEffect(() => {
+    if (!bgmFile) { bgmRef.current = null; return; }
+    const bgm = new Audio(bgmFile);
+    bgm.loop   = true;
+    bgm.volume = 0.3;
+    bgmRef.current = bgm;
+    return () => { bgm.pause(); bgmRef.current = null; };
+  }, [bgmFile]);
 
   // 오디오 없을 때 폴백 타이머
   useEffect(() => {
@@ -181,9 +193,11 @@ export default function VideoPreview({
     const audio = audioRef.current;
     if (playing) {
       audio?.pause();
+      bgmRef.current?.pause();
       setPlaying(false);
     } else {
       audio?.play().catch(e => console.error("[VideoPreview] audio.play() 실패:", e));
+      bgmRef.current?.play().catch(() => {});
       setPlaying(true);
     }
   }, [playing]);
