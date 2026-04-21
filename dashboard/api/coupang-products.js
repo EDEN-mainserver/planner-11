@@ -19,7 +19,12 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST')   { res.status(405).json({ error: 'Method Not Allowed' }); return; }
 
-  const { accessKey, secretKey, vendorId, endpoint = 'seller-products', params = {} } = req.body;
+  const raw = req.body;
+  const accessKey = (raw.accessKey || '').trim();
+  const secretKey = (raw.secretKey || '').trim();
+  const vendorId  = (raw.vendorId  || '').trim();
+  const endpoint  = raw.endpoint || 'seller-products';
+  const params    = raw.params   || {};
 
   if (!accessKey || !secretKey || !vendorId) {
     res.status(400).json({ error: '쿠팡 API 키가 설정되지 않았습니다.' });
@@ -48,8 +53,9 @@ export default async function handler(req, res) {
     const resp = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': auth,
-        'Content-Type':  'application/json;charset=UTF-8',
+        'Authorization':  auth,
+        'Content-Type':   'application/json;charset=UTF-8',
+        'X-Requested-By': vendorId,
       },
     });
     const data = await resp.json();
