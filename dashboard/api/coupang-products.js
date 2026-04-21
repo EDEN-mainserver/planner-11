@@ -1,12 +1,12 @@
 // Vercel Serverless Function — 쿠팡 Open API 프록시
-import crypto from 'crypto';
+import { createHmac } from 'crypto';
 
 function makeAuthHeader(method, path, query, accessKey, secretKey) {
   const now = new Date();
   const p   = (n) => String(n).padStart(2, '0');
   const dt  = `${now.getUTCFullYear()}${p(now.getUTCMonth()+1)}${p(now.getUTCDate())}T${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}Z`;
   const msg = dt + method + path + (query ? '?' + query : '');
-  const sig = crypto.createHmac('sha256', secretKey).update(msg).digest('hex');
+  const sig = createHmac('sha256', secretKey).update(msg).digest('hex');
   return `CEA algorithm=HmacSHA256, access-key=${accessKey}, signed-date=${dt}, signature=${sig}`;
 }
 
