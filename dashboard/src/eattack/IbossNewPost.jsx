@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { callGemini } from "../utils/gemini";
 
 // ─── 글 유형 정의 ───
@@ -71,27 +71,37 @@ export default function IbossNewPost({ onBack, onGenerate, referencePost = null 
   const [extraInfo, setExtraInfo] = useState("");
   const [trendPosts, setTrendPosts] = useState([]);
   const [isLoadingTrend, setIsLoadingTrend] = useState(false);
+  const trendTimeoutRef = useRef(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState("");
   const [error, setError] = useState("");
 
   const selectedType = POST_TYPES.find((t) => t.key === postType);
 
-  // ── 아이보스 인기글 트렌드 불러오기 ──
-  const handleLoadTrend = async () => {
+  // ── 확장 프로그램에서 이달 인기글 수신 ──
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== "EDEN_IBOSS_LIST") return;
+      if (trendTimeoutRef.current) clearTimeout(trendTimeoutRef.current);
+      const { posts: newPosts = [] } = event.data.payload || {};
+      setTrendPosts(newPosts.slice(0, 8));
+      setIsLoadingTrend(false);
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  // ── 이달 인기글 요청 (확장 프로그램) ──
+  const handleLoadTrend = () => {
+    if (trendTimeoutRef.current) clearTimeout(trendTimeoutRef.current);
     setIsLoadingTrend(true);
     setTrendPosts([]);
-    try {
-      const resp = await fetch("/api/iboss-crawl?limit=10");
-      const data = await resp.json();
-      if (data.posts?.length > 0) {
-        setTrendPosts(data.posts.slice(0, 8));
-      }
-    } catch (e) {
-      console.error("트렌드 로드 실패:", e);
-    } finally {
+    const month = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+    window.postMessage({ type: "EDEN_GET_IBOSS_LIST", month }, "*");
+    trendTimeoutRef.current = setTimeout(() => {
       setIsLoadingTrend(false);
-    }
+    }, 15000);
   };
 
   // ── 글 생성 ──

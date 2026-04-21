@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import IbossNewPost from "./IbossNewPost";
 import IbossEditor from "./IbossEditor";
 
@@ -43,55 +43,92 @@ function savePosts(posts) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
 }
 
-// ─── 인기글 분석 탭 ───
+// ─── 인기글 분석 탭 (확장 프로그램 방식) ───
 function TrendsTab() {
   const [posts, setPosts] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7).replace("-", ""));
-  const [selected, setSelected] = useState(null);
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const [detailContent, setDetailContent] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
+  const timeoutRef = useRef(null);
+  const detailTimeoutRef = useRef(null);
 
-  const handleLoad = async () => {
+  // 확장 프로그램 → 목록 수신
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== "EDEN_IBOSS_LIST") return;
+      const { posts: newPosts = [], error: err } = event.data.payload || {};
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (err) {
+        setError("수집 오류: " + err);
+        setIsLoading(false);
+        return;
+      }
+      const ranked = newPosts.slice(0, 30).map((p, i) => ({ ...p, rank: i + 1 }));
+      setPosts(ranked);
+      setIsLoading(false);
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  // 확장 프로그램 → 본문 수신
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== "EDEN_IBOSS_CONTENT") return;
+      if (detailTimeoutRef.current) clearTimeout(detailTimeoutRef.current);
+      const { content, error: err } = event.data.payload || {};
+      setDetailContent(content || (err ? `오류: ${err}` : "본문을 불러올 수 없습니다."));
+      setDetailLoading(false);
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  const handleLoad = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setIsLoading(true);
     setError("");
     setPosts([]);
-    setSelected(null);
-    try {
-      const resp = await fetch(`/api/iboss-crawl?month=${month}&limit=20`);
-      const data = await resp.json();
-      if (data.error && !data.posts?.length) throw new Error(data.error);
-      setPosts(data.posts || []);
-    } catch (e) {
-      setError("인기글 로드 실패: " + e.message);
-    } finally {
-      setIsLoading(false);
-    }
+    setSelectedIdx(null);
+    setDetailContent("");
+    window.postMessage({ type: "EDEN_GET_IBOSS_LIST", month }, "*");
+    // 15초 타임아웃
+    timeoutRef.current = setTimeout(() => {
+      setIsLoading((prev) => {
+        if (prev) setError("수집 시간 초과 — Eden Crawl 확장 프로그램이 설치되어 있는지 확인해주세요.");
+        return false;
+      });
+    }, 15000);
   };
 
-  const handleDetail = async (post) => {
-    if (selected?.rank === post.rank) {
-      setSelected(null);
+  const handleRowClick = (idx) => {
+    if (selectedIdx === idx) {
+      setSelectedIdx(null);
+      setDetailContent("");
       return;
     }
-    setSelected({ ...post, content_raw: "" });
-    setDetailLoading(true);
-    try {
-      const resp = await fetch(`/api/iboss-crawl?detail=true&url=${encodeURIComponent(post.source_url)}`);
-      const data = await resp.json();
-      setSelected({ ...post, content_raw: data.content || "본문을 불러올 수 없습니다." });
-    } catch {
-      setSelected({ ...post, content_raw: "본문 로드 실패" });
-    } finally {
-      setDetailLoading(false);
+    setSelectedIdx(idx);
+    setDetailContent("");
+    const post = posts[idx];
+    if (post?.source_url) {
+      setDetailLoading(true);
+      window.postMessage({ type: "EDEN_GET_IBOSS_CONTENT", sourceUrl: post.source_url }, "*");
+      detailTimeoutRef.current = setTimeout(() => {
+        setDetailLoading((prev) => {
+          if (prev) setDetailContent("본문을 불러올 수 없습니다. 확장 프로그램을 확인해주세요.");
+          return false;
+        });
+      }, 15000);
     }
   };
-
-  // 첫 로드
-  useEffect(() => {
-    handleLoad();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const monthOptions = [];
   for (let i = 0; i < 6; i++) {
@@ -150,11 +187,11 @@ function TrendsTab() {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
             {monthOptions.find(m => m.val === month)?.label} 인기글 TOP {posts.length}
           </p>
-          {posts.map((post) => (
+          {posts.map((post, idx) => (
             <div key={post.rank}>
               <div
                 className="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-emerald-200 hover:shadow-sm transition-all cursor-pointer group"
-                onClick={() => handleDetail(post)}
+                onClick={() => handleRowClick(idx)}
               >
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
                   post.rank <= 3 ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
@@ -182,14 +219,14 @@ function TrendsTab() {
                 </div>
                 <svg
                   xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  className={`text-gray-300 flex-shrink-0 transition-transform ${selected?.rank === post.rank ? "rotate-180" : ""}`}
+                  className={`text-gray-300 flex-shrink-0 transition-transform ${selectedIdx === idx ? "rotate-180" : ""}`}
                 >
                   <path d="m6 9 6 6 6-6"/>
                 </svg>
               </div>
 
               {/* 상세 본문 */}
-              {selected?.rank === post.rank && (
+              {selectedIdx === idx && (
                 <div className="mx-2 border border-t-0 border-emerald-100 rounded-b-xl bg-emerald-50/30 px-4 py-3">
                   {detailLoading ? (
                     <div className="flex items-center gap-2 py-2 text-sm text-gray-400">
@@ -202,7 +239,7 @@ function TrendsTab() {
                   ) : (
                     <>
                       <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap line-clamp-10">
-                        {selected.content_raw || "본문 없음"}
+                        {detailContent || "본문을 불러오려면 잠시 기다려주세요."}
                       </p>
                       <a
                         href={post.source_url}
