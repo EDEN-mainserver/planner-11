@@ -15,12 +15,98 @@ const SYSTEM_PROMPT = `
 반드시 한국어로 답변하세요.
 `.trim();
 
+const PROPOSAL_SYSTEM_PROMPT = `
+당신은 경쟁 입찰과 영업 제안에서 수주율을 높이는 10년차 마케팅 제안서 전문가입니다.
+에덴은 콘텐츠 마케팅, SNS 운영, 퍼포먼스 마케팅을 제공하는 마케팅 대행사입니다.
+
+## Impact-8 Framework
+제안서는 HOOK→SUMMARY→INSIGHT→CONCEPT→ACTION PLAN→MANAGEMENT→WHY US→INVESTMENT 순서로 구성됩니다.
+
+## Action Title 규칙 (필수)
+- ❌ "시장 환경 분석", "타겟 분석" (What을 말하는 Topic Title)
+- ✅ "숏폼이 구매 결정을 바꾸고 있다", "MZ세대 55%가 SNS 보고 구매 결정" (Why/So-What을 말하는 Action Title)
+- 규칙: 결론/인사이트를 제목에 담고, 가능하면 숫자 포함
+
+## C-E-I 설득 구조
+각 핵심 주장은 다음 구조를 따를 것:
+- Claim(주장): Action Title에 핵심 주장 반영
+- Evidence(근거): 데이터, 통계, 유사 사례로 뒷받침
+- Impact(영향): 고객사 관점에서의 비즈니스 가치/효과
+
+## KPI 원칙
+모든 KPI는 산출 근거를 포함할 것:
+예) 팔로워 +30% = 인플루언서 협업(+12%) + 릴스 집중 전략(+10%) + 이벤트 캠페인(+8%)
+
+## Win Theme 원칙
+보고서에서 제공된 Win Theme은 각 섹션에 자연스럽게 반복 강조할 것.
+제안서 전체에 일관된 수주 메시지가 흐르도록 유지.
+
+반드시 한국어로 답변하세요.
+`.trim();
+
+const PROPOSAL_PHASES = [
+  {
+    key: "summary",
+    title: "SUMMARY",
+    subtitle: "Executive Summary + Win Theme 정의",
+    weight: "10%",
+    guide: "한 줄 제안 + Win Theme 3개 + 핵심 KPI + Why Us 3가지"
+  },
+  {
+    key: "insight",
+    title: "INSIGHT",
+    subtitle: "시장 환경 & 고객 문제 정의",
+    weight: "15%",
+    guide: "Pain Point 심화 + 숨겨진 니즈 + 기회 포착"
+  },
+  {
+    key: "concept",
+    title: "CONCEPT & STRATEGY",
+    subtitle: "핵심 컨셉 & 차별화 전략",
+    weight: "15%",
+    guide: "에덴만의 접근법 + 경쟁사 대비 차별점 + 성공 사례 연결"
+  },
+  {
+    key: "action",
+    title: "ACTION PLAN",
+    subtitle: "상세 실행 계획 (핵심)",
+    weight: "40%",
+    guide: "채널별 전략 + 월별 로드맵 + 콘텐츠 예시 + 캠페인 기획"
+  },
+  {
+    key: "whyus",
+    title: "WHY US",
+    subtitle: "에덴 수행 역량 & 실적",
+    weight: "10%",
+    guide: "유사 실적 + 팀 역량 + 고객 추천 + 차별화 강점"
+  },
+  {
+    key: "investment",
+    title: "INVESTMENT & ROI",
+    subtitle: "투자 비용 & 기대효과",
+    weight: "10%",
+    guide: "비용 구조 + 정량적 KPI + ROI 분석 + Next Step"
+  },
+];
+
 // 로컬스토리지 저장/로드
 function saveDraft(data) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {}
 }
 function loadDraft() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)); } catch { return null; }
+}
+
+// JSON 블록 파싱 (Win Themes 추출)
+function parseAnalysisJson(raw) {
+  const match = raw.match(/---JSON_ANALYSIS_START---([\s\S]*?)---JSON_ANALYSIS_END---/);
+  if (!match) return null;
+  try { return JSON.parse(match[1].trim()); } catch { return null; }
+}
+
+// 마크다운 섹션만 추출 (JSON 블록 제거)
+function stripJsonBlock(raw) {
+  return raw.replace(/---JSON_ANALYSIS_START---[\s\S]*?---JSON_ANALYSIS_END---/, '').trim();
 }
 
 // 섹션 파싱: ## 헤더 기준으로 분리
@@ -44,6 +130,48 @@ function parseSections(text) {
   return sections.map(s => ({ ...s, content: s.content.trim() }));
 }
 
+// Phase별 프롬프트 빌더
+function buildPhasePrompt(phase, reportText, winThemes, painPoints, clientInfo, edenServices) {
+  const winThemeText = winThemes.length > 0
+    ? winThemes.map((wt, i) => `  ${i + 1}. **${wt.name}**: ${wt.description}`).join('\n')
+    : '(분석에서 추출된 Win Theme 없음)';
+  const painPointText = painPoints.length > 0
+    ? painPoints.map(p => `  - ${p}`).join('\n')
+    : '(분석에서 추출된 Pain Point 없음)';
+
+  return `
+## Phase: ${phase.title} (${phase.subtitle})
+비중: ${phase.weight}
+
+## 고객사 분석 보고서
+${reportText}
+
+## Win Theme (반드시 이 메시지와 일관성 유지)
+${winThemeText}
+
+## 고객사 핵심 Pain Point
+${painPointText}
+
+## 에덴 서비스
+${edenServices}
+
+## 고객사
+${clientInfo.title} (${clientInfo.domain})
+
+---
+
+위 정보를 바탕으로 **${phase.title}** 섹션을 작성해 주세요.
+작성 가이드: ${phase.guide}
+
+### 필수 규칙
+1. **Action Title 사용**: "현황 분석" ❌ → "SNS 이용자 55%가 구매 결정에 영향받는 시대" ✅
+2. **C-E-I 구조**: 주장(Claim) → 근거(Evidence, 수치/사례) → 영향(Impact, 고객사 관점 가치)
+3. **숫자로 말하기**: "성과 향상" ❌ → "전환율 +35%, 팔로워 +1,200명" ✅
+4. **Win Theme 반복**: 위 Win Theme가 이 섹션 어딘가에서 자연스럽게 강조될 것
+5. 마크다운 ## 헤더 사용
+`.trim();
+}
+
 // ── 메인 컴포넌트 ──
 export default function ProposalTab() {
   // 단계: input | analyzing | report | generating | proposal
@@ -60,12 +188,15 @@ export default function ProposalTab() {
   // Step 3 - 보고서
   const [sections, setSections] = useState([]); // [{ title, content }]
   const [clientInfo, setClientInfo] = useState({ domain: "", title: "" });
+  const [winThemes, setWinThemes] = useState([]);   // Win Theme 3개
+  const [painPoints, setPainPoints] = useState([]); // Pain Point 목록
 
   // Step 4 - 제안서
   const [templateContent, setTemplateContent] = useState("");
   const [templateFileName, setTemplateFileName] = useState("");
   const [proposal, setProposal] = useState("");
   const [proposalEditable, setProposalEditable] = useState("");
+  const [phaseProgress, setPhaseProgress] = useState(0); // 0~6
 
   const fileInputRef = useRef(null);
   const tplInputRef = useRef(null);
@@ -129,12 +260,33 @@ ${crawlData.text}
 → 이 서비스가 고객사에 어떻게 도움이 될 수 있는지, 구체적인 연결 포인트 제시)
 
 각 섹션은 핵심 내용을 bullet point와 분석 문장으로 구체적이고 풍부하게 작성해 주세요.
+
+---JSON_ANALYSIS_START---
+{
+  "win_themes": [
+    {"name": "...", "description": "...", "evidence": "..."},
+    {"name": "...", "description": "...", "evidence": "..."},
+    {"name": "...", "description": "...", "evidence": "..."}
+  ],
+  "pain_points": ["...", "...", "..."],
+  "one_sentence": "고객사를 한 줄로 요약한 문장"
+}
+---JSON_ANALYSIS_END---
 `.trim();
 
       const raw = await callGemini([{ role: "user", content: prompt }], SYSTEM_PROMPT);
-      const parsed = parseSections(raw);
+
+      // Win Theme 추출 및 마크다운 섹션 분리
+      const structuredData = parseAnalysisJson(raw);
+      const cleanRaw = stripJsonBlock(raw);
+      const parsed = parseSections(cleanRaw);
 
       setSections(parsed);
+      if (structuredData) {
+        setWinThemes(structuredData.win_themes || []);
+        setPainPoints(structuredData.pain_points || []);
+      }
+
       saveDraft({ url: url.trim(), edenServices, sections: parsed, clientInfo: { domain: crawlData.domain, title: crawlData.meta?.title || crawlData.domain } });
       setStep("report");
 
@@ -181,40 +333,25 @@ ${crawlData.text}
     reader.readAsText(file, "utf-8");
   }
 
-  // ── Step 4: 제안서 생성 ──
+  // ── Step 4: 제안서 생성 (Phase별 순차 생성) ──
   async function handleGenerateProposal() {
     setStep("generating");
+    setPhaseProgress(0);
     setError("");
-
     const reportText = sections.map(s => `## ${s.title}\n\n${s.content}`).join("\n\n");
-    const tplPart = templateContent
-      ? `\n\n**제안서 템플릿 구조:**\n${templateContent}\n위 템플릿 구조를 그대로 따르되, 내용은 분석 결과에 맞게 채워주세요.`
-      : "\n\n(별도 템플릿 없음 — 아래 표준 구조로 작성: 표지/요약/고객사현황/제안개요/기대효과/서비스소개/제안금액/맺음말)";
-
-    const prompt = `
-다음 마케팅 분석 보고서를 바탕으로 **에덴 서비스 제안서**를 작성해 주세요.
-
-**분석 보고서:**
-${reportText}
-
-**에덴의 서비스:**
-${edenServices}
-
-**고객사:** ${clientInfo.title} (${clientInfo.domain})
-${tplPart}
-
-제안서는 다음 기준으로 작성해 주세요:
-- 고객사 맞춤형으로 구체적이고 설득력 있게 작성
-- 고객사의 니즈와 에덴 서비스가 어떻게 맞닿는지 명확히 제시
-- 수치나 예상 효과를 포함하여 신뢰성 확보
-- 전문적이고 깔끔한 비즈니스 문체 사용
-- 마크다운 형식으로 작성 (## 섹션 헤더 사용)
-`.trim();
+    const parts = [];
 
     try {
-      const result = await callGemini([{ role: "user", content: prompt }], SYSTEM_PROMPT);
-      setProposal(result);
-      setProposalEditable(result);
+      for (let i = 0; i < PROPOSAL_PHASES.length; i++) {
+        setPhaseProgress(i);
+        const phase = PROPOSAL_PHASES[i];
+        const prompt = buildPhasePrompt(phase, reportText, winThemes, painPoints, clientInfo, edenServices);
+        const result = await callGemini([{ role: "user", content: prompt }], PROPOSAL_SYSTEM_PROMPT);
+        parts.push(`# ${phase.title}\n> ${phase.subtitle}\n\n${result}`);
+      }
+      const full = parts.join("\n\n---\n\n");
+      setProposal(full);
+      setProposalEditable(full);
       setStep("proposal");
     } catch (e) {
       setError(e.message);
@@ -360,7 +497,10 @@ ${tplPart}
             </svg>
           </div>
           <p className="text-sm font-semibold text-gray-700 mb-1">제안서 생성 중...</p>
-          <p className="text-xs text-gray-400">AI가 맞춤형 제안서를 작성하고 있습니다</p>
+          <p className="text-xs text-gray-500 mt-2">
+            Phase {phaseProgress + 1} / {PROPOSAL_PHASES.length}: {PROPOSAL_PHASES[phaseProgress]?.title} 생성 중...
+          </p>
+          <p className="text-xs text-gray-400 mt-1">AI가 맞춤형 제안서를 작성하고 있습니다</p>
           <div className="mt-5 flex gap-1">
             {[0, 1, 2].map(i => (
               <div key={i} className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
@@ -385,6 +525,21 @@ ${tplPart}
               다시 분석
             </button>
           </div>
+
+          {/* Win Theme 배지 */}
+          {winThemes.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">🏆 Win Theme (수주 핵심 메시지)</h3>
+              <div className="grid grid-cols-3 gap-3">
+                {winThemes.map((wt, i) => (
+                  <div key={i} className="p-3 rounded-xl bg-violet-50 border border-violet-200">
+                    <p className="text-xs font-bold text-violet-700">{wt.name}</p>
+                    <p className="text-xs text-gray-600 mt-1">{wt.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 섹션들 */}
           {sections.map((sec, idx) => (
@@ -462,7 +617,7 @@ ${tplPart}
                 <p className="text-xs text-violet-500 pl-1">템플릿: {templateFileName}</p>
               )}
               {!templateFileName && (
-                <p className="text-xs text-gray-400 pl-1">템플릿 미첨부 시 기본 구조로 생성됩니다</p>
+                <p className="text-xs text-gray-400 pl-1">Impact-8 Framework 6단계로 생성됩니다</p>
               )}
             </div>
           </div>
