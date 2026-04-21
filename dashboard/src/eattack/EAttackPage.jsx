@@ -4,6 +4,7 @@ import FunnelBlogPage from "./FunnelBlogPage";
 import CrawlingPage from "./crawling/CrawlingPage";
 import ImagePage from "./ImagePage";
 import VideoPage from "./VideoPage";
+import IbossPage from "./IbossPage";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -75,7 +76,6 @@ const TEXT_CHANNELS = [
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
       </svg>
     ),
-    disabled: true,
   },
 ];
 
@@ -153,6 +153,8 @@ export default function EAttackPage() {
   const handleChannelClick = (channel) => {
     if (channel.key === "blog") {
       setDepth("funnelblog");
+    } else if (channel.key === "iboss") {
+      setDepth("iboss");
     }
   };
 
