@@ -133,13 +133,18 @@ JSON 배열만 반환: ["제목1", "제목2", "제목3"]`;
       // ══ STEP 2: 본문 생성 ══
       setGeneratingStep("✍️ 본문 작성 중...");
 
+      // 레퍼런스 포스트가 있으면 원문 기반 재구성 프롬프트 사용
+      const referenceSection = referencePost?.content_raw
+        ? `\n\n[레퍼런스 원문 — 아래 글의 구조·톤·길이를 참고해서 새 글을 써줘]\n제목: ${referencePost.title}\n본문:\n${referencePost.content_raw.slice(0, 1500)}`
+        : "";
+
       const contentPrompt = `아이보스(i-boss.co.kr) 마케팅 커뮤니티에 올릴 글을 작성해줘.
 
 제목: ${bestTitle}
 유형: ${selectedType.label} — ${selectedType.desc}
 주제: ${topic}
 추가 정보: ${extraInfo || "없음"}
-유형 지침: ${selectedType.prompt}
+유형 지침: ${selectedType.prompt}${referenceSection}
 
 작성 규칙:
 1. 아이보스 커뮤니티 특성: 마케터·소상공인·창업자가 읽는 곳. 전문적이되 딱딱하지 않게.
@@ -149,6 +154,7 @@ JSON 배열만 반환: ["제목1", "제목2", "제목3"]`;
 5. 마무리: 댓글/공감 유도 또는 핵심 메시지로 마무리
 6. 전체 길이: 600~900자
 7. 줄바꿈으로 단락 구분 (\\n\\n 사용)
+${referencePost ? "8. 레퍼런스 원문을 직접 복사하지 말고, 구조와 흐름만 참고해서 완전히 새로운 글로 써줘." : ""}
 
 제목 포함하지 말고 본문만 작성해줘.`;
 
@@ -203,6 +209,24 @@ JSON 배열만 반환: ["제목1", "제목2", "제목3"]`;
       </header>
 
       <div className="max-w-2xl mx-auto px-4 sm:px-6 pb-32 sm:pb-12 pt-5 sm:pt-6 space-y-7">
+
+        {/* ── 레퍼런스 포스트 배너 ── */}
+        {referencePost && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 space-y-1">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">레퍼런스 글 기반 재구성</span>
+            </div>
+            <p className="text-sm font-semibold text-gray-800 truncate">{referencePost.title}</p>
+            {referencePost.content_raw ? (
+              <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                {referencePost.content_raw.slice(0, 120)}...
+              </p>
+            ) : (
+              <p className="text-xs text-amber-600">본문 없이 제목만 참고해서 생성됩니다.</p>
+            )}
+          </div>
+        )}
 
         {/* ── 글 유형 선택 ── */}
         <div className="space-y-3">
