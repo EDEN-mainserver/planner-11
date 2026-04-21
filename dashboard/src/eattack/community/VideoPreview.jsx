@@ -157,15 +157,24 @@ export default function VideoPreview({
 
   // Klipy GIF
   const [gifUrl, setGifUrl] = useState(null);
+  const [gifError, setGifError] = useState(null);
   const prevQueryRef = useRef(null);
 
   const fetchGif = useCallback((q) => {
     if (!q || q === prevQueryRef.current) return;
     prevQueryRef.current = q;
     fetch(`/api/klipy?q=${encodeURIComponent(q)}`)
-      .then(r => r.json())
-      .then(d => { if (d.url) setGifUrl(d.url); })
-      .catch(() => {});
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const ct = r.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) throw new Error("non-JSON response");
+        return r.json();
+      })
+      .then(d => {
+        if (d.url) { setGifUrl(d.url); setGifError(null); }
+        else setGifError("결과 없음: " + (d.keyword || q));
+      })
+      .catch(e => setGifError(e.message));
   }, []);
 
   // 마운트 시 제목/스크립트 기반으로 초기 GIF 로드
@@ -226,17 +235,20 @@ export default function VideoPreview({
           )}
 
           {/* Klipy GIF — 마운트 시 제목 기반 / 재생 중 자막 기반 */}
-          {gifUrl && (
+          {gifUrl ? (
             <img
               src={gifUrl}
               alt="reaction"
               style={{
                 width: 160, borderRadius: 10,
                 boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-                objectFit: "cover",
               }}
             />
-          )}
+          ) : gifError ? (
+            <div style={{ fontSize: 9, color: "red", background: "rgba(255,255,255,0.85)", padding: "2px 6px", borderRadius: 6, maxWidth: 160, wordBreak: "break-all" }}>
+              {gifError}
+            </div>
+          ) : null}
         </div>
 
         {/* 일시정지 시 재생 버튼 */}
