@@ -2,14 +2,22 @@
 import { createHmac } from 'crypto';
 
 function makeAuthHeader(method, path, query, accessKey, secretKey) {
-  // 쿠팡 공식 스펙: yyMMddTHHmmssZ, query 있을 때 '?' 포함해서 서명
+  // 쿠팡 공식 스펙: yyMMddTHHmmssZ, query는 ? 없이 그대로 (정렬된 상태로 전달)
   const dt  = new Date().toISOString()
     .replace(/[-:]/g, '')
     .replace(/\.\d+Z$/, 'Z')
     .substring(2); // "260421T153045Z"
-  const msg = dt + method + path + (query ? '?' + query : '');
+  const msg = dt + method + path + (query || '');
   const sig = createHmac('sha256', secretKey).update(msg).digest('hex');
   return `CEA algorithm=HmacSHA256, access-key=${accessKey}, signed-date=${dt}, signature=${sig}`;
+}
+
+// 파라미터 → 알파벳 정렬 후 query string 생성 (서명과 URL 동일하게)
+function buildQuery(params) {
+  return Object.entries(params)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&');
 }
 
 export default async function handler(req, res) {
@@ -33,13 +41,14 @@ export default async function handler(req, res) {
 
   let apiPath, query;
   if (endpoint === 'seller-products') {
-    apiPath = '/v2/providers/seller_api/apis/api/v1/marketplace/seller-products';
-    query   = `vendorId=${vendorId}&maxPerPage=${params.maxPerPage || 50}&status=APPROVED`;
+    // 공식 경로: /vendors/{vendorId}/products/search (파라미터 알파벳 정렬 필수)
+    apiPath = `/v2/providers/seller_api/apis/api/v1/vendors/${vendorId}/products/search`;
+    query   = buildQuery({ maxPerPage: String(params.maxPerPage || 50), status: 'APPROVED' });
   } else if (endpoint === 'vendor-inventory') {
-    apiPath = '/v2/providers/seller_api/apis/api/v1/marketplace/vendor-inventory';
-    query   = `vendorId=${vendorId}&maxPerPage=50`;
+    apiPath = `/v2/providers/seller_api/apis/api/v1/vendors/${vendorId}/products/search`;
+    query   = buildQuery({ maxPerPage: '50', status: 'APPROVED' });
   } else if (endpoint === 'product-detail') {
-    apiPath = `/v2/providers/seller_api/apis/api/v1/marketplace/seller-products/${params.sellerProductId}`;
+    apiPath = `/v2/providers/seller_api/apis/api/v1/vendors/${vendorId}/products/${params.sellerProductId}`;
     query   = '';
   } else {
     res.status(400).json({ error: `지원하지 않는 endpoint: ${endpoint}` });
