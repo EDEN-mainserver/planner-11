@@ -27,10 +27,10 @@ export default async function handler(req, res) {
   let apiPath, query;
   if (endpoint === 'seller-products') {
     apiPath = '/v2/providers/seller_api/apis/api/v1/marketplace/seller-products';
-    query   = `vendorId=${vendorId}&nextToken=&maxPerPage=${params.maxPerPage || 50}&status=APPROVED`;
+    query   = `vendorId=${vendorId}&maxPerPage=${params.maxPerPage || 50}&status=APPROVED`;
   } else if (endpoint === 'vendor-inventory') {
     apiPath = '/v2/providers/seller_api/apis/api/v1/marketplace/vendor-inventory';
-    query   = `vendorId=${vendorId}&nextToken=&maxPerPage=50`;
+    query   = `vendorId=${vendorId}&maxPerPage=50`;
   } else if (endpoint === 'product-detail') {
     apiPath = `/v2/providers/seller_api/apis/api/v1/marketplace/seller-products/${params.sellerProductId}`;
     query   = '';
