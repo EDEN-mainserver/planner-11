@@ -959,26 +959,27 @@ function CoupangTab() {
     setTesting(true);
     setTestResult(null);
 
-    // 고정 IP 서버 경유 연결 테스트
+    // Vercel 함수 → DigitalOcean 고정IP → 쿠팡 API
     try {
-      const resp = await fetch(`${API_BASE}/coupang/connect`, {
+      const resp = await fetch('/api/coupang-products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          access_key: creds.accessKey,
-          secret_key: creds.secretKey,
-          vendor_id:  creds.vendorId,
+          accessKey: creds.accessKey,
+          secretKey: creds.secretKey,
+          vendorId:  creds.vendorId,
+          endpoint:  'connect',
         }),
       });
       const json = await resp.json();
-      if (resp.ok && json.ok) {
+      if (resp.ok) {
         setTestResult({ ok: true, msg: json.message || '연결 성공!' });
       } else {
-        const msg = json?.detail || json?.message || `HTTP ${resp.status}`;
+        const msg = json?.error || json?.detail || `HTTP ${resp.status}`;
         setTestResult({ ok: false, msg: `❌ ${msg}` });
       }
     } catch (e) {
-      setTestResult({ ok: false, msg: `❌ 서버 연결 실패: ${e.message}` });
+      setTestResult({ ok: false, msg: `❌ 연결 실패: ${e.message}` });
     }
     setTesting(false);
   };

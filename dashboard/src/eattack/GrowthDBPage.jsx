@@ -4,21 +4,24 @@ import { loadCoupangCreds } from "../pages/AdminPage";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 /* ─────────────────────────────────────────────
-   쿠팡 상품DB API 호출 (고정 IP 서버 프록시)
+   쿠팡 상품DB API 호출
+   Vercel 함수 → DigitalOcean 고정IP → 쿠팡 API
 ───────────────────────────────────────────── */
 async function fetchCoupangProducts(creds, params = {}) {
-  const resp = await fetch(`${API_BASE}/coupang/products`, {
+  const resp = await fetch('/api/coupang-products', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      access_key: creds.accessKey,
-      secret_key: creds.secretKey,
-      vendor_id:  creds.vendorId,
+      accessKey: creds.accessKey,
+      secretKey: creds.secretKey,
+      vendorId:  creds.vendorId,
+      endpoint:  'seller-products',
+      params,
     }),
   });
   const json = await resp.json();
   if (!resp.ok) {
-    const msg = json?.detail || json?.message || json?.error || `HTTP ${resp.status}`;
+    const msg = json?.message || json?.error || `HTTP ${resp.status}`;
     throw new Error(`${resp.status}: ${msg}`);
   }
   if (json.error) throw new Error(json.error);
