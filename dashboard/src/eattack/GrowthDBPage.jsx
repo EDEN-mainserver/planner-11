@@ -1,8 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { loadCoupangCreds } from "../pages/AdminPage";
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 /* ─────────────────────────────────────────────
-   쿠팡 API 호출 (서버리스 프록시)
+   쿠팡 상품DB API 호출 (서버리스 프록시)
 ───────────────────────────────────────────── */
 async function fetchCoupangProducts(creds, params = {}) {
   const resp = await fetch('/api/coupang-products', {
@@ -36,7 +38,7 @@ function normalizeProduct(item) {
 
   return {
     isReal:   true,
-    grade:    GRADES[0],          // 실제 등급 데이터 없으면 기본
+    grade:    GRADES[0],
     name:     item.sellerProductName || item.productName || '상품명 없음',
     opt:      item.itemName || '',
     expId:    item.productId || '-',
@@ -60,7 +62,7 @@ function normalizeProduct(item) {
 }
 
 /* ─────────────────────────────────────────────
-   샘플 데이터 (API 미연동 시 표시)
+   샘플 데이터
 ───────────────────────────────────────────── */
 const PRODUCT_NAMES = [
   '쿠팡 로켓 그로스 데님 자켓 (남성용) 2024 신상',
@@ -128,9 +130,6 @@ function buildSampleRows() {
 
 const SAMPLE_ROWS = buildSampleRows();
 
-/* ─────────────────────────────────────────────
-   필터 탭 정의
-───────────────────────────────────────────── */
 const FILTER_TABS = [
   { key:'all',     label:'전체',        color:'#f97316' },
   { key:'expid',   label:'노출ID변경',   color:'#3b82f6' },
@@ -169,10 +168,7 @@ function Toggle({ checked, onChange }) {
 }
 
 /* ─────────────────────────────────────────────
-   메인 컴포넌트
-───────────────────────────────────────────── */
-/* ─────────────────────────────────────────────
-   내장 사이드바 컴포넌트
+   내장 사이드바
 ───────────────────────────────────────────── */
 function ChevronIcon({ open }) {
   return (
@@ -245,25 +241,231 @@ function EakuSidebar() {
   );
 }
 
+/* ─────────────────────────────────────────────
+   실시간 순수익 탭
+───────────────────────────────────────────── */
+const COST_MAP_KEY = 'eden_coupang_cost_map';
+function loadCostMap() {
+  try { return JSON.parse(localStorage.getItem(COST_MAP_KEY)) || {}; } catch { return {}; }
+}
+function saveCostMap(map) {
+  localStorage.setItem(COST_MAP_KEY, JSON.stringify(map));
+}
+function fmtNum(n) {
+  if (n === null || n === undefined || isNaN(n)) return '-';
+  return Math.round(n).toLocaleString('ko-KR');
+}
+function parseNum(v) {
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function ProfitBadge({ children, color = 'gray' }) {
+  const cls = {
+    green: 'bg-green-100 text-green-700',
+    red:   'bg-red-100 text-red-600',
+    amber: 'bg-amber-100 text-amber-700',
+    gray:  'bg-gray-100 text-gray-600',
+  }[color];
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}`}>{children}</span>;
+}
+
+function RealtimeProfitTab({ creds }) {
+  const [days, setDays]             = useState('7');
+  const [loading, setLoading]       = useState(false);
+  const [data, setData]             = useState(null);
+  const [error, setError]           = useState('');
+  const [costMap, setCostMap]       = useState(loadCostMap);
+  const [editCostId, setEditCostId] = useState(null);
+  const [editCostVal, setEditCostVal] = useState('');
+
+  const hasKey = !!(creds.accessKey && creds.secretKey && creds.vendorId);
+
+  const fetchProfit = useCallback(async () => {
+    if (!hasKey) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/coupang/profit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_key: creds.accessKey,
+          secret_key: creds.secretKey,
+          vendor_id:  creds.vendorId,
+          cost_map:   costMap,
+          days:       parseNum(days),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.detail || '조회 실패');
+      setData(json);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [creds, costMap, days, hasKey]);
+
+  const saveCost = (vid) => {
+    const updated = { ...costMap, [vid]: parseNum(editCostVal) };
+    setCostMap(updated);
+    saveCostMap(updated);
+    setEditCostId(null);
+  };
+
+  if (!hasKey) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <span className="text-4xl">🔑</span>
+        <p className="text-sm font-semibold text-gray-700">쿠팡 API 키가 설정되지 않았습니다</p>
+        <p className="text-xs text-gray-400">관리자 → 🛒 쿠팡 API 탭에서 API 키를 먼저 등록하세요</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      {/* 컨트롤 바 */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ProfitBadge color="green">● API 연결됨</ProfitBadge>
+          <span className="text-xs text-gray-400">{creds.vendorId}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={days} onChange={e => setDays(e.target.value)}
+            className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-orange-400 bg-white">
+            {[7, 14, 30, 60, 90].map(d => <option key={d} value={d}>최근 {d}일</option>)}
+          </select>
+          <button onClick={fetchProfit} disabled={loading}
+            className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors">
+            {loading ? '조회 중...' : '🔄 조회'}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>
+      )}
+
+      {data && (
+        <>
+          {/* 요약 카드 */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: '총 매출',  value: fmtNum(data.total_revenue),    unit: '원', color: 'text-gray-800' },
+              { label: '순수익',   value: fmtNum(data.total_net_profit), unit: '원', color: data.total_net_profit >= 0 ? 'text-orange-600' : 'text-red-500' },
+              { label: '순이익률', value: `${data.total_margin}%`,       unit: '',   color: data.total_margin >= 15 ? 'text-green-600' : data.total_margin >= 0 ? 'text-amber-600' : 'text-red-500' },
+              { label: '총 주문',  value: fmtNum(data.order_count),      unit: '건', color: 'text-gray-800' },
+            ].map((c, i) => (
+              <div key={i} className="bg-white border border-gray-200 rounded-xl p-4">
+                <p className="text-xs text-gray-400 mb-1">{c.label}</p>
+                <p className={`text-lg font-black tabular-nums ${c.color}`}>
+                  {c.value}<span className="text-xs font-normal ml-0.5">{c.unit}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {data.missing_cost_count > 0 && (
+            <div className="flex gap-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl">
+              <span>⚠️</span>
+              <p className="text-xs text-amber-700">
+                <span className="font-bold">{data.missing_cost_count}개 상품</span> 원가 미입력.
+                아래 표에서 원가를 클릭해 입력하면 정확한 순수익이 계산됩니다.
+              </p>
+            </div>
+          )}
+
+          {/* 상품별 테이블 */}
+          <div>
+            <h4 className="text-sm font-bold text-gray-700 mb-3">상품별 순수익</h4>
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {['상품명','판매가','원가','수량','매출','수수료','순수익','마진'].map(h => (
+                      <th key={h} className={`py-2.5 px-3 text-gray-500 font-semibold whitespace-nowrap ${h === '상품명' ? 'text-left' : 'text-right'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((item, i) => (
+                    <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                      <td className="px-3 py-2.5 text-gray-700 font-medium max-w-[200px] truncate" title={item.item_name}>{item.item_name}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">{fmtNum(item.sell_price)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {editCostId === item.vendor_item_id ? (
+                          <div className="flex items-center gap-1 justify-end">
+                            <input autoFocus type="number" value={editCostVal}
+                              onChange={e => setEditCostVal(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') saveCost(item.vendor_item_id);
+                                if (e.key === 'Escape') setEditCostId(null);
+                              }}
+                              className="w-20 px-2 py-1 border border-orange-400 rounded-lg text-right outline-none" />
+                            <button onClick={() => saveCost(item.vendor_item_id)} className="text-orange-500 font-bold">✓</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setEditCostId(item.vendor_item_id); setEditCostVal(String(item.cost_price || '')); }}
+                            className={`hover:text-orange-600 transition-colors ${item.has_cost ? 'text-gray-600' : 'text-amber-500 underline decoration-dashed'}`}>
+                            {item.has_cost ? fmtNum(item.cost_price) : '입력 필요'}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">{fmtNum(item.qty)}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">{fmtNum(item.revenue)}</td>
+                      <td className="px-3 py-2.5 text-right text-red-400 tabular-nums">-{fmtNum(item.commission)}</td>
+                      <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${item.has_cost ? (item.net_profit >= 0 ? 'text-orange-600' : 'text-red-500') : 'text-gray-300'}`}>
+                        {item.has_cost ? fmtNum(item.net_profit) : '-'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {item.has_cost
+                          ? <ProfitBadge color={item.margin >= 15 ? 'green' : item.margin >= 0 ? 'amber' : 'red'}>{item.margin}%</ProfitBadge>
+                          : <span className="text-gray-300">-</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2">원가 셀 클릭 → 직접 입력 (브라우저에 자동 저장)</p>
+          </div>
+        </>
+      )}
+
+      {!data && !loading && (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-dashed border-gray-200 text-center">
+          <span className="text-3xl mb-3">📈</span>
+          <p className="text-sm text-gray-500 font-medium">조회 버튼을 눌러 실시간 데이터를 가져오세요</p>
+          <p className="text-xs text-gray-400 mt-1">매출·수수료는 쿠팡 API에서 자동으로 가져옵니다</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   메인 컴포넌트
+───────────────────────────────────────────── */
 export default function GrowthDBPage() {
+  const [mainTab, setMainTab]           = useState('products'); // 'products' | 'profit'
   const [activeFilter, setActiveFilter] = useState('all');
   const [search, setSearch]             = useState('');
   const [showReturn, setShowReturn]     = useState(false);
   const [showBundle, setShowBundle]     = useState(false);
   const [page, setPage]                 = useState(1);
 
-  // API 상태
-  const [creds]          = useState(() => loadCoupangCreds());
-  const [rows, setRows]  = useState(SAMPLE_ROWS);
+  const [creds]               = useState(() => loadCoupangCreds());
+  const [rows, setRows]       = useState(SAMPLE_ROWS);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState('');
   const [isReal, setIsReal]   = useState(false);
 
   const hasKey = !!(creds.accessKey && creds.secretKey && creds.vendorId);
+  const fmt    = n => Number(n).toLocaleString();
 
-  const fmt = n => Number(n).toLocaleString();
-
-  // ── API 데이터 로드 ──
   const loadFromAPI = useCallback(async () => {
     if (!hasKey) return;
     setLoading(true);
@@ -292,7 +494,6 @@ export default function GrowthDBPage() {
 
   useEffect(() => { if (hasKey) loadFromAPI(); }, []);
 
-  // ── 필터/검색 ──
   const filtered = useMemo(() =>
     rows.filter(r => !search || r.name.includes(search)),
     [rows, search]
@@ -307,266 +508,291 @@ export default function GrowthDBPage() {
       <EakuSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
 
-      {/* ── 상태 배너 ── */}
-      {!hasKey && (
-        <div className="bg-orange-50 border-b border-orange-200 px-6 py-2 flex items-center gap-2">
-          <span className="text-orange-500 text-sm">⚠️</span>
-          <p className="text-xs text-orange-700">
-            샘플 데이터 표시 중 —
-            <strong className="mx-1">관리자 → 🛒 쿠팡 API</strong>에서 API 키를 설정하면 실제 상품 데이터를 불러옵니다.
-          </p>
+        {/* ── 메인 탭 바 ── */}
+        <div className="bg-white border-b border-gray-200 px-6 flex items-end">
+          {[
+            { key: 'products', label: '📊 상품DB' },
+            { key: 'profit',   label: '📈 실시간 순수익' },
+          ].map(t => (
+            <button key={t.key} onClick={() => setMainTab(t.key)}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                mainTab === t.key
+                  ? 'border-orange-500 text-orange-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              {t.label}
+            </button>
+          ))}
         </div>
-      )}
-      {hasKey && isReal && (
-        <div className="bg-green-50 border-b border-green-200 px-6 py-2 flex items-center gap-2">
-          <span className="text-green-500 text-sm">✅</span>
-          <p className="text-xs text-green-700 font-medium">쿠팡 API 연동됨 — 실제 상품 데이터 표시 중</p>
-          <button onClick={loadFromAPI} disabled={loading}
-            className="ml-auto text-xs px-2.5 py-1 rounded border border-green-300 text-green-600 hover:bg-green-100 disabled:opacity-50">
-            {loading ? '로딩 중…' : '새로고침'}
-          </button>
-        </div>
-      )}
-      {apiError && (
-        <div className="bg-red-50 border-b border-red-200 px-6 py-2">
-          <p className="text-xs text-red-600">❌ {apiError}</p>
-        </div>
-      )}
 
-      {/* ── 타이틀 행 ── */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-base font-bold text-gray-800 flex items-center gap-1.5">
-            <span>📊</span> 에쿠 GrowthDB
-            {isReal && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-600 font-semibold">LIVE</span>}
-          </h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {isReal ? `쿠팡 Wing API · ${rows.length}개 상품` : '샘플 데이터'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
-            <Toggle checked={showReturn} onChange={setShowReturn} /><span>반품상품보기</span>
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
-            <Toggle checked={showBundle} onChange={setShowBundle} /><span>번들상품보기</span>
-          </label>
-          <div className="w-px h-4 bg-gray-200" />
-          <button onClick={hasKey ? loadFromAPI : undefined}
-            disabled={loading}
-            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-md text-white font-medium hover:opacity-90 disabled:opacity-60"
-            style={{ background: '#00BCD4' }}>
-            {loading ? (
-              <svg className="animate-spin w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
-            ) : (
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
+        {/* ── 실시간 순수익 탭 ── */}
+        {mainTab === 'profit' && (
+          <RealtimeProfitTab creds={creds} />
+        )}
+
+        {/* ── 상품DB 탭 ── */}
+        {mainTab === 'products' && (
+          <>
+            {/* 상태 배너 */}
+            {!hasKey && (
+              <div className="bg-orange-50 border-b border-orange-200 px-6 py-2 flex items-center gap-2">
+                <span className="text-orange-500 text-sm">⚠️</span>
+                <p className="text-xs text-orange-700">
+                  샘플 데이터 표시 중 —
+                  <strong className="mx-1">관리자 → 🛒 쿠팡 API</strong>에서 API 키를 설정하면 실제 상품 데이터를 불러옵니다.
+                </p>
+              </div>
             )}
-            {hasKey ? '상품DB 수집' : '상품DB 수집 (키 필요)'}
-          </button>
-          <button className="text-xs px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50">
-            허용스토어 설정
-          </button>
-        </div>
-      </div>
+            {hasKey && isReal && (
+              <div className="bg-green-50 border-b border-green-200 px-6 py-2 flex items-center gap-2">
+                <span className="text-green-500 text-sm">✅</span>
+                <p className="text-xs text-green-700 font-medium">쿠팡 API 연동됨 — 실제 상품 데이터 표시 중</p>
+                <button onClick={loadFromAPI} disabled={loading}
+                  className="ml-auto text-xs px-2.5 py-1 rounded border border-green-300 text-green-600 hover:bg-green-100 disabled:opacity-50">
+                  {loading ? '로딩 중…' : '새로고침'}
+                </button>
+              </div>
+            )}
+            {apiError && (
+              <div className="bg-red-50 border-b border-red-200 px-6 py-2">
+                <p className="text-xs text-red-600">❌ {apiError}</p>
+              </div>
+            )}
 
-      {/* ── 필터 탭 ── */}
-      <div className="bg-white border-b border-gray-200 px-6 py-2.5 space-y-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {FILTER_TABS.map(t => {
-            const isOn = activeFilter === t.key;
-            const cnt  = t.key === 'all' ? filtered.length : 0;
-            return (
-              <button key={t.key} onClick={() => setActiveFilter(t.key)}
-                className="text-xs px-2.5 py-1.5 rounded-md border font-medium transition-all"
-                style={isOn
-                  ? { background: t.color, borderColor: t.color, color: '#fff' }
-                  : { background: 'white', borderColor: '#e5e7eb', color: '#6b7280' }}>
-                {t.label}
-                {t.key === 'all' && (
-                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full"
-                    style={{ background: isOn ? 'rgba(255,255,255,.25)' : '#f3f4f6',
-                             color: isOn ? '#fff' : '#9ca3af' }}>
-                    {cnt}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-          <div className="flex-1" />
-          <button className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-            </svg>
-            DB 다운로드
-          </button>
-          <button className="text-xs px-2.5 py-1.5 rounded-md text-white font-medium"
-            style={{ background: '#d946a8' }}>매입정보 관리</button>
-        </div>
-
-        {/* 테이블 컨트롤 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
-            <svg className="w-3 h-3 text-gray-300 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
-              fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
-            </svg>
-            <input type="text" placeholder="Search…" value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1); }}
-              className="text-xs pl-6 pr-3 py-1.5 border border-gray-200 rounded-md
-                focus:outline-none focus:border-orange-400 w-36" />
-          </div>
-          <span className="ml-auto text-xs text-gray-400">총 {filtered.length}개 상품</span>
-        </div>
-      </div>
-
-      {/* ── 데이터 테이블 ── */}
-      <div className="flex-1 overflow-hidden flex flex-col px-6 py-3">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden flex-1">
-
-          {/* 로딩 오버레이 */}
-          {loading && (
-            <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-20 rounded-xl">
-              <div className="flex items-center gap-2 text-sm text-orange-600 font-medium">
-                <svg className="animate-spin w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                쿠팡 API에서 데이터를 가져오는 중…
+            {/* 타이틀 행 */}
+            <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h1 className="text-base font-bold text-gray-800 flex items-center gap-1.5">
+                  <span>📊</span> 에쿠 GrowthDB
+                  {isReal && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-600 font-semibold">LIVE</span>}
+                </h1>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {isReal ? `쿠팡 Wing API · ${rows.length}개 상품` : '샘플 데이터'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                  <Toggle checked={showReturn} onChange={setShowReturn} /><span>반품상품보기</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                  <Toggle checked={showBundle} onChange={setShowBundle} /><span>번들상품보기</span>
+                </label>
+                <div className="w-px h-4 bg-gray-200" />
+                <button onClick={hasKey ? loadFromAPI : undefined}
+                  disabled={loading}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-md text-white font-medium hover:opacity-90 disabled:opacity-60"
+                  style={{ background: '#00BCD4' }}>
+                  {loading ? (
+                    <svg className="animate-spin w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                  )}
+                  {hasKey ? '상품DB 수집' : '상품DB 수집 (키 필요)'}
+                </button>
+                <button className="text-xs px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50">
+                  허용스토어 설정
+                </button>
               </div>
             </div>
-          )}
 
-          <div className="overflow-x-auto overflow-y-auto flex-1" style={{ position:'relative' }}>
-            <table className="w-full text-xs text-left" style={{ borderCollapse:'collapse' }}>
-              <thead>
-                <tr className="text-gray-600 text-[11px]"
-                  style={{ position:'sticky', top:0, zIndex:10,
-                           background:'#fff7ed', borderBottom:'1px solid #fed7aa' }}>
-                  <th className="px-3 py-2.5 w-8">
-                    <input type="checkbox" className="rounded accent-orange-500" />
-                  </th>
-                  {COLS.map(c => (
-                    <th key={c} className="px-3 py-2.5 font-semibold whitespace-nowrap">{c}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={COLS.length + 1} className="text-center py-16 text-gray-400 text-sm">
-                      상품이 없습니다
-                    </td>
-                  </tr>
-                ) : pageRows.map((row, i) => {
-                  const mrNum    = parseFloat(row.mr);
-                  const stockCls = row.stock < 10  ? 'text-red-500 font-bold'
-                                 : row.stock < 50  ? 'text-orange-500 font-semibold'
-                                 : 'text-gray-700';
-                  const mrCls    = mrNum >= 20 ? 'text-green-600 font-semibold'
-                                 : mrNum >= 10 ? 'text-orange-500'
-                                 : 'text-red-500';
+            {/* 필터 탭 */}
+            <div className="bg-white border-b border-gray-200 px-6 py-2.5 space-y-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {FILTER_TABS.map(t => {
+                  const isOn = activeFilter === t.key;
+                  const cnt  = t.key === 'all' ? filtered.length : 0;
                   return (
-                    <tr key={i} className="border-b border-gray-100 hover:bg-orange-50/30 transition-colors">
-                      <td className="px-3 py-2"><input type="checkbox" className="rounded accent-orange-500" /></td>
-                      <td className="px-3 py-2">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${row.grade.cls}`}>
-                          {row.grade.label}
+                    <button key={t.key} onClick={() => setActiveFilter(t.key)}
+                      className="text-xs px-2.5 py-1.5 rounded-md border font-medium transition-all"
+                      style={isOn
+                        ? { background: t.color, borderColor: t.color, color: '#fff' }
+                        : { background: 'white', borderColor: '#e5e7eb', color: '#6b7280' }}>
+                      {t.label}
+                      {t.key === 'all' && (
+                        <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full"
+                          style={{ background: isOn ? 'rgba(255,255,255,.25)' : '#f3f4f6',
+                                   color: isOn ? '#fff' : '#9ca3af' }}>
+                          {cnt}
                         </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        {row.imageUrl ? (
-                          <img src={row.imageUrl} alt="" className="w-9 h-9 rounded-lg border border-gray-200 object-cover" />
-                        ) : (
-                          <div className="w-9 h-9 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center text-gray-300">🖼</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2" style={{ maxWidth:170 }}>
-                        <p className="truncate text-gray-800 font-medium leading-snug" style={{ maxWidth:170 }}>{row.name}</p>
-                        <p className="text-gray-400 text-[10px] mt-0.5 truncate">{row.opt}</p>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-gray-500 text-[11px]">{row.expId}</td>
-                      <td className="px-3 py-2 font-mono text-gray-500 text-[11px]">{row.optId}</td>
-                      <td className="px-3 py-2 font-mono text-gray-400 text-[11px]">{row.bc}</td>
-                      <td className="px-3 py-2"><a href="#" className="text-blue-500 hover:underline">링크🔗</a></td>
-                      <td className="px-3 py-2">
-                        <button className="text-[11px] px-2 py-0.5 rounded text-white font-medium"
-                          style={{ background:'#00BCD4' }}>구매관리</button>
-                      </td>
-                      <td className="px-3 py-2">
-                        <button className="text-[11px] px-2 py-0.5 rounded text-white font-medium"
-                          style={{ background:'#d946a8' }}>매입관리</button>
-                      </td>
-                      <td className="px-3 py-2 text-right text-gray-600">
-                        {row.mlk ? `₩${fmt(row.mlk)}` : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {row.win ? <span className="text-green-500 font-bold">✓ 위너</span>
-                                 : <span className="text-red-400">✗</span>}
-                      </td>
-                      <td className="px-3 py-2 text-gray-400">—</td>
-                      <td className={`px-3 py-2 text-right ${stockCls}`}>{fmt(row.stock)}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-gray-800">₩{fmt(row.price)}</td>
-                      <td className="px-3 py-2 text-right text-gray-500">₩{fmt(row.fee)}</td>
-                      <td className={`px-3 py-2 text-right font-semibold ${row.margin > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        ₩{fmt(row.margin)}
-                      </td>
-                      <td className={`px-3 py-2 text-right ${mrCls}`}>{row.mr}%</td>
-                      <td className="px-3 py-2 text-right text-gray-600">{row.roi}%</td>
-                      <td className="px-3 py-2 text-right text-gray-600">{row.roas}{row.isReal ? 'x' : '%'}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">
-                        {row.s7 ? `₩${fmt(row.s7)}` : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right text-gray-700">
-                        {row.s30 ? `₩${fmt(row.s30)}` : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right text-gray-700">
-                        {row.qty ? fmt(row.qty) : '—'}
-                      </td>
-                    </tr>
+                      )}
+                    </button>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* 페이지네이션 */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50 shrink-0">
-            <span className="text-xs text-gray-400">
-              {filtered.length === 0 ? '0개' :
-                `${(page-1)*PER_PAGE+1}–${Math.min(page*PER_PAGE, filtered.length)} / ${filtered.length}개`}
-            </span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page===1}
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400 disabled:opacity-30">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
-                </svg>
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i+1).map(p => (
-                <button key={p} onClick={() => setPage(p)}
-                  className="w-7 h-7 flex items-center justify-center rounded text-xs font-medium transition-colors"
-                  style={page===p ? { background:'#f97316', color:'#fff' } : { color:'#6b7280' }}>
-                  {p}
+                <div className="flex-1" />
+                <button className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                  </svg>
+                  DB 다운로드
                 </button>
-              ))}
-              <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page===totalPages}
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400 disabled:opacity-30">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
-                </svg>
-              </button>
+                <button className="text-xs px-2.5 py-1.5 rounded-md text-white font-medium"
+                  style={{ background: '#d946a8' }}>매입정보 관리</button>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <svg className="w-3 h-3 text-gray-300 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+                  </svg>
+                  <input type="text" placeholder="Search…" value={search}
+                    onChange={e => { setSearch(e.target.value); setPage(1); }}
+                    className="text-xs pl-6 pr-3 py-1.5 border border-gray-200 rounded-md
+                      focus:outline-none focus:border-orange-400 w-36" />
+                </div>
+                <span className="ml-auto text-xs text-gray-400">총 {filtered.length}개 상품</span>
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
+
+            {/* 데이터 테이블 */}
+            <div className="flex-1 overflow-hidden flex flex-col px-6 py-3">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden flex-1">
+
+                {loading && (
+                  <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-20 rounded-xl">
+                    <div className="flex items-center gap-2 text-sm text-orange-600 font-medium">
+                      <svg className="animate-spin w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                      쿠팡 API에서 데이터를 가져오는 중…
+                    </div>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto overflow-y-auto flex-1" style={{ position:'relative' }}>
+                  <table className="w-full text-xs text-left" style={{ borderCollapse:'collapse' }}>
+                    <thead>
+                      <tr className="text-gray-600 text-[11px]"
+                        style={{ position:'sticky', top:0, zIndex:10,
+                                 background:'#fff7ed', borderBottom:'1px solid #fed7aa' }}>
+                        <th className="px-3 py-2.5 w-8">
+                          <input type="checkbox" className="rounded accent-orange-500" />
+                        </th>
+                        {COLS.map(c => (
+                          <th key={c} className="px-3 py-2.5 font-semibold whitespace-nowrap">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={COLS.length + 1} className="text-center py-16 text-gray-400 text-sm">
+                            상품이 없습니다
+                          </td>
+                        </tr>
+                      ) : pageRows.map((row, i) => {
+                        const mrNum    = parseFloat(row.mr);
+                        const stockCls = row.stock < 10  ? 'text-red-500 font-bold'
+                                       : row.stock < 50  ? 'text-orange-500 font-semibold'
+                                       : 'text-gray-700';
+                        const mrCls    = mrNum >= 20 ? 'text-green-600 font-semibold'
+                                       : mrNum >= 10 ? 'text-orange-500'
+                                       : 'text-red-500';
+                        return (
+                          <tr key={i} className="border-b border-gray-100 hover:bg-orange-50/30 transition-colors">
+                            <td className="px-3 py-2"><input type="checkbox" className="rounded accent-orange-500" /></td>
+                            <td className="px-3 py-2">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${row.grade.cls}`}>
+                                {row.grade.label}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              {row.imageUrl ? (
+                                <img src={row.imageUrl} alt="" className="w-9 h-9 rounded-lg border border-gray-200 object-cover" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center text-gray-300">🖼</div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2" style={{ maxWidth:170 }}>
+                              <p className="truncate text-gray-800 font-medium leading-snug" style={{ maxWidth:170 }}>{row.name}</p>
+                              <p className="text-gray-400 text-[10px] mt-0.5 truncate">{row.opt}</p>
+                            </td>
+                            <td className="px-3 py-2 font-mono text-gray-500 text-[11px]">{row.expId}</td>
+                            <td className="px-3 py-2 font-mono text-gray-500 text-[11px]">{row.optId}</td>
+                            <td className="px-3 py-2 font-mono text-gray-400 text-[11px]">{row.bc}</td>
+                            <td className="px-3 py-2"><a href="#" className="text-blue-500 hover:underline">링크🔗</a></td>
+                            <td className="px-3 py-2">
+                              <button className="text-[11px] px-2 py-0.5 rounded text-white font-medium"
+                                style={{ background:'#00BCD4' }}>구매관리</button>
+                            </td>
+                            <td className="px-3 py-2">
+                              <button className="text-[11px] px-2 py-0.5 rounded text-white font-medium"
+                                style={{ background:'#d946a8' }}>매입관리</button>
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {row.mlk ? `₩${fmt(row.mlk)}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {row.win ? <span className="text-green-500 font-bold">✓ 위너</span>
+                                       : <span className="text-red-400">✗</span>}
+                            </td>
+                            <td className="px-3 py-2 text-gray-400">—</td>
+                            <td className={`px-3 py-2 text-right ${stockCls}`}>{fmt(row.stock)}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-gray-800">₩{fmt(row.price)}</td>
+                            <td className="px-3 py-2 text-right text-gray-500">₩{fmt(row.fee)}</td>
+                            <td className={`px-3 py-2 text-right font-semibold ${row.margin > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              ₩{fmt(row.margin)}
+                            </td>
+                            <td className={`px-3 py-2 text-right ${mrCls}`}>{row.mr}%</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{row.roi}%</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{row.roas}{row.isReal ? 'x' : '%'}</td>
+                            <td className="px-3 py-2 text-right text-gray-700">
+                              {row.s7 ? `₩${fmt(row.s7)}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-700">
+                              {row.s30 ? `₩${fmt(row.s30)}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-700">
+                              {row.qty ? fmt(row.qty) : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 페이지네이션 */}
+                <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50 shrink-0">
+                  <span className="text-xs text-gray-400">
+                    {filtered.length === 0 ? '0개' :
+                      `${(page-1)*PER_PAGE+1}–${Math.min(page*PER_PAGE, filtered.length)} / ${filtered.length}개`}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page===1}
+                      className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400 disabled:opacity-30">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+                      </svg>
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i+1).map(p => (
+                      <button key={p} onClick={() => setPage(p)}
+                        className="w-7 h-7 flex items-center justify-center rounded text-xs font-medium transition-colors"
+                        style={page===p ? { background:'#f97316', color:'#fff' } : { color:'#6b7280' }}>
+                        {p}
+                      </button>
+                    ))}
+                    <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page===totalPages}
+                      className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400 disabled:opacity-30">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

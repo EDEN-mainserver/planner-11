@@ -4,7 +4,6 @@ import { relativeTime } from "../utils/storage";
 import { IconArrowUp } from "../components/Icons";
 import EAttackPage from "../eattack/EAttackPage";
 import MoneyPage from "../eattack/MoneyPage";
-import DistributionPage from "../eattack/DistributionPage";
 import GrowthDBPage from "../eattack/GrowthDBPage";
 import AdminPage from "./AdminPage";
 
@@ -108,13 +107,6 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
         <div className="px-2 mt-6 pt-4 border-t border-gray-200">
           <div className="px-2 mb-2">
             <div className="text-xs text-gray-400 font-medium">대표전용 툴</div>
-          </div>
-          <div
-            onClick={() => setActivePage('distribution')}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
-              ${activePage === 'distribution' ? 'bg-orange-50 text-orange-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
-            <span className="text-base">🛒</span>
-            유통
           </div>
           <div
             onClick={() => setActivePage('growthdb')}
@@ -293,10 +285,6 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
           <MoneyPage onBack={() => setActivePage('eattack')} />
         )}
 
-        {/* ════ 유통 화면 ════ */}
-        {activePage === 'distribution' && (
-          <DistributionPage onBack={() => setActivePage('home')} />
-        )}
 
         {/* ════ 에쿠 GrowthDB ════ */}
         {activePage === 'growthdb' && (
