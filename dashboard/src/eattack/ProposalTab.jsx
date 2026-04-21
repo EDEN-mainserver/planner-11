@@ -16,30 +16,42 @@ const SYSTEM_PROMPT = `
 `.trim();
 
 const PROPOSAL_SYSTEM_PROMPT = `
-당신은 경쟁 입찰과 영업 제안에서 수주율을 높이는 10년차 마케팅 제안서 전문가입니다.
+당신은 대면 PT(프레젠테이션) 제안서를 제작하는 10년차 마케팅 제안 전문가입니다.
 에덴은 콘텐츠 마케팅, SNS 운영, 퍼포먼스 마케팅을 제공하는 마케팅 대행사입니다.
 
+## 출력 형식 — PPT 슬라이드 단위 (필수)
+- 각 슬라이드는 아래 형식으로 작성:
+
+---SLIDE---
+### [슬라이드 N] Action Title (인사이트 중심 제목)
+- 핵심 메시지 1 (한 줄, 짧고 강하게)
+- 핵심 메시지 2
+- 핵심 메시지 3 (최대 5개)
+
+📌 핵심 수치/강조: (있으면 작성)
+💬 발표 멘트: "실제 발표할 때 말할 한두 문장"
+---END_SLIDE---
+
+- 글로 풀어 쓰지 말 것. 슬라이드 불릿은 짧게 (10~20자 이내)
+- 긴 문단 금지 — PPT에 들어가는 텍스트만 작성
+
 ## Impact-8 Framework
-제안서는 HOOK→SUMMARY→INSIGHT→CONCEPT→ACTION PLAN→MANAGEMENT→WHY US→INVESTMENT 순서로 구성됩니다.
+HOOK→SUMMARY→INSIGHT→CONCEPT→ACTION PLAN→MANAGEMENT→WHY US→INVESTMENT 순서
 
 ## Action Title 규칙 (필수)
-- ❌ "시장 환경 분석", "타겟 분석" (What을 말하는 Topic Title)
-- ✅ "숏폼이 구매 결정을 바꾸고 있다", "MZ세대 55%가 SNS 보고 구매 결정" (Why/So-What을 말하는 Action Title)
-- 규칙: 결론/인사이트를 제목에 담고, 가능하면 숫자 포함
+- ❌ "시장 환경 분석" (What)
+- ✅ "MZ세대 55%가 SNS 보고 구매 결정" (Why/So-What + 숫자)
 
 ## C-E-I 설득 구조
-각 핵심 주장은 다음 구조를 따를 것:
-- Claim(주장): Action Title에 핵심 주장 반영
-- Evidence(근거): 데이터, 통계, 유사 사례로 뒷받침
-- Impact(영향): 고객사 관점에서의 비즈니스 가치/효과
+- Claim: 슬라이드 제목에 핵심 주장
+- Evidence: 불릿에 수치/사례
+- Impact: 발표 멘트에 고객사 관점 가치
 
-## KPI 원칙
-모든 KPI는 산출 근거를 포함할 것:
-예) 팔로워 +30% = 인플루언서 협업(+12%) + 릴스 집중 전략(+10%) + 이벤트 캠페인(+8%)
+## KPI
+산출 근거 포함: 팔로워 +30% = 인플루언서(+12%) + 릴스(+10%) + 이벤트(+8%)
 
-## Win Theme 원칙
-보고서에서 제공된 Win Theme은 각 섹션에 자연스럽게 반복 강조할 것.
-제안서 전체에 일관된 수주 메시지가 흐르도록 유지.
+## Win Theme
+각 섹션 슬라이드 어딘가에 Win Theme을 자연스럽게 강조할 것.
 
 반드시 한국어로 답변하세요.
 `.trim();
@@ -49,43 +61,43 @@ const PROPOSAL_PHASES = [
     key: "summary",
     title: "SUMMARY",
     subtitle: "Executive Summary + Win Theme 정의",
-    weight: "10%",
-    guide: "한 줄 제안 + Win Theme 3개 + 핵심 KPI + Why Us 3가지"
+    slides: 2,
+    guide: "슬라이드 1: 한 줄 제안 + Why Us 3가지 / 슬라이드 2: Win Theme 3개 + 핵심 KPI"
   },
   {
     key: "insight",
     title: "INSIGHT",
     subtitle: "시장 환경 & 고객 문제 정의",
-    weight: "15%",
-    guide: "Pain Point 심화 + 숨겨진 니즈 + 기회 포착"
+    slides: 3,
+    guide: "슬라이드 1: 시장 트렌드(숫자 포함) / 슬라이드 2: 고객사 Pain Point / 슬라이드 3: 놓치고 있는 기회"
   },
   {
     key: "concept",
     title: "CONCEPT & STRATEGY",
     subtitle: "핵심 컨셉 & 차별화 전략",
-    weight: "15%",
-    guide: "에덴만의 접근법 + 경쟁사 대비 차별점 + 성공 사례 연결"
+    slides: 2,
+    guide: "슬라이드 1: 에덴의 핵심 접근법 / 슬라이드 2: 경쟁사 대비 차별점"
   },
   {
     key: "action",
     title: "ACTION PLAN",
     subtitle: "상세 실행 계획 (핵심)",
-    weight: "40%",
-    guide: "채널별 전략 + 월별 로드맵 + 콘텐츠 예시 + 캠페인 기획"
+    slides: 5,
+    guide: "슬라이드 1: 전체 전략 로드맵 / 슬라이드 2-3: 채널별 전략 / 슬라이드 4: 월별 실행 일정 / 슬라이드 5: 콘텐츠 예시/캠페인"
   },
   {
     key: "whyus",
     title: "WHY US",
     subtitle: "에덴 수행 역량 & 실적",
-    weight: "10%",
-    guide: "유사 실적 + 팀 역량 + 고객 추천 + 차별화 강점"
+    slides: 2,
+    guide: "슬라이드 1: 유사 실적 + 수치 / 슬라이드 2: 팀 역량 + 차별화 강점"
   },
   {
     key: "investment",
     title: "INVESTMENT & ROI",
     subtitle: "투자 비용 & 기대효과",
-    weight: "10%",
-    guide: "비용 구조 + 정량적 KPI + ROI 분석 + Next Step"
+    slides: 2,
+    guide: "슬라이드 1: 비용 구조 + 서비스 패키지 / 슬라이드 2: KPI(산출근거 포함) + Next Step"
   },
 ];
 
@@ -141,7 +153,7 @@ function buildPhasePrompt(phase, reportText, winThemes, painPoints, clientInfo, 
 
   return `
 ## Phase: ${phase.title} (${phase.subtitle})
-비중: ${phase.weight}
+슬라이드 수: ${phase.slides}장
 
 ## 고객사 분석 보고서
 ${reportText}
@@ -160,15 +172,28 @@ ${clientInfo.title} (${clientInfo.domain})
 
 ---
 
-위 정보를 바탕으로 **${phase.title}** 섹션을 작성해 주세요.
-작성 가이드: ${phase.guide}
+위 정보를 바탕으로 **${phase.title}** 섹션의 PPT 슬라이드를 **${phase.slides}장** 작성해 주세요.
+각 슬라이드 가이드: ${phase.guide}
 
-### 필수 규칙
-1. **Action Title 사용**: "현황 분석" ❌ → "SNS 이용자 55%가 구매 결정에 영향받는 시대" ✅
-2. **C-E-I 구조**: 주장(Claim) → 근거(Evidence, 수치/사례) → 영향(Impact, 고객사 관점 가치)
-3. **숫자로 말하기**: "성과 향상" ❌ → "전환율 +35%, 팔로워 +1,200명" ✅
-4. **Win Theme 반복**: 위 Win Theme가 이 섹션 어딘가에서 자연스럽게 강조될 것
-5. 마크다운 ## 헤더 사용
+### 필수 출력 형식 (반드시 준수)
+각 슬라이드는 아래 형식으로 작성:
+
+---SLIDE---
+### [슬라이드 N] Action Title
+- 핵심 메시지 (짧게, 10~20자)
+- 핵심 메시지
+- 핵심 메시지 (최대 5개)
+
+📌 핵심 수치/강조: (있으면 작성)
+💬 발표 멘트: "실제 발표할 한두 문장"
+---END_SLIDE---
+
+### 콘텐츠 규칙
+1. **Action Title**: 결론/인사이트 중심, 숫자 포함 ("현황 분석" ❌ → "SNS 이용자 55%가 구매 결정에 영향" ✅)
+2. **불릿은 짧게**: 문장 금지, 키워드 구 형태로 (긴 설명은 발표 멘트로)
+3. **숫자 필수**: "성과 향상" ❌ → "전환율 +35%" ✅
+4. **Win Theme 반복**: 이 섹션 슬라이드 중 하나에 자연스럽게 Win Theme 강조
+5. 긴 문단, 산문체 절대 금지
 `.trim();
 }
 
@@ -498,9 +523,11 @@ ${crawlData.text}
           </div>
           <p className="text-sm font-semibold text-gray-700 mb-1">제안서 생성 중...</p>
           <p className="text-xs text-gray-500 mt-2">
-            Phase {phaseProgress + 1} / {PROPOSAL_PHASES.length}: {PROPOSAL_PHASES[phaseProgress]?.title} 생성 중...
+            Phase {phaseProgress + 1} / {PROPOSAL_PHASES.length}: {PROPOSAL_PHASES[phaseProgress]?.title} 슬라이드 생성 중...
           </p>
-          <p className="text-xs text-gray-400 mt-1">AI가 맞춤형 제안서를 작성하고 있습니다</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {PROPOSAL_PHASES[phaseProgress]?.subtitle} ({PROPOSAL_PHASES[phaseProgress]?.slides}장)
+          </p>
           <div className="mt-5 flex gap-1">
             {[0, 1, 2].map(i => (
               <div key={i} className="w-2 h-2 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
@@ -617,7 +644,7 @@ ${crawlData.text}
                 <p className="text-xs text-violet-500 pl-1">템플릿: {templateFileName}</p>
               )}
               {!templateFileName && (
-                <p className="text-xs text-gray-400 pl-1">Impact-8 Framework 6단계로 생성됩니다</p>
+                <p className="text-xs text-gray-400 pl-1">PPT 대면 제안서 · 총 ~16장 슬라이드</p>
               )}
             </div>
           </div>
