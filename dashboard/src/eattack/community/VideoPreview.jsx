@@ -137,10 +137,19 @@ export default function VideoPreview({
   useEffect(() => {
     if (!bgmFile) { bgmRef.current = null; return; }
     const bgm = new Audio(bgmFile);
-    bgm.loop   = true;
     bgm.volume = 0.3;
+    // 앞 15초만 반복 재생
+    const LOOP_END = 15;
+    const onTimeUpdate = () => {
+      if (bgm.currentTime >= LOOP_END) bgm.currentTime = 0;
+    };
+    bgm.addEventListener("timeupdate", onTimeUpdate);
     bgmRef.current = bgm;
-    return () => { bgm.pause(); bgmRef.current = null; };
+    return () => {
+      bgm.pause();
+      bgm.removeEventListener("timeupdate", onTimeUpdate);
+      bgmRef.current = null;
+    };
   }, [bgmFile]);
 
   // 오디오 없을 때 폴백 타이머
