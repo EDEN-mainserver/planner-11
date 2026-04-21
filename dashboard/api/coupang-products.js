@@ -41,14 +41,13 @@ export default async function handler(req, res) {
 
   let apiPath, query;
   if (endpoint === 'seller-products') {
-    // 공식 경로: /vendors/{vendorId}/products/search (파라미터 알파벳 정렬 필수)
-    apiPath = `/v2/providers/seller_api/apis/api/v1/vendors/${vendorId}/products/search`;
-    query   = buildQuery({ maxPerPage: String(params.maxPerPage || 50), status: 'APPROVED' });
+    apiPath = '/v2/providers/seller_api/apis/api/v1/marketplace/seller-products';
+    query   = buildQuery({ maxPerPage: String(params.maxPerPage || 50), status: 'APPROVED', vendorId });
   } else if (endpoint === 'vendor-inventory') {
-    apiPath = `/v2/providers/seller_api/apis/api/v1/vendors/${vendorId}/products/search`;
-    query   = buildQuery({ maxPerPage: '50', status: 'APPROVED' });
+    apiPath = '/v2/providers/seller_api/apis/api/v1/marketplace/vendor-inventory';
+    query   = buildQuery({ maxPerPage: '50', vendorId });
   } else if (endpoint === 'product-detail') {
-    apiPath = `/v2/providers/seller_api/apis/api/v1/vendors/${vendorId}/products/${params.sellerProductId}`;
+    apiPath = `/v2/providers/seller_api/apis/api/v1/marketplace/seller-products/${params.sellerProductId}`;
     query   = '';
   } else {
     res.status(400).json({ error: `지원하지 않는 endpoint: ${endpoint}` });
