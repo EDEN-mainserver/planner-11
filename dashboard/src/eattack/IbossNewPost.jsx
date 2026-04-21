@@ -65,59 +65,174 @@ const POST_TYPES = [
   },
 ];
 
+// ─── 플랫폼 정의 ───
+const REF_PLATFORMS = [
+  { key: "iboss",    label: "아이보스", icon: "B",  color: "emerald" },
+  { key: "threads",  label: "쓰레드",   icon: "🧵", color: "purple" },
+  { key: "x",        label: "X",        icon: "𝕏",  color: "gray" },
+  { key: "linkedin", label: "LinkedIn", icon: "in", color: "blue" },
+];
+
 export default function IbossNewPost({ onBack, onGenerate, referencePost = null }) {
   const [postType, setPostType] = useState("info");
   const [topic, setTopic] = useState(referencePost ? referencePost.title : "");
   const [extraInfo, setExtraInfo] = useState("");
-  const [trendPosts, setTrendPosts] = useState([]);
-  const [isLoadingTrend, setIsLoadingTrend] = useState(false);
-  const trendTimeoutRef = useRef(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState("");
   const [error, setError] = useState("");
 
+  // ── 참고 패널 상태 ──
+  const [showRefPanel, setShowRefPanel] = useState(false);
+  const [showNaverPanel, setShowNaverPanel] = useState(false);
+  const [refPlatform, setRefPlatform] = useState("iboss");
+  const [refKeyword, setRefKeyword] = useState("");
+  const [refLoading, setRefLoading] = useState(false);
+  const [refStatus, setRefStatus] = useState("");
+  const [ibossPosts, setIbossPosts] = useState([]);
+  const [platformPosts, setPlatformPosts] = useState([]); // threads/x/linkedin
+  const [ibossMonth, setIbossMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const refTimeoutRef = useRef(null);
+
   const selectedType = POST_TYPES.find((t) => t.key === postType);
 
-  // ── 확장 프로그램에서 이달 인기글 수신 ──
+  // ── 결과 수신 리스너 (전 플랫폼) ──
   useEffect(() => {
     const handler = (event) => {
       if (event.source !== window) return;
-      if (event.data?.type !== "EDEN_IBOSS_LIST") return;
-      if (trendTimeoutRef.current) clearTimeout(trendTimeoutRef.current);
-      const { posts: newPosts = [] } = event.data.payload || {};
-      setTrendPosts(newPosts.slice(0, 8));
-      setIsLoadingTrend(false);
+      const { type, payload } = event.data || {};
+
+      if (type === "EDEN_IBOSS_LIST") {
+        if (refTimeoutRef.current) clearTimeout(refTimeoutRef.current);
+        const posts = (payload?.posts || []).slice(0, 10).map((p, i) => ({ ...p, rank: i + 1 }));
+        setIbossPosts(posts);
+        setRefLoading(false);
+        setRefStatus("");
+      }
+      if (type === "EDEN_THREADS_RESULTS") {
+        if (refTimeoutRef.current) clearTimeout(refTimeoutRef.current);
+        const posts = (payload?.posts || []).slice(0, 10).map((p, i) => ({ ...p, rank: i + 1 }));
+        setPlatformPosts(posts);
+        setRefLoading(false);
+        setRefStatus(posts.length > 0 ? "" : "결과가 없습니다.");
+      }
+      if (type === "EDEN_CRAWL_STATUS") {
+        if (payload?.done) { setRefLoading(false); setRefStatus(payload.error ? "수집 오류: " + payload.msg : ""); }
+        else setRefStatus(payload?.msg || "");
+      }
+      if (type === "EDEN_X_RESULTS") {
+        if (refTimeoutRef.current) clearTimeout(refTimeoutRef.current);
+        const posts = (payload?.posts || []).slice(0, 10).map((p, i) => ({ ...p, rank: i + 1 }));
+        setPlatformPosts(posts);
+        setRefLoading(false);
+        setRefStatus(posts.length > 0 ? "" : "결과가 없습니다.");
+      }
+      if (type === "EDEN_X_STATUS") {
+        if (payload?.done) { setRefLoading(false); setRefStatus(payload.error ? "수집 오류: " + payload.msg : ""); }
+        else setRefStatus(payload?.msg || "");
+      }
+      if (type === "EDEN_LINKEDIN_RESULTS") {
+        if (refTimeoutRef.current) clearTimeout(refTimeoutRef.current);
+        const posts = (payload?.posts || []).slice(0, 10).map((p, i) => ({ ...p, rank: i + 1 }));
+        setPlatformPosts(posts);
+        setRefLoading(false);
+        setRefStatus(posts.length > 0 ? "" : "결과가 없습니다.");
+      }
+      if (type === "EDEN_LINKEDIN_STATUS") {
+        if (payload?.done) { setRefLoading(false); setRefStatus(payload.error ? "수집 오류: " + payload.msg : ""); }
+        else setRefStatus(payload?.msg || "");
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  // ── 이달 인기글 요청 (확장 프로그램) ──
-  const handleLoadTrend = () => {
-    if (trendTimeoutRef.current) clearTimeout(trendTimeoutRef.current);
-    setIsLoadingTrend(true);
-    setTrendPosts([]);
-    const month = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-    window.postMessage({ type: "EDEN_GET_IBOSS_LIST", month }, "*");
-    trendTimeoutRef.current = setTimeout(() => {
-      setIsLoadingTrend(false);
-    }, 15000);
+  // 플랫폼 변경 시 결과 초기화
+  useEffect(() => {
+    setPlatformPosts([]);
+    setRefStatus("");
+    setRefLoading(false);
+    if (refTimeoutRef.current) clearTimeout(refTimeoutRef.current);
+  }, [refPlatform]);
+
+  const handleRefLoad = () => {
+    if (refTimeoutRef.current) clearTimeout(refTimeoutRef.current);
+    setRefLoading(true);
+    setRefStatus("");
+
+    if (refPlatform === "iboss") {
+      setIbossPosts([]);
+      window.postMessage({ type: "EDEN_GET_IBOSS_LIST", month: ibossMonth }, "*");
+    } else if (refPlatform === "threads") {
+      if (!refKeyword.trim()) { setRefLoading(false); setRefStatus("키워드를 입력하세요"); return; }
+      setPlatformPosts([]);
+      window.postMessage({ type: "EDEN_START_CRAWL", keyword: refKeyword.trim(), count: 20 }, "*");
+    } else if (refPlatform === "x") {
+      if (!refKeyword.trim()) { setRefLoading(false); setRefStatus("키워드를 입력하세요"); return; }
+      setPlatformPosts([]);
+      window.postMessage({ type: "EDEN_START_X_CRAWL", keyword: refKeyword.trim(), count: 20 }, "*");
+    } else if (refPlatform === "linkedin") {
+      if (!refKeyword.trim()) { setRefLoading(false); setRefStatus("키워드를 입력하세요"); return; }
+      setPlatformPosts([]);
+      window.postMessage({ type: "EDEN_START_LINKEDIN_CRAWL", keyword: refKeyword.trim(), count: 20 }, "*");
+    }
+
+    refTimeoutRef.current = setTimeout(() => {
+      setRefLoading(false);
+      setRefStatus("수집 시간 초과 — Eden Crawl 확장 프로그램이 설치·로그인되어 있는지 확인해주세요.");
+    }, 30000);
   };
+
+  const handleRefStop = () => {
+    if (refTimeoutRef.current) clearTimeout(refTimeoutRef.current);
+    if (refPlatform === "threads") window.postMessage({ type: "EDEN_STOP_CRAWL" }, "*");
+    else if (refPlatform === "x") window.postMessage({ type: "EDEN_STOP_X_CRAWL" }, "*");
+    else if (refPlatform === "linkedin") window.postMessage({ type: "EDEN_STOP_LINKEDIN_CRAWL" }, "*");
+    setRefLoading(false);
+    setRefStatus("수집 중단됨");
+  };
+
+  // 현재 플랫폼 결과 목록
+  const currentRefPosts = refPlatform === "iboss" ? ibossPosts : platformPosts;
+
+  // 인기글 클릭 → 주제로 설정
+  const handleRefPostClick = (post) => {
+    const title = post.title || post.text?.slice(0, 80) || "";
+    setTopic(title);
+  };
+
+  // 네이버 시장조사 링크
+  const naverLinks = topic.trim()
+    ? [
+        { label: "블로그", icon: "📝", url: `https://search.naver.com/search.naver?where=blog&query=${encodeURIComponent(topic)}` },
+        { label: "뉴스", icon: "📰", url: `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(topic)}` },
+        { label: "카페", icon: "☕", url: `https://search.naver.com/search.naver?where=cafeblog&query=${encodeURIComponent(topic)}` },
+        { label: "쇼핑", icon: "🛒", url: `https://search.naver.com/search.naver?where=shopping&query=${encodeURIComponent(topic)}` },
+        { label: "DataLab", icon: "📊", url: `https://datalab.naver.com/keyword/trendSearch.naver?keyword=${encodeURIComponent(topic)}` },
+      ]
+    : [];
+
+  // ── 월 옵션 ──
+  const monthOptions = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(); d.setMonth(d.getMonth() - i);
+    const val = d.toISOString().slice(0, 7).replace("-", "");
+    monthOptions.push({ val, label: `${d.getFullYear()}년 ${d.getMonth() + 1}월` });
+  }
 
   // ── 글 생성 ──
   const handleGenerate = async () => {
-    if (!topic.trim()) {
-      setError("글 주제를 입력해주세요.");
-      return;
-    }
+    if (!topic.trim()) { setError("글 주제를 입력해주세요."); return; }
     setError("");
     setIsGenerating(true);
 
     try {
-      // ══ STEP 1: 제목 생성 ══
       setGeneratingStep("💡 제목 생성 중...");
 
-      const titlePrompt = `아이보스(i-boss.co.kr) 마케팅 커뮤니티에 올릴 "${postType === "info" ? "정보공유형" : postType === "case" ? "사례형" : postType === "insight" ? "인사이트형" : "질문형"}" 글의 제목을 3개 만들어줘.
+      const titlePrompt = `아이보스(i-boss.co.kr) 마케팅 커뮤니티에 올릴 "${selectedType.label}" 글의 제목을 3개 만들어줘.
 
 주제: ${topic}
 추가 정보: ${extraInfo || "없음"}
@@ -140,10 +255,8 @@ JSON 배열만 반환: ["제목1", "제목2", "제목3"]`;
       const titles = titleMatch ? JSON.parse(titleMatch[0]) : [topic];
       const bestTitle = titles[0] || topic;
 
-      // ══ STEP 2: 본문 생성 ══
       setGeneratingStep("✍️ 본문 작성 중...");
 
-      // 레퍼런스 포스트가 있으면 원문 기반 재구성 프롬프트 사용
       const referenceSection = referencePost?.content_raw
         ? `\n\n[레퍼런스 원문 — 아래 글의 구조·톤·길이를 참고해서 새 글을 써줘]\n제목: ${referencePost.title}\n본문:\n${referencePost.content_raw.slice(0, 1500)}`
         : "";
@@ -173,7 +286,6 @@ ${referencePost ? "8. 레퍼런스 원문을 직접 복사하지 말고, 구조�
         "아이보스 마케팅 커뮤니티 전문 에디터. 실용적이고 신뢰감 있는 글을 작성합니다."
       );
 
-      // ══ STEP 3: 대체 제목 2개 추가 생성 ══
       setGeneratingStep("📋 마무리 중...");
 
       onGenerate({
@@ -272,32 +384,11 @@ ${referencePost ? "8. 레퍼런스 원문을 직접 복사하지 말고, 구조�
 
         {/* ── 글 주제 입력 ── */}
         <div className="space-y-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-base sm:text-lg font-semibold text-gray-900">
-                글 주제 <span className="text-red-400">*</span>
-              </h2>
-              <p className="text-xs text-gray-400 mt-0.5">쓰고 싶은 주제나 핵심 내용을 입력하세요</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleLoadTrend}
-              disabled={isLoadingTrend}
-              className="h-8 px-3 text-xs font-medium rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1.5 transition-all disabled:opacity-50 flex-shrink-0"
-            >
-              {isLoadingTrend ? (
-                <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              )}
-              이달 인기글
-            </button>
+          <div>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+              글 주제 <span className="text-red-400">*</span>
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">쓰고 싶은 주제나 핵심 내용을 입력하세요</p>
           </div>
 
           <textarea
@@ -326,28 +417,206 @@ ${referencePost ? "8. 레퍼런스 원문을 직접 복사하지 말고, 구조�
             ))}
           </div>
 
-          {/* 인기글 트렌드 */}
-          {trendPosts.length > 0 && (
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3.5 space-y-2">
-              <p className="text-xs font-semibold text-emerald-700">이달 아이보스 인기글 — 클릭해서 주제로 활용</p>
-              <div className="space-y-1.5">
-                {trendPosts.map((post) => (
+          {/* ── 도구 버튼 행 ── */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => { setShowRefPanel(!showRefPanel); setShowNaverPanel(false); }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                showRefPanel
+                  ? "bg-emerald-600 text-white border-emerald-600"
+                  : "border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              인기글 참고
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${showRefPanel ? "rotate-180" : ""}`}>
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setShowNaverPanel(!showNaverPanel); setShowRefPanel(false); }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                showNaverPanel
+                  ? "bg-green-600 text-white border-green-600"
+                  : "border-green-200 text-green-700 bg-green-50 hover:bg-green-100"
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+              </svg>
+              네이버 시장조사
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${showNaverPanel ? "rotate-180" : ""}`}>
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* ── 인기글 참고 패널 ── */}
+          {showRefPanel && (
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 space-y-3">
+              {/* 플랫폼 탭 */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {REF_PLATFORMS.map((p) => (
                   <button
-                    key={post.rank}
+                    key={p.key}
                     type="button"
-                    onClick={() => setTopic(post.title)}
-                    className="w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-emerald-100 transition-colors group"
+                    onClick={() => setRefPlatform(p.key)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                      refPlatform === p.key
+                        ? "bg-gray-900 text-white border-gray-900"
+                        : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                    }`}
                   >
-                    <span className="text-[11px] font-bold text-emerald-400 w-4 flex-shrink-0">{post.rank}</span>
-                    <span className="text-xs text-gray-700 flex-1 truncate group-hover:text-emerald-800">{post.title}</span>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {post.views > 0 && (
-                        <span className="text-[10px] text-gray-400">조회 {post.views.toLocaleString()}</span>
-                      )}
-                    </div>
+                    <span className="font-bold">{p.icon}</span>
+                    {p.label}
                   </button>
                 ))}
               </div>
+
+              {/* 아이보스: 월 선택 */}
+              {refPlatform === "iboss" && (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={ibossMonth}
+                    onChange={(e) => setIbossMonth(e.target.value)}
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-300"
+                  >
+                    {monthOptions.map(({ val, label }) => (
+                      <option key={val} value={val}>{label}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleRefLoad}
+                    disabled={refLoading}
+                    className="h-9 px-3 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                  >
+                    {refLoading ? <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> : null}
+                    {refLoading ? "수집 중..." : "불러오기"}
+                  </button>
+                </div>
+              )}
+
+              {/* 쓰레드/X/링크드인: 키워드 입력 */}
+              {refPlatform !== "iboss" && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={refKeyword}
+                    onChange={(e) => setRefKeyword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !refLoading && handleRefLoad()}
+                    placeholder={`키워드 입력 (예: ${topic.slice(0, 15) || "마케팅"})`}
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-300"
+                  />
+                  {refLoading ? (
+                    <button
+                      type="button"
+                      onClick={handleRefStop}
+                      className="h-9 px-3 text-xs font-semibold rounded-lg bg-red-500 text-white hover:bg-red-600 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                    >
+                      <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      중단
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleRefLoad}
+                      className="h-9 px-3 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                    >
+                      수집
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* 상태 메시지 */}
+              {refStatus && (
+                <p className={`text-xs px-1 ${refStatus.includes("오류") || refStatus.includes("초과") ? "text-red-500" : "text-emerald-600"}`}>
+                  {refStatus}
+                </p>
+              )}
+
+              {/* 결과 목록 */}
+              {currentRefPosts.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold text-emerald-700 px-1">클릭해서 주제로 활용</p>
+                  {currentRefPosts.map((post, idx) => {
+                    const title = post.title || post.text?.slice(0, 80) || "";
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleRefPostClick(post)}
+                        className="w-full text-left flex items-center gap-2.5 px-3 py-2 bg-white rounded-lg border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50 transition-all group"
+                      >
+                        <span className="text-[11px] font-bold text-emerald-400 w-4 flex-shrink-0">{post.rank}</span>
+                        <span className="text-xs text-gray-700 flex-1 truncate group-hover:text-emerald-800">{title}</span>
+                        {post.views > 0 && (
+                          <span className="text-[10px] text-gray-400 flex-shrink-0">조회 {post.views.toLocaleString()}</span>
+                        )}
+                        {post.likes > 0 && (
+                          <span className="text-[10px] text-gray-400 flex-shrink-0">♥ {post.likes}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── 네이버 시장조사 패널 ── */}
+          {showNaverPanel && (
+            <div className="rounded-xl border border-green-100 bg-green-50/40 p-4 space-y-3">
+              <p className="text-xs font-semibold text-green-700">주제로 네이버 검색 — 클릭해서 새 탭으로 열기</p>
+              {topic.trim() ? (
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "블로그", icon: "📝", where: "blog" },
+                    { label: "뉴스", icon: "📰", where: "news" },
+                    { label: "카페", icon: "☕", where: "cafeblog" },
+                    { label: "쇼핑", icon: "🛒", where: "shopping" },
+                  ].map(({ label, icon, where }) => (
+                    <a
+                      key={where}
+                      href={`https://search.naver.com/search.naver?where=${where}&query=${encodeURIComponent(topic)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-700 hover:border-green-300 hover:text-green-700 transition-all"
+                    >
+                      <span>{icon}</span>
+                      {label}
+                    </a>
+                  ))}
+                  <a
+                    href={`https://datalab.naver.com/keyword/trendSearch.naver?keyword=${encodeURIComponent(topic)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-700 hover:border-green-300 hover:text-green-700 transition-all"
+                  >
+                    <span>📊</span>
+                    DataLab 트렌드
+                  </a>
+                  <a
+                    href={`https://search.naver.com/search.naver?query=${encodeURIComponent(topic)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 transition-all"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                    </svg>
+                    통합 검색
+                  </a>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">주제를 먼저 입력하면 검색 링크가 생성됩니다.</p>
+              )}
             </div>
           )}
         </div>
