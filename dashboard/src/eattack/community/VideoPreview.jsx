@@ -155,23 +155,30 @@ export default function VideoPreview({
     return null;
   }, [sentences, currentMs]);
 
-  // Klipy GIF — 자막 청크가 바뀔 때마다 검색
+  // Klipy GIF
   const [gifUrl, setGifUrl] = useState(null);
-  const prevSentenceRef = useRef(null);
+  const prevQueryRef = useRef(null);
 
-  useEffect(() => {
-    if (!currentSentence || currentSentence === prevSentenceRef.current) return;
-    prevSentenceRef.current = currentSentence;
-
-    fetch(`/api/klipy?q=${encodeURIComponent(currentSentence)}`)
+  const fetchGif = useCallback((q) => {
+    if (!q || q === prevQueryRef.current) return;
+    prevQueryRef.current = q;
+    fetch(`/api/klipy?q=${encodeURIComponent(q)}`)
       .then(r => r.json())
-      .then(d => {
-        console.log("[Klipy]", d);
-        if (d.url) setGifUrl(d.url);
-        else setGifUrl(null);
-      })
-      .catch(e => console.error("[Klipy] fetch 실패:", e));
-  }, [currentSentence]);
+      .then(d => { if (d.url) setGifUrl(d.url); })
+      .catch(() => {});
+  }, []);
+
+  // 마운트 시 제목/스크립트 기반으로 초기 GIF 로드
+  useEffect(() => {
+    const q = title?.trim() || script?.trim().slice(0, 30) || "";
+    if (q) fetchGif(q);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, script]);
+
+  // 재생 중 자막 청크가 바뀔 때마다 업데이트
+  useEffect(() => {
+    if (currentSentence) fetchGif(currentSentence);
+  }, [currentSentence, fetchGif]);
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
@@ -203,12 +210,12 @@ export default function VideoPreview({
         />
 
         {/* 자막 + GIF — 제목 카드 바로 아래 */}
-        {currentSentence && (
-          <div style={{
-            position: "absolute", top: 155, left: 0, right: 0,
-            display: "flex", flexDirection: "column", alignItems: "center",
-            pointerEvents: "none", padding: "0 20px", gap: 8,
-          }}>
+        <div style={{
+          position: "absolute", top: 155, left: 0, right: 0,
+          display: "flex", flexDirection: "column", alignItems: "center",
+          pointerEvents: "none", padding: "0 20px", gap: 8,
+        }}>
+          {currentSentence && (
             <p style={{
               fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
               fontSize: 13, fontWeight: 700, color: "#111",
@@ -216,20 +223,21 @@ export default function VideoPreview({
             }}>
               {currentSentence}
             </p>
+          )}
 
-            {/* Klipy GIF */}
-            {gifUrl && (
-              <img
-                src={gifUrl}
-                alt="reaction"
-                style={{
-                  width: 160, borderRadius: 10,
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-                  objectFit: "cover",
-                }}
-              />
-            )}
-          </div>
+          {/* Klipy GIF — 마운트 시 제목 기반 / 재생 중 자막 기반 */}
+          {gifUrl && (
+            <img
+              src={gifUrl}
+              alt="reaction"
+              style={{
+                width: 160, borderRadius: 10,
+                boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
+                objectFit: "cover",
+              }}
+            />
+          )}
+        </div>
         )}
 
         {/* 일시정지 시 재생 버튼 */}
