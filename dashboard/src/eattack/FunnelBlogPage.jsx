@@ -166,6 +166,7 @@ export default function FunnelBlogPage({ onBack }) {
       target: form.target,
       conversionGoal: form.conversionGoal,
       platform: form.platform,
+      refBlog: form.refBlog,
     });
 
     try {
@@ -183,6 +184,13 @@ export default function FunnelBlogPage({ onBack }) {
       const start = clean.indexOf("{");
       const end = clean.lastIndexOf("}");
       const parsed = JSON.parse(clean.slice(start, end + 1));
+      // 마크다운 기호 후처리 (AI가 무시하고 넣는 경우 대비)
+      parsed.title = stripMarkdown(parsed.title);
+      parsed.cta = stripMarkdown(parsed.cta);
+      parsed.sections = (parsed.sections || []).map((s) => ({
+        heading: s.heading ? stripMarkdown(s.heading) : null,
+        content: stripMarkdown(s.content),
+      }));
       setResult(parsed);
     } catch (err) {
       setError(`생성 실패: ${err.message}`);
@@ -195,7 +203,7 @@ export default function FunnelBlogPage({ onBack }) {
   const handleCopy = () => {
     if (!result) return;
     const sections = result.sections
-      .map((s) => (s.heading ? `## ${s.heading}\n\n${s.content}` : s.content))
+      .map((s) => (s.heading ? `${s.heading}\n\n${s.content}` : s.content))
       .join("\n\n");
     const fullText = `${result.title}\n\n${sections}\n\n${result.cta}`;
     navigator.clipboard.writeText(fullText).then(() => {
@@ -338,6 +346,33 @@ export default function FunnelBlogPage({ onBack }) {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* 레퍼런스 블로그 글 */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                레퍼런스 블로그 글
+                <span className="ml-2 text-xs font-normal text-gray-400">선택사항 — 말투·흐름을 참고할 블로그 글을 붙여넣으세요</span>
+              </label>
+              <textarea
+                value={form.refBlog}
+                onChange={(e) => setField("refBlog", e.target.value)}
+                placeholder={"참고하고 싶은 블로그 글을 여기에 붙여넣으세요.\nAI가 해당 글의 말투, 문장 호흡, 흐름을 참고해서 글을 작성합니다."}
+                rows={6}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition resize-none leading-relaxed"
+              />
+              {form.refBlog && (
+                <div className="flex items-center justify-between mt-1.5">
+                  <span className="text-xs text-gray-400">{form.refBlog.length.toLocaleString()}자 입력됨</span>
+                  <button
+                    type="button"
+                    onClick={() => setField("refBlog", "")}
+                    className="text-xs text-gray-400 hover:text-red-400 transition-colors"
+                  >
+                    지우기
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 에러 */}
