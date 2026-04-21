@@ -1,6 +1,6 @@
 // 콘텐츠 파이프라인 — 주제 리서치 → 기획 → AI 이미지 → 에디토리얼 HTML 카드뉴스
 import { useState } from "react";
-import { callGemini } from "../utils/gemini";
+import { callGemini, generateImage } from "../utils/gemini";
 
 // ── 상수 ──
 const TONE_OPTS = [
@@ -85,19 +85,10 @@ JSON만 반환.`,
 }
 
 async function generateOneImage(prompt) {
-  const res = await fetch("/api/image-generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      prompt: `${prompt}, no text, no watermark, photorealistic, high quality`,
-      aspectRatio: "3:4",
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || err.message || `이미지 API 오류 ${res.status}`);
-  }
-  return (await res.json()).imageUrl;
+  return generateImage(
+    `${prompt}, no text, no watermark, photorealistic, high quality`,
+    "3:4"
+  );
 }
 
 // HTML 카드뉴스를 코드로 직접 빌드 (Gemini 의존 없음 → 구조 보장)

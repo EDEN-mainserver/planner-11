@@ -72,6 +72,41 @@ export async function callGemini(history, systemPrompt) {
   return data.text || '';
 }
 
+/**
+ * Imagen API로 이미지 생성 — 브라우저에서 직접 호출 (VITE_GEMINI_API_KEY 사용)
+ * @param {string} prompt - 이미지 프롬프트 (영어 권장)
+ * @param {string} aspectRatio - '3:4' | '1:1' | '16:9' 등
+ * @returns {Promise<string>} data URL (data:image/png;base64,...)
+ */
+export async function generateImage(prompt, aspectRatio = '3:4') {
+  if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key=${GEMINI_KEY}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      instances: [{ prompt }],
+      parameters: {
+        sampleCount: 1,
+        aspectRatio,
+        safetyFilterLevel: 'BLOCK_ONLY_HIGH',
+      },
+    }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Imagen 오류 ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  const prediction = data.predictions?.[0];
+  if (!prediction?.bytesBase64Encoded) throw new Error('이미지 데이터를 받지 못했습니다.');
+
+  return `data:${prediction.mimeType || 'image/png'};base64,${prediction.bytesBase64Encoded}`;
+}
+
 export function deepMergePrd(current, update) {
   const result = JSON.parse(JSON.stringify(current));
   for (const secKey of Object.keys(update || {})) {
