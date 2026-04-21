@@ -8,6 +8,13 @@ import { USERS as SEED_USERS } from "../config/users";
 const USERS_KEY    = "eden_users_v1";
 const igKey        = (u) => `eden_ig_${u}_v1`;
 const threadsKey   = (u) => `eden_threads_${u}_v1`;
+const fullAutoKey  = (u) => `eden_fullauto_${u}_v1`;
+export const COUPANG_KEY = "eden_coupang_api_v1";
+export function loadCoupangCreds() {
+  try { return JSON.parse(localStorage.getItem(COUPANG_KEY)) || {}; }
+  catch { return {}; }
+}
+function saveCoupangCreds(data) { localStorage.setItem(COUPANG_KEY, JSON.stringify(data)); }
 
 // ── 사용자 목록 로드 (최초 1회 seed 주입) ──
 function loadUsers() {
@@ -30,6 +37,15 @@ function loadSocial(keyFn, username) {
 }
 function saveSocial(keyFn, username, data) {
   localStorage.setItem(keyFn(username), JSON.stringify(data));
+}
+
+// ── 풀가동화 설정 로드/저장 ──
+function loadFullAuto(username) {
+  try { return JSON.parse(localStorage.getItem(fullAutoKey(username))) || {}; }
+  catch { return {}; }
+}
+function saveFullAutoSettings(username, data) {
+  localStorage.setItem(fullAutoKey(username), JSON.stringify(data));
 }
 
 // ── 공통 입력 ──
@@ -227,17 +243,22 @@ function SocialTab() {
   const [ig, setIg] = useState(() => loadSocial(igKey, users[0]?.username || ""));
   // Threads 상태
   const [th, setTh] = useState(() => loadSocial(threadsKey, users[0]?.username || ""));
+  // 풀가동화 설정
+  const [fa, setFa] = useState(() => loadFullAuto(users[0]?.username || ""));
 
   const [igSaved, setIgSaved] = useState(false);
   const [thSaved, setThSaved] = useState(false);
+  const [faSaved, setFaSaved] = useState(false);
 
   // 사용자 변경 시 해당 사용자의 API 설정 로드
   const handleUserChange = (username) => {
     setSelectedUser(username);
     setIg(loadSocial(igKey, username));
     setTh(loadSocial(threadsKey, username));
+    setFa(loadFullAuto(username));
     setIgSaved(false);
     setThSaved(false);
+    setFaSaved(false);
   };
 
   const saveIg = () => {
@@ -250,6 +271,12 @@ function SocialTab() {
     saveSocial(threadsKey, selectedUser, th);
     setThSaved(true);
     setTimeout(() => setThSaved(false), 2000);
+  };
+
+  const saveFa = () => {
+    saveFullAutoSettings(selectedUser, fa);
+    setFaSaved(true);
+    setTimeout(() => setFaSaved(false), 2000);
   };
 
   const currentUser = users.find((u) => u.username === selectedUser);
@@ -385,8 +412,80 @@ function SocialTab() {
             </div>
           </div>
 
+          {/* ── 풀가동화 콘텐츠 설정 ── */}
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+            <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-amber-50">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-800">풀가동화 콘텐츠 설정</p>
+                <p className="text-[11px] text-gray-400">E-Attack 풀가동화 파이프라인 기본 설정</p>
+              </div>
+              {fa.topics && (
+                <span className="ml-auto text-[10px] font-bold bg-orange-100 text-orange-600 border border-orange-200 rounded-full px-2 py-0.5">설정됨</span>
+              )}
+            </div>
+            <div className="p-5 space-y-3">
+              <Field
+                label="토픽 키워드 (쉼표로 구분)"
+                value={fa.topics || ""}
+                onChange={(v) => setFa((p) => ({ ...p, topics: v }))}
+                placeholder="마케팅 자동화, SNS 운영, 디지털 마케팅"
+              />
+              <Field
+                label="브랜드명"
+                value={fa.brandName || ""}
+                onChange={(v) => setFa((p) => ({ ...p, brandName: v }))}
+                placeholder="에덴 에이전트"
+              />
+              <Field
+                label="톤앤매너"
+                value={fa.tone || ""}
+                onChange={(v) => setFa((p) => ({ ...p, tone: v }))}
+                placeholder="친근하고 전문적인"
+              />
+              <div>
+                <label className="text-xs font-bold text-gray-600 block mb-1">슬라이드 수 (1–10)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={fa.slideCount || 5}
+                  onChange={(e) => setFa((p) => ({ ...p, slideCount: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 block mb-1">캡션 템플릿</label>
+                <textarea
+                  rows={3}
+                  value={fa.captionTemplate || "{title}\n\n{body}\n\n#마케팅 #자동화"}
+                  onChange={(e) => setFa((p) => ({ ...p, captionTemplate: e.target.value }))}
+                  placeholder="{title}\n\n{body}\n\n#마케팅 #자동화"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white transition-colors resize-none"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">{"{title}"} = 첫 슬라이드 제목, {"{body}"} = 슬라이드 목차</p>
+              </div>
+              <div className="flex items-center justify-end pt-1">
+                <button
+                  onClick={saveFa}
+                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                    faSaved
+                      ? "bg-green-500 text-white"
+                      : "bg-orange-500 hover:bg-orange-600 text-white"
+                  }`}
+                >
+                  {faSaved ? "✓ 저장됨" : "저장"}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <p className="text-[11px] text-gray-400">
-            🔒 API 키는 사용자별로 브라우저 로컬에 저장됩니다.
+            🔒 API 키와 설정은 사용자별로 브라우저 로컬에 저장됩니다.
           </p>
         </>
       )}
@@ -395,12 +494,134 @@ function SocialTab() {
 }
 
 // ═══════════════════════════════════════════
+// 탭 3: 쿠팡 API 설정
+// ═══════════════════════════════════════════
+function CoupangTab() {
+  const [creds, setCreds] = useState(() => loadCoupangCreds());
+  const [saved, setSaved] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  const set = (k, v) => setCreds(p => ({ ...p, [k]: v }));
+
+  const handleSave = () => {
+    saveCoupangCreds(creds);
+    setSaved(true);
+    setTestResult(null);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleTest = async () => {
+    if (!creds.accessKey || !creds.secretKey || !creds.vendorId) {
+      setTestResult({ ok: false, msg: 'Access Key, Secret Key, Vendor ID를 모두 입력하세요.' });
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const resp = await fetch('/api/coupang-products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessKey: creds.accessKey,
+          secretKey: creds.secretKey,
+          vendorId:  creds.vendorId,
+          endpoint:  'seller-products',
+          params:    { maxPerPage: 1 },
+        }),
+      });
+      const data = await resp.json();
+      if (data.code === 'SUCCESS' || data.data) {
+        setTestResult({ ok: true, msg: `연결 성공! 상품 데이터를 받았습니다.` });
+      } else {
+        setTestResult({ ok: false, msg: data.message || data.error || `응답 코드: ${data.code}` });
+      }
+    } catch (e) {
+      setTestResult({ ok: false, msg: `요청 실패: ${e.message}` });
+    }
+    setTesting(false);
+  };
+
+  const connected = !!(creds.accessKey && creds.secretKey && creds.vendorId);
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        {/* 헤더 */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100"
+          style={{ background: 'linear-gradient(to right, #fff7ed, #fff)' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-lg font-bold"
+            style={{ background: '#f97316' }}>C</div>
+          <div>
+            <p className="text-sm font-bold text-gray-800">쿠팡 Wing Open API</p>
+            <p className="text-xs text-gray-400">GrowthDB 실시간 상품 데이터 연동</p>
+          </div>
+          {connected && (
+            <span className="ml-auto text-[10px] font-bold bg-green-100 text-green-600
+              border border-green-200 rounded-full px-2.5 py-1">✓ 설정됨</span>
+          )}
+        </div>
+
+        {/* 입력 폼 */}
+        <div className="p-5 space-y-4">
+          <div className="p-3 bg-orange-50 border border-orange-200 rounded-xl text-xs text-orange-700 leading-relaxed">
+            <strong>발급 경로:</strong> 쿠팡 Wing → 설정 → 개발자 오픈 API →
+            <a href="https://wing.coupang.com" target="_blank" rel="noreferrer"
+              className="underline ml-1">wing.coupang.com</a>
+          </div>
+
+          <Field label="Access Key" value={creds.accessKey || ''} onChange={v => set('accessKey', v)}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" mono />
+          <Field label="Secret Key" type="password" value={creds.secretKey || ''} onChange={v => set('secretKey', v)}
+            placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" mono />
+          <Field label="Vendor ID (판매자 ID)" value={creds.vendorId || ''} onChange={v => set('vendorId', v)}
+            placeholder="A00000000" mono />
+
+          {/* 결과 */}
+          {testResult && (
+            <div className={`p-3 rounded-xl text-xs font-medium ${
+              testResult.ok ? 'bg-green-50 text-green-700 border border-green-200'
+                            : 'bg-red-50 text-red-600 border border-red-200'}`}>
+              {testResult.ok ? '✅ ' : '❌ '}{testResult.msg}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1">
+            <button onClick={handleTest} disabled={testing}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg border
+                border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition-all">
+              {testing ? (
+                <svg className="animate-spin w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+              ) : '🔌'}
+              연결 테스트
+            </button>
+            <button onClick={handleSave}
+              className={`px-5 py-2 text-xs font-bold rounded-lg transition-all text-white ${
+                saved ? 'bg-green-500' : 'bg-orange-500 hover:bg-orange-600'}`}>
+              {saved ? '✓ 저장됨' : '저장'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-gray-400">
+        🔒 API 키는 브라우저 로컬스토리지에 저장됩니다. Secret Key는 서버에서만 사용됩니다.
+      </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 // 메인 AdminPage
 // ═══════════════════════════════════════════
 const ADMIN_TABS = [
-  { key: "users",  label: "사용자 관리" },
-  { key: "social", label: "소셜 계정 연동" },
-  { key: "stats",  label: "프로젝트 통계" },
+  { key: "users",   label: "사용자 관리" },
+  { key: "social",  label: "소셜 계정 연동" },
+  { key: "coupang", label: "🛒 쿠팡 API" },
+  { key: "stats",   label: "프로젝트 통계" },
 ];
 
 export default function AdminPage({ projects = [], trash = [], onLoad }) {
@@ -444,8 +665,9 @@ export default function AdminPage({ projects = [], trash = [], onLoad }) {
         </div>
 
         {/* 탭 콘텐츠 */}
-        {activeTab === "users"  && <UsersTab />}
-        {activeTab === "social" && <SocialTab />}
+        {activeTab === "users"   && <UsersTab />}
+        {activeTab === "social"  && <SocialTab />}
+        {activeTab === "coupang" && <CoupangTab />}
 
         {activeTab === "stats" && (
           <div className="space-y-6">

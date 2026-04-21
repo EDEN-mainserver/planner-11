@@ -1,17 +1,17 @@
 // 풀가동화 콘텐츠 — 수동 실행 엔드포인트
-// POST body: { accountId, triggeredBy: "manual" }
+// POST body: { account: { id, name, igAccountId, igAccessToken, threadsUserId, threadsAccessToken, settings }, triggeredBy }
+// 계정 데이터는 프론트엔드(localStorage)에서 직접 전달 → Blob 조회 불필요
 
 import { put, head } from "@vercel/blob";
 import { runFullAutoPipeline } from "./_pipeline.js";
 
-const CONFIG_PATH = "full-auto/team-config.json";
 const HISTORY_PATH = "full-auto/history.json";
 const MAX_HISTORY = 50;
 
 // ─── 인증 검증 ───
 function checkAuth(req) {
   const secret = process.env.FULL_AUTO_SECRET;
-  if (!secret) return true;
+  if (!secret) return true; // 미설정 시 개발 모드 허용
   const auth = req.headers["authorization"] || "";
   return auth === `Bearer ${secret}`;
 }
@@ -51,19 +51,17 @@ export default async function handler(req, res) {
 
   if (!checkAuth(req)) return res.status(401).json({ error: "Unauthorized" });
 
-  const { accountId, triggeredBy = "manual" } = req.body || {};
-  if (!accountId) return res.status(400).json({ error: "accountId 가 필요합니다" });
+  const { account, triggeredBy = "manual" } = req.body || {};
 
-  // 계정 로드
-  const config = await readBlob(CONFIG_PATH);
-  const account = config?.accounts?.find((a) => a.id === accountId);
-  if (!account) return res.status(404).json({ error: `계정 '${accountId}'을 찾을 수 없습니다` });
+  // account를 body에서 직접 받음 (localStorage에서 전달)
+  if (!account || !account.id) {
+    return res.status(400).json({ error: "account 데이터가 필요합니다" });
+  }
 
   const startedAt = new Date().toISOString();
-  let result;
 
   try {
-    result = await runFullAutoPipeline(account, process.env);
+    const result = await runFullAutoPipeline(account, process.env);
 
     const historyEntry = {
       runId: result.runId,
@@ -85,7 +83,7 @@ export default async function handler(req, res) {
     console.error("[full-auto-run] 파이프라인 오류:", err);
 
     const historyEntry = {
-      runId: `run-${Date.now()}-${accountId}`,
+      runId: `run-${Date.now()}-${account.id}`,
       accountId: account.id,
       accountName: account.name,
       triggeredBy,
