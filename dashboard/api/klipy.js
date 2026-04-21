@@ -10,27 +10,15 @@
 
 export const config = { maxDuration: 15 };
 
-// 한국어 자막 → GIF 검색에 적합한 영어 키워드 1~2단어
-async function toEnglishKeyword(text, anthropicKey) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": anthropicKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 20,
-      messages: [{
-        role: "user",
-        content: `Convert this Korean text to 1-2 English words suitable for GIF search. Reply ONLY the English keyword(s), nothing else.\n\nKorean: ${text}`,
-      }],
-    }),
-  });
+// 한국어 → 영어 번역 (Google Translate 비공식 API, 키 불필요)
+async function toEnglishKeyword(text) {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
   if (!res.ok) return null;
   const data = await res.json();
-  return data?.content?.[0]?.text?.trim() ?? null;
+  // 응답: [[["translated","original",...],...],...]
+  const translated = data?.[0]?.map(chunk => chunk?.[0]).filter(Boolean).join(" ").trim();
+  return translated || null;
 }
 
 export default async function handler(req, res) {
@@ -38,8 +26,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const klipyKey    = process.env.KLIPY_API_KEY;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const klipyKey = process.env.KLIPY_API_KEY;
 
   if (!klipyKey) {
     return res.status(500).json({ error: "KLIPY_API_KEY 환경변수가 설정되지 않았습니다." });
@@ -50,10 +37,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "검색어(q)가 필요합니다." });
   }
 
-  // 한국어 → 영어 키워드 변환 (Claude 없으면 원문 그대로 사용)
+  // 한국어 감지 시 영어로 번역 (Google Translate 비공식 API)
+  const isKorean = /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(q);
   let keyword = q;
-  if (anthropicKey) {
-    const translated = await toEnglishKeyword(q, anthropicKey).catch(() => null);
+  if (isKorean) {
+    const translated = await toEnglishKeyword(q).catch(() => null);
     if (translated) keyword = translated;
   }
 
