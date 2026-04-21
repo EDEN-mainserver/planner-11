@@ -539,6 +539,42 @@ export default function FunnelBlogPage({ onBack }) {
                 </div>
               </div>
 
+              {/* 직접 붙여넣기 (토글) */}
+              {showPasteInput && (
+                <div className="mb-3 p-3 bg-violet-50 rounded-xl border border-violet-200">
+                  <p className="text-xs text-violet-600 mb-2">블로그 글을 직접 붙여넣으면 말투·흐름을 AI가 참고합니다</p>
+                  <input
+                    type="text"
+                    value={pasteName}
+                    onChange={(e) => setPasteName(e.target.value)}
+                    placeholder="레퍼런스 이름 (선택) — 예: 정대표 블로그 스타일"
+                    className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent transition mb-2"
+                  />
+                  <textarea
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    rows={6}
+                    placeholder="블로그 글 전체 또는 일부를 여기에 붙여넣으세요"
+                    className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent transition resize-none"
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs text-violet-400">{pasteText.length.toLocaleString()}자</span>
+                    <button
+                      type="button"
+                      onClick={handleSavePaste}
+                      disabled={!pasteText.trim()}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all
+                        ${!pasteText.trim()
+                          ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                          : "bg-violet-600 text-white hover:bg-violet-700"
+                        }`}
+                    >
+                      저장하기
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* URL 입력 (토글) */}
               {showUrlInput && (
                 <div className="mb-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
