@@ -2,10 +2,12 @@
 import { createHmac } from 'crypto';
 
 function makeAuthHeader(method, path, query, accessKey, secretKey) {
-  const now = new Date();
-  const p   = (n) => String(n).padStart(2, '0');
-  const dt  = `${now.getUTCFullYear()}${p(now.getUTCMonth()+1)}${p(now.getUTCDate())}T${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}Z`;
-  const msg = dt + method + path + (query ? '?' + query : '');
+  // 쿠팡 공식 스펙: 2자리 연도 (yyMMddTHHmmssZ), ? 없이 query 직접 붙임
+  const dt  = new Date().toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d+Z$/, 'Z')
+    .substring(2); // "250421T153045Z"
+  const msg = dt + method + path + (query || '');
   const sig = createHmac('sha256', secretKey).update(msg).digest('hex');
   return `CEA algorithm=HmacSHA256, access-key=${accessKey}, signed-date=${dt}, signature=${sig}`;
 }
