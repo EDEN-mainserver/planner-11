@@ -26,26 +26,31 @@ async function fetchCoupangProducts(creds, params = {}) {
 
 /* ─────────────────────────────────────────────
    쿠팡 응답 → GrowthDB 행 변환
+   seller-products: 가격/옵션은 sellerProductItems[0] 안에 중첩
 ───────────────────────────────────────────── */
 function normalizeProduct(item) {
-  const price  = item.salePrice || item.originalPrice || 0;
-  const cost   = item.supplyPrice || 0;
-  const fee    = Math.round(price * 0.108);
+  // seller-products API: 옵션 정보가 sellerProductItems 배열 안에 있음
+  const si    = (item.sellerProductItems || [])[0] || {};
+  const price = si.salePrice || si.originalPrice || item.salePrice || item.originalPrice || 0;
+  const cost  = si.supplyPrice || item.supplyPrice || 0;
+  const fee   = Math.round(price * 0.108);
   const margin = price - cost - fee;
   const mr     = price > 0 ? (margin / price * 100).toFixed(1) : '0.0';
   const roi    = cost > 0 ? (margin / cost * 100).toFixed(0) : '0';
   const roas   = cost > 0 ? (price / cost).toFixed(1) : '0';
+  // 이미지: images 배열 또는 단일 imageUrl
+  const imageUrl = (item.images || [])[0]?.cdnPath || si.imageUrl || item.imageUrl || '';
 
   return {
     isReal:   true,
     grade:    GRADES[0],
     name:     item.sellerProductName || item.productName || '상품명 없음',
-    opt:      item.itemName || '',
-    expId:    item.productId || '-',
-    optId:    item.vendorItemId || '-',
-    bc:       item.barcode || '-',
-    imageUrl: item.imageUrl || '',
-    stock:    item.stock ?? item.quantity ?? 0,
+    opt:      si.itemName || item.itemName || '',
+    expId:    item.sellerProductId || item.productId || '-',
+    optId:    si.vendorItemId || item.vendorItemId || '-',
+    bc:       si.barcode || item.barcode || '-',
+    imageUrl,
+    stock:    0, // vendor-inventory API로 별도 업데이트
     price,
     fee,
     margin,
@@ -752,27 +757,62 @@ export default function GrowthDBPage() {
     setLoading(true);
     setApiError('');
     try {
+      // 1단계: 상품 목록 (seller-products)
       const data = await fetchCoupangProducts(creds, { maxPerPage: 50 });
-      // 쿠팡 응답 형식: { code, message, data: [...] } 또는 { data: { content: [...] } }
       const items = Array.isArray(data?.data) ? data.data
         : data?.data?.content
         || data?.data?.vendorItems
         || data?.content
         || [];
-      if (items.length > 0) {
-        setRows(items.map(normalizeProduct));
-        setIsReal(true);
-      } else {
-        // 빈 배열도 정상 응답일 수 있음 (등록 상품 없음)
+
+      if (items.length === 0) {
         const msg = data?.message || data?.code;
         setApiError(msg && msg !== 'SUCCESS' ? `응답 오류: ${msg}` : '등록된 상품이 없습니다.');
-        setRows([]);
-        setIsReal(false);
+        setRows([]); setIsReal(false);
+        setLoading(false); return;
       }
+
+      const normalized = items.map(normalizeProduct);
+      setRows(normalized);
+      setIsReal(true);
+
+      // 2단계: 재고 현황 (vendor-inventory) — 별도 호출 후 병합
+      try {
+        const invResp = await fetch('/api/coupang-products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accessKey: creds.accessKey,
+            secretKey: creds.secretKey,
+            vendorId:  creds.vendorId,
+            endpoint:  'vendor-inventory',
+            params:    {},
+          }),
+        });
+        if (invResp.ok) {
+          const invData  = await invResp.json();
+          const invItems = Array.isArray(invData?.data) ? invData.data
+            : invData?.data?.content || invData?.content || [];
+          if (invItems.length > 0) {
+            const stockMap = {};
+            invItems.forEach(inv => {
+              const vid = String(inv.vendorItemId || inv.vendor_item_id || '');
+              if (vid) stockMap[vid] = inv.quantity ?? inv.availableStock ?? inv.stockQuantity ?? 0;
+            });
+            setRows(prev => prev.map(row => ({
+              ...row,
+              stock: stockMap[String(row.optId)] ?? row.stock,
+            })));
+          }
+        }
+      } catch (invErr) {
+        // 인벤토리 조회 실패해도 상품 기본 데이터는 유지
+        console.warn('vendor-inventory 조회 실패:', invErr.message);
+      }
+
     } catch (e) {
       setApiError(`API 오류: ${e.message}`);
-      setRows([]);
-      setIsReal(false);
+      setRows([]); setIsReal(false);
     }
     setLoading(false);
   }, [creds, hasKey]);
