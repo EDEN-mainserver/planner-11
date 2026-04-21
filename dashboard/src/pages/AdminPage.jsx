@@ -236,15 +236,19 @@ function UsersTab() {
 // 탭 2: 소셜 계정 API 연동
 // ═══════════════════════════════════════════
 function SocialTab() {
-  const users = loadUsers();
-  const [selectedUser, setSelectedUser] = useState(users[0]?.username || "");
+  const [users, setUsers] = useState(loadUsers);
+  const [selectedUser, setSelectedUser] = useState(() => loadUsers()[0]?.username || "");
+
+  // 팀원 추가/편집 상태
+  const [editingId, setEditingId] = useState(null);   // username | "__new__" | null
+  const [editForm, setEditForm] = useState({ username: "", displayName: "", password: "" });
 
   // Instagram 상태
-  const [ig, setIg] = useState(() => loadSocial(igKey, users[0]?.username || ""));
+  const [ig, setIg] = useState(() => loadSocial(igKey, loadUsers()[0]?.username || ""));
   // Threads 상태
-  const [th, setTh] = useState(() => loadSocial(threadsKey, users[0]?.username || ""));
+  const [th, setTh] = useState(() => loadSocial(threadsKey, loadUsers()[0]?.username || ""));
   // 풀가동화 설정
-  const [fa, setFa] = useState(() => loadFullAuto(users[0]?.username || ""));
+  const [fa, setFa] = useState(() => loadFullAuto(loadUsers()[0]?.username || ""));
 
   const [igSaved, setIgSaved] = useState(false);
   const [thSaved, setThSaved] = useState(false);
@@ -259,6 +263,63 @@ function SocialTab() {
     setIgSaved(false);
     setThSaved(false);
     setFaSaved(false);
+    setEditingId(null);
+  };
+
+  // ── 팀원 추가 시작 ──
+  const startAdd = () => {
+    setEditingId("__new__");
+    setEditForm({ username: "", displayName: "", password: "" });
+  };
+
+  // ── 팀원 편집 시작 ──
+  const startEdit = (u) => {
+    setEditingId(u.username);
+    setEditForm({ username: u.username, displayName: u.displayName, password: u.password });
+  };
+
+  // ── 팀원 저장 (추가/수정) ──
+  const commitEdit = () => {
+    const name = editForm.displayName.trim();
+    const uid  = editForm.username.trim();
+    const pw   = editForm.password.trim();
+    if (!name) return;
+
+    let next;
+    if (editingId === "__new__") {
+      // 새 팀원: username 자동 생성 (없으면)
+      const newUid = uid || `user_${Date.now()}`;
+      if (users.some((u) => u.username === newUid)) {
+        alert("이미 사용 중인 아이디입니다");
+        return;
+      }
+      const newUser = { username: newUid, displayName: name, password: pw || "1234" };
+      next = [...users, newUser];
+      // 추가 후 해당 사용자 선택
+      setTimeout(() => handleUserChange(newUid), 0);
+    } else {
+      // 기존 팀원 수정 (displayName + password만 수정, username은 고정)
+      next = users.map((u) =>
+        u.username === editingId
+          ? { ...u, displayName: name, password: pw || u.password }
+          : u
+      );
+    }
+    saveUsers(next);
+    setUsers(next);
+    setEditingId(null);
+  };
+
+  // ── 팀원 삭제 ──
+  const deleteUser = (username) => {
+    if (users.length <= 1) { alert("최소 1명은 있어야 합니다"); return; }
+    if (!confirm(`삭제하시겠습니까?`)) return;
+    const next = users.filter((u) => u.username !== username);
+    saveUsers(next);
+    setUsers(next);
+    if (selectedUser === username) {
+      handleUserChange(next[0]?.username || "");
+    }
   };
 
   const saveIg = () => {
@@ -283,27 +344,121 @@ function SocialTab() {
 
   return (
     <div className="space-y-5">
-      {/* 사용자 선택 */}
-      <div>
-        <p className="text-xs font-bold text-gray-600 mb-2">설정할 사용자</p>
+      {/* ── 팀원 선택/관리 ── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-bold text-gray-600">팀원 선택</p>
+          <button
+            onClick={startAdd}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14"/><path d="M12 5v14"/>
+            </svg>
+            팀원 추가
+          </button>
+        </div>
+
+        {/* 팀원 칩 목록 */}
         <div className="flex flex-wrap gap-2">
           {users.map((u) => (
-            <button
-              key={u.username}
-              onClick={() => handleUserChange(u.username)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm font-medium transition-all ${
-                selectedUser === u.username
-                  ? "border-purple-400 bg-purple-50 text-purple-700"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-              }`}
-            >
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                {u.displayName.charAt(0)}
+            <div key={u.username} className="relative group">
+              <button
+                onClick={() => handleUserChange(u.username)}
+                className={`flex items-center gap-2 pl-3 pr-8 py-2 rounded-xl border-2 text-sm font-medium transition-all ${
+                  selectedUser === u.username
+                    ? "border-purple-400 bg-purple-50 text-purple-700"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                }`}
+              >
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                  {u.displayName.charAt(0)}
+                </div>
+                {u.displayName}
+              </button>
+              {/* 편집/삭제 버튼 — hover 시 표시 */}
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
+                <button
+                  onClick={(e) => { e.stopPropagation(); startEdit(u); }}
+                  className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-purple-600 hover:bg-purple-100 transition-all"
+                  title="이름 수정"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteUser(u.username); }}
+                  className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                  title="삭제"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                  </svg>
+                </button>
               </div>
-              {u.displayName}
-            </button>
+            </div>
           ))}
         </div>
+
+        {/* 인라인 편집/추가 폼 */}
+        {editingId !== null && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <p className="text-xs font-semibold text-purple-700 mb-2">
+              {editingId === "__new__" ? "새 팀원 추가" : "팀원 정보 수정"}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 block mb-1">표시 이름 *</label>
+                <input
+                  autoFocus
+                  className="w-full px-2.5 py-2 text-sm border border-purple-200 rounded-lg outline-none focus:border-purple-400"
+                  placeholder="홍길동"
+                  value={editForm.displayName}
+                  onChange={(e) => setEditForm((p) => ({ ...p, displayName: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && commitEdit()}
+                />
+              </div>
+              {editingId === "__new__" && (
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 block mb-1">아이디 (선택)</label>
+                  <input
+                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-purple-400 font-mono"
+                    placeholder="자동생성"
+                    value={editForm.username}
+                    onChange={(e) => setEditForm((p) => ({ ...p, username: e.target.value }))}
+                    onKeyDown={(e) => e.key === "Enter" && commitEdit()}
+                  />
+                </div>
+              )}
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 block mb-1">비밀번호</label>
+                <input
+                  type="text"
+                  className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-purple-400"
+                  placeholder={editingId === "__new__" ? "1234" : "변경 시 입력"}
+                  value={editForm.password}
+                  onChange={(e) => setEditForm((p) => ({ ...p, password: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && commitEdit()}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={commitEdit}
+                className="px-4 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700 transition-all"
+              >
+                {editingId === "__new__" ? "추가" : "저장"}
+              </button>
+              <button
+                onClick={() => setEditingId(null)}
+                className="px-4 py-1.5 border border-gray-200 text-gray-500 text-xs rounded-lg hover:bg-gray-50 transition-all"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {currentUser && (

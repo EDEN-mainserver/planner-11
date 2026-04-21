@@ -194,8 +194,11 @@ export default function FunnelBlogPage({ onBack }) {
   const [urlInput, setUrlInput] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState(null);
-  const [refs, setRefs] = useState(loadRefs);          // 저장된 레퍼런스 목록
-  const [selectedRefId, setSelectedRefId] = useState(null); // 현재 선택된 ref id
+  const [refs, setRefs] = useState(loadRefs);               // 저장된 레퍼런스 목록
+  const [selectedRefId, setSelectedRefId] = useState(null); // 드롭다운 선택값
+  const [editingRef, setEditingRef] = useState(null);        // 편집 중인 ref 로컬 복사본
+  const [saveFlash, setSaveFlash] = useState(false);         // 저장 완료 애니메이션
+  const [showUrlInput, setShowUrlInput] = useState(false);   // URL 입력 토글
 
   // 폼 필드 업데이트
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -203,23 +206,41 @@ export default function FunnelBlogPage({ onBack }) {
   // refs 상태가 바뀌면 localStorage 동기화
   useEffect(() => { saveRefs(refs); }, [refs]);
 
-  // 레퍼런스 선택
-  const handleSelectRef = (ref) => {
-    setSelectedRefId(ref.id);
+  // 드롭다운에서 레퍼런스 선택
+  const handleSelectRef = (id) => {
+    if (!id) {
+      setSelectedRefId(null);
+      setEditingRef(null);
+      setField("refBlog", "");
+      return;
+    }
+    const ref = refs.find((r) => r.id === id);
+    if (!ref) return;
+    setSelectedRefId(id);
+    setEditingRef({ ...ref });      // 편집용 로컬 복사본
     setField("refBlog", ref.text);
   };
 
-  // 레퍼런스 선택 해제
-  const handleDeselectRef = () => {
-    setSelectedRefId(null);
-    setField("refBlog", "");
+  // 편집 필드 업데이트 (로컬만 — 저장 전까지 반영 안 됨)
+  const setEditField = (key, val) => setEditingRef((prev) => ({ ...prev, [key]: val }));
+
+  // 편집 내용 저장
+  const handleSaveEdit = () => {
+    if (!editingRef) return;
+    setRefs((prev) => prev.map((r) => r.id === editingRef.id ? { ...editingRef } : r));
+    setField("refBlog", editingRef.text);
+    setSaveFlash(true);
+    setTimeout(() => setSaveFlash(false), 1800);
   };
 
   // 레퍼런스 삭제
-  const handleDeleteRef = (id, e) => {
-    e.stopPropagation();
-    setRefs((prev) => prev.filter((r) => r.id !== id));
-    if (selectedRefId === id) handleDeselectRef();
+  const handleDeleteRef = () => {
+    if (!selectedRefId) return;
+    if (!window.confirm("이 레퍼런스를 삭제할까요?")) return;
+    setRefs((prev) => prev.filter((r) => r.id !== selectedRefId));
+    setSelectedRefId(null);
+    setEditingRef(null);
+    setField("refBlog", "");
   };
 
   // 현재 선택된 퍼널 단계 정보
@@ -242,10 +263,16 @@ export default function FunnelBlogPage({ onBack }) {
         text,
         savedAt: new Date().toISOString(),
       };
-      setRefs((prev) => [newRef, ...prev]);
+      setRefs((prev) => {
+        const updated = [newRef, ...prev];
+        saveRefs(updated);
+        return updated;
+      });
       setSelectedRefId(newRef.id);
+      setEditingRef({ ...newRef });
       setField("refBlog", text);
       setUrlInput("");
+      setShowUrlInput(false);
     } catch (err) {
       setUrlError(err.message);
     } finally {
@@ -455,121 +482,149 @@ export default function FunnelBlogPage({ onBack }) {
 
             {/* 레퍼런스 블로그 글 */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-3">
-                레퍼런스 블로그 글
-                <span className="ml-2 text-xs font-normal text-gray-400">선택사항 — 말투·흐름을 AI가 참고합니다</span>
-              </label>
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm font-semibold text-gray-700">
+                  레퍼런스 블로그 글
+                  <span className="ml-2 text-xs font-normal text-gray-400">선택사항 — 말투·흐름을 AI가 참고합니다</span>
+                </label>
+                {/* URL로 새로 추가 토글 */}
+                <button
+                  type="button"
+                  onClick={() => { setShowUrlInput((v) => !v); setUrlError(null); }}
+                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 font-medium transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    {showUrlInput ? <path d="M18 6 6 18M6 6l12 12"/> : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
+                  </svg>
+                  {showUrlInput ? "닫기" : "URL로 추가"}
+                </button>
+              </div>
 
-              {/* 저장된 레퍼런스 목록 */}
-              {refs.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-xs text-gray-400 mb-2">저장된 레퍼런스</p>
-                  <div className="flex flex-wrap gap-2">
-                    {refs.map((ref) => (
-                      <button
-                        key={ref.id}
-                        type="button"
-                        onClick={() => selectedRefId === ref.id ? handleDeselectRef() : handleSelectRef(ref)}
-                        className={`group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all
-                          ${selectedRefId === ref.id
-                            ? "bg-gray-900 text-white border-gray-900"
-                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                          }`}
-                      >
-                        {selectedRefId === ref.id && (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20 6 9 17l-5-5"/>
-                          </svg>
-                        )}
-                        <span className="max-w-[140px] truncate">{ref.name}</span>
-                        {/* 삭제 버튼 */}
-                        <span
-                          onClick={(e) => handleDeleteRef(ref.id, e)}
-                          className={`ml-0.5 rounded-full w-3.5 h-3.5 flex items-center justify-center transition-colors
-                            ${selectedRefId === ref.id
-                              ? "text-gray-300 hover:text-white"
-                              : "text-gray-300 hover:text-red-400"
-                            }`}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-                          </svg>
-                        </span>
-                      </button>
+              {/* URL 입력 (토글) */}
+              {showUrlInput && (
+                <div className="mb-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <p className="text-xs text-gray-500 mb-2">블로그 URL을 입력하면 말투·흐름을 자동 분석해서 저장합니다</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={urlInput}
+                      onChange={(e) => { setUrlInput(e.target.value); setUrlError(null); }}
+                      onKeyDown={(e) => e.key === "Enter" && handleFetchUrl()}
+                      placeholder="https://blog.naver.com/아이디"
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleFetchUrl}
+                      disabled={!urlInput.trim() || urlLoading}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 flex-shrink-0
+                        ${!urlInput.trim() || urlLoading
+                          ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                          : "bg-gray-900 text-white hover:bg-gray-700"
+                        }`}
+                    >
+                      {urlLoading
+                        ? <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                        : null}
+                      {urlLoading ? "분석 중..." : "불러오기"}
+                    </button>
+                  </div>
+                  {urlError && <p className="text-xs text-red-500 mt-1.5">{urlError}</p>}
+                </div>
+              )}
+
+              {/* 드롭다운 선택 */}
+              <div className="flex gap-2 items-center mb-3">
+                <div className="relative flex-1">
+                  <select
+                    value={selectedRefId || ""}
+                    onChange={(e) => handleSelectRef(e.target.value || null)}
+                    className="w-full appearance-none border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition pr-9 text-gray-700"
+                  >
+                    <option value="">— 저장된 레퍼런스 선택 —</option>
+                    {refs.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
+                  </select>
+                  <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </div>
+                {selectedRefId && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteRef}
+                    className="p-2.5 rounded-xl border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 transition-all"
+                    title="삭제"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+
+              {/* 편집 패널 — 선택된 경우 */}
+              {editingRef && (
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  {/* 이름 편집 */}
+                  <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 flex-shrink-0">
+                      <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                    </svg>
+                    <input
+                      type="text"
+                      value={editingRef.name}
+                      onChange={(e) => setEditField("name", e.target.value)}
+                      className="flex-1 text-sm font-medium text-gray-700 bg-transparent focus:outline-none"
+                      placeholder="레퍼런스 이름"
+                    />
+                    {editingRef.url && (
+                      <a href={editingRef.url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-blue-400 hover:text-blue-600 transition-colors truncate max-w-[160px]"
+                      >
+                        {editingRef.url.replace(/^https?:\/\//, "").slice(0, 30)}
+                      </a>
+                    )}
+                  </div>
+
+                  {/* 본문 편집 */}
+                  <div className="relative">
+                    <textarea
+                      value={editingRef.text}
+                      onChange={(e) => {
+                        setEditField("text", e.target.value);
+                        setField("refBlog", e.target.value); // 실시간 반영
+                      }}
+                      rows={8}
+                      className="w-full px-4 py-3 text-sm text-gray-600 leading-relaxed resize-none focus:outline-none"
+                      placeholder="레퍼런스 텍스트를 직접 편집할 수 있습니다"
+                    />
+                    <span className="absolute bottom-2 right-3 text-xs text-gray-300 pointer-events-none">
+                      {editingRef.text.length.toLocaleString()}자
+                    </span>
+                  </div>
+
+                  {/* 저장 버튼 */}
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-t border-gray-200">
+                    <span className={`text-xs transition-all duration-300 ${saveFlash ? "text-emerald-500" : "text-gray-400"}`}>
+                      {saveFlash ? "✓ 저장됨" : "수정 후 저장하세요"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSaveEdit}
+                      className="px-4 py-1.5 bg-gray-900 text-white text-xs font-semibold rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      저장
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* URL 입력 */}
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="url"
-                  value={urlInput}
-                  onChange={(e) => { setUrlInput(e.target.value); setUrlError(null); }}
-                  onKeyDown={(e) => e.key === "Enter" && handleFetchUrl()}
-                  placeholder="블로그 URL 붙여넣기 (네이버·티스토리·브런치 등)"
-                  className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
-                />
-                <button
-                  type="button"
-                  onClick={handleFetchUrl}
-                  disabled={!urlInput.trim() || urlLoading}
-                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 flex-shrink-0
-                    ${!urlInput.trim() || urlLoading
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      : "bg-gray-900 text-white hover:bg-gray-700"
-                    }`}
-                >
-                  {urlLoading ? (
-                    <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                  )}
-                  {urlLoading ? "불러오는 중..." : "불러오기"}
-                </button>
-              </div>
-
-              {/* URL 에러 */}
-              {urlError && (
-                <p className="text-xs text-red-500 mb-2 pl-1">{urlError}</p>
-              )}
-
-              {/* 직접 붙여넣기 */}
-              <div className="relative">
-                <textarea
-                  value={form.refBlog}
-                  onChange={(e) => setField("refBlog", e.target.value)}
-                  placeholder={"또는 블로그 글 텍스트를 직접 붙여넣으세요.\nAI가 말투, 문장 호흡, 흐름을 참고해서 글을 작성합니다."}
-                  rows={form.refBlog ? 7 : 4}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition resize-none leading-relaxed"
-                />
-                {form.refBlog && (
-                  <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                    <span className="text-xs text-gray-300">{form.refBlog.length.toLocaleString()}자</span>
-                    <button
-                      type="button"
-                      onClick={() => setField("refBlog", "")}
-                      className="text-xs text-gray-300 hover:text-red-400 transition-colors bg-white"
-                    >
-                      지우기
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 성공 표시 */}
-              {form.refBlog && !urlLoading && (
-                <p className="text-xs text-emerald-500 mt-1.5 pl-1 flex items-center gap-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 6 9 17l-5-5"/>
-                  </svg>
-                  레퍼런스 글 준비됨 — AI가 이 글의 말투와 흐름을 참고합니다
+              {/* 레퍼런스 없을 때 안내 */}
+              {!editingRef && refs.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-3">
+                  URL로 추가하면 다음에도 선택해서 재사용할 수 있습니다
                 </p>
               )}
             </div>
