@@ -1,5 +1,6 @@
 import { useState } from "react";
 import BlogPage from "./BlogPage";
+import FunnelBlogPage from "./FunnelBlogPage";
 import CrawlingPage from "./crawling/CrawlingPage";
 import ImagePage from "./ImagePage";
 import VideoPage from "./VideoPage";
@@ -151,7 +152,7 @@ export default function EAttackPage() {
   // 채널 클릭
   const handleChannelClick = (channel) => {
     if (channel.key === "blog") {
-      setDepth("blog");
+      setDepth("funnelblog");
     }
   };
 
@@ -160,7 +161,12 @@ export default function EAttackPage() {
     return <CrawlingPage onBack={() => setDepth("root")} />;
   }
 
-  // 블로그 대시보드
+  // 퍼널 블로그 생성
+  if (depth === "funnelblog") {
+    return <FunnelBlogPage onBack={() => setDepth("text")} />;
+  }
+
+  // 블로그 대시보드 (레거시 — 직접 접근 시)
   if (depth === "blog") {
     return <BlogPage onBack={() => setDepth("text")} />;
   }

@@ -48,6 +48,15 @@ export async function generateCardnewsTemplate({
 }
 
 /**
+ * 퍼널 블로그 글 생성
+ * @param {{ prompt: string }} params
+ * @returns {{ title, sections, cta, keywords }}
+ */
+export async function generateFunnelBlog({ prompt } = {}) {
+  return post('/ai/funnel/blog', { prompt });
+}
+
+/**
  * 카드뉴스 슬라이드 내용 생성
  * @param {{ brandName, color1, tone, target, purpose, topic, slideCount }} params
  * @returns {{ slides }}

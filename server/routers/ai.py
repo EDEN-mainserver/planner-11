@@ -1,5 +1,5 @@
 # AI 라우터 - Claude API 연동
-# 엔드포인트: POST /ai/cardnews/template, POST /ai/cardnews/slides
+# 엔드포인트: POST /ai/cardnews/template, POST /ai/cardnews/slides, POST /ai/funnel/blog
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -35,6 +35,10 @@ class SlidesRequest(BaseModel):
     slide_count: int = Field(default=5, ge=3, le=10)
 
 
+class FunnelBlogRequest(BaseModel):
+    prompt: str  # 프론트에서 조립된 완전한 프롬프트
+
+
 # ── 응답 모델 ─────────────────────────────────────────────────────
 
 class TemplateResponse(BaseModel):
@@ -46,6 +50,17 @@ class TemplateResponse(BaseModel):
 
 class SlidesResponse(BaseModel):
     slides: list[dict]
+
+
+class FunnelBlogSection(BaseModel):
+    heading: str | None
+    content: str
+
+class FunnelBlogResponse(BaseModel):
+    title:    str
+    sections: list[FunnelBlogSection]
+    cta:      str
+    keywords: list[str]
 
 
 # ── 엔드포인트 ────────────────────────────────────────────────────
@@ -113,3 +128,28 @@ async def generate_cardnews_slides(req: SlidesRequest):
     # slide_count 맞게 자르기
     slides = result[:req.slide_count]
     return SlidesResponse(slides=slides)
+
+
+@router.post("/funnel/blog", response_model=FunnelBlogResponse)
+async def generate_funnel_blog(req: FunnelBlogRequest):
+    """
+    퍼널 블로그 글 생성
+    - 프론트에서 조립한 프롬프트를 받아 { title, sections, cta, keywords } 반환
+    """
+    if not req.prompt.strip():
+        raise HTTPException(status_code=400, detail="프롬프트가 비어있습니다.")
+
+    try:
+        result = await generate_json(req.prompt, max_tokens=4096)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not isinstance(result, dict) or "title" not in result:
+        raise HTTPException(status_code=500, detail="블로그 응답 형식 오류")
+
+    return FunnelBlogResponse(
+        title=result.get("title", ""),
+        sections=result.get("sections", []),
+        cta=result.get("cta", ""),
+        keywords=result.get("keywords", []),
+    )
