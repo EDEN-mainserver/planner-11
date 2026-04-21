@@ -1,6 +1,28 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { callGemini } from "../utils/gemini";
 import { buildFunnelPrompt } from "./funnelPrompts";
+
+// ─── 레퍼런스 라이브러리 (localStorage) ───
+const REF_STORAGE_KEY = "funnel_ref_styles";
+
+function loadRefs() {
+  try { return JSON.parse(localStorage.getItem(REF_STORAGE_KEY) || "[]"); }
+  catch { return []; }
+}
+function saveRefs(refs) {
+  localStorage.setItem(REF_STORAGE_KEY, JSON.stringify(refs));
+}
+function nameFromUrl(url) {
+  try {
+    const u = new URL(url);
+    // 네이버 블로그 → "네이버@아이디"
+    const naverMatch = u.hostname.includes("naver") && u.pathname.match(/\/([^/?#]+)/);
+    if (naverMatch) return `네이버 @${naverMatch[1]}`;
+    // 그 외 → 도메인 + 첫 경로
+    const path = u.pathname.replace(/\/$/, "").split("/").slice(1, 2).join("");
+    return (u.hostname.replace("www.", "") + (path ? `/${path}` : "")).slice(0, 30);
+  } catch { return url.slice(0, 30); }
+}
 
 // ─── 퍼널 단계 설정 ───
 const FUNNEL_STAGES = [
@@ -172,20 +194,56 @@ export default function FunnelBlogPage({ onBack }) {
   const [urlInput, setUrlInput] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState(null);
+  const [refs, setRefs] = useState(loadRefs);          // 저장된 레퍼런스 목록
+  const [selectedRefId, setSelectedRefId] = useState(null); // 현재 선택된 ref id
 
   // 폼 필드 업데이트
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
+  // refs 상태가 바뀌면 localStorage 동기화
+  useEffect(() => { saveRefs(refs); }, [refs]);
+
+  // 레퍼런스 선택
+  const handleSelectRef = (ref) => {
+    setSelectedRefId(ref.id);
+    setField("refBlog", ref.text);
+  };
+
+  // 레퍼런스 선택 해제
+  const handleDeselectRef = () => {
+    setSelectedRefId(null);
+    setField("refBlog", "");
+  };
+
+  // 레퍼런스 삭제
+  const handleDeleteRef = (id, e) => {
+    e.stopPropagation();
+    setRefs((prev) => prev.filter((r) => r.id !== id));
+    if (selectedRefId === id) handleDeselectRef();
+  };
+
   // 현재 선택된 퍼널 단계 정보
   const selectedStage = FUNNEL_STAGES.find((s) => s.key === form.funnelStage);
 
-  // ─── URL 크롤링 ───
+  // ─── URL 크롤링 + 자동 저장 ───
   const handleFetchUrl = async () => {
     if (!urlInput.trim()) return;
     setUrlError(null);
     setUrlLoading(true);
     try {
-      const text = await fetchRefFromUrl(urlInput.trim());
+      const rawUrl = urlInput.trim();
+      const text = await fetchRefFromUrl(rawUrl);
+
+      // localStorage에 저장
+      const newRef = {
+        id: Date.now().toString(),
+        name: nameFromUrl(rawUrl),
+        url: rawUrl,
+        text,
+        savedAt: new Date().toISOString(),
+      };
+      setRefs((prev) => [newRef, ...prev]);
+      setSelectedRefId(newRef.id);
       setField("refBlog", text);
       setUrlInput("");
     } catch (err) {
@@ -401,6 +459,47 @@ export default function FunnelBlogPage({ onBack }) {
                 레퍼런스 블로그 글
                 <span className="ml-2 text-xs font-normal text-gray-400">선택사항 — 말투·흐름을 AI가 참고합니다</span>
               </label>
+
+              {/* 저장된 레퍼런스 목록 */}
+              {refs.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs text-gray-400 mb-2">저장된 레퍼런스</p>
+                  <div className="flex flex-wrap gap-2">
+                    {refs.map((ref) => (
+                      <button
+                        key={ref.id}
+                        type="button"
+                        onClick={() => selectedRefId === ref.id ? handleDeselectRef() : handleSelectRef(ref)}
+                        className={`group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all
+                          ${selectedRefId === ref.id
+                            ? "bg-gray-900 text-white border-gray-900"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                          }`}
+                      >
+                        {selectedRefId === ref.id && (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20 6 9 17l-5-5"/>
+                          </svg>
+                        )}
+                        <span className="max-w-[140px] truncate">{ref.name}</span>
+                        {/* 삭제 버튼 */}
+                        <span
+                          onClick={(e) => handleDeleteRef(ref.id, e)}
+                          className={`ml-0.5 rounded-full w-3.5 h-3.5 flex items-center justify-center transition-colors
+                            ${selectedRefId === ref.id
+                              ? "text-gray-300 hover:text-white"
+                              : "text-gray-300 hover:text-red-400"
+                            }`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                          </svg>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* URL 입력 */}
               <div className="flex gap-2 mb-2">
