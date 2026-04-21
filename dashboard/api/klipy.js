@@ -74,31 +74,31 @@ export default async function handler(req, res) {
 
     const data = await klipyRes.json();
 
-    // 응답 구조 탐색: { result, data: { data: [...] } } 또는 { data: [...] }
+    // 응답 구조: { result: true, data: { data: [ { file: { sm, md, hd } } ] } }
     const list = data?.data?.data ?? data?.data ?? [];
     const item = Array.isArray(list) ? list[0] : null;
 
     if (!item) {
-      return res.status(200).json({ url: null, keyword, raw: data });
+      return res.status(200).json({ url: null, keyword });
     }
 
-    // files 또는 media_formats 에서 GIF/MP4 URL 추출
-    const files = item?.files ?? item?.media_formats ?? {};
+    // file.sm.gif.url → md.gif.url → hd.gif.url 순으로 시도 (sm이 가장 가벼움)
+    const f = item?.file ?? {};
     const url =
-      files?.gif?.url ||
-      files?.original?.url ||
-      files?.mp4?.url ||
-      files?.fixed_height?.url ||
-      files?.downsized?.url ||
-      item?.url ||
+      f?.sm?.gif?.url ||
+      f?.md?.gif?.url ||
+      f?.hd?.gif?.url ||
+      f?.sm?.webp?.url ||
+      f?.md?.webp?.url ||
       null;
 
+    const smGif = f?.sm?.gif ?? f?.md?.gif ?? {};
     res.setHeader("Cache-Control", "s-maxage=60");
     res.status(200).json({
       url,
       keyword,
-      width:  item?.width  ?? null,
-      height: item?.height ?? null,
+      width:  smGif?.width  ?? null,
+      height: smGif?.height ?? null,
     });
 
   } catch (e) {
