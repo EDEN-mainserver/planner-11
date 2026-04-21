@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import IbossNewPost from "./IbossNewPost";
 import IbossEditor from "./IbossEditor";
+import ExtensionInstallModal from "./ExtensionInstallModal";
 
 const STORAGE_KEY = "eattack_iboss_posts";
 
@@ -281,6 +282,7 @@ export default function IbossPage({ onBack, referencePost = null, onClearReferen
   // 레퍼런스가 있으면 바로 새 글 작성 뷰로 진입
   const [view, setView] = useState(referencePost ? "new" : "list");
   const [currentPost, setCurrentPost] = useState(null);
+  const [showExtModal, setShowExtModal] = useState(false);
 
   useEffect(() => {
     savePosts(posts);
@@ -340,6 +342,8 @@ export default function IbossPage({ onBack, referencePost = null, onClearReferen
 
   return (
     <div className="flex-1 overflow-auto bg-white h-full flex flex-col">
+      {showExtModal && <ExtensionInstallModal onClose={() => setShowExtModal(false)} />}
+
       {/* 헤더 */}
       <header className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100">
         <div className="flex items-center justify-between gap-4">
@@ -357,17 +361,29 @@ export default function IbossPage({ onBack, referencePost = null, onClearReferen
               <p className="text-xs text-gray-400 mt-0.5">마케팅 커뮤니티 최적화 글 작성 · 자동 포스팅</p>
             </div>
           </div>
-          {activeTab === "articles" && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setView("new")}
-              className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap font-medium transition-colors rounded-lg text-xs h-9 px-3 bg-emerald-600 text-white shadow hover:bg-emerald-700"
+              onClick={() => setShowExtModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all whitespace-nowrap"
+              title="Eden Crawl 확장 프로그램 설치 안내"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14"/><path d="M12 5v14"/>
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
               </svg>
-              새 글 작성
+              확장 설치
             </button>
-          )}
+            {activeTab === "articles" && (
+              <button
+                onClick={() => setView("new")}
+                className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap font-medium transition-colors rounded-lg text-xs h-9 px-3 bg-emerald-600 text-white shadow hover:bg-emerald-700"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14"/><path d="M12 5v14"/>
+                </svg>
+                새 글 작성
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
