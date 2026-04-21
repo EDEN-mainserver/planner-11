@@ -2,10 +2,12 @@
 // 크롤링/리서치 → 기획 → 이미지 생성 → 카드 조립 → 배포
 import { useState } from "react";
 import { callGemini } from "../utils/gemini";
+import LoginModal, { getSession, clearSession } from "./LoginModal";
 
 // ── 상수 ──
 const BATCH_SIZE = 3;
-const IG_KEY = "eden_unified_ig_v1";
+// 사용자별 IG 설정 키 (username 기반)
+const igKey = (username) => `eden_ig_${username}_v1`;
 const FONTS = ["sans", "serif", "mono"];
 const FONT_LABELS = { sans: "고딕", serif: "명조", mono: "모노" };
 const FONT_CSS = {
@@ -29,19 +31,22 @@ const PURPOSE_OPTS = [
 ];
 const STEP_LABELS = ["설정", "리서치", "기획", "이미지", "조립", "배포"];
 
-// ── Instagram 설정 로드 ──
-function loadIg() {
+// ── Instagram 설정 로드 (사용자별) ──
+function loadIg(username) {
   try {
     return (
-      JSON.parse(localStorage.getItem(IG_KEY)) || {
+      JSON.parse(localStorage.getItem(igKey(username))) || {
         accountId: "",
         accessToken: "",
-        autoPost: false,
       }
     );
   } catch {
-    return { accountId: "", accessToken: "", autoPost: false };
+    return { accountId: "", accessToken: "" };
   }
+}
+
+function saveIg(username, config) {
+  localStorage.setItem(igKey(username), JSON.stringify(config));
 }
 
 // ── API 함수 ──
@@ -309,6 +314,9 @@ function ErrorBox({ msg, onRetry }) {
 
 // ── 메인 컴포넌트 ──
 export default function UnifiedPipelineTab() {
+  // 세션 (로그인)
+  const [session, setSession] = useState(() => getSession());
+
   // 파이프라인 단계 상태
   const [step, setStep] = useState("setup");
   const [running, setRunning] = useState(false);
@@ -332,10 +340,29 @@ export default function UnifiedPipelineTab() {
   const [cards, setCards] = useState([]); // 편집 가능한 카드 데이터
   const [htmlContent, setHtmlContent] = useState("");
 
-  // Instagram 설정
-  const [igConfig, setIgConfig] = useState(() => loadIg());
+  // Instagram 설정 (사용자별 로드)
+  const [igConfig, setIgConfig] = useState(() =>
+    loadIg(getSession()?.username || "__guest")
+  );
   const [igPosting, setIgPosting] = useState(false);
   const [igResult, setIgResult] = useState(null);
+  const [postCaption, setPostCaption] = useState("");
+
+  // 로그인 핸들러
+  const handleLogin = (s) => {
+    setSession(s);
+    setIgConfig(loadIg(s.username));
+  };
+
+  const handleLogout = () => {
+    clearSession();
+    setSession(null);
+  };
+
+  // 로그인 안 된 경우 모달 표시
+  if (!session) {
+    return <LoginModal onLogin={handleLogin} />;
+  }
 
   const run = async (fn) => {
     setRunning(true);
