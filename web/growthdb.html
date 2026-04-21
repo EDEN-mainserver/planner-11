@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>에쿠 GrowthDB — COUPLUS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --mint: #00BCD4;
+      --mint-light: #E0F7FA;
+      --mint-dark: #00838F;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+    /* 스크롤바 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+    /* 사이드바 아코디언 */
+    .sidebar-item.active > .sidebar-label { color: var(--mint-dark); font-weight: 600; }
+    .sidebar-item.active > .sidebar-label .dot { background: var(--mint); }
+
+    /* 필터 탭 */
+    .filter-tab { transition: all .15s; }
+    .filter-tab.active { background: #2196F3; color: white; border-color: #2196F3; }
+    .filter-tab.active.orange { background: #FF9800; border-color: #FF9800; }
+    .filter-tab.active.pink { background: #E91E63; border-color: #E91E63; }
+    .filter-tab.active.red { background: #F44336; border-color: #F44336; }
+    .filter-tab.active.green { background: #4CAF50; border-color: #4CAF50; }
+
+    /* 토글 */
+    .toggle input:checked + .slider { background: #00BCD4; }
+    .toggle input:checked + .slider:before { transform: translateX(16px); }
+    .slider { transition: .2s; border-radius: 12px; position: relative; display: block; width: 36px; height: 20px; background: #ccc; cursor: pointer; }
+    .slider:before { content: ''; position: absolute; width: 16px; height: 16px; top: 2px; left: 2px; background: white; border-radius: 50%; transition: .2s; }
+
+    /* 테이블 */
+    .data-table th { position: sticky; top: 0; background: #E0F7FA; z-index: 10; white-space: nowrap; }
+    .data-table td { white-space: nowrap; }
+
+    /* 뱃지 */
+    .badge-gold { background: #FFF8DC; color: #B8860B; border: 1px solid #DAA520; }
+    .badge-silver { background: #F0F0F0; color: #666; border: 1px solid #bbb; }
+    .badge-bronze { background: #FFF3E0; color: #BF360C; border: 1px solid #FFAB40; }
+
+    /* 헤더 fixed */
+    #app-header { position: fixed; top: 0; left: 0; right: 0; height: 60px; z-index: 100; }
+    #app-sidebar { position: fixed; top: 60px; left: 0; bottom: 0; z-index: 90; transition: width .2s; overflow-y: auto; }
+    #main-content { margin-top: 60px; margin-left: 210px; min-height: calc(100vh - 60px); transition: margin-left .2s; }
+
+    /* 사이드바 collapsed */
+    body.sidebar-collapsed #app-sidebar { width: 52px !important; }
+    body.sidebar-collapsed #main-content { margin-left: 52px; }
+    body.sidebar-collapsed .sidebar-text { display: none; }
+    body.sidebar-collapsed .sidebar-arrow { display: none; }
+    body.sidebar-collapsed .sidebar-badge { display: none; }
+
+    /* 아이템위너 색 */
+    .winner-yes { color: #4CAF50; font-weight: 600; }
+    .winner-no { color: #F44336; }
+  </style>
+</head>
+<body class="bg-gray-50">
+
+<!-- ===== 헤더 ===== -->
+<header id="app-header" class="bg-white border-b border-gray-200 flex items-center px-4 gap-3 shadow-sm">
+  <!-- 햄버거 -->
+  <button id="sidebar-toggle" class="p-1.5 rounded hover:bg-gray-100 text-gray-500" onclick="toggleSidebar()">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+    </svg>
+  </button>
+  <!-- 로고 -->
+  <div class="flex items-center gap-1.5 font-bold text-lg" style="color:#00838F">
+    <div class="w-7 h-7 rounded-md flex items-center justify-center text-white text-sm font-bold" style="background:#00BCD4">C</div>
+    <span>COUPLUS</span>
+  </div>
+
+  <div class="flex-1"></div>
+
+  <!-- 우측 버튼들 -->
+  <a href="#" class="text-xs text-gray-500 hover:text-gray-700 hidden sm:block">사용자 메뉴얼</a>
+  <a href="#" class="text-xs text-gray-500 hover:text-gray-700 hidden sm:block">확장프로그램</a>
+  <button class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50">CLI 미연결</button>
+  <button class="text-xs px-3 py-1.5 rounded text-white font-medium" style="background:#00BCD4">자동수집</button>
+  <button class="text-xs px-3 py-1.5 rounded border text-gray-600 hover:bg-gray-50" style="border-color:#00BCD4;color:#00838F">계정관리</button>
+  <!-- 아바타 -->
+  <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold cursor-pointer" style="background:#00BCD4">정</div>
+</header>
+
+<!-- ===== 사이드바 ===== -->
+<nav id="app-sidebar" class="bg-white border-r border-gray-200" style="width:210px">
+  <div class="py-3 px-2">
+
+    <!-- 카테고리 1: 로켓그로스 -->
+    <div class="sidebar-item mb-1">
+      <div class="sidebar-label flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium" onclick="toggleAccordion(this)">
+        <span class="text-base">🚀</span>
+        <span class="sidebar-text flex-1">로켓그로스</span>
+        <svg class="sidebar-arrow w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="accordion-content pl-2 mt-0.5 space-y-0.5">
+        <!-- 에쿠 GrowthDB — 현재 페이지 (active) -->
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors font-semibold" style="background:#E0F7FA;color:#00838F">
+          <span class="text-base">📊</span>
+          <span class="sidebar-text">에쿠 GrowthDB</span>
+        </div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100">
+          <span class="text-base">📦</span>
+          <span class="sidebar-text">공급관리(SCM)</span>
+        </div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100">
+          <span class="text-base">📒</span>
+          <span class="sidebar-text">판매장부</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 카테고리 2: 로켓배송 -->
+    <div class="sidebar-item mb-1">
+      <div class="sidebar-label flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium" onclick="toggleAccordion(this)">
+        <span class="text-base">🛵</span>
+        <span class="sidebar-text flex-1">로켓배송</span>
+        <svg class="sidebar-arrow w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="accordion-content hidden pl-2 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100">
+          <span class="text-base">🤖</span><span class="sidebar-text">AI상품등록</span>
+          <span class="sidebar-badge ml-auto text-xs px-1.5 py-0.5 rounded text-white font-medium" style="background:#4CAF50">new</span>
+        </div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100">
+          <span class="text-base">🗂️</span><span class="sidebar-text">상품관리(신규)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 카테고리 3: 소싱분석 -->
+    <div class="sidebar-item mb-1">
+      <div class="sidebar-label flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium" onclick="toggleAccordion(this)">
+        <span class="text-base">🔍</span>
+        <span class="sidebar-text flex-1">소싱분석</span>
+        <svg class="sidebar-arrow w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="accordion-content hidden pl-2 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">🏷️</span><span class="sidebar-text">카테고리소싱분석</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">🔑</span><span class="sidebar-text">키워드소싱분석</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">📈</span><span class="sidebar-text">상품경쟁력분석</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">📊</span><span class="sidebar-text">키워드분석</span></div>
+      </div>
+    </div>
+
+    <!-- 카테고리 4: 마케팅 -->
+    <div class="sidebar-item mb-1">
+      <div class="sidebar-label flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium" onclick="toggleAccordion(this)">
+        <span class="text-base">📣</span>
+        <span class="sidebar-text flex-1">마케팅</span>
+        <svg class="sidebar-arrow w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="accordion-content hidden pl-2 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">📉</span><span class="sidebar-text">쿠팡 랭킹추적</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">✏️</span><span class="sidebar-text">상품명메이커</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">📢</span><span class="sidebar-text">광고관리(소싱검증)</span></div>
+      </div>
+    </div>
+
+    <!-- 카테고리 5: 쿠패스 -->
+    <div class="sidebar-item mb-1">
+      <div class="sidebar-label flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium" onclick="toggleAccordion(this)">
+        <span class="text-base">🛒</span>
+        <span class="sidebar-text flex-1">쿠패스</span>
+        <svg class="sidebar-arrow w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="accordion-content hidden pl-2 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">📋</span><span class="sidebar-text">구매요청(그로스)</span></div>
+      </div>
+    </div>
+
+    <!-- 카테고리 6: 물류 -->
+    <div class="sidebar-item mb-1">
+      <div class="sidebar-label flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium" onclick="toggleAccordion(this)">
+        <span class="text-base">🚢</span>
+        <span class="sidebar-text flex-1">해외물류</span>
+        <svg class="sidebar-arrow w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="accordion-content hidden pl-2 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">📦</span><span class="sidebar-text">배송대행현황</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100"><span class="text-base">📄</span><span class="sidebar-text">출고리스트</span></div>
+      </div>
+    </div>
+
+    <!-- 카테고리 7: AI도구 -->
+    <div class="sidebar-item mb-1">
+      <div class="sidebar-label flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium" onclick="toggleAccordion(this)">
+        <span class="text-base">✨</span>
+        <span class="sidebar-text flex-1">AI 도구</span>
+        <svg class="sidebar-arrow w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="accordion-content hidden pl-2 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100">
+          <span class="text-base">🪄</span><span class="sidebar-text">나노바나나 이미지에디터</span>
+        </div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors text-gray-600 hover:bg-gray-100">
+          <span class="text-base">🐱</span><span class="sidebar-text">AI 소싱 챗</span>
+          <span class="sidebar-badge ml-auto text-xs px-1.5 py-0.5 rounded text-white font-medium" style="background:#4CAF50">new</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</nav>
+
+<!-- ===== 메인 콘텐츠 ===== -->
+<main id="main-content" class="p-5">
+
+  <!-- 페이지 타이틀 + 상단 액션 -->
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+        <span>📊</span> 에쿠 GrowthDB
+      </h1>
+      <p class="text-xs text-gray-400 mt-0.5">로켓그로스 상품 DB 통합 관리</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <!-- 반품상품보기 토글 -->
+      <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+        <span>반품상품보기</span>
+        <label class="toggle">
+          <input type="checkbox" class="hidden" onchange="filterToggle(this,'반품')">
+          <span class="slider"></span>
+        </label>
+      </label>
+      <!-- 번들상품보기 토글 -->
+      <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer ml-2">
+        <span>번들상품보기</span>
+        <label class="toggle">
+          <input type="checkbox" class="hidden" onchange="filterToggle(this,'번들')">
+          <span class="slider"></span>
+        </label>
+      </label>
+      <div class="w-px h-5 bg-gray-200 mx-1"></div>
+      <!-- 상품DB수집 -->
+      <button class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded text-white font-medium" style="background:#00BCD4">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        상품DB 수집
+      </button>
+      <!-- 허용스토어설정 -->
+      <button class="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50">
+        허용스토어 설정
+      </button>
+    </div>
+  </div>
+
+  <!-- 컨트롤 바 (필터탭 + 버튼) -->
+  <div class="bg-white rounded-lg border border-gray-200 p-3 mb-3">
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- 필터 탭 -->
+      <div class="flex items-center gap-1.5 flex-wrap flex-1">
+        <button class="filter-tab active text-xs px-3 py-1.5 rounded border border-blue-300 text-blue-600 font-medium" onclick="setTab(this)">
+          전체 <span class="ml-1 bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full text-xs">247</span>
+        </button>
+        <button class="filter-tab text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50" onclick="setTab(this)">
+          노출ID변경 <span class="ml-1 bg-gray-100 px-1.5 py-0.5 rounded-full text-xs">12</span>
+        </button>
+        <button class="filter-tab text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50" onclick="setTab(this)">
+          타사매칭 <span class="ml-1 bg-gray-100 px-1.5 py-0.5 rounded-full text-xs">8</span>
+        </button>
+        <button class="filter-tab orange text-xs px-3 py-1.5 rounded border border-orange-200 text-orange-600 hover:bg-orange-50" onclick="setTab(this)">
+          아이템루저 <span class="ml-1 bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full text-xs">31</span>
+        </button>
+        <button class="filter-tab text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50" onclick="setTab(this)">
+          뱃지없음 <span class="ml-1 bg-gray-100 px-1.5 py-0.5 rounded-full text-xs">54</span>
+        </button>
+        <button class="filter-tab pink text-xs px-3 py-1.5 rounded border border-pink-200 text-pink-600 hover:bg-pink-50" onclick="setTab(this)">
+          반품 <span class="ml-1 bg-pink-100 text-pink-700 px-1.5 py-0.5 rounded-full text-xs">7</span>
+        </button>
+        <button class="filter-tab text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50" onclick="setTab(this)">
+          번들 <span class="ml-1 bg-gray-100 px-1.5 py-0.5 rounded-full text-xs">19</span>
+        </button>
+        <button class="filter-tab red text-xs px-3 py-1.5 rounded border border-red-200 text-red-500 hover:bg-red-50" onclick="setTab(this)">
+          구매정보없음 <span class="ml-1 bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full text-xs">23</span>
+        </button>
+        <button class="filter-tab text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50" onclick="setTab(this)">
+          매입정보없음 <span class="ml-1 bg-gray-100 px-1.5 py-0.5 rounded-full text-xs">41</span>
+        </button>
+      </div>
+
+      <!-- 우측 버튼 -->
+      <div class="flex items-center gap-2">
+        <button class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border text-gray-600 hover:bg-gray-50">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          상품DB 다운로드
+        </button>
+        <button class="text-xs px-3 py-1.5 rounded text-white font-medium" style="background:#E91E8C">
+          매입정보 관리
+        </button>
+      </div>
+    </div>
+
+    <!-- 테이블 컨트롤 바 -->
+    <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+      <div class="relative">
+        <svg class="w-3.5 h-3.5 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/></svg>
+        <input type="text" placeholder="Search..." class="text-xs pl-7 pr-3 py-1.5 border border-gray-300 rounded focus:outline-none focus:border-teal-400 w-44" />
+      </div>
+      <select class="text-xs px-2 py-1.5 border border-gray-300 rounded focus:outline-none text-gray-600">
+        <option>20 per page</option>
+        <option>50 per page</option>
+        <option>100 per page</option>
+      </select>
+      <button class="text-xs px-2.5 py-1.5 border border-gray-300 rounded text-gray-600 hover:bg-gray-50 flex items-center gap-1">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        컬럼선택
+      </button>
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <span>높이고정</span>
+        <label class="flex items-center gap-1 cursor-pointer">
+          <input type="radio" name="rowHeight" checked class="accent-teal-500"> Y
+        </label>
+        <label class="flex items-center gap-1 cursor-pointer">
+          <input type="radio" name="rowHeight" class="accent-teal-500"> N
+        </label>
+      </div>
+      <div class="ml-auto text-xs text-gray-400">총 247개 상품</div>
+    </div>
+  </div>
+
+  <!-- 데이터 테이블 -->
+  <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div class="overflow-x-auto max-h-[calc(100vh-290px)] overflow-y-auto">
+      <table class="data-table w-full text-xs">
+        <thead>
+          <tr class="text-left text-gray-600">
+            <th class="px-3 py-2.5 w-8"><input type="checkbox" class="rounded" /></th>
+            <th class="px-3 py-2.5">등급</th>
+            <th class="px-3 py-2.5">이미지</th>
+            <th class="px-3 py-2.5 min-w-[180px]">상품명</th>
+            <th class="px-3 py-2.5">노출ID</th>
+            <th class="px-3 py-2.5">옵션ID</th>
+            <th class="px-3 py-2.5">바코드</th>
+            <th class="px-3 py-2.5">판매링크</th>
+            <th class="px-3 py-2.5">구매관리</th>
+            <th class="px-3 py-2.5">매입관리</th>
+            <th class="px-3 py-2.5">밀크런비용</th>
+            <th class="px-3 py-2.5">아이템위너</th>
+            <th class="px-3 py-2.5">사이즈</th>
+            <th class="px-3 py-2.5">쿠팡재고</th>
+            <th class="px-3 py-2.5">판매가</th>
+            <th class="px-3 py-2.5">수수료</th>
+            <th class="px-3 py-2.5">마진</th>
+            <th class="px-3 py-2.5">마진율</th>
+            <th class="px-3 py-2.5">ROI</th>
+            <th class="px-3 py-2.5">ROAS</th>
+            <th class="px-3 py-2.5">7일매출</th>
+            <th class="px-3 py-2.5">30일매출</th>
+            <th class="px-3 py-2.5">판매량</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <!-- JS로 렌더링 -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 페이지네이션 -->
+    <div class="flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50">
+      <span class="text-xs text-gray-500">1–20 / 247개</span>
+      <div class="flex items-center gap-1">
+        <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500 disabled:opacity-40" disabled>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        </button>
+        <button class="w-7 h-7 flex items-center justify-center rounded text-xs font-medium text-white" style="background:#00BCD4">1</button>
+        <button class="w-7 h-7 flex items-center justify-center rounded text-xs text-gray-600 hover:bg-gray-200">2</button>
+        <button class="w-7 h-7 flex items-center justify-center rounded text-xs text-gray-600 hover:bg-gray-200">3</button>
+        <span class="text-xs text-gray-400 px-1">...</span>
+        <button class="w-7 h-7 flex items-center justify-center rounded text-xs text-gray-600 hover:bg-gray-200">13</button>
+        <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ===== 사이드바 토글 =====
+function toggleSidebar() {
+  document.body.classList.toggle('sidebar-collapsed');
+}
+
+// ===== 아코디언 =====
+function toggleAccordion(label) {
+  const content = label.nextElementSibling;
+  const arrow = label.querySelector('.sidebar-arrow');
+  if (!content) return;
+  const isHidden = content.classList.contains('hidden');
+  content.classList.toggle('hidden', !isHidden);
+  if (arrow) arrow.style.transform = isHidden ? 'rotate(180deg)' : '';
+}
+
+// ===== 필터 탭 =====
+function setTab(btn) {
+  document.querySelectorAll('.filter-tab').forEach(t => {
+    t.classList.remove('active');
+    // 원래 색상 복원
+    t.style.background = '';
+    t.style.color = '';
+    t.style.borderColor = '';
+  });
+  btn.classList.add('active');
+}
+
+// ===== 토글 =====
+function filterToggle(input, type) {
+  console.log(type, '토글:', input.checked);
+}
+
+// ===== 샘플 데이터 =====
+const grades = [
+  { label: '골드', cls: 'badge-gold' },
+  { label: '실버', cls: 'badge-silver' },
+  { label: '브론즈', cls: 'badge-bronze' },
+];
+const productNames = [
+  '쿠팡 로켓 그로스 데님 자켓 (남성용) 2024 신상',
+  'A급 프리미엄 무선 블루투스 이어폰 노이즈캔슬링',
+  '유기농 녹차 추출물 세럼 50ml 민감성 피부용',
+  '스테인레스 텀블러 500ml 보온보냉 12시간',
+  '고탄력 필라테스 레깅스 여성 운동복 세트',
+  '캠핑 접이식 테이블 알루미늄 경량 휴대용',
+  '국내산 흑마늘 진액 80ml x 30포 선물세트',
+  '아동용 LED 운동화 야광 사이즈 150-230',
+  '프리미엄 양면 테이프 다용도 방수 투명 10M',
+  '반려동물 자동 급식기 스마트 타이머 3L',
+  '에어팟 케이스 호환 실리콘 키링 패션 아이템',
+  '대용량 수납 정리함 뚜껑형 패브릭 박스 40L',
+  '모공케어 토너 히알루론산 수분 300ml',
+  '다용도 주방 가위 스테인레스 분리형 세척가능',
+  '컴팩트 미니 선풍기 USB 충전식 휴대용',
+  '어린이 빅사이즈 수영 튜브 자동 충기',
+  '프리미엄 원두커피 200g 싱글오리진 에티오피아',
+  '멀티 충전기 C타입 60W 고속 4포트',
+  '기능성 메모리폼 목베개 여행용 U자형',
+  '친환경 대나무 도마 항균 대형 40x30cm',
+];
+const options = ['블랙', '화이트', '네이비', '그레이', '핑크', '베이지'];
+
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function fmtNum(n) { return n.toLocaleString(); }
+function fmtPct(n) { return n.toFixed(1) + '%'; }
+
+function renderTable() {
+  const tbody = document.getElementById('table-body');
+  let html = '';
+  for (let i = 0; i < 20; i++) {
+    const grade = grades[rand(0, 2)];
+    const name = productNames[i % productNames.length];
+    const option = options[rand(0, options.length - 1)];
+    const expId = `${rand(10000000, 99999999)}`;
+    const optId = `${rand(100000000, 999999999)}`;
+    const barcode = `88${rand(10000000000, 99999999999)}`;
+    const stock = rand(0, 500);
+    const price = rand(8900, 89000);
+    const fee = Math.round(price * 0.1);
+    const margin = rand(800, price * 0.35);
+    const marginRate = (margin / price * 100).toFixed(1);
+    const roi = (margin / (price - margin) * 100).toFixed(0);
+    const roas = (price / fee * 100).toFixed(0);
+    const sales7 = rand(50000, 5000000);
+    const sales30 = sales7 * rand(3, 5);
+    const qty = rand(10, 500);
+    const isWinner = rand(0, 1) === 1;
+    const milkrun = rand(200, 1500);
+
+    html += `
+    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+      <td class="px-3 py-2"><input type="checkbox" class="rounded" /></td>
+      <td class="px-3 py-2">
+        <span class="text-xs px-2 py-0.5 rounded-full font-medium ${grade.cls}">${grade.label}</span>
+      </td>
+      <td class="px-3 py-2">
+        <div class="w-10 h-10 rounded border border-gray-200 bg-gray-100 flex items-center justify-center text-gray-300 text-lg">🖼</div>
+      </td>
+      <td class="px-3 py-2">
+        <div class="max-w-[180px]">
+          <p class="text-gray-800 font-medium leading-tight truncate">${name}</p>
+          <p class="text-gray-400 mt-0.5 truncate">${option}</p>
+        </div>
+      </td>
+      <td class="px-3 py-2 text-gray-600 font-mono">${expId}</td>
+      <td class="px-3 py-2 text-gray-600 font-mono">${optId}</td>
+      <td class="px-3 py-2 text-gray-500 font-mono text-xs">${barcode}</td>
+      <td class="px-3 py-2">
+        <a href="#" class="text-blue-500 hover:underline">링크 🔗</a>
+      </td>
+      <td class="px-3 py-2">
+        <button class="text-xs px-2 py-1 rounded text-white" style="background:#00BCD4">구매관리</button>
+      </td>
+      <td class="px-3 py-2">
+        <button class="text-xs px-2 py-1 rounded text-white" style="background:#E91E8C">매입관리</button>
+      </td>
+      <td class="px-3 py-2 text-right text-gray-700">₩${fmtNum(milkrun)}</td>
+      <td class="px-3 py-2 text-center">
+        <span class="${isWinner ? 'winner-yes' : 'winner-no'}">${isWinner ? '✓ 위너' : '✗'}</span>
+      </td>
+      <td class="px-3 py-2 text-gray-600">-</td>
+      <td class="px-3 py-2 text-right">
+        <span class="${stock < 10 ? 'text-red-500 font-bold' : stock < 50 ? 'text-orange-500 font-medium' : 'text-gray-700'}">${fmtNum(stock)}</span>
+      </td>
+      <td class="px-3 py-2 text-right font-medium text-gray-800">₩${fmtNum(price)}</td>
+      <td class="px-3 py-2 text-right text-gray-600">₩${fmtNum(fee)}</td>
+      <td class="px-3 py-2 text-right ${margin > 0 ? 'text-green-600 font-medium' : 'text-red-500'}">₩${fmtNum(margin)}</td>
+      <td class="px-3 py-2 text-right ${parseFloat(marginRate) >= 20 ? 'text-green-600' : parseFloat(marginRate) >= 10 ? 'text-orange-500' : 'text-red-500'}">${fmtPct(parseFloat(marginRate))}</td>
+      <td class="px-3 py-2 text-right text-gray-700">${roi}%</td>
+      <td class="px-3 py-2 text-right text-gray-700">${roas}%</td>
+      <td class="px-3 py-2 text-right text-gray-700">₩${fmtNum(sales7)}</td>
+      <td class="px-3 py-2 text-right text-gray-700">₩${fmtNum(sales30)}</td>
+      <td class="px-3 py-2 text-right text-gray-700">${fmtNum(qty)}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
+
+// 초기 렌더링 + 로켓그로스 첫 아코디언 열기
+document.addEventListener('DOMContentLoaded', () => {
+  renderTable();
+  // 로켓그로스 메뉴 기본 펼침
+  const firstLabel = document.querySelector('.sidebar-item .sidebar-label');
+  if (firstLabel) {
+    const content = firstLabel.nextElementSibling;
+    if (content) content.classList.remove('hidden');
+    const arrow = firstLabel.querySelector('.sidebar-arrow');
+    if (arrow) arrow.style.transform = 'rotate(180deg)';
+  }
+});
+</script>
+</body>
+</html>
