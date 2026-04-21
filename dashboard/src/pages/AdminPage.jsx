@@ -3,6 +3,8 @@
 // - 소셜 계정 API 연동 (인스타그램 · 스레드 per user)
 // - AI API 키 관리 (Gemini, Claude, OpenAI 등)
 import { useState } from "react";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 import { USERS as SEED_USERS } from "../config/users";
 import { PRESET_PROVIDERS, loadAiKeys, saveAiKeys } from "../utils/aiKeys";
 
@@ -949,7 +951,7 @@ function CoupangTab() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleTest = () => {
+  const handleTest = async () => {
     if (!creds.accessKey || !creds.secretKey || !creds.vendorId) {
       setTestResult({ ok: false, msg: 'Access Key, Secret Key, Vendor ID를 모두 입력하세요.' });
       return;
@@ -957,34 +959,28 @@ function CoupangTab() {
     setTesting(true);
     setTestResult(null);
 
-    // 에쿠 확장 경유 테스트 (브라우저 IP → IP 차단 없음)
-    const reqId = 'test_' + Date.now();
-    const timeout = setTimeout(() => {
-      window.removeEventListener('message', handler);
-      setTestResult({ ok: false, msg: '에쿠 확장 응답 없음 — 확장이 설치·활성화되어 있고 이 페이지가 허용 URL인지 확인하세요.' });
-      setTesting(false);
-    }, 10000);
-
-    function handler(e) {
-      if (!e.data || e.data.source !== 'eku-extension') return;
-      if (e.data.requestId !== reqId) return;
-      clearTimeout(timeout);
-      window.removeEventListener('message', handler);
-      if (e.data.error) {
-        setTestResult({ ok: false, msg: `❌ ${e.data.error}` });
+    // 고정 IP 서버 경유 연결 테스트
+    try {
+      const resp = await fetch(`${API_BASE}/coupang/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_key: creds.accessKey,
+          secret_key: creds.secretKey,
+          vendor_id:  creds.vendorId,
+        }),
+      });
+      const json = await resp.json();
+      if (resp.ok && json.ok) {
+        setTestResult({ ok: true, msg: json.message || '연결 성공!' });
       } else {
-        setTestResult({ ok: true, msg: `연결 성공! ${e.data.count ?? 0}개 상품 확인됨.` });
+        const msg = json?.detail || json?.message || `HTTP ${resp.status}`;
+        setTestResult({ ok: false, msg: `❌ ${msg}` });
       }
-      setTesting(false);
+    } catch (e) {
+      setTestResult({ ok: false, msg: `❌ 서버 연결 실패: ${e.message}` });
     }
-
-    window.addEventListener('message', handler);
-    window.postMessage({
-      source: 'eku-dashboard',
-      type: 'EKU_COLLECT_PRODUCTS',
-      requestId: reqId,
-      creds: { accessKey: creds.accessKey, secretKey: creds.secretKey, vendorId: creds.vendorId },
-    }, '*');
+    setTesting(false);
   };
 
   const connected = !!(creds.accessKey && creds.secretKey && creds.vendorId);

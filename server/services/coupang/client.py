@@ -56,12 +56,13 @@ class CoupangClient:
     # ── 상품 목록 ─────────────────────────────────────────────
     async def get_products(self, next_token: str = '', max_per_page: int = 50) -> dict:
         """
-        판매 중인 상품 목록 조회
+        판매 중인 상품 목록 조회 (marketplace seller-products endpoint)
         """
-        path = f"/v2/providers/seller_api/apis/api/v1/vendors/{self.vendor_id}/products/search"
+        path = '/v2/providers/seller_api/apis/api/v1/marketplace/seller-products'
         params = {
-            'status':     'APPROVED',
             'maxPerPage': str(max_per_page),
+            'status':     'APPROVED',
+            'vendorId':   self.vendor_id,
         }
         if next_token:
             params['nextToken'] = next_token
