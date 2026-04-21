@@ -16,6 +16,8 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
   const [activePage, setActivePage] = useState('home'); // 'home' | 'projects' | 'trash' | 'admin'
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [permDeleteId, setPermDeleteId] = useState(null);
+  const [openSections, setOpenSections] = useState({ rocket: true, delivery: true, sourcing: true, marketing: false, coupass: false, logistics: false, aitools: false });
+  const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   const handleSuggest = async () => {
     setIsLoading(true);
@@ -44,7 +46,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
   return (
     <div className="h-screen flex bg-gray-50" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
       {/* 사이드바 */}
-      <aside className="w-52 shrink-0 bg-white border-r border-gray-200 flex flex-col py-4">
+      <aside className="w-56 shrink-0 bg-white border-r border-gray-200 flex flex-col py-4 overflow-y-auto">
         <div className="px-4 mb-6">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-purple-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">ED</div>
