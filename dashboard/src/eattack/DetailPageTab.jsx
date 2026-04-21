@@ -1,9 +1,9 @@
 /**
  * 상세페이지 만들기 탭
- * 흐름: 제품 정보 입력 → AI 섹션 기획 → 편집 → MD 다운로드
+ * 흐름: 제품 정보 입력 → AI 섹션 기획 → 이미지 생성 → MD 다운로드
  */
 import { useState } from "react";
-import { callGemini } from "../utils/gemini";
+import { callGemini, generateImage } from "../utils/gemini";
 
 // ── 상수 ──
 const LS_KEY = "eden_detail_page_v1";
@@ -14,15 +14,24 @@ const CATEGORY_OPTIONS = [
 ];
 
 const DETAIL_SECTIONS = [
-  { key: "hook",        title: "후킹 헤드라인",    desc: "강렬한 첫인상 — 헤드라인 + 서브카피" },
-  { key: "pain",        title: "공감 섹션",        desc: "고객 페인포인트 3~5개 공감 유도" },
-  { key: "solution",    title: "솔루션 소개",      desc: "제품이 문제를 해결하는 방식" },
-  { key: "features",   title: "핵심 특장점",      desc: "차별화 포인트 3~5개" },
-  { key: "howto",      title: "사용 방법",        desc: "3단계 사용법 안내" },
-  { key: "before_after", title: "사용 전/후",     desc: "Before & After 비교 카피" },
-  { key: "reviews",    title: "고객 후기",        desc: "설득력 있는 후기 예시 3개" },
-  { key: "faq",        title: "자주 묻는 질문",   desc: "Q&A 3~4개" },
-  { key: "cta",        title: "최종 CTA",         desc: "구매 전환 유도 카피 + 긴급성 요소" },
+  { key: "hook",         title: "후킹 헤드라인",    desc: "강렬한 첫인상 — 헤드라인 + 서브카피" },
+  { key: "pain",         title: "공감 섹션",        desc: "고객 페인포인트 3~5개 공감 유도" },
+  { key: "solution",     title: "솔루션 소개",      desc: "제품이 문제를 해결하는 방식" },
+  { key: "features",    title: "핵심 특장점",      desc: "차별화 포인트 3~5개" },
+  { key: "howto",       title: "사용 방법",        desc: "3단계 사용법 안내" },
+  { key: "before_after", title: "사용 전/후",      desc: "Before & After 비교 카피" },
+  { key: "reviews",     title: "고객 후기",        desc: "설득력 있는 후기 예시 3개" },
+  { key: "faq",         title: "자주 묻는 질문",   desc: "Q&A 3~4개" },
+  { key: "cta",         title: "최종 CTA",         desc: "구매 전환 유도 카피 + 긴급성 요소" },
+];
+
+// 이미지 슬롯 정의
+const IMAGE_SLOTS = [
+  { key: "hero",       label: "메인 비주얼",      aspect: "1:1",  hint: "제품 단독 촬영, 클린 배경" },
+  { key: "lifestyle",  label: "라이프스타일",     aspect: "3:4",  hint: "실제 사용 장면, 감성적 연출" },
+  { key: "feature1",   label: "특장점 이미지 1",  aspect: "1:1",  hint: "핵심 성분 또는 기술 시각화" },
+  { key: "feature2",   label: "특장점 이미지 2",  aspect: "1:1",  hint: "효능/효과 비주얼" },
+  { key: "feature3",   label: "특장점 이미지 3",  aspect: "1:1",  hint: "타겟 고객 공감 이미지" },
 ];
 
 const SYSTEM_PROMPT = `
@@ -109,7 +118,7 @@ function buildSectionPrompt(sectionKey, info) {
 **특장점 2 제목** ... (동일 구조, 총 3~5개)
 `,
     howto: `
-위 제품의 **사용 방법 섹션**을 3단계로 작성하세요. 쉽고 명확하게.
+위 제품의 **사용 방법 섹션**을 3단계로 작성하세요.
 
 출력 형식:
 ### 섹션 제목 (간단함을 강조)
@@ -126,7 +135,7 @@ function buildSectionPrompt(sectionKey, info) {
 > 마무리 한 줄 (쉬움을 재확인)
 `,
     before_after: `
-위 제품의 **사용 전/후 비교 섹션**을 작성하세요. 극적인 변화를 강조.
+위 제품의 **사용 전/후 비교 섹션**을 작성하세요.
 
 출력 형식:
 ### 섹션 제목
@@ -140,7 +149,7 @@ function buildSectionPrompt(sectionKey, info) {
 > 변화를 강조하는 한 줄 카피:
 `,
     reviews: `
-위 제품의 **고객 후기 섹션**을 작성하세요. 실제처럼 설득력 있게.
+위 제품의 **고객 후기 섹션**을 작성하세요.
 
 출력 형식:
 ### 섹션 제목 (숫자 포함: "OOO명이 선택한")
@@ -174,7 +183,7 @@ function buildSectionPrompt(sectionKey, info) {
 **A4.**
 `,
     cta: `
-위 제품의 **최종 CTA 섹션**을 작성하세요. 구매 전환을 극대화.
+위 제품의 **최종 CTA 섹션**을 작성하세요.
 
 출력 형식:
 ### 메인 CTA 헤드라인 (지금 당장 사야 하는 이유)
@@ -190,41 +199,55 @@ function buildSectionPrompt(sectionKey, info) {
 - 안심 요소 2
 - 안심 요소 3
 
-> 마지막 설득 한 줄 (지금 클릭하지 않으면 놓치는 것):
+> 마지막 설득 한 줄:
 `,
   };
 
   return `${base}\n---\n${guides[sectionKey]}`.trim();
 }
 
+// 이미지 프롬프트 빌더
+function buildImagePrompt(slotKey, info) {
+  const cat = info.category || "product";
+  const name = info.productName;
+  const target = info.target;
+
+  const prompts = {
+    hero: `Professional product photography of ${name}, ${cat} product, clean white background, studio lighting, high-end commercial shot, no text, no watermark, photorealistic`,
+    lifestyle: `Lifestyle photography showing ${target} using ${name}, ${cat}, natural light, warm aesthetic, Korean style, editorial look, no text, no watermark, photorealistic`,
+    feature1: `Close-up macro shot of ${name} key ingredient or technology, ${cat}, clean composition, soft lighting, no text, no watermark, photorealistic`,
+    feature2: `Before and after visual concept for ${name}, split composition showing transformation, ${cat}, clean modern design, no text, no watermark, photorealistic`,
+    feature3: `Portrait of Korean ${target} looking satisfied and confident, lifestyle context, warm tones, natural expression, no text, no watermark, photorealistic`,
+  };
+  return prompts[slotKey] || `${name} product photo, photorealistic, no text`;
+}
+
 // ── 메인 컴포넌트 ──
 export default function DetailPageTab() {
-  // 단계: input | generating | result
   const [step, setStep] = useState("input");
 
-  // 입력값
   const [info, setInfo] = useState({
-    productName: "",
-    category: "",
-    usp: "",
-    target: "",
-    price: "",
-    extra: "",
+    productName: "", category: "", usp: "", target: "", price: "", extra: "",
   });
 
-  // 생성 상태
   const [sectionProgress, setSectionProgress] = useState(0);
   const [error, setError] = useState("");
 
-  // 결과
-  const [sections, setSections] = useState([]); // [{ key, title, content }]
+  const [sections, setSections] = useState([]);
   const [activeSection, setActiveSection] = useState(null);
+
+  // 이미지 상태: { [slotKey]: { url, loading, error } }
+  const [images, setImages] = useState({});
 
   function setField(key, val) {
     setInfo(prev => ({ ...prev, [key]: val }));
   }
 
-  // ── 생성 시작 ──
+  function setImageState(key, patch) {
+    setImages(prev => ({ ...prev, [key]: { ...(prev[key] || {}), ...patch } }));
+  }
+
+  // ── 텍스트 섹션 생성 ──
   async function handleGenerate() {
     if (!info.productName.trim() || !info.usp.trim() || !info.target.trim()) return;
     setError("");
@@ -241,6 +264,7 @@ export default function DetailPageTab() {
         results.push({ key: sec.key, title: sec.title, content });
       }
       setSections(results);
+      setImages({});
       saveDraft({ info, sections: results });
       setActiveSection(results[0]?.key || null);
       setStep("result");
@@ -250,7 +274,34 @@ export default function DetailPageTab() {
     }
   }
 
-  // 섹션 내용 수정
+  // ── 이미지 단건 생성 ──
+  async function handleGenerateImage(slotKey) {
+    setImageState(slotKey, { loading: true, error: null });
+    try {
+      const slot = IMAGE_SLOTS.find(s => s.key === slotKey);
+      const prompt = buildImagePrompt(slotKey, info);
+      const url = await generateImage(prompt, slot.aspect);
+      setImageState(slotKey, { url, loading: false, error: null });
+    } catch (e) {
+      setImageState(slotKey, { loading: false, error: e.message });
+    }
+  }
+
+  // ── 전체 이미지 생성 ──
+  async function handleGenerateAllImages() {
+    for (const slot of IMAGE_SLOTS) {
+      await handleGenerateImage(slot.key);
+    }
+  }
+
+  // 이미지 다운로드
+  function downloadImage(url, label) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${info.productName}_${label}_${Date.now()}.png`;
+    a.click();
+  }
+
   function updateSection(key, newContent) {
     setSections(prev => {
       const next = prev.map(s => s.key === key ? { ...s, content: newContent } : s);
@@ -259,7 +310,6 @@ export default function DetailPageTab() {
     });
   }
 
-  // MD 다운로드
   function handleDownload() {
     const md = sections.map(s => `# ${s.title}\n\n${s.content}`).join("\n\n---\n\n");
     const full = `# 상세페이지 기획안 — ${info.productName}\n\n${md}`;
@@ -271,19 +321,18 @@ export default function DetailPageTab() {
     URL.revokeObjectURL(a.href);
   }
 
-  // 전체 복사
   function handleCopy() {
     const md = sections.map(s => `# ${s.title}\n\n${s.content}`).join("\n\n---\n\n");
     navigator.clipboard.writeText(md);
     alert("클립보드에 복사되었습니다.");
   }
 
-  // 초안 불러오기
   function handleLoadDraft() {
     const draft = loadDraft();
     if (!draft) return;
     setInfo(draft.info || info);
     setSections(draft.sections || []);
+    setImages({});
     setActiveSection(draft.sections?.[0]?.key || null);
     setStep("result");
   }
@@ -291,8 +340,8 @@ export default function DetailPageTab() {
   const draft = loadDraft();
   const canGenerate = info.productName.trim() && info.usp.trim() && info.target.trim();
   const currentSection = sections.find(s => s.key === activeSection);
+  const anyImageLoading = IMAGE_SLOTS.some(s => images[s.key]?.loading);
 
-  // ── 렌더 ──
   return (
     <div className="p-6 max-w-3xl mx-auto">
 
@@ -307,36 +356,28 @@ export default function DetailPageTab() {
             </div>
             <div>
               <h4 className="text-base font-bold text-gray-800">상세페이지 만들기</h4>
-              <p className="text-xs text-gray-400">제품 정보를 입력하면 AI가 9개 섹션을 자동 기획합니다</p>
+              <p className="text-xs text-gray-400">제품 정보 입력 → 9개 섹션 카피 + 5장 이미지 자동 생성</p>
             </div>
           </div>
 
-          {/* 제품명 */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               제품/서비스명 <span className="text-orange-500">*</span>
             </label>
-            <input
-              type="text"
-              value={info.productName}
+            <input type="text" value={info.productName}
               onChange={e => setField("productName", e.target.value)}
               placeholder="예: 다크서클 집중 개선 아이크림"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
             />
           </div>
 
-          {/* 카테고리 */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">카테고리</label>
             <div className="flex flex-wrap gap-2">
               {CATEGORY_OPTIONS.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setField("category", cat)}
+                <button key={cat} onClick={() => setField("category", cat)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                    info.category === cat
-                      ? "bg-orange-500 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    info.category === cat ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                   }`}
                 >
                   {cat}
@@ -345,68 +386,56 @@ export default function DetailPageTab() {
             </div>
           </div>
 
-          {/* 핵심 소구점 */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               핵심 소구점 (USP) <span className="text-orange-500">*</span>
               <span className="ml-1 text-xs font-normal text-gray-400">경쟁 제품과 다른 차별화 포인트</span>
             </label>
-            <textarea
-              value={info.usp}
-              onChange={e => setField("usp", e.target.value)}
-              rows={3}
+            <textarea value={info.usp} onChange={e => setField("usp", e.target.value)} rows={3}
               placeholder={"예:\n- 레티놀 0.1% + 나이아신아마이드 5% 고농도 복합 처방\n- 무향·무색소 민감성 피부 전용\n- 피부과 임상 완료 (8주 사용 후 다크서클 42% 개선)"}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent resize-none leading-relaxed"
             />
           </div>
 
-          {/* 타겟 */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
               타겟 고객 <span className="text-orange-500">*</span>
             </label>
-            <input
-              type="text"
-              value={info.target}
-              onChange={e => setField("target", e.target.value)}
+            <input type="text" value={info.target} onChange={e => setField("target", e.target.value)}
               placeholder="예: 30대 직장여성, 수면 부족으로 다크서클 고민, 자연주의 뷰티 관심"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
             />
           </div>
 
-          {/* 가격대 + 추가정보 (2열) */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">가격대</label>
-              <input
-                type="text"
-                value={info.price}
-                onChange={e => setField("price", e.target.value)}
+              <input type="text" value={info.price} onChange={e => setField("price", e.target.value)}
                 placeholder="예: 39,000원"
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
               />
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">추가 정보</label>
-              <input
-                type="text"
-                value={info.extra}
-                onChange={e => setField("extra", e.target.value)}
+              <input type="text" value={info.extra} onChange={e => setField("extra", e.target.value)}
                 placeholder="예: 비건 인증, 제주 원료"
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
               />
             </div>
           </div>
 
-          {/* 생성될 섹션 미리보기 */}
+          {/* 생성 미리보기 */}
           <div className="p-4 rounded-xl bg-orange-50 border border-orange-100">
-            <p className="text-xs font-semibold text-orange-700 mb-2">생성될 섹션 ({DETAIL_SECTIONS.length}개)</p>
+            <p className="text-xs font-semibold text-orange-700 mb-2">생성 항목</p>
             <div className="flex flex-wrap gap-1.5">
               {DETAIL_SECTIONS.map((sec, i) => (
                 <span key={sec.key} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-white border border-orange-200 text-orange-600">
                   <span className="font-bold">{i + 1}</span> {sec.title}
                 </span>
               ))}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-white border border-amber-300 text-amber-700 font-medium">
+                + 이미지 5장 (별도 생성)
+              </span>
             </div>
           </div>
 
@@ -420,9 +449,7 @@ export default function DetailPageTab() {
           )}
 
           <div className="flex gap-3">
-            <button
-              onClick={handleGenerate}
-              disabled={!canGenerate}
+            <button onClick={handleGenerate} disabled={!canGenerate}
               className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-sm font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -431,8 +458,7 @@ export default function DetailPageTab() {
               상세페이지 기획 시작
             </button>
             {draft && (
-              <button
-                onClick={handleLoadDraft}
+              <button onClick={handleLoadDraft}
                 className="px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition-all"
               >
                 이전 초안
@@ -452,18 +478,14 @@ export default function DetailPageTab() {
           </div>
           <p className="text-sm font-semibold text-gray-700 mb-1">상세페이지 기획 중...</p>
           <p className="text-xs text-gray-500 mt-2">
-            섹션 {sectionProgress + 1} / {DETAIL_SECTIONS.length}: <span className="font-medium text-orange-500">{DETAIL_SECTIONS[sectionProgress]?.title}</span> 작성 중
+            섹션 {sectionProgress + 1} / {DETAIL_SECTIONS.length}:{" "}
+            <span className="font-medium text-orange-500">{DETAIL_SECTIONS[sectionProgress]?.title}</span> 작성 중
           </p>
-          <p className="text-xs text-gray-400 mt-1">{DETAIL_SECTIONS[sectionProgress]?.desc}</p>
-
-          {/* 진행 바 */}
           <div className="mt-5 w-48 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-500"
+            <div className="h-full bg-gradient-to-r from-orange-400 to-amber-400 rounded-full transition-all duration-500"
               style={{ width: `${((sectionProgress + 1) / DETAIL_SECTIONS.length) * 100}%` }}
             />
           </div>
-
           <div className="mt-4 flex gap-1">
             {[0, 1, 2].map(i => (
               <div key={i} className="w-2 h-2 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
@@ -474,50 +496,133 @@ export default function DetailPageTab() {
 
       {/* ── Step: result ── */}
       {step === "result" && (
-        <div className="space-y-5">
+        <div className="space-y-6">
+
           {/* 헤더 */}
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-base font-bold text-gray-800">상세페이지 기획안</h4>
-              <p className="text-xs text-gray-400">{info.productName} — 섹션을 클릭해 내용을 수정하세요</p>
+              <p className="text-xs text-gray-400">{info.productName}</p>
             </div>
-            <button
-              onClick={() => { setStep("input"); setError(""); }}
+            <button onClick={() => { setStep("input"); setError(""); }}
               className="text-xs text-gray-400 hover:text-gray-600 underline"
             >
               다시 만들기
             </button>
           </div>
 
-          {/* 섹션 탭 */}
-          <div className="flex gap-1.5 flex-wrap">
-            {sections.map((sec, i) => (
+          {/* ── 이미지 생성 섹션 ── */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-amber-100">
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                </svg>
+                <span className="text-sm font-bold text-amber-800">상세페이지 이미지 생성</span>
+                <span className="text-xs text-amber-600">— Imagen AI · {IMAGE_SLOTS.length}장</span>
+              </div>
               <button
-                key={sec.key}
-                onClick={() => setActiveSection(sec.key)}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                  activeSection === sec.key
-                    ? "bg-orange-500 text-white shadow-sm"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
+                onClick={handleGenerateAllImages}
+                disabled={anyImageLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className={`text-[10px] ${activeSection === sec.key ? "text-orange-200" : "text-gray-400"}`}>{i + 1}</span>
-                {sec.title}
+                {anyImageLoading ? (
+                  <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                  </svg>
+                )}
+                전체 생성
               </button>
-            ))}
+            </div>
+
+            <div className="p-4 grid grid-cols-5 gap-3">
+              {IMAGE_SLOTS.map(slot => {
+                const img = images[slot.key];
+                return (
+                  <div key={slot.key} className="flex flex-col gap-1.5">
+                    {/* 이미지 박스 */}
+                    <div
+                      className="relative rounded-lg overflow-hidden bg-white border border-amber-200"
+                      style={{ aspectRatio: slot.aspect === "3:4" ? "3/4" : "1/1" }}
+                    >
+                      {img?.url ? (
+                        <>
+                          <img src={img.url} alt={slot.label} className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => downloadImage(img.url, slot.label)}
+                            className="absolute bottom-1 right-1 w-6 h-6 rounded-md bg-black/60 flex items-center justify-center hover:bg-black/80 transition-all"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                          </button>
+                        </>
+                      ) : img?.loading ? (
+                        <div className="w-full h-full flex items-center justify-center bg-amber-50">
+                          <svg className="animate-spin text-amber-400" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                          </svg>
+                        </div>
+                      ) : img?.error ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-red-50 p-1">
+                          <span className="text-[9px] text-red-400 text-center leading-tight">{img.error.slice(0, 40)}</span>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-gray-50">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5">
+                            <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 라벨 + 생성 버튼 */}
+                    <p className="text-[10px] text-amber-700 font-medium text-center leading-tight">{slot.label}</p>
+                    <button
+                      onClick={() => handleGenerateImage(slot.key)}
+                      disabled={img?.loading || anyImageLoading}
+                      className="w-full py-1 rounded-md text-[10px] font-semibold border border-amber-300 text-amber-700 bg-white hover:bg-amber-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {img?.url ? "재생성" : "생성"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── 텍스트 섹션 탭 ── */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">섹션 카피 ({sections.length}개)</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {sections.map((sec, i) => (
+                <button key={sec.key} onClick={() => setActiveSection(sec.key)}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    activeSection === sec.key
+                      ? "bg-orange-500 text-white shadow-sm"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  <span className={`text-[10px] ${activeSection === sec.key ? "text-orange-200" : "text-gray-400"}`}>{i + 1}</span>
+                  {sec.title}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* 섹션 편집기 */}
           {currentSection && (
             <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-orange-50 border-b border-orange-100">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-md bg-orange-100 flex items-center justify-center text-[10px] font-bold text-orange-600">
-                    {sections.findIndex(s => s.key === activeSection) + 1}
-                  </span>
-                  <span className="text-sm font-semibold text-gray-700">{currentSection.title}</span>
-                  <span className="text-xs text-gray-400">— {DETAIL_SECTIONS.find(s => s.key === activeSection)?.desc}</span>
-                </div>
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-orange-50 border-b border-orange-100">
+                <span className="w-5 h-5 rounded-md bg-orange-100 flex items-center justify-center text-[10px] font-bold text-orange-600">
+                  {sections.findIndex(s => s.key === activeSection) + 1}
+                </span>
+                <span className="text-sm font-semibold text-gray-700">{currentSection.title}</span>
+                <span className="text-xs text-gray-400">— {DETAIL_SECTIONS.find(s => s.key === activeSection)?.desc}</span>
               </div>
               <textarea
                 value={currentSection.content}
@@ -530,8 +635,7 @@ export default function DetailPageTab() {
 
           {/* 액션 버튼 */}
           <div className="flex gap-3">
-            <button
-              onClick={handleDownload}
+            <button onClick={handleDownload}
               className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-sm font-semibold shadow-md hover:shadow-lg transition-all"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -539,8 +643,7 @@ export default function DetailPageTab() {
               </svg>
               MD 다운로드
             </button>
-            <button
-              onClick={handleCopy}
+            <button onClick={handleCopy}
               className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-all"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -548,8 +651,7 @@ export default function DetailPageTab() {
               </svg>
               전체 복사
             </button>
-            <button
-              onClick={handleGenerate}
+            <button onClick={handleGenerate}
               className="flex items-center gap-2 px-4 py-3 rounded-xl border border-orange-200 text-sm text-orange-600 hover:bg-orange-50 transition-all"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
