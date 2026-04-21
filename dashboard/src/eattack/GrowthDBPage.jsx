@@ -862,11 +862,42 @@ export default function GrowthDBPage() {
         setExtSyncedAt(new Date());
       }
 
-      // REVIEW_DATA는 향후 활용
+      // 에쿠 확장이 수집한 상품 목록 수신
+      if (type === 'EKU_PRODUCT_DATA' && Array.isArray(payload?.items)) {
+        const normalized = payload.items.map(normalizeProduct);
+        setRows(normalized);
+        setIsReal(true);
+        setExtSynced(true);
+        setExtSyncedAt(new Date());
+        setLoading(false);
+        setApiError('');
+      }
+
+      // 확장 수집 오류
+      if (type === 'EKU_COLLECT_PRODUCTS_RESULT') {
+        setLoading(false);
+        if (e.data.error) setApiError(`확장 오류: ${e.data.error}`);
+      }
     }
     window.addEventListener('message', handleExtMessage);
     return () => window.removeEventListener('message', handleExtMessage);
   }, []);
+
+  // 에쿠 확장 경유 수집 (브라우저 IP → 쿠팡 IP 차단 없음)
+  const loadFromExtension = useCallback(() => {
+    if (!hasKey) return;
+    setLoading(true);
+    setApiError('');
+    window.postMessage({
+      source: 'eku-dashboard',
+      type: 'EKU_COLLECT_PRODUCTS',
+      creds: { accessKey: creds.accessKey, secretKey: creds.secretKey, vendorId: creds.vendorId },
+    }, '*');
+    // 10초 타임아웃
+    setTimeout(() => {
+      setLoading(prev => { if (prev) setApiError('확장 프로그램 응답 없음. 에쿠 확장이 설치·활성화되어 있는지 확인하세요.'); return false; });
+    }, 10000);
+  }, [creds, hasKey]);
 
   const loadFromAPI = useCallback(async () => {
     if (!hasKey) return;
@@ -1019,7 +1050,7 @@ export default function GrowthDBPage() {
                   <Toggle checked={showBundle} onChange={setShowBundle} /><span>번들상품보기</span>
                 </label>
                 <div className="w-px h-4 bg-gray-200" />
-                <button onClick={hasKey ? loadFromAPI : undefined}
+                <button onClick={hasKey ? loadFromExtension : undefined}
                   disabled={loading}
                   className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-md text-white font-medium hover:opacity-90 disabled:opacity-60"
                   style={{ background: '#00BCD4' }}>
