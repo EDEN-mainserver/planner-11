@@ -709,7 +709,7 @@ export default function GrowthDBPage() {
   const [page, setPage]                 = useState(1);
 
   const [creds]               = useState(() => loadCoupangCreds());
-  const [rows, setRows]       = useState(SAMPLE_ROWS);
+  const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState('');
   const [isReal, setIsReal]   = useState(false);
@@ -764,13 +764,13 @@ export default function GrowthDBPage() {
         setRows(items.map(normalizeProduct));
         setIsReal(true);
       } else {
-        setApiError('상품 데이터가 없거나 응답 형식이 다릅니다. 샘플 데이터를 표시합니다.');
-        setRows(SAMPLE_ROWS);
+        setApiError('상품 데이터가 없거나 응답 형식이 다릅니다.');
+        setRows([]);
         setIsReal(false);
       }
     } catch (e) {
-      setApiError(`API 오류: ${e.message}. 샘플 데이터를 표시합니다.`);
-      setRows(SAMPLE_ROWS);
+      setApiError(`API 오류: ${e.message}`);
+      setRows([]);
       setIsReal(false);
     }
     setLoading(false);
@@ -826,10 +826,9 @@ export default function GrowthDBPage() {
             {/* 상태 배너 */}
             {!hasKey && (
               <div className="bg-orange-50 border-b border-orange-200 px-6 py-2 flex items-center gap-2">
-                <span className="text-orange-500 text-sm">⚠️</span>
+                <span className="text-orange-500 text-sm">🔑</span>
                 <p className="text-xs text-orange-700">
-                  샘플 데이터 표시 중 —
-                  <strong className="mx-1">관리자 → 🛒 쿠팡 API</strong>에서 API 키를 설정하면 실제 상품 데이터를 불러옵니다.
+                  <strong className="mr-1">관리자 → 🛒 쿠팡 API</strong>에서 API 키를 설정하면 실제 상품 데이터를 불러옵니다.
                 </p>
               </div>
             )}
