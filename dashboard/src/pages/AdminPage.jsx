@@ -949,35 +949,42 @@ function CoupangTab() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleTest = async () => {
+  const handleTest = () => {
     if (!creds.accessKey || !creds.secretKey || !creds.vendorId) {
       setTestResult({ ok: false, msg: 'Access Key, Secret Key, Vendor ID를 모두 입력하세요.' });
       return;
     }
     setTesting(true);
     setTestResult(null);
-    try {
-      const resp = await fetch('/api/coupang-products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accessKey: creds.accessKey,
-          secretKey: creds.secretKey,
-          vendorId:  creds.vendorId,
-          endpoint:  'seller-products',
-          params:    { maxPerPage: 1 },
-        }),
-      });
-      const data = await resp.json();
-      if (data.code === 'SUCCESS' || data.data) {
-        setTestResult({ ok: true, msg: `연결 성공! 상품 데이터를 받았습니다.` });
+
+    // 에쿠 확장 경유 테스트 (브라우저 IP → IP 차단 없음)
+    const reqId = 'test_' + Date.now();
+    const timeout = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      setTestResult({ ok: false, msg: '에쿠 확장 응답 없음 — 확장이 설치·활성화되어 있고 이 페이지가 허용 URL인지 확인하세요.' });
+      setTesting(false);
+    }, 10000);
+
+    function handler(e) {
+      if (!e.data || e.data.source !== 'eku-extension') return;
+      if (e.data.requestId !== reqId) return;
+      clearTimeout(timeout);
+      window.removeEventListener('message', handler);
+      if (e.data.error) {
+        setTestResult({ ok: false, msg: `❌ ${e.data.error}` });
       } else {
-        setTestResult({ ok: false, msg: data.message || data.error || `응답 코드: ${data.code}` });
+        setTestResult({ ok: true, msg: `연결 성공! ${e.data.count ?? 0}개 상품 확인됨.` });
       }
-    } catch (e) {
-      setTestResult({ ok: false, msg: `요청 실패: ${e.message}` });
+      setTesting(false);
     }
-    setTesting(false);
+
+    window.addEventListener('message', handler);
+    window.postMessage({
+      source: 'eku-dashboard',
+      type: 'EKU_COLLECT_PRODUCTS',
+      requestId: reqId,
+      creds: { accessKey: creds.accessKey, secretKey: creds.secretKey, vendorId: creds.vendorId },
+    }, '*');
   };
 
   const connected = !!(creds.accessKey && creds.secretKey && creds.vendorId);
