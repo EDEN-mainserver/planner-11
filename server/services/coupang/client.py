@@ -15,7 +15,9 @@ class CoupangClient:
         self.vendor_id  = vendor_id
 
     def _headers(self, method: str, path: str, query: str = '') -> dict:
-        return build_authorization(self.access_key, self.secret_key, method, path, query)
+        headers = build_authorization(self.access_key, self.secret_key, method, path, query)
+        headers['X-Requested-By'] = self.vendor_id
+        return headers
 
     async def get(self, path: str, params: dict = None) -> dict:
         query = ''
@@ -25,6 +27,10 @@ class CoupangClient:
         url = BASE_URL + path + (f'?{query}' if query else '')
         async with httpx.AsyncClient(timeout=15) as client:
             res = await client.get(url, headers=headers)
+            # HTML 응답 = IP 차단 (쿠팡은 200 + HTML로 IP 거부)
+            content_type = res.headers.get('content-type', '')
+            if 'text/html' in content_type or res.text.strip().startswith('<!DOCTYPE'):
+                raise Exception('IP 차단: 쿠팡 Wing에서 이 서버 IP가 허용되지 않았습니다.')
             res.raise_for_status()
             return res.json()
 
