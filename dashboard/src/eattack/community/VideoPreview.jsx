@@ -165,8 +165,12 @@ export default function VideoPreview({
 
     fetch(`/api/klipy?q=${encodeURIComponent(currentSentence)}`)
       .then(r => r.json())
-      .then(d => { if (d.url) setGifUrl(d.url); })
-      .catch(() => {});
+      .then(d => {
+        console.log("[Klipy]", d);
+        if (d.url) setGifUrl(d.url);
+        else setGifUrl(null);
+      })
+      .catch(e => console.error("[Klipy] fetch 실패:", e));
   }, [currentSentence]);
 
   const togglePlay = useCallback(() => {
