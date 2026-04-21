@@ -180,7 +180,7 @@ function ChevronIcon({ open }) {
 }
 
 function EakuSidebar() {
-  const [open, setOpen] = useState({ rocket: true, delivery: true, sourcing: true, marketing: false, coupass: false, logistics: false, aitools: false });
+  const [open, setOpen] = useState({ rocket: true, sourcing: true, marketing: false, coupass: false, logistics: false, aitools: false });
   const tog = k => setOpen(p => ({ ...p, [k]: !p[k] }));
   const cat = (key, icon, label, children) => (
     <div className="mb-0.5">
@@ -209,10 +209,6 @@ function EakuSidebar() {
           </div>
           {item('📦', '공급관리(SCM)', 'soon')}
           {item('📒', '판매장부', 'soon')}
-        </>)}
-        {cat('delivery', '🛵', '로켓배송', <>
-          {item('🤖', 'AI상품등록', 'new')}
-          {item('🗂️', '상품관리(신규)')}
         </>)}
         {cat('sourcing', '🔍', '소싱분석', <>
           {item('🏷️', '카테고리소싱분석')}
