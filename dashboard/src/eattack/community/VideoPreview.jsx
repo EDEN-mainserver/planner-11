@@ -138,16 +138,9 @@ export default function VideoPreview({
     if (!bgmFile) { bgmRef.current = null; return; }
     const bgm = new Audio(bgmFile);
     bgm.volume = 0.3;
-    // 앞 15초만 반복 재생
-    const LOOP_END = 15;
-    const onTimeUpdate = () => {
-      if (bgm.currentTime >= LOOP_END) bgm.currentTime = 0;
-    };
-    bgm.addEventListener("timeupdate", onTimeUpdate);
     bgmRef.current = bgm;
     return () => {
       bgm.pause();
-      bgm.removeEventListener("timeupdate", onTimeUpdate);
       bgmRef.current = null;
     };
   }, [bgmFile]);
@@ -222,7 +215,10 @@ export default function VideoPreview({
       setPlaying(false);
     } else {
       audio?.play().catch(e => console.error("[VideoPreview] audio.play() 실패:", e));
-      bgmRef.current?.play().catch(e => console.error("[BGM] play 실패:", e));
+      if (bgmRef.current) {
+        bgmRef.current.currentTime = 0; // 항상 처음부터
+        bgmRef.current.play().catch(e => console.error("[BGM] play 실패:", e));
+      }
       setPlaying(true);
     }
   }, [playing]);
