@@ -238,7 +238,6 @@ export default function VideoPreview({
             />
           )}
         </div>
-        )}
 
         {/* 일시정지 시 재생 버튼 */}
         {!playing && (
