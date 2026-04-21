@@ -225,26 +225,31 @@ export default function VideoPreview({
 
         {/* 자막 + GIF — 제목 카드 바로 아래 */}
         <div style={{
-          position: "absolute", top: 155, left: 0, right: 0,
+          position: "absolute", top: 155, left: 0, right: 0, bottom: 44,
           display: "flex", flexDirection: "column", alignItems: "center",
           pointerEvents: "none", padding: "0 20px", gap: 8,
+          overflow: "hidden",
         }}>
           {currentSentence && (
             <p style={{
               fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
               fontSize: 13, fontWeight: 700, color: "#111",
               textAlign: "center", margin: 0, lineHeight: 1.5,
+              flexShrink: 0,
             }}>
               {currentSentence}
             </p>
           )}
 
-          {/* Klipy GIF — 마운트 시 제목 기반 / 재생 중 자막 기반 */}
+          {/* Klipy GIF — 하단 바와 겹치지 않게 maxHeight 제한 */}
           {gifUrl && (
             <img
               src={gifUrl}
               alt="reaction"
-              style={{ width: 160, borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}
+              style={{
+                width: 160, borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
+                maxHeight: 200, objectFit: "contain",
+              }}
             />
           )}
         </div>
