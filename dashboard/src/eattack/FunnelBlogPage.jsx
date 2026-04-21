@@ -46,6 +46,34 @@ const PLATFORMS = [
   { key: "brunch", label: "브런치" },
 ];
 
+// ─── URL에서 텍스트 크롤링 ───
+async function fetchRefFromUrl(rawUrl) {
+  const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+
+  // 네이버 블로그 — RSS 기반 크롤러 사용
+  const naverMatch = url.match(/blog\.naver\.com\/([^/?#]+)/);
+  if (naverMatch) {
+    const blogId = naverMatch[1];
+    const res = await fetch(`/api/naver-blog-crawl?blogId=${encodeURIComponent(blogId)}`);
+    if (!res.ok) throw new Error((await res.json()).error || `오류 ${res.status}`);
+    const data = await res.json();
+    // 최근 글 최대 3개 본문 합치기
+    const combined = (data.posts || [])
+      .slice(0, 3)
+      .map((p) => `[${p.title}]\n${p.content}`)
+      .join('\n\n');
+    if (!combined.trim()) throw new Error('글 내용을 가져오지 못했습니다.');
+    return combined;
+  }
+
+  // 그 외 URL — 범용 크롤러
+  const res = await fetch(`/api/crawl-url?url=${encodeURIComponent(url)}`);
+  if (!res.ok) throw new Error((await res.json()).error || `오류 ${res.status}`);
+  const data = await res.json();
+  if (!data.text?.trim()) throw new Error('페이지에서 텍스트를 추출하지 못했습니다.');
+  return data.text;
+}
+
 // ─── 초기 폼 상태 ───
 const INITIAL_FORM = {
   productName: "",
@@ -141,12 +169,31 @@ export default function FunnelBlogPage({ onBack }) {
   const [result, setResult] = useState(null); // { title, sections, cta, keywords }
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlError, setUrlError] = useState(null);
 
   // 폼 필드 업데이트
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
   // 현재 선택된 퍼널 단계 정보
   const selectedStage = FUNNEL_STAGES.find((s) => s.key === form.funnelStage);
+
+  // ─── URL 크롤링 ───
+  const handleFetchUrl = async () => {
+    if (!urlInput.trim()) return;
+    setUrlError(null);
+    setUrlLoading(true);
+    try {
+      const text = await fetchRefFromUrl(urlInput.trim());
+      setField("refBlog", text);
+      setUrlInput("");
+    } catch (err) {
+      setUrlError(err.message);
+    } finally {
+      setUrlLoading(false);
+    }
+  };
 
   // ─── AI 생성 ───
   const handleGenerate = async () => {

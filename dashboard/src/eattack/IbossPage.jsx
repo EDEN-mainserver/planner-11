@@ -45,7 +45,7 @@ function savePosts(posts) {
 }
 
 // ─── 인기글 분석 탭 (확장 프로그램 방식) ───
-function TrendsTab() {
+function TrendsTab({ onRecompose }) {
   const [posts, setPosts] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [month, setMonth] = useState(() => {
@@ -242,19 +242,30 @@ function TrendsTab() {
                       <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap line-clamp-10">
                         {detailContent || "본문을 불러오려면 잠시 기다려주세요."}
                       </p>
-                      <a
-                        href={post.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 mt-2 text-xs text-emerald-600 hover:text-emerald-800 font-medium"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        원문 보기
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                          <polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/>
-                        </svg>
-                      </a>
+                      <div className="flex items-center gap-3 mt-3">
+                        <a
+                          href={post.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          원문 보기
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                            <polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/>
+                          </svg>
+                        </a>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onRecompose?.(post, detailContent); }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M5 12h14"/><path d="M12 5v14"/>
+                          </svg>
+                          이 글로 작성
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>
@@ -283,6 +294,7 @@ export default function IbossPage({ onBack, referencePost = null, onClearReferen
   const [view, setView] = useState(referencePost ? "new" : "list");
   const [currentPost, setCurrentPost] = useState(null);
   const [showExtModal, setShowExtModal] = useState(false);
+  const [trendsReference, setTrendsReference] = useState(null);
 
   useEffect(() => {
     savePosts(posts);
@@ -322,9 +334,9 @@ export default function IbossPage({ onBack, referencePost = null, onClearReferen
   if (view === "new") {
     return (
       <IbossNewPost
-        onBack={() => { setView("list"); onClearReference?.(); }}
+        onBack={() => { setView("list"); onClearReference?.(); setTrendsReference(null); }}
         onGenerate={handleGenerate}
-        referencePost={referencePost}
+        referencePost={trendsReference || referencePost}
       />
     );
   }
@@ -500,7 +512,18 @@ export default function IbossPage({ onBack, referencePost = null, onClearReferen
       )}
 
       {/* 인기글 분석 탭 */}
-      {activeTab === "trends" && <TrendsTab />}
+      {activeTab === "trends" && (
+        <TrendsTab
+          onRecompose={(post, content) => {
+            setCurrentPost(null);
+            setView("new");
+            setActiveTab("articles");
+            // referencePost는 IbossNewPost에 직접 전달할 수 없으므로 EAttackPage처럼
+            // view 전환 시 prop으로 넘길 수 있도록 로컬 state 활용
+            setTrendsReference({ ...post, content_raw: content });
+          }}
+        />
+      )}
     </div>
   );
 }
