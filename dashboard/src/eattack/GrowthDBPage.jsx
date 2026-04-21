@@ -964,7 +964,7 @@ export default function GrowthDBPage() {
     setLoading(false);
   }, [creds, hasKey]);
 
-  useEffect(() => { if (hasKey) loadFromAPI(); }, []);
+  useEffect(() => { if (hasKey) loadFromExtension(); }, []);
 
   const filtered = useMemo(() =>
     rows.filter(r => !search || r.name.includes(search)),
