@@ -788,9 +788,10 @@ function CoupangTab() {
 // 메인 AdminPage
 // ═══════════════════════════════════════════
 const ADMIN_TABS = [
-  { key: "users",  label: "사용자 관리" },
-  { key: "social", label: "소셜 계정 연동" },
-  { key: "stats",  label: "프로젝트 통계" },
+  { key: "users",   label: "사용자 관리" },
+  { key: "social",  label: "소셜 계정 연동" },
+  { key: "stats",   label: "프로젝트 통계" },
+  { key: "coupang", label: "🛒 쿠팡 API" },
 ];
 
 export default function AdminPage({ projects = [], trash = [], onLoad }) {
@@ -834,8 +835,9 @@ export default function AdminPage({ projects = [], trash = [], onLoad }) {
         </div>
 
         {/* 탭 콘텐츠 */}
-        {activeTab === "users"  && <UsersTab />}
-        {activeTab === "social" && <SocialTab />}
+        {activeTab === "users"   && <UsersTab />}
+        {activeTab === "social"  && <SocialTab />}
+        {activeTab === "coupang" && <CoupangTab />}
 
         {activeTab === "stats" && (
           <div className="space-y-6">
