@@ -197,7 +197,7 @@ export default function VideoPreview({
       setPlaying(false);
     } else {
       audio?.play().catch(e => console.error("[VideoPreview] audio.play() 실패:", e));
-      bgmRef.current?.play().catch(() => {});
+      bgmRef.current?.play().catch(e => console.error("[BGM] play 실패:", e));
       setPlaying(true);
     }
   }, [playing]);

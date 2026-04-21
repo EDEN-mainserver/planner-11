@@ -113,7 +113,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       bgmFile: BGM_LIST.find(b => b.key === bgmKey)?.file ?? null,
     });
     setGenerating(false);
-  }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title]);
+  }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title, bgmKey]);
 
   const handleDownloadCaptions = useCallback(() => {
     if (!generated) return;
