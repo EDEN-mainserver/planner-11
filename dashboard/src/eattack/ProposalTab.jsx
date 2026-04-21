@@ -4,6 +4,7 @@
  */
 import { useState, useRef } from "react";
 import { callGemini } from "../utils/gemini";
+import EdenServiceSelector from "./EdenServiceSelector";
 
 // ── 상수 ──
 const LS_KEY = "eden_proposal_v1";
@@ -668,18 +669,7 @@ ${crawlData.text}
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              에덴의 서비스
-            </label>
-            <textarea
-              value={edenServices}
-              onChange={e => setEdenServices(e.target.value)}
-              rows={5}
-              placeholder={`예시:\n- 인스타그램/유튜브 쇼츠 콘텐츠 자동 생성 서비스\n- AI 기반 카드뉴스 제작 (월 30건)\n- 퍼포먼스 마케팅 대행 (Meta/Google 광고)\n- 브랜드 SNS 계정 운영 대행`}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent resize-none leading-relaxed"
-            />
-          </div>
+          <EdenServiceSelector onChange={setEdenServices} />
 
           {error && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600">
