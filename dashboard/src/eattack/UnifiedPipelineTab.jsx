@@ -31,22 +31,15 @@ const PURPOSE_OPTS = [
 ];
 const STEP_LABELS = ["설정", "리서치", "기획", "이미지", "조립", "배포"];
 
-// ── Instagram 설정 로드 (사용자별) ──
-function loadIg(username) {
-  try {
-    return (
-      JSON.parse(localStorage.getItem(igKey(username))) || {
-        accountId: "",
-        accessToken: "",
-      }
-    );
-  } catch {
-    return { accountId: "", accessToken: "" };
-  }
-}
+const threadsKey = (u) => `eden_threads_${u}_v1`;
 
-function saveIg(username, config) {
-  localStorage.setItem(igKey(username), JSON.stringify(config));
+// ── 소셜 설정 로드/저장 (사용자별) ──
+function loadSocial(keyFn, username) {
+  try { return JSON.parse(localStorage.getItem(keyFn(username))) || {}; }
+  catch { return {}; }
+}
+function saveSocial(keyFn, username, data) {
+  localStorage.setItem(keyFn(username), JSON.stringify(data));
 }
 
 // ── API 함수 ──
@@ -340,18 +333,20 @@ export default function UnifiedPipelineTab() {
   const [cards, setCards] = useState([]); // 편집 가능한 카드 데이터
   const [htmlContent, setHtmlContent] = useState("");
 
-  // Instagram 설정 (사용자별 로드)
-  const [igConfig, setIgConfig] = useState(() =>
-    loadIg(getSession()?.username || "__guest")
-  );
+  // 소셜 설정 (사용자별 로드)
+  const [igConfig, setIgConfig]   = useState(() => loadSocial(igKey,      getSession()?.username || "__guest"));
+  const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
   const [igPosting, setIgPosting] = useState(false);
-  const [igResult, setIgResult] = useState(null);
+  const [thPosting, setThPosting] = useState(false);
+  const [igResult, setIgResult]   = useState(null);
+  const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
 
   // 로그인 핸들러
   const handleLogin = (s) => {
     setSession(s);
-    setIgConfig(loadIg(s.username));
+    setIgConfig(loadSocial(igKey,      s.username));
+    setThConfig(loadSocial(threadsKey, s.username));
   };
 
   const handleLogout = () => {
@@ -454,6 +449,35 @@ export default function UnifiedPipelineTab() {
     a.download = `${topic.slice(0, 20)}-카드뉴스.html`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const postToThreads = async () => {
+    if (!thConfig.userId || !thConfig.accessToken) {
+      setError("스레드 사용자 ID와 액세스 토큰을 입력해주세요");
+      return;
+    }
+    setThPosting(true);
+    setThResult(null);
+    setError("");
+    try {
+      const res = await fetch("/api/threads-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: thConfig.userId,
+          accessToken: thConfig.accessToken,
+          images: cards.map((c) => c.imageUrl).filter(Boolean),
+          caption: postCaption || topic,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "스레드 게시 실패");
+      setThResult({ status: "success", message: `스레드 게시 완료!${data.permalink ? ` → ${data.permalink}` : ""}`, permalink: data.permalink });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setThPosting(false);
+    }
   };
 
   const postToInstagram = async () => {
@@ -1095,7 +1119,7 @@ export default function UnifiedPipelineTab() {
               onChange={(e) => {
                 const next = { ...igConfig, accountId: e.target.value };
                 setIgConfig(next);
-                saveIg(session.username, next);
+                saveSocial(igKey, session.username, next);
               }}
             />
           </div>
@@ -1113,7 +1137,7 @@ export default function UnifiedPipelineTab() {
               onChange={(e) => {
                 const next = { ...igConfig, accessToken: e.target.value };
                 setIgConfig(next);
-                saveIg(session.username, next);
+                saveSocial(igKey, session.username, next);
               }}
             />
           </div>
@@ -1183,6 +1207,62 @@ export default function UnifiedPipelineTab() {
                 )}
               </div>
             </div>
+          )}
+        </div>
+
+        {/* ── Threads ── */}
+        <div className="space-y-3 bg-gray-50 border border-gray-100 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-5 h-5 rounded bg-gray-900 flex items-center justify-center flex-shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="4"/>
+                <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>
+              </svg>
+            </div>
+            <p className="text-xs font-bold text-gray-700">스레드 (Threads)</p>
+            <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5">
+              {session.displayName} 계정
+            </span>
+            {thConfig.userId && thConfig.accessToken && (
+              <span className="ml-auto text-[10px] font-bold bg-green-100 text-green-600 border border-green-200 rounded-full px-2 py-0.5">연동됨</span>
+            )}
+          </div>
+
+          {thConfig.userId && thConfig.accessToken ? (
+            <>
+              <p className="text-xs text-gray-500">
+                연동된 계정으로 게시합니다. 변경은 관리자 → 소셜 계정 연동에서.
+              </p>
+              <button
+                onClick={postToThreads}
+                disabled={thPosting}
+                className="w-full py-2.5 bg-gray-900 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                {thPosting ? (
+                  <>
+                    <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                    스레드에 게시 중...
+                  </>
+                ) : "스레드에 게시하기"}
+              </button>
+              {thResult && (
+                <div className="px-3 py-2 rounded-xl text-xs font-medium bg-green-50 border border-green-200 text-green-700 flex items-start gap-2">
+                  <span>✅</span>
+                  <div>
+                    <span>{thResult.message}</span>
+                    {thResult.permalink && (
+                      <a href={thResult.permalink} target="_blank" rel="noopener noreferrer" className="block mt-1 underline">게시물 보기</a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 bg-yellow-50 border border-yellow-100 rounded-lg px-3 py-2">
+              관리자 → 소셜 계정 연동에서 스레드 API를 먼저 설정해주세요.
+            </p>
           )}
         </div>
 
