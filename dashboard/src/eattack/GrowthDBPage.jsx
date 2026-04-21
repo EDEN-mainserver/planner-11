@@ -217,7 +217,7 @@ function EakuSidebar({ active = 'growthdb', onNavigate }) {
         {cat('rocket', '🚀', '로켓그로스', <>
           {navItem('growthdb', '📊', '에쿠 GrowthDB')}
           {navItem('scm', '📦', '공급관리(SCM)')}
-          {item('📒', '판매장부', 'soon')}
+          {navItem('ledger', '📒', '판매장부')}
         </>)}
         {cat('sourcing', '🔍', '소싱분석', <>
           {item('🏷️', '카테고리소싱분석')}
@@ -700,8 +700,7 @@ function calcSalesFromSummary(saleSummaryByDate) {
 }
 
 export default function GrowthDBPage() {
-  const [activeSection, setActiveSection] = useState('growthdb'); // 'growthdb' | 'scm'
-  const [mainTab, setMainTab]           = useState('products'); // 'products' | 'profit'
+  const [activeSection, setActiveSection] = useState('growthdb'); // 'growthdb' | 'scm' | 'ledger'
   const [activeFilter, setActiveFilter] = useState('all');
   const [search, setSearch]             = useState('');
   const [showReturn, setShowReturn]     = useState(false);
@@ -795,33 +794,14 @@ export default function GrowthDBPage() {
         {/* ── SCM 페이지 ── */}
         {activeSection === 'scm' && <SCMPage rows={rows} fmt={fmt} />}
 
-        {/* ── GrowthDB (메인 탭 바 포함) ── */}
+        {/* ── 판매장부 (실시간 순수익) ── */}
+        {activeSection === 'ledger' && <RealtimeProfitTab creds={creds} />}
+
+        {/* ── GrowthDB ── */}
         {activeSection === 'growthdb' && <>
 
-        {/* ── 메인 탭 바 ── */}
-        <div className="bg-white border-b border-gray-200 px-6 flex items-end">
-          {[
-            { key: 'products', label: '📊 상품DB' },
-            { key: 'profit',   label: '📈 실시간 순수익' },
-          ].map(t => (
-            <button key={t.key} onClick={() => setMainTab(t.key)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                mainTab === t.key
-                  ? 'border-orange-500 text-orange-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── 실시간 순수익 탭 ── */}
-        {mainTab === 'profit' && (
-          <RealtimeProfitTab creds={creds} />
-        )}
-
-        {/* ── 상품DB 탭 ── */}
-        {mainTab === 'products' && (
+        {/* ── 상품DB ── */}
+        {true && (
           <>
             {/* 상태 배너 */}
             {!hasKey && (
