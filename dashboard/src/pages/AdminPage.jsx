@@ -283,7 +283,7 @@ function SocialTab() {
     const name = editForm.displayName.trim();
     const uid  = editForm.username.trim();
     const pw   = editForm.password.trim();
-    if (!name) return;
+    if (!name) { alert("이름을 입력하세요"); return; }
 
     let next;
     if (editingId === "__new__") {
@@ -295,15 +295,30 @@ function SocialTab() {
       }
       const newUser = { username: newUid, displayName: name, password: pw || "1234" };
       next = [...users, newUser];
-      // 추가 후 해당 사용자 선택
       setTimeout(() => handleUserChange(newUid), 0);
     } else {
-      // 기존 팀원 수정 (displayName + password만 수정, username은 고정)
+      // 기존 팀원 수정 — 아이디 변경 시 localStorage 키도 마이그레이션
+      const newUid = uid || editingId;
+      if (newUid !== editingId && users.some((u) => u.username === newUid)) {
+        alert("이미 사용 중인 아이디입니다");
+        return;
+      }
+      if (newUid !== editingId) {
+        // 소셜 데이터를 새 키로 복사 후 구 키 삭제
+        [igKey, threadsKey, fullAutoKey].forEach((keyFn) => {
+          const data = localStorage.getItem(keyFn(editingId));
+          if (data) localStorage.setItem(keyFn(newUid), data);
+          localStorage.removeItem(keyFn(editingId));
+        });
+      }
       next = users.map((u) =>
         u.username === editingId
-          ? { ...u, displayName: name, password: pw || u.password }
+          ? { username: newUid, displayName: name, password: pw || u.password }
           : u
       );
+      if (selectedUser === editingId) {
+        setTimeout(() => handleUserChange(newUid), 0);
+      }
     }
     saveUsers(next);
     setUsers(next);
@@ -409,7 +424,7 @@ function SocialTab() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
-                <label className="text-[10px] font-bold text-gray-500 block mb-1">표시 이름 *</label>
+                <label className="text-[10px] font-bold text-gray-500 block mb-1">이름 *</label>
                 <input
                   autoFocus
                   className="w-full px-2.5 py-2 text-sm border border-purple-200 rounded-lg outline-none focus:border-purple-400"
@@ -419,18 +434,18 @@ function SocialTab() {
                   onKeyDown={(e) => e.key === "Enter" && commitEdit()}
                 />
               </div>
-              {editingId === "__new__" && (
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 block mb-1">아이디 (선택)</label>
-                  <input
-                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-purple-400 font-mono"
-                    placeholder="자동생성"
-                    value={editForm.username}
-                    onChange={(e) => setEditForm((p) => ({ ...p, username: e.target.value }))}
-                    onKeyDown={(e) => e.key === "Enter" && commitEdit()}
-                  />
-                </div>
-              )}
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 block mb-1">
+                  아이디{editingId === "__new__" ? " (선택)" : ""}
+                </label>
+                <input
+                  className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-purple-400 font-mono"
+                  placeholder={editingId === "__new__" ? "자동생성" : editingId}
+                  value={editForm.username}
+                  onChange={(e) => setEditForm((p) => ({ ...p, username: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && commitEdit()}
+                />
+              </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 block mb-1">비밀번호</label>
                 <input
