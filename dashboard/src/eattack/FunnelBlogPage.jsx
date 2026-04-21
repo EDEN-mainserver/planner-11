@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { generateFunnelBlog } from "../utils/claudeClient";
+import { callGemini } from "../utils/gemini";
 import { buildFunnelPrompt } from "./funnelPrompts";
 
 // ─── 퍼널 단계 설정 ───
@@ -155,17 +155,20 @@ export default function FunnelBlogPage({ onBack }) {
     });
 
     try {
-      const data = await generateFunnelBlog({ prompt });
-      // 백엔드가 { result: "..." } 형태로 반환하거나 직접 파싱된 JSON을 반환
-      let parsed = data;
-      if (typeof data === "string") {
-        parsed = JSON.parse(data);
-      } else if (data.result && typeof data.result === "string") {
-        parsed = JSON.parse(data.result);
-      } else if (data.content) {
-        // { content: "JSON 문자열" } 형태
-        parsed = JSON.parse(data.content);
+      const raw = await callGemini(
+        [{ role: "user", content: prompt }],
+        "당신은 전문 퍼널 마케팅 블로그 작가입니다. 반드시 JSON 형식으로만 응답하세요."
+      );
+
+      // 코드블록 제거 후 JSON 파싱
+      let clean = raw.trim();
+      if (clean.startsWith("```")) {
+        const lines = clean.split("\n");
+        clean = lines.slice(1, lines[lines.length - 1].trim() === "```" ? -1 : undefined).join("\n");
       }
+      const start = clean.indexOf("{");
+      const end = clean.lastIndexOf("}");
+      const parsed = JSON.parse(clean.slice(start, end + 1));
       setResult(parsed);
     } catch (err) {
       setError(`생성 실패: ${err.message}`);

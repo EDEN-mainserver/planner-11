@@ -458,15 +458,43 @@ export default function UnifiedPipelineTab() {
 
   const postToInstagram = async () => {
     if (!igConfig.accountId || !igConfig.accessToken) {
-      setError("인스타그램 계정 ID와 액세스 토큰을 입력하세요");
+      setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
       return;
     }
     setIgPosting(true);
+    setIgResult(null);
     setError("");
     try {
-      // Instagram Graph API: 이미지 URL이 필요하므로 base64 data URL은 직접 게시 불가
-      // 실제 배포 환경에서는 이미지를 서버에 업로드 후 URL로 게시해야 함
-      setIgResult({ status: "info", message: "인스타그램 게시는 공개 이미지 URL이 필요합니다. HTML을 다운로드하여 이미지를 추출 후 게시해주세요." });
+      // 카드 이미지 배열 추출 (imageUrl 없는 카드는 제외)
+      const imageList = cards
+        .map((c) => c.imageUrl)
+        .filter(Boolean);
+
+      if (imageList.length === 0) {
+        throw new Error("게시할 이미지가 없습니다. 이미지 생성 후 다시 시도해주세요.");
+      }
+
+      const res = await fetch("/api/instagram-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: igConfig.accountId,
+          accessToken: igConfig.accessToken,
+          images: imageList,
+          caption: postCaption || topic,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "게시 실패");
+
+      setIgResult({
+        status: "success",
+        message: `게시 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
+        permalink: data.permalink,
+      });
+    } catch (e) {
+      setError(e.message);
     } finally {
       setIgPosting(false);
     }
@@ -518,10 +546,31 @@ export default function UnifiedPipelineTab() {
     );
   }
 
+  // ── 공통: 사용자 상태바 ──
+  function UserBar() {
+    return (
+      <div className="flex items-center justify-between px-4 py-2 bg-violet-50 border border-violet-100 rounded-xl mb-1">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold">
+            {session.displayName.charAt(0)}
+          </div>
+          <span className="text-xs font-semibold text-violet-700">{session.displayName}</span>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="text-[10px] text-gray-400 hover:text-red-500 transition-colors"
+        >
+          로그아웃
+        </button>
+      </div>
+    );
+  }
+
   // ══ STEP: setup ══
   if (step === "setup")
     return (
       <div className="p-6 space-y-5">
+        <UserBar />
         <StepBar />
 
         <div className="bg-gradient-to-r from-violet-50 to-pink-50 border border-violet-200 rounded-xl px-4 py-3">
@@ -675,6 +724,7 @@ export default function UnifiedPipelineTab() {
   if (step === "research")
     return (
       <div className="p-6 space-y-4">
+        <UserBar />
         <StepBar />
         {running ? (
           <Spinner
@@ -716,6 +766,7 @@ export default function UnifiedPipelineTab() {
   if (step === "planning")
     return (
       <div className="p-6 space-y-4">
+        <UserBar />
         <StepBar />
         {running ? (
           <Spinner label="카드뉴스 기획 중..." gradient="from-purple-500 to-violet-600" />
