@@ -958,7 +958,7 @@ export default function GrowthDBPage() {
     setLoading(false);
   }, [creds, hasKey]);
 
-  useEffect(() => { if (hasKey) loadFromExtension(); }, []);
+  useEffect(() => { if (hasKey) loadFromAPI(); }, []);
 
   const filtered = useMemo(() =>
     rows.filter(r => !search || r.name.includes(search)),
@@ -1044,7 +1044,7 @@ export default function GrowthDBPage() {
                   <Toggle checked={showBundle} onChange={setShowBundle} /><span>번들상품보기</span>
                 </label>
                 <div className="w-px h-4 bg-gray-200" />
-                <button onClick={hasKey ? loadFromExtension : undefined}
+                <button onClick={hasKey ? loadFromAPI : undefined}
                   disabled={loading}
                   className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-md text-white font-medium hover:opacity-90 disabled:opacity-60"
                   style={{ background: '#00BCD4' }}>
