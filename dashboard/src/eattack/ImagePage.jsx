@@ -7,6 +7,7 @@
 import { useState } from "react";
 import UnifiedPipelineTab from "./UnifiedPipelineTab";
 import ProposalTab from "./ProposalTab";
+import DetailPageTab from "./DetailPageTab";
 
 // ── 탭 정의 ──
 const IMAGE_TABS = [
@@ -47,24 +48,6 @@ const IMAGE_TABS = [
 ];
 
 
-// ── 상세페이지 탭 ──
-function DetailPageTab() {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center mb-5 shadow-lg">
-        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
-        </svg>
-      </div>
-      <h4 className="text-base font-semibold text-gray-700 mb-2">상세페이지 제작 기능</h4>
-      <p className="text-sm text-gray-400 max-w-xs">
-        제품·서비스 정보를 입력하면 AI가 구매 전환에 최적화된<br />
-        상세페이지 구성을 자동으로 기획합니다.<br />
-        <span className="text-orange-500 font-medium">준비 중입니다</span>
-      </p>
-    </div>
-  );
-}
 
 // ─────────────────────── 메인 컴포넌트 ───────────────────────
 export default function ImagePage({ onBack }) {
