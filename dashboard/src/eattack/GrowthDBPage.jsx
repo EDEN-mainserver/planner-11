@@ -18,8 +18,11 @@ async function fetchCoupangProducts(creds, params = {}) {
       params,
     }),
   });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const json = await resp.json();
+  if (!resp.ok) {
+    const msg = json?.message || json?.error || `HTTP ${resp.status}`;
+    throw new Error(`${resp.status}: ${msg}`);
+  }
   if (json.error) throw new Error(json.error);
   return json;
 }

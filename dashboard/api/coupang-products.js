@@ -2,12 +2,12 @@
 import { createHmac } from 'crypto';
 
 function makeAuthHeader(method, path, query, accessKey, secretKey) {
-  // 쿠팡 공식 스펙: 2자리 연도 (yyMMddTHHmmssZ), ? 없이 query 직접 붙임
+  // 쿠팡 공식 스펙: yyMMddTHHmmssZ, query 있을 때 '?' 포함해서 서명
   const dt  = new Date().toISOString()
     .replace(/[-:]/g, '')
     .replace(/\.\d+Z$/, 'Z')
-    .substring(2); // "250421T153045Z"
-  const msg = dt + method + path + (query || '');
+    .substring(2); // "260421T153045Z"
+  const msg = dt + method + path + (query ? '?' + query : '');
   const sig = createHmac('sha256', secretKey).update(msg).digest('hex');
   return `CEA algorithm=HmacSHA256, access-key=${accessKey}, signed-date=${dt}, signature=${sig}`;
 }
@@ -58,8 +58,20 @@ export default async function handler(req, res) {
         'X-Requested-By': vendorId,
       },
     });
-    const data = await resp.json();
-    res.status(resp.status).json(data);
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+    if (!resp.ok) {
+      // 디버그용: 쿠팡 에러 메시지 포함해서 반환
+      return res.status(resp.status).json({
+        error: `쿠팡 API ${resp.status}`,
+        message: data?.message || data?.code || text.slice(0, 300),
+        detail: data,
+        signedUrl: url,
+      });
+    }
+    res.status(200).json(data);
   } catch (err) {
     res.status(500).json({ error: '쿠팡 API 호출 실패', detail: err.message });
   }
