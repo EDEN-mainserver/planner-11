@@ -107,6 +107,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       audioUrl,
       bgPreset: BG_PRESETS.find(b => b.key === selectedBg),
       title,
+      gifQuery: title.trim() || script.trim().slice(0, 40),
     });
     setGenerating(false);
   }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title]);
@@ -453,6 +454,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   captions={generated.captions}
                   fontFamily={fontFamily}
                   totalMs={generated.totalMs}
+                  gifQuery={generated.gifQuery}
                 />
 
                 <div className="flex gap-2">

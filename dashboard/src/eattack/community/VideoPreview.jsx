@@ -101,6 +101,7 @@ export default function VideoPreview({
   captions,
   fontFamily,
   totalMs,
+  gifQuery,
 }) {
   const audioRef    = useRef(null);
   const intervalRef = useRef(null);
@@ -158,16 +159,14 @@ export default function VideoPreview({
   // Klipy GIF
   const [gifUrl, setGifUrl] = useState(null);
 
-  // 마운트 시 제목/스크립트 기반 초기 GIF
+  // 부모가 계산한 gifQuery로 초기 GIF 로드
   useEffect(() => {
-    const q = (title || "").trim() || (script || "").trim().slice(0, 30);
-    if (!q) return;
-    fetch(`/api/klipy?q=${encodeURIComponent(q)}`)
+    if (!gifQuery) return;
+    fetch(`/api/klipy?q=${encodeURIComponent(gifQuery)}`)
       .then(r => r.json())
       .then(d => { if (d?.url) setGifUrl(d.url); })
       .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gifQuery]);
 
   // 재생 중 자막 청크가 바뀔 때마다 업데이트
   useEffect(() => {
