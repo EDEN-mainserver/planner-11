@@ -34,14 +34,10 @@ class ProfitRequest(BaseModel):
 
 @router.post("/connect")
 async def test_connection(req: ConnectRequest):
-    """API 키 유효성 검증"""
+    """API 키 유효성 검증 (seller-products endpoint 사용)"""
     client = CoupangClient(req.access_key, req.secret_key, req.vendor_id)
     try:
-        now = datetime.utcnow()
-        result = await client.get_orders(
-            created_at_from=(now - timedelta(days=1)).strftime('%Y-%m-%dT00:00:00'),
-            created_at_to=now.strftime('%Y-%m-%dT23:59:59'),
-        )
+        result = await client.get_products(max_per_page=1)
         return {"ok": True, "message": "연결 성공"}
     except Exception as e:
         msg = str(e)
