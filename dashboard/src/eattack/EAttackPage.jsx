@@ -5,6 +5,7 @@ import CrawlingPage from "./crawling/CrawlingPage";
 import ImagePage from "./ImagePage";
 import VideoPage from "./VideoPage";
 import IbossPage from "./IbossPage";
+import FullAutoPage from "./FullAutoPage";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -62,7 +63,6 @@ const CONTENT_TYPES = [
     ),
     gradient: "from-orange-500 to-amber-500",
     description: "크롤링부터 글 생성·포스팅까지 전 과정을 자동으로 실행합니다",
-    disabled: true,
   },
 ];
 
@@ -160,6 +160,8 @@ export default function EAttackPage() {
       setDepth("image");
     } else if (type.key === "video") {
       setDepth("video");
+    } else if (type.key === "fullAuto") {
+      setDepth("fullAuto");
     }
   };
 
@@ -214,6 +216,11 @@ export default function EAttackPage() {
   // 영상 대시보드
   if (depth === "video") {
     return <VideoPage onBack={() => setDepth("root")} />;
+  }
+
+  // 풀가동화 콘텐츠 대시보드
+  if (depth === "fullAuto") {
+    return <FullAutoPage onBack={() => setDepth("root")} />;
   }
 
   return (
