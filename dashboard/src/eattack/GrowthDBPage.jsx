@@ -445,6 +445,25 @@ function RealtimeProfitTab({ creds }) {
 /* ─────────────────────────────────────────────
    메인 컴포넌트
 ───────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   에쿠 Extension 판매 데이터 → s7 / s30 / qty 계산
+   saleSummaryByDate: { "2026-04-20": { salesPrice, shippingPrice, quantity }, ... }
+───────────────────────────────────────────── */
+function calcSalesFromSummary(saleSummaryByDate) {
+  if (!saleSummaryByDate || typeof saleSummaryByDate !== 'object') return { s7: 0, s30: 0, qty: 0 };
+  const now   = new Date();
+  let s7 = 0, s30 = 0, qty = 0;
+  Object.entries(saleSummaryByDate).forEach(([dateStr, val]) => {
+    const date     = new Date(dateStr);
+    const diffDays = (now - date) / (1000 * 60 * 60 * 24);
+    const revenue  = (val.salesPrice || 0) + (val.shippingPrice || 0);
+    const q        = val.quantity || 0;
+    if (diffDays <= 30) { s30 += revenue; qty += q; }
+    if (diffDays <= 7)  { s7  += revenue; }
+  });
+  return { s7: Math.round(s7), s30: Math.round(s30), qty };
+}
+
 export default function GrowthDBPage() {
   const [mainTab, setMainTab]           = useState('products'); // 'products' | 'profit'
   const [activeFilter, setActiveFilter] = useState('all');
@@ -459,8 +478,41 @@ export default function GrowthDBPage() {
   const [apiError, setApiError] = useState('');
   const [isReal, setIsReal]   = useState(false);
 
+  // 에쿠 Extension 연동 상태
+  const [extSynced, setExtSynced]         = useState(false);
+  const [extSyncedAt, setExtSyncedAt]     = useState(null);
+  const [rankingData, setRankingData]     = useState([]);
+
   const hasKey = !!(creds.accessKey && creds.secretKey && creds.vendorId);
   const fmt    = n => Number(n).toLocaleString();
+
+  /* ── 에쿠 Extension postMessage 수신 ── */
+  useEffect(() => {
+    function handleExtMessage(e) {
+      if (!e.data || e.data.source !== 'eku-extension') return;
+      const { type, payload } = e.data;
+
+      if (type === 'SALES_DATA' && payload?.vendorItemId && payload?.saleSummaryByDate) {
+        const { s7, s30, qty } = calcSalesFromSummary(payload.saleSummaryByDate);
+        const vid = String(payload.vendorItemId);
+        setRows(prev => prev.map(row =>
+          String(row.optId) === vid ? { ...row, s7, s30, qty } : row
+        ));
+        setExtSynced(true);
+        setExtSyncedAt(new Date());
+      }
+
+      if (type === 'RANKING_DATA' && Array.isArray(payload)) {
+        setRankingData(payload);
+        setExtSynced(true);
+        setExtSyncedAt(new Date());
+      }
+
+      // REVIEW_DATA는 향후 활용
+    }
+    window.addEventListener('message', handleExtMessage);
+    return () => window.removeEventListener('message', handleExtMessage);
+  }, []);
 
   const loadFromAPI = useCallback(async () => {
     if (!hasKey) return;
@@ -543,10 +595,24 @@ export default function GrowthDBPage() {
               <div className="bg-green-50 border-b border-green-200 px-6 py-2 flex items-center gap-2">
                 <span className="text-green-500 text-sm">✅</span>
                 <p className="text-xs text-green-700 font-medium">쿠팡 API 연동됨 — 실제 상품 데이터 표시 중</p>
+                {extSynced && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 font-semibold ml-2">
+                    🔌 에쿠 확장 연동됨 {extSyncedAt && `· ${extSyncedAt.toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' })}`}
+                  </span>
+                )}
                 <button onClick={loadFromAPI} disabled={loading}
                   className="ml-auto text-xs px-2.5 py-1 rounded border border-green-300 text-green-600 hover:bg-green-100 disabled:opacity-50">
                   {loading ? '로딩 중…' : '새로고침'}
                 </button>
+              </div>
+            )}
+            {!hasKey && extSynced && (
+              <div className="bg-orange-50 border-b border-orange-200 px-6 py-2 flex items-center gap-2">
+                <span className="text-orange-500 text-sm">🔌</span>
+                <p className="text-xs text-orange-700 font-medium">
+                  에쿠 확장 연동됨 — 판매 데이터 수신 중
+                  {extSyncedAt && <span className="text-orange-400 ml-1">({extSyncedAt.toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' })})</span>}
+                </p>
               </div>
             )}
             {apiError && (
