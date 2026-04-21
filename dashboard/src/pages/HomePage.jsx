@@ -84,7 +84,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
           <div className="text-xs text-gray-400 font-medium mb-2">즐겨찾기</div>
           <p className="text-xs text-gray-300">즐겨찾기한 프로젝트가 없습니다.</p>
         </div>
-        {/* E-Attack 섹션 */}
+        {/* E-Attack 섹션 — PlanForge와 구분 */}
         <div className="px-2 mt-6 pt-4 border-t border-gray-200">
           <div className="px-2 mb-2">
             <div className="text-xs text-gray-400 font-medium">자동화</div>
@@ -103,185 +103,25 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
             <span className="text-base">💸</span>
             이걸 돈내고 써?
           </div>
+        </div>
+        {/* 대표전용 툴 섹션 */}
+        <div className="px-2 mt-6 pt-4 border-t border-gray-200">
+          <div className="px-2 mb-2">
+            <div className="text-xs text-gray-400 font-medium">대표전용 툴</div>
+          </div>
           <div
             onClick={() => setActivePage('distribution')}
             className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
-              ${activePage === 'distribution' ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
+              ${activePage === 'distribution' ? 'bg-orange-50 text-orange-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
             <span className="text-base">🛒</span>
             유통
           </div>
-        </div>
-
-        {/* 에쿠 대시보드 아코디언 섹션 */}
-        <div className="px-2 mt-4 pt-4 border-t border-gray-200">
-          <div className="px-2 mb-2">
-            <div className="text-xs text-gray-400 font-medium">에쿠 대시보드</div>
-          </div>
-
-          {/* 1. 로켓그로스 */}
-          <div className="mb-0.5">
-            <div onClick={() => toggleSection('rocket')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium">
-              <span className="text-base">🚀</span>
-              <span className="flex-1">로켓그로스</span>
-              <svg className="w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                style={{ transform: openSections.rocket ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </div>
-            {openSections.rocket && (
-              <div className="pl-2 mt-0.5 space-y-0.5">
-                <div onClick={() => setActivePage('growthdb')}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
-                  style={activePage === 'growthdb' ? { background: '#E0F7FA', color: '#00838F', fontWeight: 600 } : {}}>
-                  {activePage !== 'growthdb' && <span className="text-base">📊</span>}
-                  {activePage === 'growthdb' && <span className="text-base">📊</span>}
-                  <span className={activePage !== 'growthdb' ? 'text-gray-600' : ''}>에쿠 GrowthDB</span>
-                </div>
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                  <span className="text-base">📦</span><span>공급관리(SCM)</span>
-                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">준비중</span>
-                </div>
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                  <span className="text-base">📒</span><span>판매장부</span>
-                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">준비중</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 2. 로켓배송 */}
-          <div className="mb-0.5">
-            <div onClick={() => toggleSection('delivery')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium">
-              <span className="text-base">🛵</span>
-              <span className="flex-1">로켓배송</span>
-              <svg className="w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                style={{ transform: openSections.delivery ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </div>
-            {openSections.delivery && (
-              <div className="pl-2 mt-0.5 space-y-0.5">
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                  <span className="text-base">🤖</span><span>AI상품등록</span>
-                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded text-white font-medium" style={{ background: '#4CAF50' }}>new</span>
-                </div>
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                  <span className="text-base">🗂️</span><span>상품관리(신규)</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 3. 소싱분석 */}
-          <div className="mb-0.5">
-            <div onClick={() => toggleSection('sourcing')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium">
-              <span className="text-base">🔍</span>
-              <span className="flex-1">소싱분석</span>
-              <svg className="w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                style={{ transform: openSections.sourcing ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </div>
-            {openSections.sourcing && (
-              <div className="pl-2 mt-0.5 space-y-0.5">
-                {[['🏷️','카테고리소싱분석'],['🔑','키워드소싱분석'],['📈','상품경쟁력분석'],['📊','키워드분석']].map(([icon, label]) => (
-                  <div key={label} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                    <span className="text-base">{icon}</span><span>{label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 4. 마케팅 */}
-          <div className="mb-0.5">
-            <div onClick={() => toggleSection('marketing')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium">
-              <span className="text-base">📣</span>
-              <span className="flex-1">마케팅</span>
-              <svg className="w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                style={{ transform: openSections.marketing ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </div>
-            {openSections.marketing && (
-              <div className="pl-2 mt-0.5 space-y-0.5">
-                {[['📉','쿠팡 랭킹추적'],['✏️','상품명메이커'],['📢','광고관리(소싱검증)']].map(([icon, label]) => (
-                  <div key={label} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                    <span className="text-base">{icon}</span><span>{label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 5. 쿠패스 */}
-          <div className="mb-0.5">
-            <div onClick={() => toggleSection('coupass')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium">
-              <span className="text-base">🛒</span>
-              <span className="flex-1">쿠패스</span>
-              <svg className="w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                style={{ transform: openSections.coupass ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </div>
-            {openSections.coupass && (
-              <div className="pl-2 mt-0.5 space-y-0.5">
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                  <span className="text-base">📋</span><span>구매요청(그로스)</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 6. 해외물류 */}
-          <div className="mb-0.5">
-            <div onClick={() => toggleSection('logistics')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium">
-              <span className="text-base">🚢</span>
-              <span className="flex-1">해외물류</span>
-              <svg className="w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                style={{ transform: openSections.logistics ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </div>
-            {openSections.logistics && (
-              <div className="pl-2 mt-0.5 space-y-0.5">
-                {[['📦','배송대행현황'],['📄','출고리스트']].map(([icon, label]) => (
-                  <div key={label} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                    <span className="text-base">{icon}</span><span>{label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 7. AI 도구 */}
-          <div className="mb-0.5">
-            <div onClick={() => toggleSection('aitools')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium">
-              <span className="text-base">✨</span>
-              <span className="flex-1">AI 도구</span>
-              <svg className="w-3.5 h-3.5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                style={{ transform: openSections.aitools ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </div>
-            {openSections.aitools && (
-              <div className="pl-2 mt-0.5 space-y-0.5">
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                  <span className="text-base">🪄</span><span>나노바나나 이미지에디터</span>
-                </div>
-                <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
-                  <span className="text-base">🐱</span><span>AI 소싱 챗</span>
-                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded text-white font-medium" style={{ background: '#4CAF50' }}>new</span>
-                </div>
-              </div>
-            )}
+          <div
+            onClick={() => setActivePage('growthdb')}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+              ${activePage === 'growthdb' ? 'bg-orange-50 text-orange-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
+            <span className="text-base">📊</span>
+            에쿠 GrowthDB
           </div>
         </div>
         <div className="mt-auto px-4 py-3 border-t border-gray-100">

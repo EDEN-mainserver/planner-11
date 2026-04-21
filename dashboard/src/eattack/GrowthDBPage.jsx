@@ -171,6 +171,80 @@ function Toggle({ checked, onChange }) {
 /* ─────────────────────────────────────────────
    메인 컴포넌트
 ───────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   내장 사이드바 컴포넌트
+───────────────────────────────────────────── */
+function ChevronIcon({ open }) {
+  return (
+    <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+      style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+    </svg>
+  );
+}
+
+function EakuSidebar() {
+  const [open, setOpen] = useState({ rocket: true, delivery: true, sourcing: true, marketing: false, coupass: false, logistics: false, aitools: false });
+  const tog = k => setOpen(p => ({ ...p, [k]: !p[k] }));
+  const cat = (key, icon, label, children) => (
+    <div className="mb-0.5">
+      <div onClick={() => tog(key)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-700 hover:bg-gray-100 font-medium">
+        <span className="text-base">{icon}</span>
+        <span className="flex-1">{label}</span>
+        <ChevronIcon open={open[key]} />
+      </div>
+      {open[key] && <div className="pl-2 mt-0.5 space-y-0.5">{children}</div>}
+    </div>
+  );
+  const item = (icon, label, badge) => (
+    <div key={label} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
+      <span className="text-base">{icon}</span><span>{label}</span>
+      {badge === 'new' && <span className="ml-auto text-xs px-1.5 py-0.5 rounded text-white font-medium" style={{ background: '#4CAF50' }}>new</span>}
+      {badge === 'soon' && <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">준비중</span>}
+    </div>
+  );
+  return (
+    <aside className="w-52 shrink-0 bg-white border-r border-gray-200 overflow-y-auto py-3">
+      <div className="px-3 py-2">
+        {cat('rocket', '🚀', '로켓그로스', <>
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer font-semibold"
+            style={{ background: '#E0F7FA', color: '#00838F' }}>
+            <span className="text-base">📊</span><span>에쿠 GrowthDB</span>
+          </div>
+          {item('📦', '공급관리(SCM)', 'soon')}
+          {item('📒', '판매장부', 'soon')}
+        </>)}
+        {cat('delivery', '🛵', '로켓배송', <>
+          {item('🤖', 'AI상품등록', 'new')}
+          {item('🗂️', '상품관리(신규)')}
+        </>)}
+        {cat('sourcing', '🔍', '소싱분석', <>
+          {item('🏷️', '카테고리소싱분석')}
+          {item('🔑', '키워드소싱분석')}
+          {item('📈', '상품경쟁력분석')}
+          {item('📊', '키워드분석')}
+        </>)}
+        {cat('marketing', '📣', '마케팅', <>
+          {item('📉', '쿠팡 랭킹추적')}
+          {item('✏️', '상품명메이커')}
+          {item('📢', '광고관리(소싱검증)')}
+        </>)}
+        {cat('coupass', '🛒', '쿠패스', <>
+          {item('📋', '구매요청(그로스)')}
+        </>)}
+        {cat('logistics', '🚢', '해외물류', <>
+          {item('📦', '배송대행현황')}
+          {item('📄', '출고리스트')}
+        </>)}
+        {cat('aitools', '✨', 'AI 도구', <>
+          {item('🪄', '나노바나나 이미지에디터')}
+          {item('🐱', 'AI 소싱 챗', 'new')}
+        </>)}
+      </div>
+    </aside>
+  );
+}
+
 export default function GrowthDBPage() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [search, setSearch]             = useState('');
@@ -229,7 +303,9 @@ export default function GrowthDBPage() {
   const pageRows   = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
+    <div className="flex-1 flex overflow-hidden bg-gray-50">
+      <EakuSidebar />
+      <div className="flex-1 flex flex-col overflow-hidden">
 
       {/* ── 상태 배너 ── */}
       {!hasKey && (
@@ -490,6 +566,7 @@ export default function GrowthDBPage() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
