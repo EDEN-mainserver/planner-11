@@ -199,6 +199,9 @@ export default function FunnelBlogPage({ onBack }) {
   const [editingRef, setEditingRef] = useState(null);        // 편집 중인 ref 로컬 복사본
   const [saveFlash, setSaveFlash] = useState(false);         // 저장 완료 애니메이션
   const [showUrlInput, setShowUrlInput] = useState(false);   // URL 입력 토글
+  const [showPasteInput, setShowPasteInput] = useState(false); // 직접 붙여넣기 토글
+  const [pasteText, setPasteText] = useState("");             // 붙여넣기 텍스트
+  const [pasteName, setPasteName] = useState("");             // 붙여넣기 이름
 
   // 폼 필드 업데이트
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -245,6 +248,29 @@ export default function FunnelBlogPage({ onBack }) {
 
   // 현재 선택된 퍼널 단계 정보
   const selectedStage = FUNNEL_STAGES.find((s) => s.key === form.funnelStage);
+
+  // ─── 직접 붙여넣기 저장 ───
+  const handleSavePaste = () => {
+    if (!pasteText.trim()) return;
+    const newRef = {
+      id: Date.now().toString(),
+      name: pasteName.trim() || `직접입력 ${new Date().toLocaleDateString("ko-KR")}`,
+      url: "",
+      text: pasteText.trim(),
+      savedAt: new Date().toISOString(),
+    };
+    setRefs((prev) => {
+      const updated = [newRef, ...prev];
+      saveRefs(updated);
+      return updated;
+    });
+    setSelectedRefId(newRef.id);
+    setEditingRef({ ...newRef });
+    setField("refBlog", newRef.text);
+    setPasteText("");
+    setPasteName("");
+    setShowPasteInput(false);
+  };
 
   // ─── URL 크롤링 + 자동 저장 ───
   const handleFetchUrl = async () => {
@@ -487,17 +513,30 @@ export default function FunnelBlogPage({ onBack }) {
                   레퍼런스 블로그 글
                   <span className="ml-2 text-xs font-normal text-gray-400">선택사항 — 말투·흐름을 AI가 참고합니다</span>
                 </label>
-                {/* URL로 새로 추가 토글 */}
-                <button
-                  type="button"
-                  onClick={() => { setShowUrlInput((v) => !v); setUrlError(null); }}
-                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 font-medium transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    {showUrlInput ? <path d="M18 6 6 18M6 6l12 12"/> : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
-                  </svg>
-                  {showUrlInput ? "닫기" : "URL로 추가"}
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* 직접 붙여넣기 토글 */}
+                  <button
+                    type="button"
+                    onClick={() => { setShowPasteInput((v) => !v); setShowUrlInput(false); }}
+                    className="inline-flex items-center gap-1 text-xs text-violet-500 hover:text-violet-700 font-medium transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      {showPasteInput ? <path d="M18 6 6 18M6 6l12 12"/> : <><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/></>}
+                    </svg>
+                    {showPasteInput ? "닫기" : "직접 입력"}
+                  </button>
+                  {/* URL로 새로 추가 토글 */}
+                  <button
+                    type="button"
+                    onClick={() => { setShowUrlInput((v) => !v); setUrlError(null); setShowPasteInput(false); }}
+                    className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 font-medium transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      {showUrlInput ? <path d="M18 6 6 18M6 6l12 12"/> : <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}
+                    </svg>
+                    {showUrlInput ? "닫기" : "URL로 추가"}
+                  </button>
+                </div>
               </div>
 
               {/* URL 입력 (토글) */}
