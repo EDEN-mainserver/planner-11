@@ -179,7 +179,7 @@ function ChevronIcon({ open }) {
   );
 }
 
-function EakuSidebar() {
+function EakuSidebar({ active = 'growthdb', onNavigate }) {
   const [open, setOpen] = useState({ rocket: true, sourcing: true, marketing: false, coupass: false, logistics: false, aitools: false });
   const tog = k => setOpen(p => ({ ...p, [k]: !p[k] }));
   const cat = (key, icon, label, children) => (
@@ -192,6 +192,18 @@ function EakuSidebar() {
       {open[key] && <div className="pl-2 mt-0.5 space-y-0.5">{children}</div>}
     </div>
   );
+  const navItem = (key, icon, label) => {
+    const isActive = active === key;
+    return (
+      <div key={key} onClick={() => onNavigate?.(key)}
+        className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors font-semibold"
+        style={isActive ? { background: '#E0F7FA', color: '#00838F' } : { color: '#6b7280' }}
+        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#f3f4f6'; }}
+        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = ''; }}>
+        <span className="text-base">{icon}</span><span style={isActive ? {} : { fontWeight: 400 }}>{label}</span>
+      </div>
+    );
+  };
   const item = (icon, label, badge) => (
     <div key={label} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-400 hover:bg-gray-100">
       <span className="text-base">{icon}</span><span>{label}</span>
@@ -203,11 +215,8 @@ function EakuSidebar() {
     <aside className="w-52 shrink-0 bg-white border-r border-gray-200 overflow-y-auto py-3">
       <div className="px-3 py-2">
         {cat('rocket', '🚀', '로켓그로스', <>
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer font-semibold"
-            style={{ background: '#E0F7FA', color: '#00838F' }}>
-            <span className="text-base">📊</span><span>에쿠 GrowthDB</span>
-          </div>
-          {item('📦', '공급관리(SCM)', 'soon')}
+          {navItem('growthdb', '📊', '에쿠 GrowthDB')}
+          {navItem('scm', '📦', '공급관리(SCM)')}
           {item('📒', '판매장부', 'soon')}
         </>)}
         {cat('sourcing', '🔍', '소싱분석', <>
@@ -446,6 +455,232 @@ function RealtimeProfitTab({ creds }) {
    메인 컴포넌트
 ───────────────────────────────────────────── */
 /* ─────────────────────────────────────────────
+   공급관리(SCM) 페이지
+───────────────────────────────────────────── */
+const SCM_KEY = 'eden_scm_safety';
+function loadSCMSafety() { try { return JSON.parse(localStorage.getItem(SCM_KEY)) || {}; } catch { return {}; } }
+function saveSCMSafety(m) { localStorage.setItem(SCM_KEY, JSON.stringify(m)); }
+
+function SCMPage({ rows, fmt }) {
+  const [safety, setSafety]   = useState(loadSCMSafety);
+  const [editId, setEditId]   = useState(null);
+  const [editVal, setEditVal] = useState('');
+  const [orderModal, setOrderModal] = useState(null); // { row, qty }
+  const [orderQtyInput, setOrderQtyInput] = useState('');
+  const [orders, setOrders]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem('eden_scm_orders')) || []; } catch { return []; }
+  });
+
+  const saveSafety = (id, val) => {
+    const n = Math.max(0, parseInt(val) || 0);
+    const updated = { ...safety, [id]: n };
+    setSafety(updated); saveSCMSafety(updated); setEditId(null);
+  };
+
+  const addOrder = () => {
+    if (!orderModal) return;
+    const qty = parseInt(orderQtyInput) || 0;
+    if (qty <= 0) return;
+    const newOrder = {
+      id: Date.now(), productId: orderModal.optId, name: orderModal.name,
+      qty, orderedAt: new Date().toISOString(), status: '발주완료',
+    };
+    const updated = [newOrder, ...orders];
+    setOrders(updated);
+    localStorage.setItem('eden_scm_orders', JSON.stringify(updated));
+    setOrderModal(null); setOrderQtyInput('');
+  };
+
+  const scmRows = rows.map(r => {
+    const safetyQty  = safety[r.optId] ?? 50;
+    const dailyQty   = r.qty > 0 ? r.qty / 30 : 0;
+    const daysLeft   = dailyQty > 0 ? Math.round(r.stock / dailyQty) : null;
+    let status, statusBg, statusColor;
+    if (r.stock < 10)              { status = '긴급';  statusBg = '#fef2f2'; statusColor = '#dc2626'; }
+    else if (r.stock < safetyQty)  { status = '부족';  statusBg = '#fff7ed'; statusColor = '#ea580c'; }
+    else if (r.stock < safetyQty * 2) { status = '주의'; statusBg = '#fffbeb'; statusColor = '#d97706'; }
+    else                           { status = '충분';  statusBg = '#f0fdf4'; statusColor = '#16a34a'; }
+    return { ...r, safetyQty, daysLeft, status, statusBg, statusColor };
+  });
+
+  const urgentCount  = scmRows.filter(r => r.status === '긴급' || r.status === '부족').length;
+  const totalStock   = scmRows.reduce((s, r) => s + r.stock, 0);
+  const totalValue   = scmRows.reduce((s, r) => s + r.stock * (r.price || 0), 0);
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* 헤더 */}
+      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+        <div>
+          <h1 className="text-base font-bold text-gray-800 flex items-center gap-1.5">📦 공급관리(SCM)</h1>
+          <p className="text-xs text-gray-400 mt-0.5">재고 현황 · 안전재고 설정 · 발주 관리</p>
+        </div>
+      </div>
+
+      {/* 요약 카드 */}
+      <div className="px-6 py-4 grid grid-cols-4 gap-3">
+        {[
+          { label: '총 상품', value: scmRows.length + '개', color: '#374151' },
+          { label: '재고부족/긴급', value: urgentCount + '개', color: urgentCount > 0 ? '#dc2626' : '#16a34a' },
+          { label: '총 재고 수량', value: fmt(totalStock) + '개', color: '#374151' },
+          { label: '재고 자산 가치', value: '₩' + fmt(Math.round(totalValue)), color: '#00838F' },
+        ].map((c, i) => (
+          <div key={i} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
+            <p className="text-xs text-gray-400 mb-1">{c.label}</p>
+            <p className="text-lg font-black tabular-nums" style={{ color: c.color }}>{c.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-hidden flex flex-col px-6 pb-4 gap-4">
+        {/* 재고 현황 테이블 */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col overflow-hidden flex-1">
+          <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+            <span className="text-sm font-bold text-gray-700">재고 현황</span>
+            <span className="text-xs text-gray-400">안전재고 셀 클릭 → 직접 수정 (자동 저장)</span>
+          </div>
+          <div className="overflow-auto flex-1">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 font-semibold text-[11px]"
+                  style={{ position:'sticky', top:0, zIndex:10, background:'#fff7ed', borderBottom:'1px solid #fed7aa' }}>
+                  <th className="px-3 py-2.5 text-left">상품명</th>
+                  <th className="px-3 py-2.5 text-right">현재재고</th>
+                  <th className="px-3 py-2.5 text-right">안전재고</th>
+                  <th className="px-3 py-2.5 text-center">재고상태</th>
+                  <th className="px-3 py-2.5 text-right">30일 판매수량</th>
+                  <th className="px-3 py-2.5 text-right">예상소진일</th>
+                  <th className="px-3 py-2.5 text-right">판매가</th>
+                  <th className="px-3 py-2.5 text-center">발주</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scmRows.map((row, i) => (
+                  <tr key={i} className="border-b border-gray-100 hover:bg-orange-50/30 transition-colors">
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        {row.imageUrl
+                          ? <img src={row.imageUrl} alt="" className="w-7 h-7 rounded object-cover border border-gray-200 shrink-0"/>
+                          : <div className="w-7 h-7 rounded border border-gray-200 bg-gray-100 flex items-center justify-center text-gray-300 shrink-0 text-[10px]">🖼</div>}
+                        <span className="truncate max-w-[180px] text-gray-800 font-medium" title={row.name}>{row.name}</span>
+                      </div>
+                    </td>
+                    <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${row.stock < 10 ? 'text-red-600' : row.stock < row.safetyQty ? 'text-orange-600' : 'text-gray-700'}`}>
+                      {fmt(row.stock)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {editId === row.optId ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <input autoFocus type="number" value={editVal}
+                            onChange={e => setEditVal(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveSafety(row.optId, editVal); if (e.key === 'Escape') setEditId(null); }}
+                            className="w-16 px-2 py-0.5 border border-orange-400 rounded text-right outline-none" />
+                          <button onClick={() => saveSafety(row.optId, editVal)} className="text-orange-500 font-bold text-sm">✓</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setEditId(row.optId); setEditVal(String(row.safetyQty)); }}
+                          className="text-gray-500 hover:text-orange-600 underline decoration-dashed transition-colors tabular-nums">
+                          {fmt(row.safetyQty)}
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                        style={{ background: row.statusBg, color: row.statusColor }}>
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">
+                      {row.qty > 0 ? fmt(row.qty) + '개' : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {row.daysLeft !== null
+                        ? <span className={row.daysLeft < 14 ? 'text-red-500 font-bold' : row.daysLeft < 30 ? 'text-orange-500' : 'text-gray-600'}>
+                            {row.daysLeft}일
+                          </span>
+                        : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">₩{fmt(row.price)}</td>
+                    <td className="px-3 py-2.5 text-center">
+                      <button onClick={() => { setOrderModal(row); setOrderQtyInput(''); }}
+                        className="text-[11px] px-2.5 py-1 rounded text-white font-medium transition-opacity hover:opacity-80"
+                        style={{ background: '#00BCD4' }}>
+                        발주
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* 발주 이력 */}
+        {orders.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm shrink-0">
+            <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+              <span className="text-sm font-bold text-gray-700">발주 이력</span>
+              <button onClick={() => { setOrders([]); localStorage.removeItem('eden_scm_orders'); }}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors">초기화</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-500 text-[11px] border-b border-gray-100 bg-gray-50">
+                    {['상품명','발주수량','발주일시','상태'].map(h => (
+                      <th key={h} className={`px-4 py-2 font-semibold ${h==='상품명'?'text-left':'text-center'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.slice(0, 10).map(o => (
+                    <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="px-4 py-2 text-gray-700 font-medium truncate max-w-[220px]">{o.name}</td>
+                      <td className="px-4 py-2 text-center font-bold text-gray-700">{fmt(o.qty)}개</td>
+                      <td className="px-4 py-2 text-center text-gray-400">{new Date(o.orderedAt).toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-bold">{o.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 발주 모달 */}
+      {orderModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setOrderModal(null)}>
+          <div className="bg-white rounded-2xl p-6 w-80 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-800 mb-1">📦 발주하기</h3>
+            <p className="text-xs text-gray-500 truncate mb-4">{orderModal.name}</p>
+            <div className="mb-4">
+              <div className="flex justify-between text-xs text-gray-500 mb-2">
+                <span>현재재고</span><span className="font-bold">{fmt(orderModal.stock)}개</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500 mb-3">
+                <span>안전재고</span><span className="font-bold">{fmt(orderModal.safetyQty)}개</span>
+              </div>
+              <label className="text-xs text-gray-600 font-medium mb-1 block">발주 수량</label>
+              <input autoFocus type="number" value={orderQtyInput} onChange={e => setOrderQtyInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addOrder()}
+                placeholder="수량 입력"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-orange-400" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={addOrder} className="flex-1 py-2 rounded-lg text-white text-sm font-bold" style={{ background:'#00BCD4' }}>발주 등록</button>
+              <button onClick={() => setOrderModal(null)} className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    에쿠 Extension 판매 데이터 → s7 / s30 / qty 계산
    saleSummaryByDate: { "2026-04-20": { salesPrice, shippingPrice, quantity }, ... }
 ───────────────────────────────────────────── */
@@ -465,6 +700,7 @@ function calcSalesFromSummary(saleSummaryByDate) {
 }
 
 export default function GrowthDBPage() {
+  const [activeSection, setActiveSection] = useState('growthdb'); // 'growthdb' | 'scm'
   const [mainTab, setMainTab]           = useState('products'); // 'products' | 'profit'
   const [activeFilter, setActiveFilter] = useState('all');
   const [search, setSearch]             = useState('');
@@ -553,8 +789,14 @@ export default function GrowthDBPage() {
 
   return (
     <div className="flex-1 flex overflow-hidden bg-gray-50">
-      <EakuSidebar />
+      <EakuSidebar active={activeSection} onNavigate={setActiveSection} />
       <div className="flex-1 flex flex-col overflow-hidden">
+
+        {/* ── SCM 페이지 ── */}
+        {activeSection === 'scm' && <SCMPage rows={rows} fmt={fmt} />}
+
+        {/* ── GrowthDB (메인 탭 바 포함) ── */}
+        {activeSection === 'growthdb' && <>
 
         {/* ── 메인 탭 바 ── */}
         <div className="bg-white border-b border-gray-200 px-6 flex items-end">
@@ -855,6 +1097,7 @@ export default function GrowthDBPage() {
             </div>
           </>
         )}
+        </> /* growthdb section end */}
       </div>
     </div>
   );
