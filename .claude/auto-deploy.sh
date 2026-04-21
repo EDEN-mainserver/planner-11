@@ -15,7 +15,9 @@ git add -A
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
 git commit -m "auto: Claude 작업 완료 ($TIMESTAMP)" --no-verify 2>&1
 
-# 푸시
+# 원격 변경사항 pull 후 push
+git pull --rebase origin master 2>&1
+
 PUSH_RESULT=$(git push origin master 2>&1)
 PUSH_EXIT=$?
 
