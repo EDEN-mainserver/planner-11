@@ -180,13 +180,16 @@ export default function VideoPreview({
       .catch(() => {});
   }, [gifQuery]);
 
-  // 재생 중 자막 청크가 바뀔 때마다 업데이트
+  // 재생 중 자막 청크가 바뀔 때마다 GIF 교체 (문장당 1개)
   useEffect(() => {
-    if (!currentSentence) return;
+    if (!currentSentence) { setGifUrl(null); return; }
+    setGifUrl(null); // 이전 GIF 즉시 제거
+    let cancelled = false;
     fetch(`/api/klipy?q=${encodeURIComponent(currentSentence)}`)
       .then(r => r.json())
-      .then(d => { if (d?.url) setGifUrl(d.url); })
+      .then(d => { if (!cancelled && d?.url) setGifUrl(d.url); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [currentSentence]);
 
   const togglePlay = useCallback(() => {
