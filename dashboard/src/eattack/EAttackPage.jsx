@@ -52,6 +52,18 @@ const CONTENT_TYPES = [
     gradient: "from-blue-500 to-cyan-600",
     description: "웹사이트를 크롤링하여 콘텐츠 소스를 자동으로 수집합니다",
   },
+  {
+    key: "fullAuto",
+    label: "풀가동화 콘텐츠",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>
+    ),
+    gradient: "from-orange-500 to-amber-500",
+    description: "크롤링부터 글 생성·포스팅까지 전 과정을 자동으로 실행합니다",
+    disabled: true,
+  },
 ];
 
 const TEXT_CHANNELS = [
