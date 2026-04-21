@@ -65,9 +65,9 @@ const POST_TYPES = [
   },
 ];
 
-export default function IbossNewPost({ onBack, onGenerate }) {
+export default function IbossNewPost({ onBack, onGenerate, referencePost = null }) {
   const [postType, setPostType] = useState("info");
-  const [topic, setTopic] = useState("");
+  const [topic, setTopic] = useState(referencePost ? referencePost.title : "");
   const [extraInfo, setExtraInfo] = useState("");
   const [trendPosts, setTrendPosts] = useState([]);
   const [isLoadingTrend, setIsLoadingTrend] = useState(false);

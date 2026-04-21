@@ -237,11 +237,12 @@ function TrendsTab() {
 }
 
 // ─── 메인 페이지 ───
-export default function IbossPage({ onBack }) {
+export default function IbossPage({ onBack, referencePost = null, onClearReference }) {
   const [activeTab, setActiveTab] = useState("articles");
   const [activeFilter, setActiveFilter] = useState("all");
   const [posts, setPosts] = useState(loadPosts);
-  const [view, setView] = useState("list"); // 'list' | 'new' | 'editor'
+  // 레퍼런스가 있으면 바로 새 글 작성 뷰로 진입
+  const [view, setView] = useState(referencePost ? "new" : "list");
   const [currentPost, setCurrentPost] = useState(null);
 
   useEffect(() => {
@@ -280,7 +281,13 @@ export default function IbossPage({ onBack }) {
   };
 
   if (view === "new") {
-    return <IbossNewPost onBack={() => setView("list")} onGenerate={handleGenerate} />;
+    return (
+      <IbossNewPost
+        onBack={() => { setView("list"); onClearReference?.(); }}
+        onGenerate={handleGenerate}
+        referencePost={referencePost}
+      />
+    );
   }
 
   if (view === "editor" && currentPost) {

@@ -135,6 +135,8 @@ function ChannelCard({ item, onClick }) {
 export default function EAttackPage() {
   // depth: 'root' → 글/이미지/영상 | 'text' → 블로그/아이보스 | 'blog' → 블로그 대시보드
   const [depth, setDepth] = useState("root");
+  // 크롤링 페이지에서 선택한 레퍼런스 포스트
+  const [referencePost, setReferencePost] = useState(null);
 
   // 콘텐츠 타입 클릭
   const handleTypeClick = (type) => {
@@ -160,12 +162,26 @@ export default function EAttackPage() {
 
   // 크롤링 대시보드
   if (depth === "crawling") {
-    return <CrawlingPage onBack={() => setDepth("root")} />;
+    return (
+      <CrawlingPage
+        onBack={() => setDepth("root")}
+        onRecompose={(post, content) => {
+          setReferencePost({ ...post, content_raw: content });
+          setDepth("iboss");
+        }}
+      />
+    );
   }
 
   // 아이보스 대시보드
   if (depth === "iboss") {
-    return <IbossPage onBack={() => setDepth("text")} />;
+    return (
+      <IbossPage
+        onBack={() => { setReferencePost(null); setDepth("text"); }}
+        referencePost={referencePost}
+        onClearReference={() => setReferencePost(null)}
+      />
+    );
   }
 
   // 퍼널 블로그 생성

@@ -265,7 +265,7 @@ function ExtensionInstallModal({ onClose }) {
 }
 
 // ─── 메인 크롤링 페이지 ───
-export default function CrawlingPage({ onBack }) {
+export default function CrawlingPage({ onBack, onRecompose }) {
   const [activeTab, setActiveTab] = useState("iboss");
   const [startMonth, setStartMonth] = useState("202604");
   const [endMonth, setEndMonth] = useState("202604");
@@ -413,12 +413,14 @@ export default function CrawlingPage({ onBack }) {
     }
   }, [ibossData.selectedRow]);
 
-  // 재구성하기
+  // 재구성하기 — 선택한 포스트 + 본문을 상위로 전달
   const handleRecompose = useCallback(() => {
     if (ibossData.selectedRow === null) return;
     const post = ibossData.posts[ibossData.selectedRow];
-    alert(`"${post.title}" 레퍼런스로 재구성을 시작합니다.\n(Step 4 — AI 키워드 추천 모달은 다음 단계에서 구현)`);
-  }, [ibossData]);
+    if (onRecompose) {
+      onRecompose(post, detailContent);
+    }
+  }, [ibossData, detailContent, onRecompose]);
 
   // CSV 다운로드 (아이보스 전용)
   const handleDownloadCSV = useCallback(() => {
