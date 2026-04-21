@@ -1,8 +1,10 @@
 // 관리자 페이지
 // - 사용자 관리 (추가/수정/삭제)
 // - 소셜 계정 API 연동 (인스타그램 · 스레드 per user)
+// - AI API 키 관리 (Gemini, Claude, OpenAI 등)
 import { useState } from "react";
 import { USERS as SEED_USERS } from "../config/users";
+import { PRESET_PROVIDERS, loadAiKeys, saveAiKeys } from "../utils/aiKeys";
 
 // ── 스토리지 키 ──
 const USERS_KEY    = "eden_users_v1";

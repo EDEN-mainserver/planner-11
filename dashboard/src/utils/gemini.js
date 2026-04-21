@@ -1,5 +1,9 @@
-// Gemini API 호출 — VITE_GEMINI_API_KEY 있으면 직접 호출, 없으면 서버 함수 경유
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+// Gemini API 호출 — localStorage(관리자 AI API 키) > VITE_GEMINI_API_KEY > 서버 함수 순서로 호출
+import { getApiKey } from './aiKeys';
+
+function getGeminiKey() {
+  return getApiKey('gemini') || import.meta.env.VITE_GEMINI_API_KEY || '';
+}
 
 // 브라우저 사이드 이미지 → base64 변환 (CORS 허용 이미지에만 동작)
 async function fetchImageB64Client(url) {
@@ -20,7 +24,8 @@ async function fetchImageB64Client(url) {
 }
 
 export async function callGemini(history, systemPrompt) {
-  // VITE_GEMINI_API_KEY가 있으면 직접 Google API 호출
+  const GEMINI_KEY = getGeminiKey();
+  // API 키가 있으면 직접 Google API 호출
   if (GEMINI_KEY) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
     const contents = await Promise.all(history.map(async m => {
@@ -78,6 +83,7 @@ export async function callGemini(history, systemPrompt) {
  * @returns {Promise<string>} data URL (data:image/png;base64,...)
  */
 export async function generateImage(prompt, aspectRatio = '3:4') {
+  const GEMINI_KEY = getGeminiKey();
   if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.');
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key=${GEMINI_KEY}`;
