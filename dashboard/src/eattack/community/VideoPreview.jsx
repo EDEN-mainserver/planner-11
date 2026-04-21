@@ -168,29 +168,42 @@ export default function VideoPreview({
     return null;
   }, [sentences, currentMs]);
 
-  // Klipy GIF
+  // Klipy GIF — 캐시로 즉시 표시, 새 GIF 로드 완료 후 교체
   const [gifUrl, setGifUrl] = useState(null);
+  const gifCacheRef = useRef({});
 
-  // 부모가 계산한 gifQuery로 초기 GIF 로드
-  useEffect(() => {
-    if (!gifQuery) return;
-    fetch(`/api/klipy?q=${encodeURIComponent(gifQuery)}`)
-      .then(r => r.json())
-      .then(d => { if (d?.url) setGifUrl(d.url); })
-      .catch(() => {});
-  }, [gifQuery]);
-
-  // 재생 중 자막 청크가 바뀔 때마다 GIF 교체 (문장당 1개)
-  useEffect(() => {
-    if (!currentSentence) { setGifUrl(null); return; }
-    setGifUrl(null); // 이전 GIF 즉시 제거
+  const fetchAndSetGif = useCallback((q, keepPrevious = false) => {
+    if (!q) return;
+    // 캐시 히트 → 즉시 표시
+    if (gifCacheRef.current[q]) {
+      setGifUrl(gifCacheRef.current[q]);
+      return;
+    }
+    // 캐시 미스 → 이전 GIF 유지하며 로드
+    if (!keepPrevious) setGifUrl(null);
     let cancelled = false;
-    fetch(`/api/klipy?q=${encodeURIComponent(currentSentence)}`)
+    fetch(`/api/klipy?q=${encodeURIComponent(q)}`)
       .then(r => r.json())
-      .then(d => { if (!cancelled && d?.url) setGifUrl(d.url); })
+      .then(d => {
+        if (!cancelled && d?.url) {
+          gifCacheRef.current[q] = d.url;
+          setGifUrl(d.url);
+        }
+      })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [currentSentence]);
+  }, []);
+
+  // 초기 GIF (gifQuery 기반)
+  useEffect(() => {
+    if (gifQuery) fetchAndSetGif(gifQuery, false);
+  }, [gifQuery, fetchAndSetGif]);
+
+  // 자막 청크 변경 시 GIF 교체 — 이전 GIF 유지하다가 새 것 로드되면 교체
+  useEffect(() => {
+    if (!currentSentence) { setGifUrl(null); return; }
+    return fetchAndSetGif(currentSentence, true); // keepPrevious=true
+  }, [currentSentence, fetchAndSetGif]);
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
@@ -225,10 +238,9 @@ export default function VideoPreview({
 
         {/* 자막 + GIF — 제목 카드 바로 아래 */}
         <div style={{
-          position: "absolute", top: 155, left: 0, right: 0, bottom: 44,
+          position: "absolute", top: 158, left: 0, right: 0, bottom: 44,
           display: "flex", flexDirection: "column", alignItems: "center",
-          pointerEvents: "none", padding: "0 20px", gap: 8,
-          overflow: "hidden",
+          pointerEvents: "none", padding: "4px 20px 0", gap: 8,
         }}>
           {currentSentence && (
             <p style={{
