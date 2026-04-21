@@ -31,7 +31,13 @@ class CoupangClient:
             content_type = res.headers.get('content-type', '')
             if 'text/html' in content_type or res.text.strip().startswith('<!DOCTYPE'):
                 raise Exception('IP 차단: 쿠팡 Wing에서 이 서버 IP가 허용되지 않았습니다.')
-            res.raise_for_status()
+            if not res.is_success:
+                # 에러 응답 본문 포함해서 예외 발생
+                try:
+                    body = res.json()
+                except Exception:
+                    body = res.text[:300]
+                raise Exception(f'HTTP {res.status_code}: {body}')
             return res.json()
 
     # ── 주문 목록 (매출 원천) ─────────────────────────────────
