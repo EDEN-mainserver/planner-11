@@ -1,7 +1,7 @@
 // Vercel Serverless Function — DigitalOcean 고정 IP 서버로 프록시
 // 브라우저(HTTPS) → Vercel → DigitalOcean(고정IP) → 쿠팡 API
 
-const DO_SERVER = process.env.DO_API_SERVER || 'http://152.42.207.15:8000';
+const DO_SERVER = process.env.DO_API_SERVER || 'http://3.39.122.218:8000';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
