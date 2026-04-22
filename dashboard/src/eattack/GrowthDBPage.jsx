@@ -235,9 +235,9 @@ function EakuSidebar({ active = 'growthdb', onNavigate }) {
           {item('📊', '키워드분석')}
         </>)}
         {cat('marketing', '📣', '마케팅', <>
-          {item('📉', '쿠팡 랭킹추적')}
-          {item('✏️', '상품명메이커')}
-          {item('📢', '광고관리(소싱검증)')}
+          {navItem('ranking', '📉', '쿠팡 랭킹추적')}
+          {navItem('ads',     '📢', '광고관리')}
+          {item('✏️', '상품명메이커', 'soon')}
         </>)}
         {cat('coupass', '🛒', '쿠패스', <>
           {item('📋', '구매요청(그로스)')}
@@ -256,7 +256,40 @@ function EakuSidebar({ active = 'growthdb', onNavigate }) {
 }
 
 /* ─────────────────────────────────────────────
-   실시간 순수익 탭
+   유틸: 최근 N일 날짜 배열 (YYYY-MM-DD)
+───────────────────────────────────────────── */
+function getLast7Days() {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+/* ─────────────────────────────────────────────
+   스파크라인: 7일 판매 추이 미니차트
+───────────────────────────────────────────── */
+function Sparkline({ data }) {
+  if (!data || data.every(v => v === 0))
+    return <span className="text-gray-200 text-[10px]">—</span>;
+  const max = Math.max(...data, 1);
+  const W = 54, H = 20;
+  const pts = data.map((v, i) =>
+    `${Math.round((i / (data.length - 1)) * W)},${Math.round(H - (v / max) * (H - 4) - 2)}`
+  ).join(' ');
+  const last = data[data.length - 1];
+  const lx = W, ly = Math.round(H - (last / max) * (H - 4) - 2);
+  return (
+    <svg width={W} height={H} style={{ display: 'block', overflow: 'visible' }}>
+      <polyline points={pts} fill="none" stroke="#f97316" strokeWidth="1.5"
+        strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lx} cy={ly} r="2.5" fill="#f97316" />
+    </svg>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   판매장부 (수익성 분석)
 ───────────────────────────────────────────── */
 const COST_MAP_KEY = 'eden_coupang_cost_map';
 function loadCostMap() {
@@ -284,65 +317,61 @@ function ProfitBadge({ children, color = 'gray' }) {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${cls}`}>{children}</span>;
 }
 
-function RealtimeProfitTab({ creds, rows }) {
+function RealtimeProfitTab({ creds, rows, salesHistoryMap }) {
   const [costMap, setCostMap]         = useState(loadCostMap);
   const [editCostId, setEditCostId]   = useState(null);
   const [editCostVal, setEditCostVal] = useState('');
-  const [profitData, setProfitData]   = useState(null);   // 백엔드 /coupang/profit 결과
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState('');
   const [days, setDays]               = useState(30);
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const timerRef                      = useRef(null);
 
   const hasKey = !!(creds.accessKey && creds.secretKey && creds.vendorId);
 
-  // 쿠팡 주문 API에서 판매가·수량·매출·수수료 실시간 수집
-  const fetchProfit = useCallback(async (silent = false) => {
-    if (!hasKey) return;
-    if (!silent) setLoading(true);
-    setError('');
-    try {
-      const resp = await fetch(`${API_BASE}/coupang/profit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          access_key: creds.accessKey,
-          secret_key: creds.secretKey,
-          vendor_id:  creds.vendorId,
-          cost_map:   {},   // 원가는 클라이언트에서 관리
-          days,
-        }),
-      });
-      if (!resp.ok) throw new Error(`서버 오류 HTTP ${resp.status}`);
-      const data = await resp.json();
-      if (data.detail) throw new Error(data.detail);
-      setProfitData(data);
-      setLastUpdated(new Date());
-    } catch (e) {
-      setError(e.message);
-    }
-    if (!silent) setLoading(false);
-  }, [hasKey, creds, days]);
-
-  // days 변경 또는 마운트 시 자동 조회
-  useEffect(() => {
-    if (hasKey) fetchProfit();
-  }, [fetchProfit]);
-
-  // 5분마다 자동 새로고침
-  useEffect(() => {
-    if (!hasKey) return;
-    timerRef.current = setInterval(() => fetchProfit(true), 5 * 60 * 1000);
-    return () => clearInterval(timerRef.current);
-  }, [fetchProfit]);
-
   const saveCost = (vid) => {
     const updated = { ...costMap, [vid]: parseNum(editCostVal) };
-    setCostMap(updated);
-    saveCostMap(updated);
-    setEditCostId(null);
+    setCostMap(updated); saveCostMap(updated); setEditCostId(null);
   };
+
+  const last7 = useMemo(() => getLast7Days(), []);
+
+  // rows(상품DB) + salesHistoryMap(SALES_DATA) → 판매 수익 계산
+  const mergedItems = useMemo(() => {
+    return rows.map(row => {
+      const vid       = String(row.optId);
+      const costPrice = costMap[vid] ?? 0;
+      const hasCost   = costPrice > 0;
+      const sp        = row.price || 0;
+      const feeUnit   = row.fee > 0 ? row.fee : Math.round(sp * 0.108);
+
+      // 스파크라인 & 7일 수량 (salesHistoryMap에서 직접 계산)
+      const hist      = salesHistoryMap[vid] || {};
+      const sparkData = last7.map(d => hist[d]?.quantity || 0);
+      const qty7      = sparkData.reduce((s, v) => s + v, 0);
+
+      const qty       = days === 7 ? qty7 : (row.qty || 0);
+      const revenue   = days === 7 ? (row.s7 || 0) : (row.s30 || 0);
+      const commission = Math.round(feeUnit * qty);
+      const netProfit  = hasCost ? Math.round((sp - costPrice - feeUnit) * qty) : 0;
+      const marginPct  = hasCost && sp > 0
+        ? parseFloat(((sp - costPrice - feeUnit) / sp * 100).toFixed(1)) : null;
+
+      return {
+        vid, name: row.name, opt: row.opt, sell_price: sp,
+        cost_price: costPrice, has_cost: hasCost,
+        qty, revenue, commission, net_profit: netProfit,
+        margin: marginPct, sparkData,
+      };
+    }).sort((a, b) => b.revenue - a.revenue);
+  }, [rows, costMap, days, salesHistoryMap, last7]);
+
+  const totalRevenue   = mergedItems.reduce((s, i) => s + i.revenue, 0);
+  const totalQty       = mergedItems.reduce((s, i) => s + i.qty, 0);
+  const totalNetProfit = useMemo(
+    () => mergedItems.filter(i => i.has_cost && i.qty > 0).reduce((s, i) => s + i.net_profit, 0),
+    [mergedItems],
+  );
+  const avgMargin = totalRevenue > 0 && totalNetProfit !== 0
+    ? parseFloat((totalNetProfit / totalRevenue * 100).toFixed(1)) : 0;
+  const missingCostCount = mergedItems.filter(i => !i.has_cost && i.qty > 0).length;
+  const hasData = mergedItems.some(i => i.qty > 0 || i.revenue > 0);
 
   if (!hasKey) {
     return (
@@ -354,63 +383,6 @@ function RealtimeProfitTab({ creds, rows }) {
     );
   }
 
-  // 백엔드 판매 데이터 + rows(상품 목록) 병합
-  // → 판매된 상품: 실제 판매가·수량·매출 표시
-  // → 미판매 상품: rows에서 가져와 qty=0으로 표시
-  const mergedItems = useMemo(() => {
-    const profitMap = {};
-    (profitData?.items || []).forEach(item => {
-      profitMap[String(item.vendor_item_id)] = item;
-    });
-
-    const unsold = rows
-      .filter(row => !profitMap[String(row.optId)])
-      .map(row => ({
-        vendor_item_id: String(row.optId),
-        item_name:      row.name,
-        sell_price:     row.price,
-        qty:            0,
-        revenue:        0,
-        commission:     0,
-      }));
-
-    return [...(profitData?.items || []), ...unsold].map(item => {
-      const vid       = String(item.vendor_item_id);
-      const costPrice = costMap[vid] ?? 0;
-      const hasCost   = costPrice > 0;
-      const sp        = item.sell_price || 0;
-      // 수수료 단가: 주문 데이터에 실제 수수료가 있으면 사용, 없으면 10.8% 추정
-      const feeUnit   = item.qty > 0 && item.commission > 0
-        ? item.commission / item.qty
-        : sp * 0.108;
-      const netProfit = hasCost
-        ? Math.round((sp - costPrice - feeUnit) * (item.qty || 0))
-        : 0;
-      const marginPct = hasCost && sp > 0
-        ? parseFloat(((sp - costPrice - feeUnit) / sp * 100).toFixed(1))
-        : null;
-      return {
-        ...item,
-        cost_price:  costPrice,
-        has_cost:    hasCost,
-        net_profit:  netProfit,
-        margin:      marginPct,
-      };
-    }).sort((a, b) => b.revenue - a.revenue);
-  }, [profitData, rows, costMap]);
-
-  // 요약 수치 (총매출·수량은 백엔드 집계값 사용, 순수익은 클라이언트 원가 적용)
-  const totalRevenue    = profitData?.total_revenue ?? 0;
-  const totalQty        = profitData?.total_qty ?? 0;
-  const totalNetProfit  = useMemo(
-    () => mergedItems.filter(i => i.has_cost && i.qty > 0).reduce((s, i) => s + i.net_profit, 0),
-    [mergedItems],
-  );
-  const avgMargin = totalRevenue > 0 && totalNetProfit !== 0
-    ? parseFloat((totalNetProfit / totalRevenue * 100).toFixed(1))
-    : (profitData?.total_margin ?? 0);
-  const missingCostCount = mergedItems.filter(i => !i.has_cost && i.qty > 0).length;
-
   return (
     <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
       {/* 헤더 */}
@@ -418,55 +390,39 @@ function RealtimeProfitTab({ creds, rows }) {
         <div>
           <h1 className="text-base font-bold text-gray-800">📒 판매장부</h1>
           <p className="text-xs text-gray-400 mt-0.5">
-            상품별 수익성 분석 · 원가 입력 시 정확한 마진 계산
-            {lastUpdated && (
-              <span className="ml-2 text-gray-300">
-                · {lastUpdated.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} 업데이트
-              </span>
-            )}
+            상품별 수익성 분석 · 에쿠 확장 판매분석 실행 시 자동 반영
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* 기간 선택 */}
+        <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
-            {[7, 30, 90].map(d => (
-              <button key={d}
-                onClick={() => setDays(d)}
+            {[7, 30].map(d => (
+              <button key={d} onClick={() => setDays(d)}
                 className={`px-3 py-1.5 font-medium transition-colors ${days === d ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 hover:bg-orange-50'}`}>
                 {d}일
               </button>
             ))}
           </div>
-          <button
-            onClick={() => fetchProfit()}
-            disabled={loading}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-medium hover:bg-orange-600 disabled:opacity-50 transition-colors">
-            <span className={loading ? 'animate-spin inline-block' : ''}>⟳</span> 새로고침
-          </button>
           <ProfitBadge color="green">● {creds.vendorId} 연결됨</ProfitBadge>
         </div>
       </div>
 
-      {/* 에러 */}
-      {error && (
-        <div className="flex gap-2 px-4 py-3 bg-red-50 border border-red-100 rounded-xl">
-          <span>❌</span>
-          <p className="text-xs text-red-700">
-            {error} —{' '}
-            <button className="underline" onClick={() => fetchProfit()}>재시도</button>
-          </p>
+      {/* 데이터 없을 때: 에쿠 확장 사용 안내 */}
+      {!hasData && (
+        <div className="flex gap-4 px-5 py-4 bg-orange-50 border border-orange-100 rounded-xl items-start">
+          <span className="text-3xl mt-0.5">🔌</span>
+          <div>
+            <p className="text-sm font-bold text-orange-700 mb-1.5">에쿠 확장에서 판매 데이터를 가져오세요</p>
+            <ol className="text-xs text-orange-600 space-y-0.5 list-decimal list-inside">
+              <li>쿠팡 Wing → 상품 상세 페이지 접속</li>
+              <li>에쿠 확장 팝업 클릭 → <strong>판매 분석</strong> 버튼 클릭</li>
+              <li>수집 완료 후 대시보드에 자동 동기화</li>
+            </ol>
+          </div>
         </div>
       )}
 
-      {/* 초기 로딩 */}
-      {loading && !profitData && (
-        <div className="flex items-center justify-center gap-3 py-16 text-gray-400">
-          <span className="text-2xl animate-spin">⟳</span>
-          <p className="text-sm">쿠팡 주문 데이터 수집 중…</p>
-        </div>
-      )}
-
-      {(!loading || profitData) && (<>
+      {/* 데이터 있을 때: 요약 + 테이블 */}
+      {hasData && (<>
         {/* 요약 카드 */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
@@ -488,8 +444,8 @@ function RealtimeProfitTab({ creds, rows }) {
           <div className="flex gap-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl">
             <span>⚠️</span>
             <p className="text-xs text-amber-700">
-              <span className="font-bold">{missingCostCount}개 판매 상품</span> 원가 미입력.
-              아래 표에서 원가를 클릭해 입력하면 정확한 순수익이 계산됩니다.
+              <span className="font-bold">{missingCostCount}개 판매 상품</span> 원가 미입력 —
+              아래 표에서 원가 셀을 클릭해 입력하세요
             </p>
           </div>
         )}
@@ -498,43 +454,50 @@ function RealtimeProfitTab({ creds, rows }) {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-bold text-gray-700">상품별 수익성</h4>
-            {profitData && (
-              <span className="text-xs text-gray-400">
-                주문 {(profitData.order_count ?? 0).toLocaleString()}건 · 판매상품 {mergedItems.filter(i => i.qty > 0).length}개
-              </span>
-            )}
+            <span className="text-xs text-gray-400">
+              판매상품 {mergedItems.filter(i => i.qty > 0).length}개
+            </span>
           </div>
           <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['상품명', '판매가', '원가', `수량(${days}일)`, '매출', '수수료', '순수익', '마진'].map(h => (
-                    <th key={h} className={`py-2.5 px-3 text-gray-500 font-semibold whitespace-nowrap ${h === '상품명' ? 'text-left' : 'text-right'}`}>{h}</th>
+                  {['상품명', '7일 추이', '판매가', '원가', `수량(${days}일)`, '매출', '수수료', '순수익', '마진'].map(h => (
+                    <th key={h} className={`py-2.5 px-3 text-gray-500 font-semibold whitespace-nowrap
+                      ${h === '상품명' ? 'text-left' : h === '7일 추이' ? 'text-center' : 'text-right'}`}>
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {mergedItems.map((item, i) => (
                   <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} ${item.qty === 0 ? 'opacity-40' : ''}`}>
-                    <td className="px-3 py-2.5 text-gray-700 font-medium max-w-[200px] truncate" title={item.item_name}>{item.item_name}</td>
+                    <td className="px-3 py-2.5 max-w-[190px]">
+                      <p className="truncate text-gray-700 font-medium" title={item.name}>{item.name}</p>
+                      {item.opt && <p className="text-[10px] text-gray-400 truncate">{item.opt}</p>}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <Sparkline data={item.sparkData} />
+                    </td>
                     <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">
                       {item.sell_price > 0 ? `₩${fmtNum(item.sell_price)}` : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">
-                      {editCostId === item.vendor_item_id ? (
+                      {editCostId === item.vid ? (
                         <div className="flex items-center gap-1 justify-end">
                           <input autoFocus type="number" value={editCostVal}
                             onChange={e => setEditCostVal(e.target.value)}
                             onKeyDown={e => {
-                              if (e.key === 'Enter') saveCost(item.vendor_item_id);
+                              if (e.key === 'Enter') saveCost(item.vid);
                               if (e.key === 'Escape') setEditCostId(null);
                             }}
                             className="w-20 px-2 py-1 border border-orange-400 rounded-lg text-right outline-none" />
-                          <button onClick={() => saveCost(item.vendor_item_id)} className="text-orange-500 font-bold">✓</button>
+                          <button onClick={() => saveCost(item.vid)} className="text-orange-500 font-bold">✓</button>
                         </div>
                       ) : (
                         <button
-                          onClick={() => { setEditCostId(item.vendor_item_id); setEditCostVal(String(item.cost_price || '')); }}
+                          onClick={() => { setEditCostId(item.vid); setEditCostVal(String(item.cost_price || '')); }}
                           className={`hover:text-orange-600 transition-colors ${item.has_cost ? 'text-gray-600' : 'text-amber-500 underline decoration-dashed'}`}>
                           {item.has_cost ? `₩${fmtNum(item.cost_price)}` : '입력 필요'}
                         </button>
@@ -563,7 +526,7 @@ function RealtimeProfitTab({ creds, rows }) {
             </table>
           </div>
           <p className="text-[10px] text-gray-400 mt-2">
-            판매가·수량·매출은 쿠팡 주문 API 자동 수집 · 원가 클릭 → 직접 입력 (브라우저 자동 저장) · 5분마다 자동 새로고침
+            원가 셀 클릭 → 직접 입력 (브라우저 자동 저장) · 에쿠 확장 판매분석 실행 시 자동 업데이트
           </p>
         </div>
       </>)}
@@ -801,6 +764,277 @@ function SCMPage({ rows, fmt }) {
 }
 
 /* ─────────────────────────────────────────────
+   광고 관리 탭
+   EKU_AD_DATA: { adList: [{campaign_name, ad_cost_sum, total_sale_14_days,
+     total_roas_14_days, clicks_count, impressions_count, ctr,
+     vendor_item_name, keyword, ...}] }
+───────────────────────────────────────────── */
+function AdTab({ adData }) {
+  const [tab, setTab] = useState('summary'); // 'summary' | 'detail'
+
+  const { adList = [], updatedAt } = adData;
+
+  if (adList.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
+        <span className="text-4xl">📢</span>
+        <p className="text-sm font-semibold text-gray-700">광고 데이터가 없습니다</p>
+        <div className="text-xs text-gray-400 text-center space-y-1 bg-gray-50 px-5 py-4 rounded-xl border border-gray-100">
+          <p className="font-semibold text-gray-500 mb-2">에쿠 확장 사용법</p>
+          <p>1. 쿠팡 광고 센터(<strong>advertising.coupang.com</strong>) 접속</p>
+          <p>2. 에쿠 확장 팝업 → COUPLUS 광고 탭 → <strong>광고 수집</strong></p>
+          <p>3. 수집 완료 후 대시보드에 자동 동기화</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 캠페인별 집계
+  const campaignMap = {};
+  adList.forEach(row => {
+    const key = row.campaign_name || '(미분류)';
+    if (!campaignMap[key]) campaignMap[key] = {
+      campaign_name: key, ad_cost: 0, sale: 0, clicks: 0, impressions: 0, items: 0,
+    };
+    const c = campaignMap[key];
+    c.ad_cost   += Number(row.ad_cost_sum || 0);
+    c.sale      += Number(row.total_sale_14_days || row.total_sale_24_hours || 0);
+    c.clicks    += Number(row.clicks_count || 0);
+    c.impressions += Number(row.impressions_count || 0);
+    c.items     += 1;
+  });
+  const campaigns = Object.values(campaignMap).sort((a, b) => b.ad_cost - a.ad_cost);
+
+  const totalAdCost    = campaigns.reduce((s, c) => s + c.ad_cost, 0);
+  const totalSale      = campaigns.reduce((s, c) => s + c.sale, 0);
+  const totalRoas      = totalAdCost > 0 ? (totalSale / totalAdCost).toFixed(1) : '—';
+  const totalClicks    = campaigns.reduce((s, c) => s + c.clicks, 0);
+  const totalImpressions = campaigns.reduce((s, c) => s + c.impressions, 0);
+  const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions * 100).toFixed(2) : '—';
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-base font-bold text-gray-800">📢 광고관리</h1>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {adList.length}개 광고 데이터
+            {updatedAt && (
+              <span className="ml-2 text-gray-300">
+                · {updatedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 수집
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+          {[['summary','캠페인 요약'], ['detail','상품별 상세']].map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`px-3 py-1.5 font-medium transition-colors ${tab === key ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 hover:bg-orange-50'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: '총 광고비',   value: `₩${fmtNum(totalAdCost)}`, color: 'text-red-500' },
+          { label: '총 매출(14일)', value: `₩${fmtNum(totalSale)}`, color: 'text-gray-800' },
+          { label: 'ROAS',        value: totalRoas === '—' ? '—' : `${totalRoas}x`, color: Number(totalRoas) >= 3 ? 'text-green-600' : Number(totalRoas) >= 1.5 ? 'text-orange-500' : 'text-red-500' },
+          { label: '평균 CTR',    value: avgCtr === '—' ? '—' : `${avgCtr}%`, color: 'text-gray-700' },
+        ].map((c, i) => (
+          <div key={i} className="bg-white border border-gray-200 rounded-xl p-4">
+            <p className="text-xs text-gray-400 mb-1">{c.label}</p>
+            <p className={`text-lg font-black tabular-nums ${c.color}`}>{c.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* 캠페인 요약 테이블 */}
+      {tab === 'summary' && (
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                {['캠페인', '광고비', '매출(14일)', 'ROAS', '클릭', '광고수'].map(h => (
+                  <th key={h} className={`py-2.5 px-4 text-gray-500 font-semibold whitespace-nowrap ${h === '캠페인' ? 'text-left' : 'text-right'}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {campaigns.map((c, i) => {
+                const roas = c.ad_cost > 0 ? (c.sale / c.ad_cost).toFixed(1) : 0;
+                const roasColor = roas >= 3 ? 'text-green-600 font-bold' : roas >= 1.5 ? 'text-orange-500' : 'text-red-500';
+                return (
+                  <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    <td className="px-4 py-2.5 font-medium text-gray-700 max-w-[200px]">
+                      <p className="truncate">{c.campaign_name}</p>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-red-500 tabular-nums">₩{fmtNum(c.ad_cost)}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-700 tabular-nums">₩{fmtNum(c.sale)}</td>
+                    <td className={`px-4 py-2.5 text-right tabular-nums ${roasColor}`}>{roas}x</td>
+                    <td className="px-4 py-2.5 text-right text-gray-600 tabular-nums">{fmtNum(c.clicks)}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-400">{c.items}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 상품별 상세 테이블 */}
+      {tab === 'detail' && (
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                {['상품명', '키워드', '광고비', '매출(14일)', 'ROAS', '클릭수', 'CTR', '노출수'].map(h => (
+                  <th key={h} className={`py-2.5 px-3 text-gray-500 font-semibold whitespace-nowrap ${h === '상품명' || h === '키워드' ? 'text-left' : 'text-right'}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {adList.slice(0, 200).map((row, i) => {
+                const adCost = Number(row.ad_cost_sum || 0);
+                const sale   = Number(row.total_sale_14_days || row.total_sale_24_hours || 0);
+                const roas   = adCost > 0 ? (sale / adCost).toFixed(1) : 0;
+                const roasColor = roas >= 3 ? 'text-green-600 font-bold' : roas >= 1.5 ? 'text-orange-500' : 'text-red-500';
+                const ctr = row.ctr ? (Number(row.ctr) * 100).toFixed(2) : '—';
+                return (
+                  <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                    <td className="px-3 py-2 text-gray-700 max-w-[180px]">
+                      <p className="truncate">{row.vendor_item_name || row.ad_name || '—'}</p>
+                    </td>
+                    <td className="px-3 py-2 text-gray-500 max-w-[120px]">
+                      <p className="truncate">{row.keyword || '—'}</p>
+                    </td>
+                    <td className="px-3 py-2 text-right text-red-400 tabular-nums">₩{fmtNum(adCost)}</td>
+                    <td className="px-3 py-2 text-right text-gray-700 tabular-nums">₩{fmtNum(sale)}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${roasColor}`}>{roas}x</td>
+                    <td className="px-3 py-2 text-right text-gray-600 tabular-nums">{fmtNum(Number(row.clicks_count || 0))}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">{ctr}{ctr !== '—' ? '%' : ''}</td>
+                    <td className="px-3 py-2 text-right text-gray-400 tabular-nums">{fmtNum(Number(row.impressions_count || 0))}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   랭킹 추적 탭
+───────────────────────────────────────────── */
+function RankingTab({ rankingData, updatedAt }) {
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!search) return rankingData;
+    return rankingData.filter(item =>
+      (item.keyword || '').includes(search) ||
+      (item.productName || item.itemName || item.name || '').includes(search)
+    );
+  }, [rankingData, search]);
+
+  if (!rankingData || rankingData.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
+        <span className="text-4xl">📉</span>
+        <p className="text-sm font-semibold text-gray-700">랭킹 데이터가 없습니다</p>
+        <div className="text-xs text-gray-400 text-center space-y-1 bg-gray-50 px-5 py-4 rounded-xl border border-gray-100">
+          <p className="font-semibold text-gray-500 mb-2">에쿠 확장 사용법</p>
+          <p>1. 쿠팡 키워드 검색 결과 페이지 접속</p>
+          <p>2. 에쿠 확장 팝업 → <strong>랭킹 수집</strong> 클릭</p>
+          <p>3. 키워드 입력 → 추가 → 대시보드 자동 동기화</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-base font-bold text-gray-800">📉 쿠팡 랭킹추적</h1>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {Object.keys(rankingData.reduce((acc, d) => { acc[d.keyword || '?'] = 1; return acc; }, {})).length}개 키워드
+            {updatedAt && (
+              <span className="ml-2 text-gray-300">
+                · {updatedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 수집
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="relative">
+          <svg className="w-3 h-3 text-gray-300 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+          </svg>
+          <input type="text" placeholder="키워드·상품명 검색" value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="text-xs pl-6 pr-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 w-40" />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              {['키워드', '순위', '상품명', '판매자', '수집 시각'].map(h => (
+                <th key={h} className={`py-2.5 px-4 text-gray-500 font-semibold whitespace-nowrap
+                  ${h === '순위' ? 'text-center' : 'text-left'}`}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.slice(0, 300).map((item, i) => {
+              const rank = item.rank ?? item.rankNum ?? (i + 1);
+              const rankColor = rank <= 3  ? 'text-yellow-600 bg-yellow-50'
+                              : rank <= 10 ? 'text-green-600 bg-green-50'
+                              : rank <= 30 ? 'text-orange-500 bg-orange-50'
+                              : 'text-gray-500 bg-gray-100';
+              return (
+                <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'} hover:bg-orange-50/30 transition-colors`}>
+                  <td className="px-4 py-2.5">
+                    <span className="font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-full text-[11px]">
+                      {item.keyword || item.searchKeyword || '—'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`text-sm font-black tabular-nums px-2 py-0.5 rounded-full ${rankColor}`}>
+                      {rank}위
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-700 max-w-[240px]">
+                    <p className="truncate">{item.productName || item.itemName || item.name || '—'}</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-500">{item.vendor || item.seller || item.vendorName || '—'}</td>
+                  <td className="px-4 py-2.5 text-gray-400">
+                    {item.collectedAt
+                      ? new Date(item.collectedAt).toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+                      : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {filtered.length > 300 && (
+        <p className="text-xs text-gray-400 text-center">300개 표시 중 (전체 {filtered.length}개)</p>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    에쿠 Extension 판매 데이터 → s7 / s30 / qty 계산
    saleSummaryByDate: { "2026-04-20": { salesPrice, shippingPrice, quantity }, ... }
 ───────────────────────────────────────────── */
@@ -820,7 +1054,7 @@ function calcSalesFromSummary(saleSummaryByDate) {
 }
 
 export default function GrowthDBPage() {
-  const [activeSection, setActiveSection] = useState('growthdb'); // 'growthdb' | 'scm' | 'ledger'
+  const [activeSection, setActiveSection] = useState('growthdb'); // 'growthdb' | 'scm' | 'ledger' | 'ranking'
   const [activeFilter, setActiveFilter] = useState('all');
   const [search, setSearch]             = useState('');
   const [showReturn, setShowReturn]     = useState(false);
@@ -834,9 +1068,14 @@ export default function GrowthDBPage() {
   const [isReal, setIsReal]   = useState(false);
 
   // 에쿠 Extension 연동 상태
-  const [extSynced, setExtSynced]         = useState(false);
-  const [extSyncedAt, setExtSyncedAt]     = useState(null);
-  const [rankingData, setRankingData]     = useState([]);
+  const [extSynced, setExtSynced]             = useState(false);
+  const [extSyncedAt, setExtSyncedAt]         = useState(null);
+  const [rankingData, setRankingData]         = useState([]);
+  const [rankingUpdatedAt, setRankingUpdatedAt] = useState(null);
+  // vendorItemId → { 'YYYY-MM-DD': { salesPrice, shippingPrice, quantity } }
+  const [salesHistoryMap, setSalesHistoryMap] = useState({});
+  // 광고 데이터 (EKU_AD_DATA)
+  const [adData, setAdData] = useState({ adList: [], updatedAt: null });
 
   const hasKey = !!(creds.accessKey && creds.secretKey && creds.vendorId);
   const fmt    = n => Number(n).toLocaleString();
@@ -853,12 +1092,36 @@ export default function GrowthDBPage() {
         setRows(prev => prev.map(row =>
           String(row.optId) === vid ? { ...row, s7, s30, qty } : row
         ));
+        // 스파크라인·7일 수량 계산용 히스토리 저장
+        setSalesHistoryMap(prev => ({ ...prev, [vid]: payload.saleSummaryByDate }));
         setExtSynced(true);
         setExtSyncedAt(new Date());
       }
 
       if (type === 'RANKING_DATA' && Array.isArray(payload)) {
         setRankingData(payload);
+        setRankingUpdatedAt(new Date());
+        setExtSynced(true);
+        setExtSyncedAt(new Date());
+      }
+
+      // Wing 수집 데이터 (주문/정산/재고) — 향후 확장 지점
+      if (type === 'EKU_WING_DATA') {
+        const paths = payload?.path
+          ? [payload.path]
+          : Object.keys(payload?.captured || {});
+        console.log('[에쿠 Wing] 데이터 수신:', paths.join(', '));
+        // TODO: 주문/재고 데이터 → rows 병합
+      }
+
+      // 광고 데이터 (advertising.coupang.com → script.js → background → dashboard)
+      if (type === 'EKU_AD_DATA' && Array.isArray(payload?.adList)) {
+        setAdData(prev => ({
+          adList: payload.isDetail
+            ? [...prev.adList, ...payload.adList]  // 상세는 누적
+            : payload.adList,                       // 기본은 교체
+          updatedAt: new Date(),
+        }));
         setExtSynced(true);
         setExtSyncedAt(new Date());
       }
@@ -978,7 +1241,19 @@ export default function GrowthDBPage() {
         {activeSection === 'scm' && <SCMPage rows={rows} fmt={fmt} />}
 
         {/* ── 판매장부 (수익성 분석) ── */}
-        {activeSection === 'ledger' && <RealtimeProfitTab creds={creds} rows={rows} />}
+        {activeSection === 'ledger' && (
+          <RealtimeProfitTab creds={creds} rows={rows} salesHistoryMap={salesHistoryMap} />
+        )}
+
+        {/* ── 랭킹 추적 ── */}
+        {activeSection === 'ranking' && (
+          <RankingTab rankingData={rankingData} updatedAt={rankingUpdatedAt} />
+        )}
+
+        {/* ── 광고 관리 ── */}
+        {activeSection === 'ads' && (
+          <AdTab adData={adData} />
+        )}
 
         {/* ── GrowthDB ── */}
         {activeSection === 'growthdb' && <>
