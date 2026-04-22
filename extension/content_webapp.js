@@ -8,6 +8,9 @@ const STATUS_KEY           = 'eden_crawl_status';
 const SESSION_KEY          = 'eden_threads_pending';
 const LINKEDIN_STORAGE_KEY = 'eden_linkedin_results';
 const LINKEDIN_STATUS_KEY  = 'eden_linkedin_status';
+const WING_DATA_KEY        = 'eden_wing_data';
+const WING_STATUS_KEY      = 'eden_wing_status';
+const WING_APIS_KEY        = 'eden_wing_apis';
 
 console.log('[Eden Crawl] content_webapp.js 로드됨:', location.href);
 
@@ -63,6 +66,18 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // LinkedIn 진행 상태 전달
   if (changes[LINKEDIN_STATUS_KEY]) {
     window.postMessage({ type: 'EDEN_LINKEDIN_STATUS', payload: changes[LINKEDIN_STATUS_KEY].newValue }, '*');
+  }
+  // Wing 데이터 결과 전달
+  if (changes[WING_DATA_KEY]) {
+    window.postMessage({ type: 'EDEN_WING_DATA', payload: changes[WING_DATA_KEY].newValue }, '*');
+  }
+  // Wing 진행 상태 전달
+  if (changes[WING_STATUS_KEY]) {
+    window.postMessage({ type: 'EDEN_WING_STATUS', payload: changes[WING_STATUS_KEY].newValue }, '*');
+  }
+  // Wing API 탐지 목록 전달
+  if (changes[WING_APIS_KEY]) {
+    window.postMessage({ type: 'EDEN_WING_APIS', payload: changes[WING_APIS_KEY].newValue }, '*');
   }
 });
 
@@ -176,6 +191,29 @@ window.addEventListener('message', (event) => {
         }
       }
     );
+    return;
+  }
+
+  // Wing 데이터 수집 시작
+  if (type === 'EDEN_WING_FETCH') {
+    chrome.runtime.sendMessage({ type: 'EDEN_WING_FETCH', targets: event.data.targets }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[Eden Wing] 요청 실패:', chrome.runtime.lastError.message);
+        window.postMessage({
+          type: 'EDEN_WING_STATUS',
+          payload: { msg: '확장 프로그램 오류: ' + chrome.runtime.lastError.message, done: true, error: true },
+        }, '*');
+      }
+    });
+    return;
+  }
+
+  // Wing 저장된 데이터 요청
+  if (type === 'EDEN_WING_GET_DATA') {
+    chrome.storage.local.get([WING_DATA_KEY, WING_APIS_KEY], (data) => {
+      window.postMessage({ type: 'EDEN_WING_DATA', payload: data[WING_DATA_KEY] || null }, '*');
+      window.postMessage({ type: 'EDEN_WING_APIS', payload: data[WING_APIS_KEY] || {} }, '*');
+    });
     return;
   }
 
