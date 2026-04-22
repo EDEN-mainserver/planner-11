@@ -928,21 +928,32 @@ export default function UnifiedPipelineTab() {
         {error && <ErrorBox msg={error} />}
 
         {!running && (
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setImages([]);
+                  startImages();
+                }}
+                className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-all"
+              >
+                다시 생성
+              </button>
+              <button
+                onClick={() => startAssembly(images)}
+                className="flex-[2] py-2.5 bg-gradient-to-r from-violet-500 to-pink-500 text-white text-sm font-bold rounded-xl hover:from-violet-600 hover:to-pink-600 transition-all"
+              >
+                카드 조립 →
+              </button>
+            </div>
             <button
-              onClick={() => {
-                setImages([]);
-                startImages();
-              }}
-              className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-all"
+              onClick={() => { setImages([]); setStep("planning"); }}
+              className="w-full py-2 text-xs text-gray-400 hover:text-gray-600 flex items-center justify-center gap-1 transition-colors"
             >
-              다시 생성
-            </button>
-            <button
-              onClick={() => startAssembly(images)}
-              className="flex-[2] py-2.5 bg-gradient-to-r from-violet-500 to-pink-500 text-white text-sm font-bold rounded-xl hover:from-violet-600 hover:to-pink-600 transition-all"
-            >
-              카드 조립 →
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m15 18-6-6 6-6"/>
+              </svg>
+              기획 단계로 돌아가기
             </button>
           </div>
         )}
