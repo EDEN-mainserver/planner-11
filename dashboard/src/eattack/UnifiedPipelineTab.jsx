@@ -106,6 +106,61 @@ JSON만 반환.`,
   return JSON.parse(match[0]);
 }
 
+// ── 벤치마킹 디자인 → HTML 템플릿 추출 ──
+async function analyzeDesignToTemplate(base64, mimeType) {
+  const raw = await callGemini(
+    [
+      {
+        role: "user",
+        content: `첨부한 카드뉴스 디자인 이미지를 분석해서, 이 디자인을 그대로 재현하는 HTML+CSS 카드 템플릿을 만들어주세요.
+
+조건:
+- 카드 1장 크기: width 1080px, height 1350px
+- 배경색, 텍스트 색상, 레이아웃, 폰트 크기, 여백, 시각 구성요소를 최대한 동일하게 재현
+- 텍스트 내용은 다음 플레이스홀더로 대체 (이 문자열이 그대로 HTML에 삽입됨):
+  CARD_NUM → 슬라이드 번호 (예: 01, 02)
+  CARD_HEADLINE → 메인 제목
+  CARD_BODY → 본문 텍스트
+  CARD_BRAND → 브랜드명
+- 배경 이미지가 있는 경우 CARD_IMAGE_URL 플레이스홀더 사용 (없으면 배경색/그라디언트 유지)
+- 외부 CDN/폰트 없이 standalone
+- <style> 태그와 <div class="card"> 블록만 반환 (<html>/<body> 태그 없음)
+
+반드시 \`\`\`html 코드블록으로만 반환하세요.`,
+        inlineImages: [{ mimeType, base64 }],
+      },
+    ],
+    "카드뉴스 디자인 분석 및 HTML 재현 전문가. 이미지에서 정확한 디자인을 추출합니다."
+  );
+  const match = raw.match(/```html\n?([\s\S]+?)```/);
+  return match ? match[1].trim() : raw.trim();
+}
+
+// ── 벤치마킹 템플릿으로 HTML 빌드 ──
+function buildHtmlFromTemplate(slides, template, topicStr, brandStr) {
+  const esc = (s) =>
+    String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const brand = esc(brandStr || "브랜드");
+  const cardBlocks = slides
+    .map((s, i) => {
+      let card = template;
+      card = card.split("CARD_NUM").join(String(i + 1).padStart(2, "0"));
+      card = card.split("CARD_HEADLINE").join(esc(s.headline));
+      card = card.split("CARD_BODY").join(esc(s.body || ""));
+      card = card.split("CARD_BRAND").join(brand);
+      card = card.split("CARD_IMAGE_URL").join(s.imageUrl || "");
+      return card;
+    })
+    .join("\n\n");
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>${esc(topicStr)} — 카드뉴스</title>
+<style>body{background:#111;padding:20px;display:flex;flex-wrap:wrap;gap:16px;margin:0}</style>
+</head>
+<body>${cardBlocks}</body>
+</html>`;
+}
+
 async function generateOneImage(prompt) {
   const res = await fetch("/api/image-generate", {
     method: "POST",
@@ -333,6 +388,10 @@ export default function UnifiedPipelineTab() {
   const [cards, setCards] = useState([]); // 편집 가능한 카드 데이터
   const [htmlContent, setHtmlContent] = useState("");
 
+  // 벤치마킹 디자인
+  const [benchmarkImg, setBenchmarkImg] = useState(null); // { dataUrl, mime, base64 }
+  const [benchmarkTemplate, setBenchmarkTemplate] = useState(null); // Gemini 추출 HTML 템플릿
+
   // 소셜 설정 (사용자별 로드)
   const [igConfig, setIgConfig]   = useState(() => loadSocial(igKey,      getSession()?.username || "__guest"));
   const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
@@ -434,12 +493,49 @@ export default function UnifiedPipelineTab() {
       const next = prev.map((c, i) =>
         i === idx ? { ...c, [field]: value } : c
       );
-      // 카드 수정 시 HTML 즉시 재생성
-      const html = buildHtmlCardNews(topic, next, brandName, color1, color2, font);
+      // 벤치마킹 템플릿이 있으면 템플릿 기반으로 재생성
+      const html = benchmarkTemplate
+        ? buildHtmlFromTemplate(next, benchmarkTemplate, topic, brandName)
+        : buildHtmlCardNews(topic, next, brandName, color1, color2, font);
       setHtmlContent(html);
       return next;
     });
   };
+
+  // 벤치마킹 이미지 업로드
+  const handleBenchmarkFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError("이미지 크기는 5MB 이하로 첨부해주세요");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) setBenchmarkImg({ dataUrl, mime: match[1], base64: match[2] });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 벤치마킹 디자인으로 카드 생성
+  const startBenchmarkImages = () =>
+    run(async () => {
+      setStep("images");
+      setImgProg({ done: 0, total: plan.slides.length });
+      // 1. Gemini Vision으로 디자인 분석
+      const template = await analyzeDesignToTemplate(benchmarkImg.base64, benchmarkImg.mime);
+      setBenchmarkTemplate(template);
+      // 2. 템플릿 + 슬라이드 데이터로 카드 배열 생성
+      const assembled = buildCards(plan, []);
+      setCards(assembled);
+      // 3. HTML 빌드
+      const html = buildHtmlFromTemplate(assembled, template, topic, brandName);
+      setHtmlContent(html);
+      setImgProg({ done: plan.slides.length, total: plan.slides.length });
+      setStep("assembly");
+    });
 
   const downloadHtml = () => {
     const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
@@ -826,6 +922,48 @@ export default function UnifiedPipelineTab() {
               ))}
             </div>
             {error && <ErrorBox msg={error} />}
+
+            {/* 벤치마킹 디자인 첨부 */}
+            <div className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden">
+              {benchmarkImg ? (
+                <div className="flex items-center gap-3 p-3">
+                  <img
+                    src={benchmarkImg.dataUrl}
+                    alt="벤치마킹"
+                    className="w-12 h-[60px] object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-violet-700">벤치마킹 디자인 첨부됨</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">이 디자인 스타일로 HTML 카드가 생성됩니다</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBenchmarkImg(null)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6 6 18M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                  <input type="file" accept="image/*" onChange={handleBenchmarkFile} className="hidden" />
+                  <div className="w-12 h-[60px] rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                      <circle cx="9" cy="9" r="2"/>
+                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600">벤치마킹 디자인 첨부 <span className="font-normal text-gray-400">(선택)</span></p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">카드뉴스 레퍼런스 이미지를 첨부하면 그 디자인 그대로 생성됩니다</p>
+                  </div>
+                </label>
+              )}
+            </div>
+
             <div className="flex gap-2">
               <button
                 onClick={startPlanning}
@@ -836,11 +974,15 @@ export default function UnifiedPipelineTab() {
               <button
                 onClick={() => {
                   setImages([]);
-                  startImages();
+                  benchmarkImg ? startBenchmarkImages() : startImages();
                 }}
-                className="flex-[2] py-2.5 bg-gradient-to-r from-violet-500 to-pink-500 text-white text-sm font-bold rounded-xl hover:from-violet-600 hover:to-pink-600 transition-all"
+                className={`flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all
+                  ${benchmarkImg
+                    ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+                    : "bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600"
+                  }`}
               >
-                이미지 생성 →
+                {benchmarkImg ? "벤치마킹 디자인으로 생성 →" : "이미지 생성 →"}
               </button>
             </div>
             <button

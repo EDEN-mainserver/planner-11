@@ -31,6 +31,8 @@ async function fetchImageAsBase64(url) {
   }
 }
 
+export const config = { api: { bodyParser: { sizeLimit: '10mb' } } };
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -46,6 +48,7 @@ export default async function handler(req, res) {
   // 멀티모달 지원: 메시지에 images 배열이 있으면 서버 사이드에서 base64 변환
   const contents = await Promise.all(history.map(async m => {
     const parts = [{ text: m.content }];
+    // URL 이미지 — 서버에서 base64 변환
     if (Array.isArray(m.images) && m.images.length > 0) {
       const imgParts = await Promise.all(
         m.images.slice(0, 4).map(async (imgUrl) => {
@@ -55,6 +58,12 @@ export default async function handler(req, res) {
         })
       );
       parts.push(...imgParts.filter(Boolean));
+    }
+    // 인라인 이미지 — 이미 base64 (업로드 이미지)
+    if (Array.isArray(m.inlineImages) && m.inlineImages.length > 0) {
+      parts.push(...m.inlineImages.slice(0, 4).map(img => ({
+        inlineData: { mimeType: img.mimeType, data: img.base64 },
+      })));
     }
     return {
       role: m.role === 'assistant' ? 'model' : 'user',

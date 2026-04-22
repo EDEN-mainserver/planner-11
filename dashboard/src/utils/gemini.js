@@ -30,15 +30,23 @@ export async function callGemini(history, systemPrompt) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
     const contents = await Promise.all(history.map(async m => {
       const parts = [{ text: m.content }];
+      // 인라인 이미지 (업로드 base64)
+      if (Array.isArray(m.inlineImages) && m.inlineImages.length > 0) {
+        parts.push(...m.inlineImages.slice(0, 4).map(img => ({
+          inlineData: { mimeType: img.mimeType, data: img.base64 },
+        })));
+      }
+      // URL 이미지 — data: URL 직접 처리 or fetch
       if (Array.isArray(m.images) && m.images.length > 0) {
-        const imgParts = await Promise.all(
-          m.images.slice(0, 4).map(async (imgUrl) => {
+        for (const imgUrl of m.images.slice(0, 4)) {
+          if (imgUrl.startsWith('data:')) {
+            const match = imgUrl.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+          } else {
             const result = await fetchImageB64Client(imgUrl);
-            if (!result) return null;
-            return { inlineData: { mimeType: result.mimeType, data: result.base64 } };
-          })
-        );
-        parts.push(...imgParts.filter(Boolean));
+            if (result) parts.push({ inlineData: { mimeType: result.mimeType, data: result.base64 } });
+          }
+        }
       }
       return {
         role: m.role === 'assistant' ? 'model' : 'user',
