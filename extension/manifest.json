@@ -39,6 +39,11 @@
       "js": ["content_wing.js"],
       "run_at": "document_start",
       "world": "MAIN"
+    },
+    {
+      "matches": ["https://wing.coupang.com/*"],
+      "js": ["content_wing_bridge.js"],
+      "run_at": "document_start"
     }
   ]
 }
