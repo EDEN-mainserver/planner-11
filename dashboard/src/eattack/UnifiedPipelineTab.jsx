@@ -340,6 +340,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
 <div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080812;
   display:flex;flex-direction:column;justify-content:flex-end;padding:72px 72px 90px;
   font-family:'Noto Sans KR',sans-serif;flex-shrink:0;">
+  ${card.imageUrl ? `
+  <img src="${card.imageUrl}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;" />
+  <div style="position:absolute;inset:0;background:rgba(4,4,18,0.72);z-index:0;"></div>` : ""}
   <div style="position:absolute;inset:0;background:
     radial-gradient(ellipse 80% 60% at 110% -10%,rgba(120,80,255,.28) 0%,transparent 55%),
     radial-gradient(ellipse 60% 50% at -10% 110%,rgba(80,40,200,.2) 0%,transparent 55%),
@@ -467,6 +470,29 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         </div>`
       : "";
 
+    // 하단 비주얼 영역: 이미지 있으면 이미지, 없으면 장식 바차트
+    const barHeights = [55, 78, 42, 90, 65, 38, 82];
+    const bottomVisual = card.imageUrl
+      ? `<div style="width:100%;flex:1;margin-top:20px;border-radius:16px;overflow:hidden;
+            position:relative;min-height:0;">
+          <img src="${card.imageUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" />
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,0.45));"></div>
+        </div>`
+      : `<div style="width:100%;flex:1;margin-top:20px;border-radius:16px;
+            background:linear-gradient(135deg,#f3f1ff,#eceaff);
+            padding:28px 24px 16px;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
+          <div style="font-size:16px;font-weight:700;color:#aaa;letter-spacing:.06em;margin-bottom:16px;">DATA INSIGHT</div>
+          <div style="flex:1;display:flex;align-items:flex-end;gap:10px;min-height:0;">
+            ${barHeights.map((h, bi) => `
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">
+              <div style="width:100%;height:${h}%;
+                background:linear-gradient(180deg,${accent},${accent}55);
+                border-radius:6px 6px 0 0;min-height:8px;"></div>
+            </div>`).join("")}
+          </div>
+          <div style="height:1px;background:#d8d4ff;margin-top:10px;"></div>
+        </div>`;
+
     return `
 <div style="width:1080px;height:1350px;overflow:hidden;background:#e2e2e6;display:flex;
   align-items:flex-start;justify-content:center;padding:44px 48px 0;
@@ -484,24 +510,25 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       <div style="flex:1;max-width:320px;height:32px;background:#e8e8e8;border-radius:8px;
         display:flex;align-items:center;justify-content:center;font-size:16px;color:#888;">insight</div>
     </div>
-    <div style="height:1130px;overflow:hidden;padding:40px 52px 0;
+    <div style="height:1062px;overflow:hidden;padding:36px 52px 16px;
       display:flex;flex-direction:column;align-items:center;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-shrink:0;">
         <div style="background:${accent};color:#fff;font-size:18px;font-weight:700;
           padding:7px 18px;border-radius:8px;letter-spacing:.05em;">Chapter ${chNum}</div>
       </div>
-      <div style="font-size:48px;font-weight:900;color:#111;text-align:center;
-        margin-bottom:6px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(card.headline)}</div>
+      <div style="font-size:46px;font-weight:900;color:#111;text-align:center;
+        margin-bottom:6px;word-break:keep-all;overflow:hidden;flex-shrink:0;line-height:1.15;">${esc(card.headline)}</div>
       <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
-        border-radius:16px;padding:24px 28px;margin:18px 0;overflow:hidden;flex-shrink:0;">
-        <div style="font-size:16px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 요점</div>
-        <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.55;
+        border-radius:14px;padding:20px 26px;margin:14px 0;overflow:hidden;flex-shrink:0;">
+        <div style="font-size:15px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:7px;">✦ 핵심 요점</div>
+        <div style="font-size:22px;font-weight:700;color:#fff;line-height:1.55;
           word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
       </div>
       ${skillsHtml ? `<div style="width:100%;flex-shrink:0;">
-        <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;">주요 내용</div>
+        <div style="font-size:18px;font-weight:700;color:#222;margin-bottom:10px;">주요 내용</div>
         ${skillsHtml}
       </div>` : ""}
+      ${bottomVisual}
     </div>
     <div style="position:absolute;bottom:0;right:0;left:0;height:68px;
       background:linear-gradient(90deg,rgba(20,20,40,.93),rgba(50,30,120,.93));
