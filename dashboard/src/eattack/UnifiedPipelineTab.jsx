@@ -317,6 +317,158 @@ ${cardBlocks}
 </html>`;
 }
 
+// ── 프리미엄 인스타 템플릿 빌드 (커버/본문/CTA) ──
+function buildPremiumTemplate(topic, cards, brandName, accentColor) {
+  const accent = accentColor || "#9b8eff";
+  const brand = brandName || "브랜드";
+  const esc = (s) =>
+    String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  let chapterIdx = 0;
+
+  const blocks = cards.map((card, i) => {
+    const isCover = card.part === "표지";
+    const isCTA = card.part === "마무리";
+    const isBody = !isCover && !isCTA;
+    if (isBody) chapterIdx++;
+    const chNum = String(chapterIdx).padStart(2, "0");
+
+    // ── 커버 ──
+    if (isCover) return `
+<div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080812;
+  display:flex;flex-direction:column;justify-content:flex-end;padding:72px 72px 90px;
+  font-family:'Noto Sans KR',sans-serif;flex-shrink:0;">
+  <div style="position:absolute;inset:0;background:
+    radial-gradient(ellipse 80% 60% at 110% -10%,rgba(120,80,255,.25) 0%,transparent 55%),
+    radial-gradient(ellipse 60% 50% at -10% 110%,rgba(80,40,200,.18) 0%,transparent 55%);"></div>
+  <div style="position:absolute;inset:0;background-image:
+    linear-gradient(rgba(155,142,255,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(155,142,255,.04) 1px,transparent 1px);
+    background-size:72px 72px;"></div>
+  <div style="position:absolute;top:64px;left:72px;z-index:10;display:inline-flex;align-items:center;
+    gap:8px;border:1.5px solid rgba(155,142,255,.75);border-radius:50px;padding:10px 22px;
+    color:#fff;font-size:20px;font-weight:700;letter-spacing:.12em;background:rgba(155,142,255,.1);">
+    <span style="width:7px;height:7px;border-radius:50%;background:${accent};display:inline-block;flex-shrink:0;"></span>
+    ${esc(brand).toUpperCase()}
+  </div>
+  <div style="position:relative;z-index:10;overflow:hidden;">
+    <div style="font-size:24px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:14px;overflow:hidden;white-space:nowrap;">${esc(topic)}</div>
+    <div style="font-size:80px;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.025em;
+      word-break:keep-all;overflow:hidden;margin-bottom:30px;">${esc(card.headline)}</div>
+    ${card.body ? `<div style="font-size:27px;color:rgba(255,255,255,.65);line-height:1.65;
+      margin-bottom:42px;word-break:keep-all;overflow:hidden;max-height:110px;">${esc(card.body)}</div>` : `<div style="margin-bottom:42px;"></div>`}
+    <div style="display:inline-flex;align-items:center;gap:8px;
+      background:linear-gradient(90deg,rgba(155,142,255,.2),rgba(100,70,220,.15));
+      border:1px solid rgba(155,142,255,.3);border-radius:12px;padding:17px 26px;
+      color:rgba(255,255,255,.85);font-size:22px;font-weight:500;overflow:hidden;white-space:nowrap;">
+      댓글 &amp; 팔로우로 더 많은 콘텐츠를 <span style="color:${accent};font-weight:700;">&gt;&gt;</span>
+    </div>
+  </div>
+</div>`;
+
+    // ── CTA ──
+    if (isCTA) return `
+<div style="width:1080px;height:1350px;overflow:hidden;background:#f0f0f2;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;padding:0 90px;
+  position:relative;font-family:'Noto Sans KR',sans-serif;flex-shrink:0;">
+  <div style="position:absolute;top:60px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:12px;">
+    <div style="font-size:20px;font-weight:800;color:#444;letter-spacing:.14em;">${esc(brand).toUpperCase()}</div>
+    <div style="width:60px;height:1.5px;background:#ccc;"></div>
+  </div>
+  <div style="text-align:center;margin-bottom:44px;overflow:hidden;">
+    <div style="font-size:30px;font-weight:700;color:#111;line-height:1.9;word-break:keep-all;">${esc(card.headline)}</div>
+    ${card.body ? `<div style="font-size:25px;color:#888;line-height:1.7;margin-top:8px;word-break:keep-all;overflow:hidden;">${esc(card.body)}</div>` : ""}
+  </div>
+  <div style="background:#fff;border-radius:20px;padding:30px 36px;width:100%;
+    box-shadow:0 4px 28px rgba(0,0,0,.08);overflow:hidden;margin-bottom:40px;">
+    <div style="display:flex;align-items:center;gap:20px;">
+      <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,${accent},#6b4fc8);
+        display:flex;align-items:center;justify-content:center;flex-shrink:0;border:2px solid rgba(155,142,255,.3);">
+        <span style="color:#fff;font-size:28px;font-weight:900;">${esc(brand).charAt(0)}</span>
+      </div>
+      <div style="flex:1;overflow:hidden;">
+        <div style="font-size:26px;font-weight:900;color:#111;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(brand)}</div>
+        <div style="font-size:18px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(topic)}</div>
+      </div>
+      <div style="background:#4c6ef5;color:#fff;font-size:20px;font-weight:700;
+        padding:13px 24px;border-radius:11px;flex-shrink:0;white-space:nowrap;">Follow</div>
+    </div>
+  </div>
+  <div style="border:2px solid #bbb;border-radius:50px;padding:13px 52px;
+    font-size:22px;font-weight:600;color:#555;white-space:nowrap;overflow:hidden;">
+    @${esc(brand.toLowerCase().replace(/\s+/g,"_"))}
+  </div>
+</div>`;
+
+    // ── 본문 (브라우저 목업) ──
+    const nextCard = cards[i + 1];
+    const teaserText = nextCard
+      ? nextCard.part === "마무리" ? "마지막 정리로" : esc(nextCard.headline)
+      : "다음 내용으로";
+
+    const bullets = (card.body || "")
+      .split(/[·•\n]/).map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 4);
+
+    const bulletHtml = bullets.length > 0
+      ? bullets.map((l) => `
+        <div style="display:flex;align-items:flex-start;gap:12px;background:#f7f6ff;
+          border-left:4px solid ${accent};border-radius:0 10px 10px 0;
+          padding:14px 18px;margin-bottom:10px;overflow:hidden;">
+          <div style="width:6px;height:6px;border-radius:50%;background:${accent};
+            flex-shrink:0;margin-top:8px;"></div>
+          <div style="font-size:20px;color:#333;line-height:1.5;word-break:keep-all;overflow:hidden;">${esc(l)}</div>
+        </div>`).join("")
+      : `<div style="font-size:22px;color:#555;line-height:1.7;word-break:keep-all;overflow:hidden;">${esc(card.body)}</div>`;
+
+    return `
+<div style="width:1080px;height:1350px;overflow:hidden;background:#e2e2e6;display:flex;
+  align-items:flex-start;justify-content:center;padding:44px 48px 0;
+  font-family:'Noto Sans KR',sans-serif;flex-shrink:0;">
+  <div style="width:984px;height:1258px;background:#fff;border-radius:20px;
+    box-shadow:0 20px 60px rgba(0,0,0,.15);overflow:hidden;display:flex;
+    flex-direction:column;position:relative;flex-shrink:0;">
+    <div style="height:60px;background:#f4f4f4;border-bottom:1px solid #e0e0e0;
+      display:flex;align-items:center;padding:0 22px;gap:14px;flex-shrink:0;">
+      <div style="display:flex;gap:8px;">
+        <div style="width:13px;height:13px;border-radius:50%;background:#ff5f57;"></div>
+        <div style="width:13px;height:13px;border-radius:50%;background:#febc2e;"></div>
+        <div style="width:13px;height:13px;border-radius:50%;background:#28c840;"></div>
+      </div>
+      <div style="flex:1;max-width:320px;height:32px;background:#e8e8e8;border-radius:8px;
+        display:flex;align-items:center;justify-content:center;font-size:16px;color:#888;">insight</div>
+    </div>
+    <div style="height:1130px;overflow:hidden;padding:40px 52px 0;
+      display:flex;flex-direction:column;align-items:center;">
+      <div style="background:${accent};color:#fff;font-size:22px;font-weight:700;
+        padding:9px 26px;border-radius:8px;letter-spacing:.05em;margin-bottom:16px;flex-shrink:0;">
+        Chapter ${chNum}
+      </div>
+      <div style="font-size:30px;font-weight:700;color:#111;text-align:center;
+        margin-bottom:6px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(card.headline)}</div>
+      <div style="width:100%;margin-top:24px;overflow:hidden;">${bulletHtml}</div>
+    </div>
+    <div style="position:absolute;bottom:0;right:0;left:0;height:68px;
+      background:linear-gradient(90deg,rgba(20,20,40,.93),rgba(50,30,120,.93));
+      display:flex;align-items:center;justify-content:flex-end;padding:0 32px;
+      color:#fff;font-size:22px;font-weight:500;white-space:nowrap;overflow:hidden;">
+      ${teaserText} <span style="color:#c4b5fd;margin-left:6px;font-weight:700;">&gt;&gt;</span>
+    </div>
+  </div>
+</div>`;
+  });
+
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>${esc(topic)} — 카드뉴스</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>* { box-sizing:border-box; margin:0; padding:0; } body { background:#111; padding:20px; display:flex; flex-wrap:wrap; gap:16px; }</style>
+</head>
+<body>${blocks.join("\n")}</body>
+</html>`;
+}
+
 // ── 공통 UI ──
 function Spinner({ label, sub, gradient = "from-pink-500 to-rose-500" }) {
   return (
@@ -387,6 +539,9 @@ export default function UnifiedPipelineTab() {
   const [imgProg, setImgProg] = useState({ done: 0, total: 0 });
   const [cards, setCards] = useState([]); // 편집 가능한 카드 데이터
   const [htmlContent, setHtmlContent] = useState("");
+
+  // 템플릿 모드 (프리미엄 인스타 템플릿 vs 기존 AI 이미지)
+  const [useTemplate, setUseTemplate] = useState(true);
 
   // 벤치마킹 디자인
   const [benchmarkImg, setBenchmarkImg] = useState(null); // { dataUrl, mime, base64 }
@@ -483,7 +638,11 @@ export default function UnifiedPipelineTab() {
     const imgList = imageList || images;
     const assembled = buildCards(plan, imgList);
     setCards(assembled);
-    const html = buildHtmlCardNews(topic, assembled, brandName, color1, color2, font);
+    const html = useTemplate && !benchmarkTemplate
+      ? buildPremiumTemplate(topic, assembled, brandName, color1)
+      : benchmarkTemplate
+        ? buildHtmlFromTemplate(assembled, benchmarkTemplate, topic, brandName)
+        : buildHtmlCardNews(topic, assembled, brandName, color1, color2, font);
     setHtmlContent(html);
     setStep("assembly");
   };
@@ -493,10 +652,12 @@ export default function UnifiedPipelineTab() {
       const next = prev.map((c, i) =>
         i === idx ? { ...c, [field]: value } : c
       );
-      // 벤치마킹 템플릿이 있으면 템플릿 기반으로 재생성
-      const html = benchmarkTemplate
-        ? buildHtmlFromTemplate(next, benchmarkTemplate, topic, brandName)
-        : buildHtmlCardNews(topic, next, brandName, color1, color2, font);
+      // 템플릿 모드 분기
+      const html = useTemplate && !benchmarkTemplate
+        ? buildPremiumTemplate(topic, next, brandName, color1)
+        : benchmarkTemplate
+          ? buildHtmlFromTemplate(next, benchmarkTemplate, topic, brandName)
+          : buildHtmlCardNews(topic, next, brandName, color1, color2, font);
       setHtmlContent(html);
       return next;
     });
@@ -750,22 +911,53 @@ export default function UnifiedPipelineTab() {
           </div>
         </div>
 
-        {/* 폰트 */}
+        {/* 이미지 생성 방식 */}
         <div>
-          <label className="text-xs font-bold text-gray-700 block mb-1.5">폰트</label>
-          <div className="flex gap-2">
-            {FONTS.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFont(f)}
-                className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${font === f ? "border-violet-400 bg-violet-50 text-violet-700 font-semibold" : "border-gray-200 text-gray-600 hover:border-gray-300 bg-white"}`}
-                style={{ fontFamily: FONT_CSS[f] }}
-              >
-                {FONT_LABELS[f]}
-              </button>
-            ))}
+          <label className="text-xs font-bold text-gray-700 block mb-1.5">이미지 방식</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setUseTemplate(true)}
+              className={`relative flex flex-col gap-1 p-3 rounded-xl border-2 text-left transition-all
+                ${useTemplate ? "border-violet-400 bg-violet-50" : "border-gray-200 bg-white hover:border-gray-300"}`}
+            >
+              {useTemplate && (
+                <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-500 text-white">선택됨</span>
+              )}
+              <span className="text-sm font-bold text-violet-700">✨ 프리미엄 템플릿</span>
+              <span className="text-[10px] text-gray-500 leading-relaxed">커버·본문·CTA<br/>인스타 전용 디자인</span>
+            </button>
+            <button
+              onClick={() => setUseTemplate(false)}
+              className={`relative flex flex-col gap-1 p-3 rounded-xl border-2 text-left transition-all
+                ${!useTemplate ? "border-pink-400 bg-pink-50" : "border-gray-200 bg-white hover:border-gray-300"}`}
+            >
+              {!useTemplate && (
+                <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500 text-white">선택됨</span>
+              )}
+              <span className="text-sm font-bold text-pink-700">🖼 AI 이미지 생성</span>
+              <span className="text-[10px] text-gray-500 leading-relaxed">이미지 API로<br/>슬라이드별 생성</span>
+            </button>
           </div>
         </div>
+
+        {/* 폰트 (AI 이미지 모드만) */}
+        {!useTemplate && (
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1.5">폰트</label>
+            <div className="flex gap-2">
+              {FONTS.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFont(f)}
+                  className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${font === f ? "border-violet-400 bg-violet-50 text-violet-700 font-semibold" : "border-gray-200 text-gray-600 hover:border-gray-300 bg-white"}`}
+                  style={{ fontFamily: FONT_CSS[f] }}
+                >
+                  {FONT_LABELS[f]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 톤 */}
         <div>
@@ -971,26 +1163,37 @@ export default function UnifiedPipelineTab() {
               >
                 다시 기획
               </button>
-              <button
-                onClick={() => {
-                  setImages([]);
-                  benchmarkImg ? startBenchmarkImages() : startImages();
-                }}
-                className={`flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all
-                  ${benchmarkImg
-                    ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
-                    : "bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600"
-                  }`}
-              >
-                {benchmarkImg ? "벤치마킹 디자인으로 생성 →" : "이미지 생성 →"}
-              </button>
+              {useTemplate && !benchmarkImg ? (
+                <button
+                  onClick={() => startAssembly([])}
+                  className="flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600"
+                >
+                  ✨ 프리미엄 템플릿으로 조립 →
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setImages([]);
+                    benchmarkImg ? startBenchmarkImages() : startImages();
+                  }}
+                  className={`flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all
+                    ${benchmarkImg
+                      ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+                      : "bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600"
+                    }`}
+                >
+                  {benchmarkImg ? "벤치마킹 디자인으로 생성 →" : "이미지 생성 →"}
+                </button>
+              )}
             </div>
-            <button
-              onClick={() => startAssembly([])}
-              className="w-full py-2 border border-dashed border-gray-300 text-xs text-gray-400 rounded-xl hover:bg-gray-50 transition-all"
-            >
-              이미지 건너뛰고 바로 조립
-            </button>
+            {(!useTemplate || benchmarkImg) && (
+              <button
+                onClick={() => startAssembly([])}
+                className="w-full py-2 border border-dashed border-gray-300 text-xs text-gray-400 rounded-xl hover:bg-gray-50 transition-all"
+              >
+                이미지 건너뛰고 바로 조립
+              </button>
+            )}
           </>
         ) : (
           error && <ErrorBox msg={error} onRetry={startPlanning} />
