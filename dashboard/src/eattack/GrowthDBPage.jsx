@@ -1076,6 +1076,9 @@ export default function GrowthDBPage() {
   const [salesHistoryMap, setSalesHistoryMap] = useState({});
   // 광고 데이터 (EKU_AD_DATA)
   const [adData, setAdData] = useState({ adList: [], updatedAt: null });
+  // 쿠팡 DOM 크롤 데이터 (EKU_COUPANG_CRAWL)
+  const [coupangSales, setCoupangSales] = useState(null);   // Wing 판매분석
+  const [coupangAds, setCoupangAds] = useState(null);       // 광고센터 캠페인
 
   const hasKey = !!(creds.accessKey && creds.secretKey && creds.vendorId);
   const fmt    = n => Number(n).toLocaleString();
@@ -1147,6 +1150,39 @@ export default function GrowthDBPage() {
       if (type === 'EKU_WING_STATUS') {
         const { msg, error } = payload || {};
         if (error && msg) setApiError(`Wing: ${msg}`);
+      }
+
+      // 쿠팡 DOM 크롤 — Wing 판매분석
+      if (type === 'COUPANG_SALES_DATA' && payload) {
+        setCoupangSales(payload);
+        setExtSynced(true);
+        setExtSyncedAt(new Date());
+        console.log('[에쿠] Wing 판매분석 수신:', payload.stats);
+      }
+
+      // 쿠팡 DOM 크롤 — 광고센터
+      if (type === 'COUPANG_ADS_DATA' && payload?.campaigns) {
+        setCoupangAds(payload);
+        // AdTab 호환 포맷으로 변환 (문자열 숫자 파싱)
+        const parseNum = s => Number(String(s || '0').replace(/[^0-9.]/g, '')) || 0;
+        setAdData({
+          adList: payload.campaigns.map(c => ({
+            campaign_name: c.name,
+            ad_cost_sum: parseNum(c.adCost),
+            total_sale_14_days: parseNum(c.adRevenue),
+            clicks_count: parseNum(c.clicks),
+            impressions_count: parseNum(c.impressions),
+            conv_rate: c.convRate,
+            click_rate: c.clickRate,
+            status: c.status,
+            is_on: c.isOn,
+            period: c.period,
+          })),
+          updatedAt: new Date(),
+        });
+        setExtSynced(true);
+        setExtSyncedAt(new Date());
+        console.log('[에쿠] 광고센터 수신: 캠페인', payload.total, '건');
       }
     }
     window.addEventListener('message', handleExtMessage);
@@ -1310,6 +1346,29 @@ export default function GrowthDBPage() {
             {apiError && (
               <div className="bg-red-50 border-b border-red-200 px-6 py-2">
                 <p className="text-xs text-red-600">❌ {apiError}</p>
+              </div>
+            )}
+
+            {/* Wing 판매분석 크롤 배너 */}
+            {coupangSales && (
+              <div className="bg-blue-50 border-b border-blue-200 px-6 py-2 flex items-center gap-3 flex-wrap">
+                <span className="text-blue-500 text-sm">📈</span>
+                <span className="text-xs font-semibold text-blue-700">Wing 판매분석</span>
+                {Object.entries(coupangSales.stats || {}).map(([k, v]) => (
+                  <span key={k} className="text-xs text-blue-600">
+                    <span className="text-blue-400 mr-0.5">{k}</span>{v}
+                  </span>
+                ))}
+                {Object.entries(coupangSales.sales || {}).map(([k, v]) => (
+                  <span key={k} className="text-xs text-blue-600">
+                    <span className="text-blue-400 mr-0.5">{k}</span>{v}
+                  </span>
+                ))}
+                {coupangSales.crawledAt && (
+                  <span className="text-xs text-blue-300 ml-auto">
+                    {new Date(coupangSales.crawledAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
               </div>
             )}
 

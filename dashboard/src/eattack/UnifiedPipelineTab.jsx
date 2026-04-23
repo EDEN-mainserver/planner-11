@@ -312,6 +312,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
   const brand = brandName || "브랜드";
   const esc = (s) =>
     String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // 액센트 컬러 → rgba 사용을 위해 RGB 추출
+  const ah = accent.replace("#", "");
+  const accentRgb = `${parseInt(ah.slice(0,2),16)},${parseInt(ah.slice(2,4),16)},${parseInt(ah.slice(4,6),16)}`;
 
   let chapterIdx = 0;
   const bodyCards = cards.filter((c) => c.part !== "표지" && c.part !== "마무리");
