@@ -1,7 +1,7 @@
 // 통합 카드뉴스 파이프라인
 // 크롤링/리서치 → 기획 → 이미지 생성 → 카드 조립 → 배포
 import { useState } from "react";
-import { callGemini } from "../utils/gemini";
+import { callGemini, generateImage } from "../utils/gemini";
 import LoginModal, { getSession, clearSession } from "./LoginModal";
 import TopicPicker from "./TopicPicker";
 
@@ -163,19 +163,7 @@ function buildHtmlFromTemplate(slides, template, topicStr, brandStr) {
 }
 
 async function generateOneImage(prompt) {
-  const res = await fetch("/api/image-generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      prompt: `${prompt}, no text, no watermark, photorealistic, high quality`,
-      aspectRatio: "3:4",
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || err.message || `이미지 API 오류 ${res.status}`);
-  }
-  return (await res.json()).imageUrl;
+  return generateImage(`${prompt}, no text, no watermark, photorealistic, high quality`, "3:4");
 }
 
 // ── HTML 카드뉴스 빌드 (브랜드 컬러 2개 + 폰트 지원) ──
@@ -318,7 +306,7 @@ ${cardBlocks}
 </html>`;
 }
 
-// ── 프리미엄 인스타 템플릿 빌드 (커버/본문/CTA) ──
+// ── 프리미엄 인스타 템플릿 빌드 (커버/본문/CTA) — 레퍼런스 디자인 기반 ──
 function buildPremiumTemplate(topic, cards, brandName, accentColor) {
   const accent = accentColor || "#9b8eff";
   const brand = brandName || "브랜드";
@@ -326,6 +314,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   let chapterIdx = 0;
+  const bodyCards = cards.filter((c) => c.part !== "표지" && c.part !== "마무리");
 
   const blocks = cards.map((card, i) => {
     const isCover = card.part === "표지";
@@ -335,17 +324,39 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     const chNum = String(chapterIdx).padStart(2, "0");
 
     // ── 커버 ──
-    if (isCover) return `
+    if (isCover) {
+      const previewChips = bodyCards.slice(0, 3).map((bc, ci) => `
+        <div style="display:flex;align-items:center;gap:14px;
+          background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+          border-radius:12px;padding:14px 22px;overflow:hidden;">
+          <div style="width:32px;height:32px;background:${accent};border-radius:8px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:15px;font-weight:800;color:#fff;flex-shrink:0;">${ci + 1}</div>
+          <span style="font-size:22px;font-weight:600;color:rgba(255,255,255,.85);
+            overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${esc(bc.headline)}</span>
+        </div>`).join("");
+
+      return `
 <div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080812;
   display:flex;flex-direction:column;justify-content:flex-end;padding:72px 72px 90px;
   font-family:'Noto Sans KR',sans-serif;flex-shrink:0;">
   <div style="position:absolute;inset:0;background:
-    radial-gradient(ellipse 80% 60% at 110% -10%,rgba(120,80,255,.25) 0%,transparent 55%),
-    radial-gradient(ellipse 60% 50% at -10% 110%,rgba(80,40,200,.18) 0%,transparent 55%);"></div>
+    radial-gradient(ellipse 80% 60% at 110% -10%,rgba(120,80,255,.28) 0%,transparent 55%),
+    radial-gradient(ellipse 60% 50% at -10% 110%,rgba(80,40,200,.2) 0%,transparent 55%),
+    radial-gradient(ellipse 40% 40% at 50% 50%,rgba(60,20,120,.15) 0%,transparent 60%);"></div>
   <div style="position:absolute;inset:0;background-image:
     linear-gradient(rgba(155,142,255,.04) 1px,transparent 1px),
     linear-gradient(90deg,rgba(155,142,255,.04) 1px,transparent 1px);
     background-size:72px 72px;"></div>
+  <div style="position:absolute;width:500px;height:500px;top:-180px;right:-160px;
+    border-radius:50%;border:1px solid rgba(155,142,255,.12);"></div>
+  <div style="position:absolute;width:700px;height:700px;top:-280px;right:-260px;
+    border-radius:50%;border:1px solid rgba(155,142,255,.06);"></div>
+  <div style="position:absolute;width:320px;height:320px;bottom:60px;left:-100px;
+    border-radius:50%;border:1px solid rgba(155,142,255,.08);"></div>
+  <div style="position:absolute;width:300px;height:300px;top:80px;right:80px;
+    border-radius:50%;background:radial-gradient(circle,rgba(155,142,255,.18) 0%,transparent 70%);
+    filter:blur(20px);"></div>
   <div style="position:absolute;top:64px;left:72px;z-index:10;display:inline-flex;align-items:center;
     gap:8px;border:1.5px solid rgba(155,142,255,.75);border-radius:50px;padding:10px 22px;
     color:#fff;font-size:20px;font-weight:700;letter-spacing:.12em;background:rgba(155,142,255,.1);">
@@ -353,22 +364,42 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     ${esc(brand).toUpperCase()}
   </div>
   <div style="position:relative;z-index:10;overflow:hidden;">
-    <div style="font-size:24px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:14px;overflow:hidden;white-space:nowrap;">${esc(topic)}</div>
-    <div style="font-size:80px;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.025em;
-      word-break:keep-all;overflow:hidden;margin-bottom:30px;">${esc(card.headline)}</div>
-    ${card.body ? `<div style="font-size:27px;color:rgba(255,255,255,.65);line-height:1.65;
-      margin-bottom:42px;word-break:keep-all;overflow:hidden;max-height:110px;">${esc(card.body)}</div>` : `<div style="margin-bottom:42px;"></div>`}
+    <div style="font-size:24px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:14px;
+      overflow:hidden;white-space:nowrap;letter-spacing:.03em;">${esc(topic)}</div>
+    <div style="font-size:82px;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.025em;
+      word-break:keep-all;overflow:hidden;margin-bottom:32px;">${esc(card.headline)}</div>
+    ${previewChips ? `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:40px;overflow:hidden;">${previewChips}</div>` : ""}
     <div style="display:inline-flex;align-items:center;gap:8px;
       background:linear-gradient(90deg,rgba(155,142,255,.2),rgba(100,70,220,.15));
       border:1px solid rgba(155,142,255,.3);border-radius:12px;padding:17px 26px;
       color:rgba(255,255,255,.85);font-size:22px;font-weight:500;overflow:hidden;white-space:nowrap;">
-      댓글 &amp; 팔로우로 더 많은 콘텐츠를 <span style="color:${accent};font-weight:700;">&gt;&gt;</span>
+      ${card.body ? esc(card.body) : "댓글 &amp; 팔로우로 더 많은 콘텐츠를"}
+      <span style="color:${accent};font-weight:700;margin-left:6px;">&gt;&gt;</span>
     </div>
   </div>
 </div>`;
+    }
 
     // ── CTA ──
-    if (isCTA) return `
+    if (isCTA) {
+      const summaryChips = bodyCards.map((bc, ci) => {
+        const firstBullet = (bc.body || "").split(/[·•\n]/)[0].trim();
+        return `
+        <div style="display:flex;align-items:center;gap:12px;background:#fff;
+          border-radius:12px;padding:16px 20px;box-shadow:0 2px 12px rgba(0,0,0,.05);overflow:hidden;">
+          <div style="width:32px;height:32px;background:${accent};border-radius:8px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:15px;font-weight:800;color:#fff;flex-shrink:0;">${ci + 1}</div>
+          <div style="font-size:21px;font-weight:800;color:#111;white-space:nowrap;
+            overflow:hidden;text-overflow:ellipsis;">${esc(bc.headline)}</div>
+          ${firstBullet ? `<div style="font-size:17px;color:#888;margin-left:auto;white-space:nowrap;
+            overflow:hidden;text-overflow:ellipsis;flex-shrink:0;">${esc(firstBullet)}</div>` : ""}
+        </div>`;
+      }).join("");
+
+      const handle = `@${esc(brand.toLowerCase().replace(/\s+/g, "_"))}`;
+
+      return `
 <div style="width:1080px;height:1350px;overflow:hidden;background:#f0f0f2;display:flex;
   flex-direction:column;align-items:center;justify-content:center;padding:0 90px;
   position:relative;font-family:'Noto Sans KR',sans-serif;flex-shrink:0;">
@@ -376,50 +407,65 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     <div style="font-size:20px;font-weight:800;color:#444;letter-spacing:.14em;">${esc(brand).toUpperCase()}</div>
     <div style="width:60px;height:1.5px;background:#ccc;"></div>
   </div>
-  <div style="text-align:center;margin-bottom:44px;overflow:hidden;">
+  <div style="display:flex;flex-direction:column;gap:10px;width:100%;margin-bottom:40px;overflow:hidden;">
+    ${summaryChips}
+  </div>
+  <div style="text-align:center;margin-bottom:40px;overflow:hidden;">
     <div style="font-size:30px;font-weight:700;color:#111;line-height:1.9;word-break:keep-all;">${esc(card.headline)}</div>
-    ${card.body ? `<div style="font-size:25px;color:#888;line-height:1.7;margin-top:8px;word-break:keep-all;overflow:hidden;">${esc(card.body)}</div>` : ""}
+    ${card.body ? `<div style="font-size:24px;color:#888;line-height:1.7;margin-top:8px;word-break:keep-all;">${esc(card.body)}</div>` : ""}
   </div>
   <div style="background:#fff;border-radius:20px;padding:30px 36px;width:100%;
-    box-shadow:0 4px 28px rgba(0,0,0,.08);overflow:hidden;margin-bottom:40px;">
+    box-shadow:0 4px 28px rgba(0,0,0,.08);overflow:hidden;">
     <div style="display:flex;align-items:center;gap:20px;">
-      <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,${accent},#6b4fc8);
-        display:flex;align-items:center;justify-content:center;flex-shrink:0;border:2px solid rgba(155,142,255,.3);">
-        <span style="color:#fff;font-size:28px;font-weight:900;">${esc(brand).charAt(0)}</span>
+      <div style="width:84px;height:84px;border-radius:50%;
+        background:linear-gradient(135deg,${accent},#6b4fc8);
+        display:flex;align-items:center;justify-content:center;
+        flex-shrink:0;border:2px solid rgba(155,142,255,.3);">
+        <span style="color:#fff;font-size:34px;font-weight:900;">${esc(brand).charAt(0)}</span>
       </div>
       <div style="flex:1;overflow:hidden;">
-        <div style="font-size:26px;font-weight:900;color:#111;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(brand)}</div>
-        <div style="font-size:18px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(topic)}</div>
+        <div style="font-size:28px;font-weight:900;color:#111;margin-bottom:4px;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(brand)}</div>
+        <div style="font-size:19px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(topic)}</div>
       </div>
-      <div style="background:#4c6ef5;color:#fff;font-size:20px;font-weight:700;
-        padding:13px 24px;border-radius:11px;flex-shrink:0;white-space:nowrap;">Follow</div>
+      <div style="background:#4c6ef5;color:#fff;font-size:21px;font-weight:700;
+        padding:13px 26px;border-radius:11px;flex-shrink:0;white-space:nowrap;">Follow</div>
     </div>
   </div>
   <div style="border:2px solid #bbb;border-radius:50px;padding:13px 52px;
-    font-size:22px;font-weight:600;color:#555;white-space:nowrap;overflow:hidden;">
-    @${esc(brand.toLowerCase().replace(/\s+/g,"_"))}
+    font-size:24px;font-weight:600;color:#555;white-space:nowrap;overflow:hidden;margin-top:32px;">
+    ${handle}
+  </div>
+  <div style="position:absolute;bottom:50px;left:0;right:0;text-align:center;
+    font-size:19px;color:#bbb;font-weight:400;overflow:hidden;white-space:nowrap;">
+    팔로우하고 더 많은 콘텐츠를 받아보세요
   </div>
 </div>`;
+    }
 
-    // ── 본문 (브라우저 목업) ──
+    // ── 본문 (브라우저 목업 — 레퍼런스 스타일) ──
     const nextCard = cards[i + 1];
     const teaserText = nextCard
       ? nextCard.part === "마무리" ? "마지막 정리로" : esc(nextCard.headline)
       : "다음 내용으로";
 
     const bullets = (card.body || "")
-      .split(/[·•\n]/).map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 4);
+      .split(/[·•\n]/).map((l) => l.trim()).filter((l) => l.length > 0);
 
-    const bulletHtml = bullets.length > 0
-      ? bullets.map((l) => `
-        <div style="display:flex;align-items:flex-start;gap:12px;background:#f7f6ff;
-          border-left:4px solid ${accent};border-radius:0 10px 10px 0;
-          padding:14px 18px;margin-bottom:10px;overflow:hidden;">
-          <div style="width:6px;height:6px;border-radius:50%;background:${accent};
-            flex-shrink:0;margin-top:8px;"></div>
-          <div style="font-size:20px;color:#333;line-height:1.5;word-break:keep-all;overflow:hidden;">${esc(l)}</div>
-        </div>`).join("")
-      : `<div style="font-size:22px;color:#555;line-height:1.7;word-break:keep-all;overflow:hidden;">${esc(card.body)}</div>`;
+    const summaryText = bullets[0] || esc(card.headline);
+    const skillBullets = bullets.length > 1 ? bullets.slice(1, 5) : bullets.slice(0, 4);
+
+    const skillsHtml = skillBullets.length > 0
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
+          ${skillBullets.map((b) => `
+          <div style="background:#f9f9f9;border:1.5px solid #e8e8e8;border-radius:10px;
+            padding:16px 18px;display:flex;align-items:center;gap:10px;overflow:hidden;">
+            <div style="width:8px;height:8px;border-radius:50%;background:${accent};flex-shrink:0;"></div>
+            <div style="font-size:19px;font-weight:600;color:#333;overflow:hidden;
+              white-space:nowrap;text-overflow:ellipsis;">${esc(b)}</div>
+          </div>`).join("")}
+        </div>`
+      : "";
 
     return `
 <div style="width:1080px;height:1350px;overflow:hidden;background:#e2e2e6;display:flex;
@@ -440,13 +486,22 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     </div>
     <div style="height:1130px;overflow:hidden;padding:40px 52px 0;
       display:flex;flex-direction:column;align-items:center;">
-      <div style="background:${accent};color:#fff;font-size:22px;font-weight:700;
-        padding:9px 26px;border-radius:8px;letter-spacing:.05em;margin-bottom:16px;flex-shrink:0;">
-        Chapter ${chNum}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-shrink:0;">
+        <div style="background:${accent};color:#fff;font-size:18px;font-weight:700;
+          padding:7px 18px;border-radius:8px;letter-spacing:.05em;">Chapter ${chNum}</div>
       </div>
-      <div style="font-size:30px;font-weight:700;color:#111;text-align:center;
+      <div style="font-size:48px;font-weight:900;color:#111;text-align:center;
         margin-bottom:6px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(card.headline)}</div>
-      <div style="width:100%;margin-top:24px;overflow:hidden;">${bulletHtml}</div>
+      <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
+        border-radius:16px;padding:24px 28px;margin:18px 0;overflow:hidden;flex-shrink:0;">
+        <div style="font-size:16px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 요점</div>
+        <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.55;
+          word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
+      </div>
+      ${skillsHtml ? `<div style="width:100%;flex-shrink:0;">
+        <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;">주요 내용</div>
+        ${skillsHtml}
+      </div>` : ""}
     </div>
     <div style="position:absolute;bottom:0;right:0;left:0;height:68px;
       background:linear-gradient(90deg,rgba(20,20,40,.93),rgba(50,30,120,.93));
@@ -1487,19 +1542,41 @@ export default function UnifiedPipelineTab() {
                 </button>
               </div>
 
-              {/* 하단 도트 네비게이션 */}
-              <div className="bg-gray-900 pb-2 flex items-center justify-center gap-1.5">
-                {Array.from({ length: total }).map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setPreviewIdx(i)}
-                    className={`rounded-full transition-all ${
-                      i === safeIdx
-                        ? "w-4 h-1.5 bg-violet-400"
-                        : "w-1.5 h-1.5 bg-gray-600 hover:bg-gray-400"
-                    }`}
-                  />
-                ))}
+              {/* 하단: 도트 네비게이션 + 카드 다운로드 */}
+              <div className="bg-gray-900 pb-3 flex flex-col items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  {Array.from({ length: total }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setPreviewIdx(i)}
+                      className={`rounded-full transition-all ${
+                        i === safeIdx
+                          ? "w-4 h-1.5 bg-violet-400"
+                          : "w-1.5 h-1.5 bg-gray-600 hover:bg-gray-400"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    const html = cardHtmls[safeIdx] || htmlContent;
+                    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${topic.slice(0, 15)}-카드${safeIdx + 1}.html`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-[11px] font-semibold transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  카드 {safeIdx + 1} 다운로드
+                </button>
               </div>
             </div>
           );
