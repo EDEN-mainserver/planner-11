@@ -253,6 +253,143 @@ ${clientInfo.title} (${clientInfo.domain})
 `.trim();
 }
 
+// ── HTML 슬라이드 생성 ──
+
+function escHtml(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function buildCoverSlideHtml(clientInfo, winThemes) {
+  const subtitle = winThemes.length > 0 ? winThemes[0].description : '마케팅 성장을 위한 맞춤형 전략';
+  const dateStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' });
+  return `<div class="slide slide-cover">
+  <div class="deco-c deco-c1"></div><div class="deco-c deco-c2"></div>
+  <div class="cover-inner">
+    <div class="brand-tag">EDEN MARKETING · AGENCY PROPOSAL</div>
+    <div class="accent-line"></div>
+    <h1 class="cover-title">${escHtml(clientInfo.title || clientInfo.domain)}<br>마케팅 서비스 제안서</h1>
+    <h2 class="cover-subtitle">${escHtml(subtitle)}</h2>
+    <div class="cover-meta">
+      <div class="meta-item"><i class="fas fa-bullseye"></i> ${escHtml(clientInfo.domain)}</div>
+      <div class="meta-item"><i class="far fa-calendar-alt"></i> ${dateStr}</div>
+      <div class="meta-item"><i class="fas fa-building"></i> 에덴 마케팅</div>
+    </div>
+  </div>
+</div>`;
+}
+
+function buildSectionSlideHtml(slide, pg, total) {
+  return `<div class="slide slide-section">
+  <p class="section-eyebrow">EDEN MARKETING</p>
+  <div class="section-line"></div>
+  <h1 class="section-title">${escHtml(slide.title)}</h1>
+  ${slide.subtitle ? `<p class="section-subtitle">${escHtml(slide.subtitle)}</p>` : ''}
+  <div class="slide-pg light">${pg} / ${total}</div>
+</div>`;
+}
+
+function buildContentSlideHtml(slide, pg, total) {
+  const bullets = slide.bullets.slice(0, 5);
+  const bulletsHtml = bullets.map(b => `
+    <div class="bullet-item">
+      <div class="bullet-dot"></div>
+      <div class="bullet-text">${escHtml(b)}</div>
+    </div>`).join('');
+  const emphasisHtml = slide.emphasis ? `
+  <div class="emphasis-box">
+    <span>📌</span>
+    <span class="emphasis-text">${escHtml(slide.emphasis)}</span>
+  </div>` : '';
+  return `<div class="slide slide-content">
+  <div class="content-header">
+    <div class="content-title">${escHtml(slide.title)}</div>
+  </div>
+  <div class="content-body">${bulletsHtml}</div>
+  ${emphasisHtml}
+  <div class="slide-footer">
+    <span class="footer-brand">EDEN MARKETING</span>
+    <span class="footer-pg">${pg} / ${total}</span>
+  </div>
+</div>`;
+}
+
+function buildHtmlDocument(parsedSlides, clientInfo, winThemes) {
+  const total = 1 + parsedSlides.length;
+  const slideHtmls = [buildCoverSlideHtml(clientInfo, winThemes)];
+  parsedSlides.forEach((slide, i) => {
+    const pg = i + 2;
+    if (slide.type === 'section') slideHtmls.push(buildSectionSlideHtml(slide, pg, total));
+    else slideHtmls.push(buildContentSlideHtml(slide, pg, total));
+  });
+
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>${escHtml(clientInfo.title || clientInfo.domain)} 마케팅 제안서</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:#1E293B;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:32px 32px 80px}
+.sw{display:none}.sw.active{display:block}
+.slide{width:1280px;height:720px;position:relative;overflow:hidden;border-radius:8px;box-shadow:0 25px 50px -12px rgba(0,0,0,.5)}
+/* COVER */
+.slide-cover{background:#F8FAFC;display:flex;align-items:center;justify-content:center}
+.deco-c{position:absolute;border-radius:50%;background:rgba(15,23,42,.03)}
+.deco-c1{width:600px;height:600px;top:-200px;right:-100px}
+.deco-c2{width:400px;height:400px;bottom:-150px;left:-100px}
+.cover-inner{z-index:10;display:flex;flex-direction:column;align-items:center;width:100%;padding:0 120px}
+.brand-tag{background:#E2E8F0;color:#475569;padding:8px 20px;border-radius:100px;font-size:13px;font-weight:700;letter-spacing:.06em;margin-bottom:28px;text-transform:uppercase}
+.accent-line{width:80px;height:6px;background:#0F172A;margin-bottom:24px}
+.cover-title{font-size:54px;font-weight:900;color:#0F172A;line-height:1.2;text-align:center;letter-spacing:-.02em;margin-bottom:16px;word-break:keep-all;overflow:hidden;max-height:175px}
+.cover-subtitle{font-size:23px;font-weight:400;color:#475569;text-align:center;margin-bottom:48px;word-break:keep-all;overflow:hidden;max-height:60px}
+.cover-meta{display:flex;gap:40px;color:#64748B;font-size:15px;font-weight:500;padding-top:24px;border-top:1px solid #E2E8F0}
+.meta-item{display:flex;align-items:center;gap:8px}.meta-item i{color:#94A3B8}
+/* SECTION */
+.slide-section{background:#0F172A;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.section-eyebrow{font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.15em;margin-bottom:20px}
+.section-line{width:60px;height:4px;background:#3B82F6;margin-bottom:28px;border-radius:2px}
+.section-title{font-size:56px;font-weight:900;color:white;text-align:center;letter-spacing:-.02em;word-break:keep-all;overflow:hidden;max-height:150px}
+.section-subtitle{font-size:20px;color:#94A3B8;margin-top:20px;text-align:center;font-weight:400;word-break:keep-all}
+.slide-pg{position:absolute;bottom:16px;right:24px;font-size:13px;font-weight:600;color:#94A3B8}
+.slide-pg.light{color:rgba(255,255,255,.35)}
+/* CONTENT */
+.slide-content{background:#F8FAFC;display:flex;flex-direction:column}
+.content-header{margin:40px 60px 0;padding-left:24px;border-left:6px solid #0F172A}
+.content-title{font-size:32px;font-weight:800;color:#0F172A;line-height:1.3;word-break:keep-all;overflow:hidden;max-height:85px}
+.content-body{flex:1;padding:20px 60px 0;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.bullet-item{display:flex;align-items:flex-start;gap:14px;background:white;border-radius:12px;padding:13px 20px;border-left:4px solid #0F172A;box-shadow:0 2px 6px rgba(0,0,0,.04);flex-shrink:0}
+.bullet-dot{width:8px;height:8px;border-radius:50%;background:#0F172A;margin-top:8px;flex-shrink:0}
+.bullet-text{font-size:17px;color:#334155;line-height:1.5;word-break:keep-all;overflow:hidden}
+.emphasis-box{margin:12px 60px 0;background:white;border:1.5px solid #0F172A;border-radius:12px;padding:13px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.emphasis-text{font-size:15px;font-weight:600;color:#0F172A;word-break:keep-all;overflow:hidden}
+.slide-footer{height:40px;background:#0F172A;display:flex;align-items:center;justify-content:space-between;padding:0 40px;flex-shrink:0;margin-top:auto}
+.footer-brand{font-size:12px;font-weight:700;color:rgba(255,255,255,.4)}
+.footer-pg{font-size:12px;color:rgba(255,255,255,.4)}
+/* NAV */
+.nav{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:rgba(15,23,42,.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);padding:10px 20px;border-radius:100px;z-index:1000}
+.nav button{background:rgba(255,255,255,.1);border:none;color:white;padding:8px 20px;border-radius:8px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:14px;font-weight:600;transition:background .2s}
+.nav button:hover{background:rgba(255,255,255,.25)}
+#nc{color:white;font-size:14px;font-weight:500;min-width:80px;text-align:center}
+</style>
+</head>
+<body>
+${slideHtmls.map((h, i) => `<div class="sw${i === 0 ? ' active' : ''}" id="sw${i}">${h}</div>`).join('\n')}
+<div class="nav">
+  <button onclick="go(-1)">← 이전</button>
+  <span id="nc">1 / ${total}</span>
+  <button onclick="go(1)">다음 →</button>
+</div>
+<script>
+let c=0,t=${total};
+function go(d){document.querySelectorAll('.sw').forEach(e=>e.classList.remove('active'));c=(c+d+t)%t;document.getElementById('sw'+c).classList.add('active');document.getElementById('nc').textContent=(c+1)+' / '+t;}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowDown')go(1);if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(-1);});
+</script>
+</body>
+</html>`;
+}
+
 // ── 메인 컴포넌트 ──
 export default function ProposalTab() {
   // 단계: input | analyzing | report | generating | proposal
@@ -487,6 +624,18 @@ ${crawlData.text}
     } finally {
       setPptxGenerating(false);
     }
+  }
+
+  // ── HTML 슬라이드 다운로드 ──
+  function handleDownloadHtml() {
+    const parsedSlides = parseSlidesFromProposal(proposalEditable);
+    const html = buildHtmlDocument(parsedSlides, clientInfo, winThemes);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `제안서_${clientInfo.domain}_${Date.now()}.html`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   // ── 섹션 수정 ──
@@ -868,6 +1017,18 @@ ${crawlData.text}
                   PPT 다운로드 (.pptx)
                 </>
               )}
+            </button>
+
+            {/* HTML 슬라이드 다운로드 */}
+            <button
+              onClick={handleDownloadHtml}
+              className="flex items-center gap-2 px-4 py-3 rounded-xl border border-emerald-200 text-sm text-emerald-700 hover:bg-emerald-50 transition-all"
+              title="템플릿 디자인 적용 HTML 제안서"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+              </svg>
+              HTML 슬라이드
             </button>
 
             {/* MD 다운로드 */}
