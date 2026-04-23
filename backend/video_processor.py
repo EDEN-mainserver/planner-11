@@ -211,9 +211,14 @@ def cut_video(
 
 
 def write_temp_srt(subtitles: List[Dict], offset_seconds: float, output_path: str):
-    """자막 데이터를 시간 오프셋 적용한 임시 SRT로 저장"""
+    """자막 데이터를 숏폼용 1~2줄로 병합 후, 시간 오프셋 적용하여 임시 SRT로 저장"""
+    from srt_parser import merge_subtitles_for_shorts
+
+    # 먼저 잘게 쪼개진 자막을 문맥 단위 1~2줄로 병합
+    merged = merge_subtitles_for_shorts(subtitles)
+
     with open(output_path, "w", encoding="utf-8") as f:
-        for i, sub in enumerate(subtitles, 1):
+        for i, sub in enumerate(merged, 1):
             start = sub["start_seconds"] - offset_seconds
             end = sub["end_seconds"] - offset_seconds
             if start < 0:
