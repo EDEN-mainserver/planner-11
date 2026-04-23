@@ -267,8 +267,9 @@ function buildCoverSlideHtml(clientInfo, winThemes) {
   <div class="cover-inner">
     <div class="brand-tag">EDEN MARKETING · AGENCY PROPOSAL</div>
     <div class="accent-line"></div>
-    <h1 class="cover-title">${escHtml(clientInfo.title || clientInfo.domain)}<br>마케팅 서비스 제안서</h1>
-    <h2 class="cover-subtitle">${escHtml(subtitle)}</h2>
+    <h1 class="cover-company">${escHtml(clientInfo.title || clientInfo.domain)}</h1>
+    <h2 class="cover-doctype">마케팅 서비스 제안서</h2>
+    <p class="cover-subtitle">${escHtml(subtitle)}</p>
     <div class="cover-meta">
       <div class="meta-item"><i class="fas fa-bullseye"></i> ${escHtml(clientInfo.domain)}</div>
       <div class="meta-item"><i class="far fa-calendar-alt"></i> ${dateStr}</div>
