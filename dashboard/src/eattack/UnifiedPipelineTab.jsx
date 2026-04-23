@@ -468,29 +468,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     const skillBullets = bullets.length >= 4 ? bullets.slice(2, bullets.length - 1).slice(0, 4) : [];
     const effectText   = bullets.length >= 2 ? bullets[bullets.length - 1] : `${esc(card.headline)} — 더 알아보세요`;
 
-    const skillsHtml = skillBullets.length > 0
-      ? `<div style="width:100%;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;">주요 내용</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
-            ${skillBullets.map((b) => `
-            <div style="background:#f9f9f9;border:1.5px solid #e8e8e8;border-radius:10px;
-              padding:15px 16px;display:flex;align-items:center;gap:10px;overflow:hidden;">
-              <div style="width:8px;height:8px;border-radius:50%;background:${accent};flex-shrink:0;"></div>
-              <div style="font-size:18px;font-weight:600;color:#333;overflow:hidden;
-                white-space:nowrap;text-overflow:ellipsis;">${esc(b)}</div>
-            </div>`).join("")}
-          </div>
-        </div>`
-      : "";
-
-    // 배경 레이어 — 이미지(+오버레이) or 그리드+글로우
-    const chartPatterns = [
-      [58,74,40,86,62,44,78,52,92,36],
-      [72,48,88,55,76,42,66,84,50,70],
-      [44,80,56,94,38,70,82,48,74,60],
-    ];
-    const bh = chartPatterns[(chapterIdx - 1) % 3];
-
+    // 배경 레이어
     const bgLayer = card.imageUrl
       ? `<img src="${card.imageUrl}" style="position:absolute;inset:0;width:100%;height:100%;
            object-fit:cover;z-index:0;" />
@@ -502,92 +480,96 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
          <div style="position:absolute;inset:0;z-index:0;
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
-    // 시각화 — 콘텐츠 기반 의미있는 비주얼
-    // 텍스트 → 일관된 퍼센트 (같은 텍스트 = 항상 같은 값)
-    const strToPct = (s, lo = 58, hi = 94) => {
-      let h = 0;
-      for (const c of s) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
-      return lo + (h % (hi - lo));
-    };
+    // ── 콘텐츠 시각화 — 실제 내용 기반, 그래프 없음 ──
+    const cardIcons = ['📋', '⚙️', '🔍', '✅', '🚀', '💎'];
+    let contentHtml;
 
-    let inlineChartHtml;
-
-    if (skillBullets.length > 0) {
-      // ── 스킬이 있을 때: 수평 진행 바 (스킬명 + 달성률) ──
-      inlineChartHtml = `
-      <div style="width:100%;flex:1;min-height:140px;display:flex;flex-direction:column;
-        overflow:hidden;margin-top:16px;border-top:1px solid #f0f0f0;padding-top:16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;
-          margin-bottom:14px;flex-shrink:0;">
-          <div style="font-size:13px;font-weight:700;color:rgba(${accentRgb},.6);
-            letter-spacing:.08em;">성과 지표</div>
-          <div style="font-size:11px;color:#ccc;font-weight:500;">improvement index</div>
+    if (skillBullets.length >= 2) {
+      // 스킬 2개 이상: 2열 플로우 카드 (행별로 배치)
+      const rows = [];
+      for (let r = 0; r < skillBullets.length; r += 2) {
+        rows.push(skillBullets.slice(r, r + 2));
+      }
+      contentHtml = `
+      <div style="width:100%;flex:1;min-height:160px;display:flex;flex-direction:column;
+        gap:0;overflow:hidden;margin-bottom:14px;">
+        <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;flex-shrink:0;">핵심 기능</div>
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;">
+          ${rows.map((row, ri) => `
+          <div style="flex:1;display:flex;align-items:stretch;gap:10px;">
+            ${row.map((item, ci) => `
+            <div style="flex:1;background:#f7f6ff;border:1.5px solid rgba(${accentRgb},.18);
+              border-radius:12px;padding:18px 14px;
+              display:flex;flex-direction:column;align-items:center;justify-content:center;
+              text-align:center;overflow:hidden;">
+              <div style="font-size:26px;margin-bottom:8px;">${cardIcons[ri * 2 + ci] || '⚡'}</div>
+              <div style="font-size:17px;font-weight:700;color:#222;
+                word-break:keep-all;line-height:1.35;">${esc(item)}</div>
+            </div>`).join(`
+            <div style="display:flex;align-items:center;flex-shrink:0;padding:0 2px;">
+              <div style="font-size:18px;color:rgba(${accentRgb},.7);font-weight:900;">→</div>
+            </div>`)}
+          </div>`).join("")}
         </div>
-        <div style="flex:1;min-height:0;display:flex;flex-direction:column;
-          justify-content:space-evenly;gap:8px;">
-          ${skillBullets.map((skill) => {
-            const pct = strToPct(skill);
-            return `
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div style="font-size:14px;font-weight:600;color:#444;flex:0 0 170px;
-              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(skill.slice(0, 13))}</div>
-            <div style="flex:1;height:10px;background:rgba(${accentRgb},.08);
-              border-radius:5px;overflow:hidden;">
-              <div style="height:100%;width:${pct}%;
-                background:linear-gradient(90deg,rgba(${accentRgb},.85),rgba(${accentRgb},.4));
-                border-radius:5px;"></div>
+      </div>`;
+
+    } else if (skillBullets.length === 1) {
+      // 스킬 1개: 단독 강조 카드 + 이전/이후
+      contentHtml = `
+      <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;
+        overflow:hidden;margin-bottom:14px;">
+        <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;flex-shrink:0;">핵심 기능</div>
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;">
+          <div style="flex:1;background:#f7f6ff;border:1.5px solid rgba(${accentRgb},.18);
+            border-radius:12px;padding:18px 24px;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;
+            text-align:center;overflow:hidden;">
+            <div style="font-size:30px;margin-bottom:10px;">⚙️</div>
+            <div style="font-size:20px;font-weight:700;color:#222;word-break:keep-all;line-height:1.4;">${esc(skillBullets[0])}</div>
+          </div>
+          <div style="flex:1;display:flex;align-items:stretch;gap:10px;">
+            <div style="flex:1;background:#fff0f0;border:1.5px solid #ffcdd2;border-radius:12px;
+              padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+              <div style="font-size:16px;font-weight:700;color:#c44;margin-bottom:6px;">❌ 이전</div>
+              <div style="font-size:16px;color:#555;word-break:keep-all;line-height:1.4;">수동 반복 작업</div>
             </div>
-            <div style="font-size:13px;font-weight:700;color:rgba(${accentRgb},.85);
-              flex-shrink:0;width:36px;text-align:right;">${pct}%</div>
-          </div>`;
-          }).join("")}
+            <div style="display:flex;align-items:center;flex-shrink:0;padding:0 4px;">
+              <div style="font-size:20px;color:rgba(${accentRgb},.8);font-weight:900;">→</div>
+            </div>
+            <div style="flex:1;background:#f0fff0;border:1.5px solid #b2dfdb;border-radius:12px;
+              padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+              <div style="font-size:16px;font-weight:700;color:#2a7a3b;margin-bottom:6px;">✅ 이후</div>
+              <div style="font-size:16px;color:#555;word-break:keep-all;line-height:1.4;">${esc(effectText.slice(0, 22))}</div>
+            </div>
+          </div>
         </div>
       </div>`;
 
     } else {
-      // ── 스킬이 없을 때: 4개 핵심 스탯 + 바 차트 ──
-      const bhMax = Math.max(...bh.slice(0, 8));
-      const bhNorm = bh.slice(0, 8).map(h => Math.round(h / bhMax * 100));
-      const statSets = [
-        [{ v:"3×", l:"속도 향상" },{ v:"70%", l:"오류 감소" },{ v:"∞", l:"자동화" },{ v:"100%", l:"품질" }],
-        [{ v:"5×", l:"처리 속도" },{ v:"80%", l:"비용 절감" },{ v:"24/7", l:"무중단" },{ v:"99%", l:"정확도" }],
-        [{ v:"2×", l:"개발 속도" },{ v:"60%", l:"리뷰 시간↓" },{ v:"∞", l:"확장성" },{ v:"A+", l:"코드 품질" }],
-      ];
-      const stats = statSets[(chapterIdx - 1) % 3];
-
-      inlineChartHtml = `
-      <div style="width:100%;flex:1;min-height:200px;display:flex;flex-direction:column;overflow:hidden;">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
-          flex-shrink:0;margin-bottom:14px;">
-          ${stats.map(s => `
-          <div style="background:linear-gradient(135deg,rgba(${accentRgb},.09),rgba(${accentRgb},.03));
-            border:1.5px solid rgba(${accentRgb},.14);border-radius:12px;
-            padding:16px 8px;text-align:center;">
-            <div style="font-size:30px;font-weight:900;color:rgba(${accentRgb},1);
-              line-height:1;letter-spacing:-.02em;">${s.v}</div>
-            <div style="font-size:12px;color:#aaa;margin-top:6px;font-weight:600;">${s.l}</div>
-          </div>`).join("")}
-        </div>
-        <div style="flex:1;min-height:0;position:relative;">
-          <div style="position:absolute;inset:0 0 24px;display:flex;flex-direction:column;
-            justify-content:space-between;pointer-events:none;">
-            ${[0,1,2,3].map(() =>
-              `<div style="width:100%;height:1px;background:rgba(${accentRgb},.05);"></div>`
-            ).join("")}
+      // 스킬 없음: 이전 vs 이후 비교 패널 (effectText 사용)
+      contentHtml = `
+      <div style="width:100%;flex:1;min-height:220px;display:flex;flex-direction:column;
+        overflow:hidden;margin-bottom:14px;">
+        <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;flex-shrink:0;">이전 vs 이후</div>
+        <div style="flex:1;min-height:0;display:flex;align-items:stretch;gap:14px;overflow:hidden;">
+          <div style="flex:1;background:#fff0f0;border:1.5px solid #ffcdd2;border-radius:14px;
+            padding:24px 20px;display:flex;flex-direction:column;
+            align-items:center;justify-content:center;text-align:center;overflow:hidden;">
+            <div style="font-size:20px;font-weight:700;color:#c44;margin-bottom:12px;">❌ 이전</div>
+            <div style="font-size:20px;color:#555;line-height:1.55;word-break:keep-all;">
+              혼자 처리하는<br>비효율적인 방식
+            </div>
           </div>
-          <div style="position:absolute;inset:0 0 24px;display:flex;align-items:flex-end;gap:7px;">
-            ${bhNorm.map((h, idx) => `
-            <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;">
-              <div style="height:${h}%;
-                background:linear-gradient(180deg,rgba(${accentRgb},.55),rgba(${accentRgb},.1));
-                border-radius:4px 4px 0 0;min-height:3px;"></div>
-            </div>`).join("")}
+          <div style="display:flex;align-items:center;flex-shrink:0;padding:0 4px;">
+            <div style="font-size:28px;color:rgba(${accentRgb},1);font-weight:900;">→</div>
           </div>
-          <div style="position:absolute;bottom:24px;left:0;right:0;height:1px;
-            background:rgba(${accentRgb},.12);"></div>
-          <div style="position:absolute;bottom:5px;left:0;right:0;display:flex;gap:7px;">
-            ${['Q1','Q2','Q3','Q4','Q5','Q6','Q7','Q8'].map(q => `
-            <div style="flex:1;text-align:center;font-size:10px;color:#bbb;font-weight:600;">${q}</div>`).join("")}
+          <div style="flex:1;background:#f0fff0;border:1.5px solid #b2dfdb;border-radius:14px;
+            padding:24px 20px;display:flex;flex-direction:column;
+            align-items:center;justify-content:center;text-align:center;overflow:hidden;">
+            <div style="font-size:20px;font-weight:700;color:#2a7a3b;margin-bottom:12px;">✅ 이후</div>
+            <div style="font-size:20px;color:#333;line-height:1.55;word-break:keep-all;font-weight:500;">
+              ${esc(effectText)}
+            </div>
           </div>
         </div>
       </div>`;
@@ -633,8 +615,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.55;
           word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
       </div>
-      ${skillsHtml}
-      ${inlineChartHtml}
+      ${contentHtml}
       <div style="width:100%;background:linear-gradient(90deg,#f0eeff,#e8e4ff);
         border:1.5px solid #c4b5fd;border-radius:12px;padding:12px 18px;
         margin-top:12px;margin-bottom:10px;
