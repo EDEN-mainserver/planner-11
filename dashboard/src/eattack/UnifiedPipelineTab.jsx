@@ -453,7 +453,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
 </div>`;
     }
 
-    // ── 본문 (브라우저 목업 — 레퍼런스 스타일) ──
+    // ── 본문 (다크 배경 + 브라우저 목업 부유) ──
     const nextCard = cards[i + 1];
     const teaserText = nextCard
       ? nextCard.part === "마무리" ? "마지막 정리로" : esc(nextCard.headline)
@@ -462,17 +462,13 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     const bullets = (card.body || "")
       .split(/[·•\n]/).map((l) => l.trim()).filter((l) => l.length > 0);
 
-    // 첫 번째 bullet → summary 카드 본문
     const summaryText = bullets[0] || esc(card.headline);
-    // 두 번째 bullet → plugin-sub 소제목
-    const pluginSub = bullets[1] || "";
-    // 나머지 bullets → 스킬 그리드
+    const pluginSub   = bullets[1] || "";
     const skillBullets = bullets.slice(bullets.length > 2 ? 2 : 1, 6);
-    // 마지막 bullet → effect-banner
-    const effectText = bullets[bullets.length - 1] || `${esc(card.headline)}에 대해 더 알아보세요`;
+    const effectText  = bullets[bullets.length - 1] || `${esc(card.headline)}에 대해 더 알아보세요`;
 
     const skillsHtml = skillBullets.length > 0
-      ? `<div style="width:100%;flex-shrink:0;margin-bottom:0;">
+      ? `<div style="width:100%;flex-shrink:0;">
           <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;">주요 내용</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
             ${skillBullets.map((b) => `
@@ -486,22 +482,40 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         </div>`
       : "";
 
-    // 이미지 있으면 스킬 그리드 아래에 이미지 삽입
-    const imageSection = card.imageUrl
-      ? `<div style="width:100%;flex:1;margin-top:16px;border-radius:14px;overflow:hidden;
-            position:relative;min-height:120px;">
-          <img src="${card.imageUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" />
-          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,0,0,0.4));"></div>
-        </div>`
-      : "";
+    // 배경 레이어 — 이미지 or 차트 그래프 장식
+    const chartPatterns = [
+      [58,74,40,86,62,44,78,52,92,36],
+      [72,48,88,55,76,42,66,84,50,70],
+      [44,80,56,94,38,70,82,48,74,60],
+    ];
+    const bh = chartPatterns[(chapterIdx - 1) % 3];
+
+    const bgLayer = card.imageUrl
+      ? `<img src="${card.imageUrl}" style="position:absolute;inset:0;width:100%;height:100%;
+           object-fit:cover;z-index:0;" />
+         <div style="position:absolute;inset:0;background:rgba(4,4,16,.80);z-index:1;"></div>`
+      : `<div style="position:absolute;inset:0;z-index:0;background-image:
+           linear-gradient(rgba(${accentRgb},.04) 1px,transparent 1px),
+           linear-gradient(90deg,rgba(${accentRgb},.04) 1px,transparent 1px);
+           background-size:64px 64px;"></div>
+         <div style="position:absolute;bottom:44px;left:44px;right:44px;height:46%;
+           display:flex;align-items:flex-end;gap:6px;z-index:0;">
+           ${bh.map(h => `
+           <div style="flex:1;height:${h}%;
+             background:linear-gradient(180deg,rgba(${accentRgb},.22),rgba(${accentRgb},.04));
+             border-radius:4px 4px 0 0;"></div>`).join("")}
+         </div>
+         <div style="position:absolute;inset:0;z-index:0;
+           background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
     return `
-<div style="width:1080px;height:1350px;overflow:hidden;background:#e2e2e6;display:flex;
-  align-items:flex-start;justify-content:center;padding:44px 48px 0;
+<div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080814;
+  display:flex;align-items:flex-start;justify-content:center;padding:44px 48px 0;
   font-family:'Noto Sans KR',sans-serif;flex-shrink:0;">
+  ${bgLayer}
   <div style="width:984px;height:1258px;background:#fff;border-radius:20px;
-    box-shadow:0 20px 60px rgba(0,0,0,.15);overflow:hidden;display:flex;
-    flex-direction:column;position:relative;flex-shrink:0;">
+    box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden;display:flex;
+    flex-direction:column;position:relative;z-index:2;flex-shrink:0;">
     <div style="height:60px;background:#f4f4f4;border-bottom:1px solid #e0e0e0;
       display:flex;align-items:center;padding:0 22px;gap:14px;flex-shrink:0;">
       <div style="display:flex;gap:8px;">
@@ -514,8 +528,6 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     </div>
     <div style="height:1130px;overflow:hidden;padding:36px 52px 0;
       display:flex;flex-direction:column;align-items:center;">
-
-      <!-- 배지 행: Chapter N + 다크 서브배지 -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-shrink:0;">
         <div style="background:${accent};color:#fff;font-size:18px;font-weight:700;
           padding:7px 18px;border-radius:8px;letter-spacing:.05em;">Chapter ${chNum}</div>
@@ -524,30 +536,19 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
           ${esc(topic).slice(0, 12)}
         </div>
       </div>
-
-      <!-- 제목 (plugin-title) -->
       <div style="font-size:52px;font-weight:900;color:#111;text-align:center;
         margin-bottom:6px;word-break:keep-all;overflow:hidden;flex-shrink:0;line-height:1.1;">${esc(card.headline)}</div>
-
-      <!-- 소제목 (plugin-sub) -->
-      ${pluginSub ? `<div style="font-size:23px;font-weight:400;color:#666;text-align:center;
-        margin-bottom:22px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(pluginSub)}</div>` : `<div style="margin-bottom:22px;flex-shrink:0;"></div>`}
-
-      <!-- 다크 요약 카드 -->
+      ${pluginSub
+        ? `<div style="font-size:23px;font-weight:400;color:#666;text-align:center;
+             margin-bottom:22px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(pluginSub)}</div>`
+        : `<div style="margin-bottom:22px;flex-shrink:0;"></div>`}
       <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
         border-radius:16px;padding:22px 28px;margin-bottom:22px;overflow:hidden;flex-shrink:0;">
         <div style="font-size:16px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 가치</div>
         <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.55;
           word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
       </div>
-
-      <!-- 스킬 그리드 -->
       ${skillsHtml}
-
-      <!-- 이미지 (있을 때만) -->
-      ${imageSection}
-
-      <!-- effect-banner: margin-top:auto 로 하단 고정 -->
       <div style="width:100%;background:linear-gradient(90deg,#f0eeff,#e8e4ff);
         border:1.5px solid #c4b5fd;border-radius:12px;padding:15px 20px;
         margin-top:auto;margin-bottom:16px;
@@ -555,7 +556,6 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         <span style="font-size:20px;flex-shrink:0;">💡</span>
         <div style="font-size:20px;color:#333;font-weight:600;word-break:keep-all;overflow:hidden;">${esc(effectText)}</div>
       </div>
-
     </div>
     <div style="position:absolute;bottom:0;right:0;left:0;height:68px;
       background:linear-gradient(90deg,rgba(20,20,40,.93),rgba(50,30,120,.93));
