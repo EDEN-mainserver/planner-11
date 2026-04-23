@@ -413,9 +413,9 @@ function RealtimeProfitTab({ creds, rows, salesHistoryMap }) {
           <div>
             <p className="text-sm font-bold text-orange-700 mb-1.5">에쿠 확장에서 판매 데이터를 가져오세요</p>
             <ol className="text-xs text-orange-600 space-y-0.5 list-decimal list-inside">
-              <li>쿠팡 Wing → 상품 상세 페이지 접속</li>
-              <li>에쿠 확장 팝업 클릭 → <strong>판매량 분석</strong> 버튼 클릭</li>
-              <li>수집 완료 후 대시보드에 자동 동기화</li>
+              <li>쿠팡 Wing → <strong>판매분석</strong> 페이지 접속 (에쿠가 자동 수집)</li>
+              <li>에쿠 확장 팝업 클릭 → <strong>📊 대시보드 동기화</strong> 버튼 클릭</li>
+              <li>동기화 완료 후 판매장부에 자동 반영</li>
             </ol>
           </div>
         </div>
