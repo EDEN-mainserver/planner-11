@@ -325,7 +325,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
 
     // ── 커버 ──
     if (isCover) {
-      const previewChips = bodyCards.slice(0, 3).map((bc, ci) => `
+      const previewChips = bodyCards.slice(0, 3).map((bc, ci) => {
+        const chipSub = (bc.body || "").split(/[·•\n]/)[0].trim();
+        return `
         <div style="display:flex;align-items:center;gap:14px;
           background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
           border-radius:12px;padding:14px 22px;overflow:hidden;">
@@ -333,8 +335,10 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
             display:flex;align-items:center;justify-content:center;
             font-size:15px;font-weight:800;color:#fff;flex-shrink:0;">${ci + 1}</div>
           <span style="font-size:22px;font-weight:600;color:rgba(255,255,255,.85);
-            overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${esc(bc.headline)}</span>
-        </div>`).join("");
+            overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1;">${esc(bc.headline)}</span>
+          ${chipSub ? `<span style="font-size:17px;color:rgba(255,255,255,.35);white-space:nowrap;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(chipSub)}</span>` : ""}
+        </div>`;
+      }).join("");
 
       return `
 <div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080812;
@@ -455,43 +459,38 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     const bullets = (card.body || "")
       .split(/[·•\n]/).map((l) => l.trim()).filter((l) => l.length > 0);
 
+    // 첫 번째 bullet → summary 카드 본문
     const summaryText = bullets[0] || esc(card.headline);
-    const skillBullets = bullets.length > 1 ? bullets.slice(1, 5) : bullets.slice(0, 4);
+    // 두 번째 bullet → plugin-sub 소제목
+    const pluginSub = bullets[1] || "";
+    // 나머지 bullets → 스킬 그리드
+    const skillBullets = bullets.slice(bullets.length > 2 ? 2 : 1, 6);
+    // 마지막 bullet → effect-banner
+    const effectText = bullets[bullets.length - 1] || `${esc(card.headline)}에 대해 더 알아보세요`;
 
     const skillsHtml = skillBullets.length > 0
-      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
-          ${skillBullets.map((b) => `
-          <div style="background:#f9f9f9;border:1.5px solid #e8e8e8;border-radius:10px;
-            padding:16px 18px;display:flex;align-items:center;gap:10px;overflow:hidden;">
-            <div style="width:8px;height:8px;border-radius:50%;background:${accent};flex-shrink:0;"></div>
-            <div style="font-size:19px;font-weight:600;color:#333;overflow:hidden;
-              white-space:nowrap;text-overflow:ellipsis;">${esc(b)}</div>
-          </div>`).join("")}
+      ? `<div style="width:100%;flex-shrink:0;margin-bottom:0;">
+          <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;">주요 내용</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
+            ${skillBullets.map((b) => `
+            <div style="background:#f9f9f9;border:1.5px solid #e8e8e8;border-radius:10px;
+              padding:15px 16px;display:flex;align-items:center;gap:10px;overflow:hidden;">
+              <div style="width:8px;height:8px;border-radius:50%;background:${accent};flex-shrink:0;"></div>
+              <div style="font-size:18px;font-weight:600;color:#333;overflow:hidden;
+                white-space:nowrap;text-overflow:ellipsis;">${esc(b)}</div>
+            </div>`).join("")}
+          </div>
         </div>`
       : "";
 
-    // 하단 비주얼 영역: 이미지 있으면 이미지, 없으면 장식 바차트
-    const barHeights = [55, 78, 42, 90, 65, 38, 82];
-    const bottomVisual = card.imageUrl
-      ? `<div style="width:100%;flex:1;margin-top:20px;border-radius:16px;overflow:hidden;
-            position:relative;min-height:0;">
+    // 이미지 있으면 스킬 그리드 아래에 이미지 삽입
+    const imageSection = card.imageUrl
+      ? `<div style="width:100%;flex:1;margin-top:16px;border-radius:14px;overflow:hidden;
+            position:relative;min-height:120px;">
           <img src="${card.imageUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" />
-          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,0.45));"></div>
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,0,0,0.4));"></div>
         </div>`
-      : `<div style="width:100%;flex:1;margin-top:20px;border-radius:16px;
-            background:linear-gradient(135deg,#f3f1ff,#eceaff);
-            padding:28px 24px 16px;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
-          <div style="font-size:16px;font-weight:700;color:#aaa;letter-spacing:.06em;margin-bottom:16px;">DATA INSIGHT</div>
-          <div style="flex:1;display:flex;align-items:flex-end;gap:10px;min-height:0;">
-            ${barHeights.map((h, bi) => `
-            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">
-              <div style="width:100%;height:${h}%;
-                background:linear-gradient(180deg,${accent},${accent}55);
-                border-radius:6px 6px 0 0;min-height:8px;"></div>
-            </div>`).join("")}
-          </div>
-          <div style="height:1px;background:#d8d4ff;margin-top:10px;"></div>
-        </div>`;
+      : "";
 
     return `
 <div style="width:1080px;height:1350px;overflow:hidden;background:#e2e2e6;display:flex;
@@ -510,25 +509,50 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       <div style="flex:1;max-width:320px;height:32px;background:#e8e8e8;border-radius:8px;
         display:flex;align-items:center;justify-content:center;font-size:16px;color:#888;">insight</div>
     </div>
-    <div style="height:1062px;overflow:hidden;padding:36px 52px 16px;
+    <div style="height:1130px;overflow:hidden;padding:36px 52px 0;
       display:flex;flex-direction:column;align-items:center;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-shrink:0;">
+
+      <!-- 배지 행: Chapter N + 다크 서브배지 -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-shrink:0;">
         <div style="background:${accent};color:#fff;font-size:18px;font-weight:700;
           padding:7px 18px;border-radius:8px;letter-spacing:.05em;">Chapter ${chNum}</div>
+        <div style="background:#1a1a2e;color:${accent};font-family:'Courier New',monospace;
+          font-size:16px;padding:7px 14px;border-radius:8px;white-space:nowrap;overflow:hidden;">
+          ${esc(topic).slice(0, 12)}
+        </div>
       </div>
-      <div style="font-size:46px;font-weight:900;color:#111;text-align:center;
-        margin-bottom:6px;word-break:keep-all;overflow:hidden;flex-shrink:0;line-height:1.15;">${esc(card.headline)}</div>
+
+      <!-- 제목 (plugin-title) -->
+      <div style="font-size:52px;font-weight:900;color:#111;text-align:center;
+        margin-bottom:6px;word-break:keep-all;overflow:hidden;flex-shrink:0;line-height:1.1;">${esc(card.headline)}</div>
+
+      <!-- 소제목 (plugin-sub) -->
+      ${pluginSub ? `<div style="font-size:23px;font-weight:400;color:#666;text-align:center;
+        margin-bottom:22px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(pluginSub)}</div>` : `<div style="margin-bottom:22px;flex-shrink:0;"></div>`}
+
+      <!-- 다크 요약 카드 -->
       <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
-        border-radius:14px;padding:20px 26px;margin:14px 0;overflow:hidden;flex-shrink:0;">
-        <div style="font-size:15px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:7px;">✦ 핵심 요점</div>
-        <div style="font-size:22px;font-weight:700;color:#fff;line-height:1.55;
+        border-radius:16px;padding:22px 28px;margin-bottom:22px;overflow:hidden;flex-shrink:0;">
+        <div style="font-size:16px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 가치</div>
+        <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.55;
           word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
       </div>
-      ${skillsHtml ? `<div style="width:100%;flex-shrink:0;">
-        <div style="font-size:18px;font-weight:700;color:#222;margin-bottom:10px;">주요 내용</div>
-        ${skillsHtml}
-      </div>` : ""}
-      ${bottomVisual}
+
+      <!-- 스킬 그리드 -->
+      ${skillsHtml}
+
+      <!-- 이미지 (있을 때만) -->
+      ${imageSection}
+
+      <!-- effect-banner: margin-top:auto 로 하단 고정 -->
+      <div style="width:100%;background:linear-gradient(90deg,#f0eeff,#e8e4ff);
+        border:1.5px solid #c4b5fd;border-radius:12px;padding:15px 20px;
+        margin-top:auto;margin-bottom:16px;
+        display:flex;align-items:center;gap:12px;overflow:hidden;flex-shrink:0;">
+        <span style="font-size:20px;flex-shrink:0;">💡</span>
+        <div style="font-size:20px;color:#333;font-weight:600;word-break:keep-all;overflow:hidden;">${esc(effectText)}</div>
+      </div>
+
     </div>
     <div style="position:absolute;bottom:0;right:0;left:0;height:68px;
       background:linear-gradient(90deg,rgba(20,20,40,.93),rgba(50,30,120,.93));
