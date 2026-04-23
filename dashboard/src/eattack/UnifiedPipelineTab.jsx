@@ -503,45 +503,42 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
     // 인라인 바 차트 — 항상 표시, 남은 공간 모두 채움
+    // 최대값 기준 정규화 (최고 바 = 100%)
+    const bhMax = Math.max(...bh.slice(0, 8));
+    const bhNorm = bh.slice(0, 8).map(h => Math.round(h / bhMax * 100));
     const chartLabels = ['1월','2월','3월','4월','5월','6월','7월','8월'];
     const chartTitle = skillBullets.length > 0 ? "성과 데이터" : "KEY METRICS";
     const inlineChartHtml = `
       <div style="width:100%;flex:1;min-height:${skillBullets.length > 0 ? 140 : 200}px;
         display:flex;flex-direction:column;overflow:hidden;
-        ${skillBullets.length > 0 ? 'margin-top:20px;border-top:1px solid #f0f0f0;padding-top:16px;' : ''}">
-        <!-- 차트 헤더 -->
+        ${skillBullets.length > 0 ? 'margin-top:16px;border-top:1px solid #f0f0f0;padding-top:14px;' : ''}">
         <div style="display:flex;align-items:center;justify-content:space-between;
-          margin-bottom:12px;flex-shrink:0;">
-          <div style="font-size:14px;font-weight:700;color:rgba(${accentRgb},.6);
+          margin-bottom:10px;flex-shrink:0;">
+          <div style="font-size:13px;font-weight:700;color:rgba(${accentRgb},.55);
             letter-spacing:.1em;">${chartTitle}</div>
-          <div style="font-size:12px;color:#ccc;font-weight:500;">2024 — 2025</div>
+          <div style="font-size:11px;color:#ccc;font-weight:500;">2024 — 2025</div>
         </div>
-        <!-- 차트 영역 (flex:1로 나머지 공간 모두 차지) -->
         <div style="flex:1;min-height:0;position:relative;">
-          <!-- 수평 그리드 -->
-          <div style="position:absolute;inset:0 0 28px;display:flex;flex-direction:column;
+          <div style="position:absolute;inset:0 0 26px;display:flex;flex-direction:column;
             justify-content:space-between;pointer-events:none;">
             ${[0,1,2,3,4].map(() =>
-              `<div style="width:100%;height:1px;background:rgba(${accentRgb},.06);"></div>`
+              `<div style="width:100%;height:1px;background:rgba(${accentRgb},.05);"></div>`
             ).join("")}
           </div>
-          <!-- 바 -->
-          <div style="position:absolute;inset:0 0 28px;display:flex;align-items:flex-end;gap:10px;">
-            ${bh.slice(0,8).map((h) => `
+          <div style="position:absolute;inset:0 0 26px;display:flex;align-items:flex-end;gap:8px;">
+            ${bhNorm.map((h, idx) => `
             <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;">
-              <div style="font-size:11px;font-weight:700;text-align:center;
-                color:rgba(${accentRgb},.65);margin-bottom:4px;white-space:nowrap;">${h}</div>
-              <div style="height:${h}%;background:linear-gradient(180deg,rgba(${accentRgb},.55),rgba(${accentRgb},.12));
-                border-radius:5px 5px 0 0;min-height:4px;"></div>
+              <div style="font-size:10px;font-weight:700;text-align:center;
+                color:rgba(${accentRgb},.6);margin-bottom:3px;white-space:nowrap;">${bh[idx]}</div>
+              <div style="height:${h}%;background:linear-gradient(180deg,rgba(${accentRgb},.6),rgba(${accentRgb},.15));
+                border-radius:4px 4px 0 0;min-height:4px;"></div>
             </div>`).join("")}
           </div>
-          <!-- x축 선 -->
-          <div style="position:absolute;bottom:28px;left:0;right:0;
-            height:1.5px;background:rgba(${accentRgb},.18);"></div>
-          <!-- x축 레이블 -->
-          <div style="position:absolute;bottom:6px;left:0;right:0;display:flex;gap:10px;">
+          <div style="position:absolute;bottom:26px;left:0;right:0;
+            height:1.5px;background:rgba(${accentRgb},.15);"></div>
+          <div style="position:absolute;bottom:5px;left:0;right:0;display:flex;gap:8px;">
             ${chartLabels.map(m => `
-            <div style="flex:1;text-align:center;font-size:11px;color:#c0c0c0;
+            <div style="flex:1;text-align:center;font-size:10px;color:#bbb;
               font-weight:600;white-space:nowrap;">${m}</div>`).join("")}
           </div>
         </div>
@@ -576,13 +573,13 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         </div>
       </div>
       <div style="font-size:52px;font-weight:900;color:#111;text-align:center;
-        margin-bottom:6px;word-break:keep-all;overflow:hidden;flex-shrink:0;line-height:1.1;">${esc(card.headline)}</div>
+        margin-bottom:4px;word-break:keep-all;overflow:hidden;flex-shrink:0;line-height:1.1;">${esc(card.headline)}</div>
       ${pluginSub
-        ? `<div style="font-size:23px;font-weight:400;color:#666;text-align:center;
-             margin-bottom:22px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(pluginSub)}</div>`
-        : `<div style="margin-bottom:22px;flex-shrink:0;"></div>`}
+        ? `<div style="font-size:22px;font-weight:400;color:#666;text-align:center;
+             margin-bottom:14px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(pluginSub)}</div>`
+        : `<div style="margin-bottom:14px;flex-shrink:0;"></div>`}
       <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
-        border-radius:16px;padding:22px 28px;margin-bottom:22px;overflow:hidden;flex-shrink:0;">
+        border-radius:16px;padding:18px 24px;margin-bottom:16px;overflow:hidden;flex-shrink:0;">
         <div style="font-size:16px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 가치</div>
         <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.55;
           word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
@@ -590,8 +587,8 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       ${skillsHtml}
       ${inlineChartHtml}
       <div style="width:100%;background:linear-gradient(90deg,#f0eeff,#e8e4ff);
-        border:1.5px solid #c4b5fd;border-radius:12px;padding:15px 20px;
-        margin-top:18px;margin-bottom:16px;
+        border:1.5px solid #c4b5fd;border-radius:12px;padding:12px 18px;
+        margin-top:12px;margin-bottom:10px;
         display:flex;align-items:center;gap:12px;overflow:hidden;flex-shrink:0;">
         <span style="font-size:20px;flex-shrink:0;">💡</span>
         <div style="font-size:20px;color:#333;font-weight:600;word-break:keep-all;overflow:hidden;">${esc(effectText)}</div>
