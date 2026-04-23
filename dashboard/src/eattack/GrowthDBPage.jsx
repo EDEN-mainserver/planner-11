@@ -1220,6 +1220,13 @@ export default function GrowthDBPage() {
 
       setRows(normalized);
       setIsReal(true);
+
+      // chrome.storage에 캐시 → ekuRunWingFetch에서 vendorItemId 추출용
+      window.postMessage({
+        source: 'eku-dashboard',
+        type: 'EKU_CACHE_PRODUCTS',
+        items: normalized.map(r => ({ vendorItemId: String(r.optId), name: r.name })),
+      }, '*');
     } catch (e) {
       setApiError(`API 오류: ${e.message}`);
       setRows([]); setIsReal(false);
