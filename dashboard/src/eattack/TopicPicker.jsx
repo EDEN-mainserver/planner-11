@@ -73,7 +73,7 @@ function PostList({ posts, onSelect, emptyMsg, accentClass = "violet" }) {
             <div className="flex items-start gap-2">
               <span className={`text-[10px] font-bold flex-shrink-0 mt-0.5 ${c.num}`}>{i + 1}</span>
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-gray-800 line-clamp-2 group-hover:text-gray-900">{text || "(내용 없음)"}</p>
+                <p className="text-xs text-gray-800 group-hover:text-gray-900 whitespace-pre-wrap break-words">{text || "(내용 없음)"}</p>
                 {meta && <p className="text-[10px] text-gray-400 mt-0.5">{meta}</p>}
               </div>
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`flex-shrink-0 text-gray-200 mt-0.5 ml-auto transition-colors ${c.arrow}`}>

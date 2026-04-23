@@ -394,16 +394,16 @@ export default function ContentPipelineTab() {
             인기글에서 가져오기
           </button>
         </div>
-        <textarea rows={2}
-          className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl outline-none focus:border-pink-400 resize-none leading-relaxed"
+        <textarea rows={3}
+          className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl outline-none focus:border-pink-400 resize-y leading-relaxed"
           placeholder="예: 봄철 피부 관리법, AI 트렌드 2025, 제주도 여행 코스"
-          value={topic} onChange={e => setTopic(e.target.value.slice(0, 80))} />
-        <p className="text-[11px] text-gray-400 text-right mt-0.5">{topic.length}/80</p>
+          value={topic} onChange={e => setTopic(e.target.value)} />
+        <p className="text-[11px] text-gray-400 text-right mt-0.5">{topic.length}자</p>
       </div>
 
       {showTopicPicker && (
         <TopicPicker
-          onSelect={v => setTopic(v.slice(0, 80))}
+          onSelect={v => setTopic(v)}
           onClose={() => setShowTopicPicker(false)}
         />
       )}
