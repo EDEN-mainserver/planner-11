@@ -3,6 +3,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
   "functions": {
     "api/parse-pdf.js": {
       "maxDuration": 60,
