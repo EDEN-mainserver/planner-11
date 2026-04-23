@@ -502,13 +502,32 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
          <div style="position:absolute;inset:0;z-index:0;
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
-    // 인라인 바 차트 — 스킬이 없을 때 빈 공간 채움
+    // 인라인 바 차트 — 스킬이 없을 때 빈 공간 채움 (position:absolute로 강제 채움)
     const inlineChartHtml = skillBullets.length === 0
-      ? `<div style="width:100%;flex:1;display:flex;align-items:flex-end;gap:7px;
-           padding:16px 0 0;overflow:hidden;min-height:160px;">
-           ${bh.slice(0, 8).map((h) => `
-           <div style="flex:1;height:${h}%;background:linear-gradient(180deg,rgba(${accentRgb},.28),rgba(${accentRgb},.05));
-             border-radius:4px 4px 0 0;"></div>`).join("")}
+      ? `<div style="width:100%;flex:1;min-height:0;position:relative;overflow:hidden;">
+           <!-- 배경 그리드 수평선 -->
+           <div style="position:absolute;inset:16px 0 32px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;">
+             ${[0,1,2,3].map(() => `<div style="width:100%;height:1px;background:rgba(${accentRgb},.08);"></div>`).join("")}
+           </div>
+           <!-- 바 차트 -->
+           <div style="position:absolute;inset:16px 0 32px;display:flex;align-items:flex-end;gap:9px;">
+             ${bh.slice(0,8).map((h,idx) => `
+             <div style="flex:1;height:${h}%;display:flex;flex-direction:column;justify-content:flex-end;position:relative;">
+               <div style="font-size:13px;font-weight:700;text-align:center;color:rgba(${accentRgb},0.7);margin-bottom:5px;white-space:nowrap;">${h}%</div>
+               <div style="flex:1;background:linear-gradient(180deg,rgba(${accentRgb},.45),rgba(${accentRgb},.08));
+                 border-radius:6px 6px 0 0;"></div>
+             </div>`).join("")}
+           </div>
+           <!-- x축 레이블 -->
+           <div style="position:absolute;bottom:4px;left:0;right:0;display:flex;gap:9px;">
+             ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'].map(m => `
+             <div style="flex:1;text-align:center;font-size:12px;color:#bbb;font-weight:600;">${m}</div>`).join("")}
+           </div>
+           <!-- x축 선 -->
+           <div style="position:absolute;bottom:28px;left:0;right:0;height:2px;background:rgba(${accentRgb},.15);"></div>
+           <!-- 좌측 레이블 -->
+           <div style="position:absolute;top:8px;left:4px;font-size:13px;font-weight:700;
+             color:rgba(${accentRgb},.5);letter-spacing:.1em;">ANALYTICS</div>
          </div>`
       : "";
 

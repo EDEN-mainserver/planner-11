@@ -279,30 +279,49 @@ function buildCoverSlideHtml(clientInfo, winThemes) {
 </div>`;
 }
 
-function buildSectionSlideHtml(slide, pg, total) {
+// Phase 제목 → 강조색 매핑 (참고 템플릿 색상 시스템)
+const PHASE_COLORS = [
+  { keys: ['SUMMARY'],                       color: '#64748B' },
+  { keys: ['INSIGHT'],                        color: '#3B82F6' },
+  { keys: ['CONCEPT'],                        color: '#8B5CF6' },
+  { keys: ['ACTION'],                         color: '#10B981' },
+  { keys: ['WHY', 'WHY US'],                  color: '#F59E0B' },
+  { keys: ['INVESTMENT', 'ROI'],              color: '#EF4444' },
+];
+
+function getPhaseColor(title) {
+  const up = (title || '').toUpperCase();
+  for (const { keys, color } of PHASE_COLORS) {
+    if (keys.some(k => up.includes(k))) return color;
+  }
+  return '#64748B';
+}
+
+function buildSectionSlideHtml(slide, pg, total, color) {
   return `<div class="slide slide-section">
   <p class="section-eyebrow">EDEN MARKETING</p>
-  <div class="section-line"></div>
+  <div class="section-line" style="background:${color}"></div>
   <h1 class="section-title">${escHtml(slide.title)}</h1>
   ${slide.subtitle ? `<p class="section-subtitle">${escHtml(slide.subtitle)}</p>` : ''}
   <div class="slide-pg light">${pg} / ${total}</div>
 </div>`;
 }
 
-function buildContentSlideHtml(slide, pg, total) {
+function buildContentSlideHtml(slide, pg, total, color) {
   const bullets = slide.bullets.slice(0, 5);
   const bulletsHtml = bullets.map(b => `
-    <div class="bullet-item">
-      <div class="bullet-dot"></div>
+    <div class="bullet-item" style="border-left-color:${color}">
+      <div class="bullet-dot" style="background:${color}"></div>
       <div class="bullet-text">${escHtml(b)}</div>
     </div>`).join('');
   const emphasisHtml = slide.emphasis ? `
-  <div class="emphasis-box">
+  <div class="emphasis-box" style="border-color:${color}">
     <span>📌</span>
-    <span class="emphasis-text">${escHtml(slide.emphasis)}</span>
+    <span class="emphasis-text" style="color:${color}">${escHtml(slide.emphasis)}</span>
   </div>` : '';
   return `<div class="slide slide-content">
   <div class="content-header">
+    <div class="accent-bar" style="background:${color}"></div>
     <div class="content-title">${escHtml(slide.title)}</div>
   </div>
   <div class="content-body">${bulletsHtml}</div>
@@ -317,10 +336,15 @@ function buildContentSlideHtml(slide, pg, total) {
 function buildHtmlDocument(parsedSlides, clientInfo, winThemes) {
   const total = 1 + parsedSlides.length;
   const slideHtmls = [buildCoverSlideHtml(clientInfo, winThemes)];
+  let currentColor = '#64748B';
   parsedSlides.forEach((slide, i) => {
     const pg = i + 2;
-    if (slide.type === 'section') slideHtmls.push(buildSectionSlideHtml(slide, pg, total));
-    else slideHtmls.push(buildContentSlideHtml(slide, pg, total));
+    if (slide.type === 'section') {
+      currentColor = getPhaseColor(slide.title);
+      slideHtmls.push(buildSectionSlideHtml(slide, pg, total, currentColor));
+    } else {
+      slideHtmls.push(buildContentSlideHtml(slide, pg, total, currentColor));
+    }
   });
 
   return `<!DOCTYPE html>
@@ -342,15 +366,16 @@ body{font-family:'Noto Sans KR',sans-serif;background:#1E293B;display:flex;flex-
 .deco-c1{width:600px;height:600px;top:-200px;right:-100px}
 .deco-c2{width:400px;height:400px;bottom:-150px;left:-100px}
 .cover-inner{z-index:10;display:flex;flex-direction:column;align-items:center;width:100%;padding:0 100px}
-.brand-tag{background:#E2E8F0;color:#475569;padding:8px 20px;border-radius:100px;font-size:13px;font-weight:700;letter-spacing:.06em;margin-bottom:24px;text-transform:uppercase}
-.accent-line{width:80px;height:6px;background:#0F172A;margin-bottom:20px}
-/* 회사명: 1줄 고정 */
-.cover-company{font-size:52px;font-weight:900;color:#0F172A;line-height:1.2;text-align:center;letter-spacing:-.02em;word-break:keep-all;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:1060px;margin-bottom:6px}
-/* 문서 유형: 항상 표시 */
+.brand-tag{background:#E2E8F0;color:#475569;padding:8px 20px;border-radius:100px;font-size:14px;font-weight:700;letter-spacing:.06em;margin-bottom:32px;text-transform:uppercase}
+.accent-line{width:80px;height:6px;background:#0F172A;margin-bottom:24px}
+/* 회사명: 참고 템플릿 64px, 1줄 ellipsis */
+.cover-company{font-size:60px;font-weight:900;color:#0F172A;line-height:1.2;text-align:center;letter-spacing:-.02em;word-break:keep-all;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:1060px;margin-bottom:8px}
+/* 문서 유형: 참고 템플릿 subtitle 크기 */
 .cover-doctype{font-size:32px;font-weight:400;color:#475569;text-align:center;margin-bottom:20px}
-/* Win Theme 부제목: 최대 2줄 */
-.cover-subtitle{font-size:20px;font-weight:400;color:#64748B;text-align:center;margin-bottom:36px;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:900px}
-.cover-meta{display:flex;gap:36px;color:#64748B;font-size:15px;font-weight:500;padding-top:20px;border-top:1px solid #E2E8F0}
+/* Win Theme 부제목: 참고 템플릿 subtitle과 동일 32px */
+.cover-subtitle{font-size:26px;font-weight:400;color:#475569;text-align:center;margin-bottom:48px;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:960px}
+/* 참고 템플릿 meta-info: 18px */
+.cover-meta{display:flex;gap:40px;color:#64748B;font-size:18px;font-weight:500;padding-top:24px;border-top:1px solid #E2E8F0}
 .meta-item{display:flex;align-items:center;gap:8px}.meta-item i{color:#94A3B8}
 /* ── SECTION ── */
 .slide-section{background:#0F172A;display:flex;flex-direction:column;align-items:center;justify-content:center}
@@ -363,19 +388,21 @@ body{font-family:'Noto Sans KR',sans-serif;background:#1E293B;display:flex;flex-
 .slide-pg.light{color:rgba(255,255,255,.3)}
 /* ── CONTENT ── */
 .slide-content{background:#F8FAFC;display:flex;flex-direction:column}
-.content-header{margin:36px 60px 0;padding-left:22px;border-left:6px solid #0F172A;flex-shrink:0}
-/* 제목: 최대 2줄 */
-.content-title{font-size:30px;font-weight:800;color:#0F172A;line-height:1.3;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-/* 불릿 영역: 남은 공간 차지, 하단 패딩 포함 */
-.content-body{flex:1;padding:18px 60px 16px;display:flex;flex-direction:column;gap:9px;overflow:hidden}
-.bullet-item{display:flex;align-items:flex-start;gap:14px;background:white;border-radius:12px;padding:12px 20px;border-left:4px solid #0F172A;box-shadow:0 2px 6px rgba(0,0,0,.04);flex-shrink:0}
-.bullet-dot{width:7px;height:7px;border-radius:50%;background:#0F172A;margin-top:9px;flex-shrink:0}
-/* 불릿 텍스트: 최대 2줄, 넘치면 말줄임 */
-.bullet-text{font-size:17px;color:#334155;line-height:1.5;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-/* 강조 박스: 푸터 바로 위 고정 */
-.emphasis-box{margin:0 60px 12px;background:white;border:1.5px solid #0F172A;border-radius:12px;padding:12px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
-/* 강조 텍스트: 최대 2줄 */
-.emphasis-text{font-size:14px;font-weight:600;color:#0F172A;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.content-header{margin:36px 60px 0;flex-shrink:0}
+/* 참고 템플릿 accent-bar: 60×4px (제목 위 작은 바) */
+.accent-bar{width:60px;height:4px;margin-bottom:12px;border-radius:2px}
+/* 참고 템플릿 slide-title: 40px weight 800 */
+.content-title{font-size:38px;font-weight:800;color:#0F172A;line-height:1.2;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 불릿 영역 */
+.content-body{flex:1;padding:20px 60px 16px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+/* 참고 템플릿 카드: 흰 배경, border-radius 16px, 컬러 left border */
+.bullet-item{display:flex;align-items:flex-start;gap:14px;background:white;border-radius:16px;padding:14px 22px;border-left:5px solid #64748B;box-shadow:0 4px 12px rgba(0,0,0,.06);flex-shrink:0}
+.bullet-dot{width:8px;height:8px;border-radius:50%;background:#64748B;margin-top:9px;flex-shrink:0}
+/* 불릿 텍스트: 최대 2줄 */
+.bullet-text{font-size:18px;color:#334155;line-height:1.5;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 강조 박스 */
+.emphasis-box{margin:0 60px 12px;background:white;border:1.5px solid #64748B;border-radius:12px;padding:13px 22px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.emphasis-text{font-size:15px;font-weight:600;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .slide-footer{height:40px;background:#0F172A;display:flex;align-items:center;justify-content:space-between;padding:0 40px;flex-shrink:0}
 .footer-brand{font-size:12px;font-weight:700;color:rgba(255,255,255,.4)}
 .footer-pg{font-size:12px;color:rgba(255,255,255,.35)}
