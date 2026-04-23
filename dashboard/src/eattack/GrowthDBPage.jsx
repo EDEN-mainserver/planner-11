@@ -323,6 +323,42 @@ function RealtimeProfitTab({ creds, rows, salesHistoryMap }) {
   const [editCostVal, setEditCostVal] = useState('');
   const [days, setDays]               = useState(30);
 
+  // 판매성과 불러오기 상태
+  const [wingFetching, setWingFetching] = useState(false);
+  const [wingStatus,   setWingStatus]   = useState('');
+  const [wingError,    setWingError]    = useState(false);
+
+  // 에쿠 확장 → EKU_WING_SALES_STATUS 수신
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.source !== window || e.data?.source !== 'eku-extension') return;
+      if (e.data.type !== 'EKU_WING_SALES_STATUS') return;
+      const { msg, done, error } = e.data.payload || {};
+      setWingStatus(msg || '');
+      setWingError(!!error);
+      if (done) {
+        setWingFetching(false);
+        setTimeout(() => setWingStatus(''), 5000);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const fetchWingSales = () => {
+    setWingFetching(true);
+    setWingError(false);
+    setWingStatus('요청 중...');
+    window.postMessage({ source: 'eku-dashboard', type: 'EKU_FETCH_WING_SALES' }, '*');
+    // 5초 안에 응답 없으면 타임아웃
+    setTimeout(() => {
+      setWingFetching(prev => {
+        if (prev) { setWingStatus('응답 없음 — 에쿠 확장이 활성화되어 있는지 확인하세요'); setWingError(true); }
+        return false;
+      });
+    }, 15000);
+  };
+
   const hasKey = !!(creds.accessKey && creds.secretKey && creds.vendorId);
 
   const saveCost = (vid) => {
@@ -393,7 +429,27 @@ function RealtimeProfitTab({ creds, rows, salesHistoryMap }) {
             상품별 수익성 분석 · 에쿠 확장 판매분석 실행 시 자동 반영
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 판매성과 불러오기 버튼 */}
+          <button
+            onClick={fetchWingSales}
+            disabled={wingFetching}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border
+              ${wingFetching
+                ? 'bg-blue-50 text-blue-400 border-blue-200 cursor-not-allowed'
+                : wingError
+                  ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                  : 'bg-blue-500 text-white border-blue-500 hover:bg-blue-600 shadow-sm'
+              }`}
+          >
+            {wingFetching ? (
+              <span className="inline-block w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+            ) : (
+              <span>📥</span>
+            )}
+            {wingFetching ? '수집 중...' : '판매성과 불러오기'}
+          </button>
+
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
             {[7, 30].map(d => (
               <button key={d} onClick={() => setDays(d)}
@@ -405,6 +461,18 @@ function RealtimeProfitTab({ creds, rows, salesHistoryMap }) {
           <ProfitBadge color="green">● {creds.vendorId} 연결됨</ProfitBadge>
         </div>
       </div>
+
+      {/* 상태 바 */}
+      {wingStatus && (
+        <div className={`text-xs px-4 py-2 rounded-lg flex items-center gap-2
+          ${wingError ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+          {wingFetching && (
+            <span className="inline-block w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
+          )}
+          {wingError ? '❌' : wingFetching ? null : '✅'}
+          <span>{wingStatus}</span>
+        </div>
+      )}
 
       {/* 데이터 없을 때: 에쿠 확장 사용 안내 */}
       {!hasData && (
