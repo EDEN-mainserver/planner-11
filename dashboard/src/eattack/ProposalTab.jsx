@@ -334,42 +334,53 @@ function buildHtmlDocument(parsedSlides, clientInfo, winThemes) {
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Noto Sans KR',sans-serif;background:#1E293B;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:32px 32px 80px}
 .sw{display:none}.sw.active{display:block}
+/* ── Slide base ── */
 .slide{width:1280px;height:720px;position:relative;overflow:hidden;border-radius:8px;box-shadow:0 25px 50px -12px rgba(0,0,0,.5)}
-/* COVER */
+/* ── COVER ── */
 .slide-cover{background:#F8FAFC;display:flex;align-items:center;justify-content:center}
 .deco-c{position:absolute;border-radius:50%;background:rgba(15,23,42,.03)}
 .deco-c1{width:600px;height:600px;top:-200px;right:-100px}
 .deco-c2{width:400px;height:400px;bottom:-150px;left:-100px}
-.cover-inner{z-index:10;display:flex;flex-direction:column;align-items:center;width:100%;padding:0 120px}
-.brand-tag{background:#E2E8F0;color:#475569;padding:8px 20px;border-radius:100px;font-size:13px;font-weight:700;letter-spacing:.06em;margin-bottom:28px;text-transform:uppercase}
-.accent-line{width:80px;height:6px;background:#0F172A;margin-bottom:24px}
-.cover-title{font-size:54px;font-weight:900;color:#0F172A;line-height:1.2;text-align:center;letter-spacing:-.02em;margin-bottom:16px;word-break:keep-all;overflow:hidden;max-height:175px}
-.cover-subtitle{font-size:23px;font-weight:400;color:#475569;text-align:center;margin-bottom:48px;word-break:keep-all;overflow:hidden;max-height:60px}
-.cover-meta{display:flex;gap:40px;color:#64748B;font-size:15px;font-weight:500;padding-top:24px;border-top:1px solid #E2E8F0}
+.cover-inner{z-index:10;display:flex;flex-direction:column;align-items:center;width:100%;padding:0 100px}
+.brand-tag{background:#E2E8F0;color:#475569;padding:8px 20px;border-radius:100px;font-size:13px;font-weight:700;letter-spacing:.06em;margin-bottom:24px;text-transform:uppercase}
+.accent-line{width:80px;height:6px;background:#0F172A;margin-bottom:20px}
+/* 회사명: 1줄 고정 */
+.cover-company{font-size:52px;font-weight:900;color:#0F172A;line-height:1.2;text-align:center;letter-spacing:-.02em;word-break:keep-all;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:1060px;margin-bottom:6px}
+/* 문서 유형: 항상 표시 */
+.cover-doctype{font-size:32px;font-weight:400;color:#475569;text-align:center;margin-bottom:20px}
+/* Win Theme 부제목: 최대 2줄 */
+.cover-subtitle{font-size:20px;font-weight:400;color:#64748B;text-align:center;margin-bottom:36px;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:900px}
+.cover-meta{display:flex;gap:36px;color:#64748B;font-size:15px;font-weight:500;padding-top:20px;border-top:1px solid #E2E8F0}
 .meta-item{display:flex;align-items:center;gap:8px}.meta-item i{color:#94A3B8}
-/* SECTION */
+/* ── SECTION ── */
 .slide-section{background:#0F172A;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.section-eyebrow{font-size:13px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.15em;margin-bottom:20px}
+/* eyebrow: 어두운 배경에 보이는 회색 */
+.section-eyebrow{font-size:13px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.15em;margin-bottom:20px}
 .section-line{width:60px;height:4px;background:#3B82F6;margin-bottom:28px;border-radius:2px}
-.section-title{font-size:56px;font-weight:900;color:white;text-align:center;letter-spacing:-.02em;word-break:keep-all;overflow:hidden;max-height:150px}
-.section-subtitle{font-size:20px;color:#94A3B8;margin-top:20px;text-align:center;font-weight:400;word-break:keep-all}
+.section-title{font-size:56px;font-weight:900;color:white;text-align:center;letter-spacing:-.02em;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:1100px}
+.section-subtitle{font-size:20px;color:#94A3B8;margin-top:20px;text-align:center;font-weight:400;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:900px}
 .slide-pg{position:absolute;bottom:16px;right:24px;font-size:13px;font-weight:600;color:#94A3B8}
-.slide-pg.light{color:rgba(255,255,255,.35)}
-/* CONTENT */
+.slide-pg.light{color:rgba(255,255,255,.3)}
+/* ── CONTENT ── */
 .slide-content{background:#F8FAFC;display:flex;flex-direction:column}
-.content-header{margin:40px 60px 0;padding-left:24px;border-left:6px solid #0F172A}
-.content-title{font-size:32px;font-weight:800;color:#0F172A;line-height:1.3;word-break:keep-all;overflow:hidden;max-height:85px}
-.content-body{flex:1;padding:20px 60px 0;display:flex;flex-direction:column;gap:10px;overflow:hidden}
-.bullet-item{display:flex;align-items:flex-start;gap:14px;background:white;border-radius:12px;padding:13px 20px;border-left:4px solid #0F172A;box-shadow:0 2px 6px rgba(0,0,0,.04);flex-shrink:0}
-.bullet-dot{width:8px;height:8px;border-radius:50%;background:#0F172A;margin-top:8px;flex-shrink:0}
-.bullet-text{font-size:17px;color:#334155;line-height:1.5;word-break:keep-all;overflow:hidden}
-.emphasis-box{margin:12px 60px 0;background:white;border:1.5px solid #0F172A;border-radius:12px;padding:13px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
-.emphasis-text{font-size:15px;font-weight:600;color:#0F172A;word-break:keep-all;overflow:hidden}
-.slide-footer{height:40px;background:#0F172A;display:flex;align-items:center;justify-content:space-between;padding:0 40px;flex-shrink:0;margin-top:auto}
+.content-header{margin:36px 60px 0;padding-left:22px;border-left:6px solid #0F172A;flex-shrink:0}
+/* 제목: 최대 2줄 */
+.content-title{font-size:30px;font-weight:800;color:#0F172A;line-height:1.3;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 불릿 영역: 남은 공간 차지, 하단 패딩 포함 */
+.content-body{flex:1;padding:18px 60px 16px;display:flex;flex-direction:column;gap:9px;overflow:hidden}
+.bullet-item{display:flex;align-items:flex-start;gap:14px;background:white;border-radius:12px;padding:12px 20px;border-left:4px solid #0F172A;box-shadow:0 2px 6px rgba(0,0,0,.04);flex-shrink:0}
+.bullet-dot{width:7px;height:7px;border-radius:50%;background:#0F172A;margin-top:9px;flex-shrink:0}
+/* 불릿 텍스트: 최대 2줄, 넘치면 말줄임 */
+.bullet-text{font-size:17px;color:#334155;line-height:1.5;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 강조 박스: 푸터 바로 위 고정 */
+.emphasis-box{margin:0 60px 12px;background:white;border:1.5px solid #0F172A;border-radius:12px;padding:12px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+/* 강조 텍스트: 최대 2줄 */
+.emphasis-text{font-size:14px;font-weight:600;color:#0F172A;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.slide-footer{height:40px;background:#0F172A;display:flex;align-items:center;justify-content:space-between;padding:0 40px;flex-shrink:0}
 .footer-brand{font-size:12px;font-weight:700;color:rgba(255,255,255,.4)}
-.footer-pg{font-size:12px;color:rgba(255,255,255,.4)}
-/* NAV */
-.nav{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:rgba(15,23,42,.88);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);padding:10px 20px;border-radius:100px;z-index:1000}
+.footer-pg{font-size:12px;color:rgba(255,255,255,.35)}
+/* ── NAV ── */
+.nav{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:rgba(15,23,42,.9);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);padding:10px 20px;border-radius:100px;z-index:1000}
 .nav button{background:rgba(255,255,255,.1);border:none;color:white;padding:8px 20px;border-radius:8px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:14px;font-weight:600;transition:background .2s}
 .nav button:hover{background:rgba(255,255,255,.25)}
 #nc{color:white;font-size:14px;font-weight:500;min-width:80px;text-align:center}
