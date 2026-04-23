@@ -327,6 +327,8 @@ function RealtimeProfitTab({ creds, rows, salesHistoryMap }) {
   const [wingFetching, setWingFetching] = useState(false);
   const [wingStatus,   setWingStatus]   = useState('');
   const [wingError,    setWingError]    = useState(false);
+  const wingTimeoutRef  = useRef(null); // 15초 무응답 타임아웃
+  const wingClearRef    = useRef(null); // 완료 후 상태 자동 소거
 
   // 에쿠 확장 → EKU_WING_SALES_STATUS 수신
   useEffect(() => {
@@ -338,24 +340,31 @@ function RealtimeProfitTab({ creds, rows, salesHistoryMap }) {
       setWingError(!!error);
       if (done) {
         setWingFetching(false);
-        setTimeout(() => setWingStatus(''), 5000);
+        clearTimeout(wingTimeoutRef.current);  // 타임아웃 취소
+        clearTimeout(wingClearRef.current);
+        wingClearRef.current = setTimeout(() => setWingStatus(''), 5000);
       }
     };
     window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
+    return () => {
+      window.removeEventListener('message', handler);
+      clearTimeout(wingTimeoutRef.current);  // 언마운트 시 타이머 정리
+      clearTimeout(wingClearRef.current);
+    };
   }, []);
 
   const fetchWingSales = () => {
+    clearTimeout(wingTimeoutRef.current);
+    clearTimeout(wingClearRef.current);
     setWingFetching(true);
     setWingError(false);
     setWingStatus('요청 중...');
     window.postMessage({ source: 'eku-dashboard', type: 'EKU_FETCH_WING_SALES' }, '*');
-    // 5초 안에 응답 없으면 타임아웃
-    setTimeout(() => {
-      setWingFetching(prev => {
-        if (prev) { setWingStatus('응답 없음 — 에쿠 확장이 활성화되어 있는지 확인하세요'); setWingError(true); }
-        return false;
-      });
+    // 15초 무응답 → 타임아웃 처리
+    wingTimeoutRef.current = setTimeout(() => {
+      setWingFetching(false);
+      setWingStatus('응답 없음 — 에쿠 확장이 활성화되어 있는지 확인하세요');
+      setWingError(true);
     }, 15000);
   };
 
