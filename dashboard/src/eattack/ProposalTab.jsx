@@ -55,6 +55,16 @@ HOOK→SUMMARY→INSIGHT→CONCEPT→ACTION PLAN→MANAGEMENT→WHY US→INVESTM
 ## Win Theme
 각 섹션 슬라이드 어딘가에 Win Theme을 자연스럽게 강조할 것.
 
+## FEBA 심리적 마케팅 구조 (필수 적용)
+각 섹션은 FEBA 흐름을 따라 설득 감정선을 만들어야 한다:
+
+- **F (Fear)**: INSIGHT 슬라이드 1 — 고객이 현재 겪는 문제를 방치하면 발생하는 구체적 손실·위험을 숫자로 공포감 있게 제시 (예: "지금 이대로라면 경쟁사에 고객 X명 빼앗긴다")
+- **E (Evidence)**: INSIGHT 슬라이드 2 — 시장 데이터·업계 통계·에덴 사례로 Fear가 실제임을 입증. 수치 없이 주장만 하지 말 것
+- **B (Benefit)**: CONCEPT + WHY US — 에덴 솔루션이 고객에게 주는 구체적 이익·변화를 KPI 수치로 명확히 (현재 상태 → 목표 상태)
+- **A (Action)**: ACTION PLAN + INVESTMENT — 지금 당장 계약하면 이루어질 30/60/90일 로드맵과 명확한 Next Step CTA
+
+전체 제안서가 F→E→B→A 감정 곡선을 타도록 설계할 것.
+
 반드시 한국어로 답변하세요.
 `.trim();
 
@@ -62,44 +72,44 @@ const PROPOSAL_PHASES = [
   {
     key: "summary",
     title: "SUMMARY",
-    subtitle: "Executive Summary + Win Theme 정의",
-    slides: 2,
-    guide: "슬라이드 1: 한 줄 제안 + Why Us 3가지 / 슬라이드 2: Win Theme 3개 + 핵심 KPI"
+    subtitle: "Executive Summary + Win Theme",
+    slides: 1,
+    guide: "슬라이드 1: 한 줄 제안 + Win Theme 3개 + 핵심 KPI"
   },
   {
     key: "insight",
     title: "INSIGHT",
-    subtitle: "시장 환경 & 고객 문제 정의",
-    slides: 3,
-    guide: "슬라이드 1: 시장 트렌드(숫자 포함) / 슬라이드 2: 고객사 Pain Point / 슬라이드 3: 놓치고 있는 기회"
+    subtitle: "시장 위협 & 고객 문제 (FEAR + EVIDENCE)",
+    slides: 2,
+    guide: "슬라이드 1 [FEAR]: 고객이 지금 이 문제를 방치할 때의 위험/손실을 공포감 있는 숫자로 제시 / 슬라이드 2 [EVIDENCE]: 시장 데이터·업계 벤치마크·에덴 사례로 문제를 입증"
   },
   {
     key: "concept",
     title: "CONCEPT & STRATEGY",
-    subtitle: "핵심 컨셉 & 차별화 전략",
-    slides: 2,
-    guide: "슬라이드 1: 에덴의 핵심 접근법 / 슬라이드 2: 경쟁사 대비 차별점"
+    subtitle: "핵심 컨셉 & 혜택 (BENEFIT)",
+    slides: 1,
+    guide: "슬라이드 1 [BENEFIT]: 에덴 솔루션이 고객 현재 상태를 어떻게 바꾸는지 구체적 ROI·전환율 숫자로 제시"
   },
   {
     key: "action",
     title: "ACTION PLAN",
-    subtitle: "상세 실행 계획 (핵심)",
-    slides: 5,
-    guide: "슬라이드 1: 전체 전략 로드맵 / 슬라이드 2-3: 채널별 전략 / 슬라이드 4: 월별 실행 일정 / 슬라이드 5: 콘텐츠 예시/캠페인"
+    subtitle: "실행 계획 (ACTION)",
+    slides: 2,
+    guide: "슬라이드 1 [ACTION]: 30/60/90일 로드맵·채널별 전략 / 슬라이드 2 [ACTION]: 월별 콘텐츠·캠페인 실행 일정"
   },
   {
     key: "whyus",
     title: "WHY US",
     subtitle: "에덴 수행 역량 & 실적",
-    slides: 2,
-    guide: "슬라이드 1: 유사 실적 + 수치 / 슬라이드 2: 팀 역량 + 차별화 강점"
+    slides: 1,
+    guide: "슬라이드 1: 유사 실적 수치 + 팀 차별화 강점 (BENEFIT 강화)"
   },
   {
     key: "investment",
     title: "INVESTMENT & ROI",
-    subtitle: "투자 비용 & 기대효과",
-    slides: 2,
-    guide: "슬라이드 1: 비용 구조 + 서비스 패키지 / 슬라이드 2: KPI(산출근거 포함) + Next Step"
+    subtitle: "투자 비용 & Next Step (ACTION)",
+    slides: 1,
+    guide: "슬라이드 1: 비용 패키지 + KPI(산출근거) + 명확한 Next Step CTA"
   },
 ];
 
@@ -266,6 +276,7 @@ ${clientInfo.title} (${clientInfo.domain})
 3. **숫자 필수**: "성과 향상" ❌ → "전환율 +35%" ✅
 4. **Win Theme 반복**: 이 섹션 슬라이드 중 하나에 자연스럽게 Win Theme 강조
 5. 긴 문단, 산문체 절대 금지
+6. **FEBA 라벨 준수**: 슬라이드 가이드에 [FEAR]/[EVIDENCE]/[BENEFIT]/[ACTION] 라벨이 있으면 해당 심리 목표를 반드시 달성할 것
 `.trim();
 }
 
@@ -990,7 +1001,7 @@ ${crawlData.text}
                   제안서 만들기
                 </button>
               </div>
-              <p className="text-xs text-gray-400 pl-1">PPT 대면 제안서 · 총 ~16장 슬라이드</p>
+              <p className="text-xs text-gray-400 pl-1">PPT 대면 제안서 · 총 ~15장 슬라이드 (FEBA 구조)</p>
             </div>
           </div>
         </div>
