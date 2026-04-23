@@ -1,6 +1,7 @@
 // 콘텐츠 파이프라인 — 주제 리서치 → 기획 → AI 이미지 → 에디토리얼 HTML 카드뉴스
 import { useState } from "react";
 import { callGemini, generateImage } from "../utils/gemini";
+import TopicPicker from "./TopicPicker";
 
 // ── 상수 ──
 const TONE_OPTS = [
@@ -269,6 +270,8 @@ export default function ContentPipelineTab() {
   const [running,    setRunning]    = useState(false);
   const [error,      setError]      = useState("");
 
+  const [showTopicPicker, setShowTopicPicker] = useState(false);
+
   // Setup 입력값
   const [topic,      setTopic]      = useState("");
   const [brandName,  setBrandName]  = useState("");
@@ -379,13 +382,31 @@ export default function ContentPipelineTab() {
       </div>
 
       <div>
-        <label className="text-xs font-bold text-gray-700 block mb-1.5">주제 입력 *</label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs font-bold text-gray-700">주제 입력 *</label>
+          <button
+            onClick={() => setShowTopicPicker(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-violet-200 text-violet-600 bg-violet-50 hover:bg-violet-100 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            인기글에서 가져오기
+          </button>
+        </div>
         <textarea rows={2}
           className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl outline-none focus:border-pink-400 resize-none leading-relaxed"
           placeholder="예: 봄철 피부 관리법, AI 트렌드 2025, 제주도 여행 코스"
           value={topic} onChange={e => setTopic(e.target.value.slice(0, 80))} />
         <p className="text-[11px] text-gray-400 text-right mt-0.5">{topic.length}/80</p>
       </div>
+
+      {showTopicPicker && (
+        <TopicPicker
+          onSelect={v => setTopic(v.slice(0, 80))}
+          onClose={() => setShowTopicPicker(false)}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div>
