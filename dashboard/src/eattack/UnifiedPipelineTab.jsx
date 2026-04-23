@@ -502,47 +502,96 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
          <div style="position:absolute;inset:0;z-index:0;
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
-    // 인라인 바 차트 — 항상 표시, 남은 공간 모두 채움
-    // 최대값 기준 정규화 (최고 바 = 100%)
-    const bhMax = Math.max(...bh.slice(0, 8));
-    const bhNorm = bh.slice(0, 8).map(h => Math.round(h / bhMax * 100));
-    const chartLabels = ['1월','2월','3월','4월','5월','6월','7월','8월'];
-    const chartTitle = skillBullets.length > 0 ? "성과 데이터" : "KEY METRICS";
-    const inlineChartHtml = `
-      <div style="width:100%;flex:1;min-height:${skillBullets.length > 0 ? 140 : 200}px;
-        display:flex;flex-direction:column;overflow:hidden;
-        ${skillBullets.length > 0 ? 'margin-top:16px;border-top:1px solid #f0f0f0;padding-top:14px;' : ''}">
+    // 시각화 — 콘텐츠 기반 의미있는 비주얼
+    // 텍스트 → 일관된 퍼센트 (같은 텍스트 = 항상 같은 값)
+    const strToPct = (s, lo = 58, hi = 94) => {
+      let h = 0;
+      for (const c of s) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+      return lo + (h % (hi - lo));
+    };
+
+    let inlineChartHtml;
+
+    if (skillBullets.length > 0) {
+      // ── 스킬이 있을 때: 수평 진행 바 (스킬명 + 달성률) ──
+      inlineChartHtml = `
+      <div style="width:100%;flex:1;min-height:140px;display:flex;flex-direction:column;
+        overflow:hidden;margin-top:16px;border-top:1px solid #f0f0f0;padding-top:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;
-          margin-bottom:10px;flex-shrink:0;">
-          <div style="font-size:13px;font-weight:700;color:rgba(${accentRgb},.55);
-            letter-spacing:.1em;">${chartTitle}</div>
-          <div style="font-size:11px;color:#ccc;font-weight:500;">2024 — 2025</div>
+          margin-bottom:14px;flex-shrink:0;">
+          <div style="font-size:13px;font-weight:700;color:rgba(${accentRgb},.6);
+            letter-spacing:.08em;">성과 지표</div>
+          <div style="font-size:11px;color:#ccc;font-weight:500;">improvement index</div>
+        </div>
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;
+          justify-content:space-evenly;gap:8px;">
+          ${skillBullets.map((skill) => {
+            const pct = strToPct(skill);
+            return `
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="font-size:14px;font-weight:600;color:#444;flex:0 0 170px;
+              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(skill.slice(0, 13))}</div>
+            <div style="flex:1;height:10px;background:rgba(${accentRgb},.08);
+              border-radius:5px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;
+                background:linear-gradient(90deg,rgba(${accentRgb},.85),rgba(${accentRgb},.4));
+                border-radius:5px;"></div>
+            </div>
+            <div style="font-size:13px;font-weight:700;color:rgba(${accentRgb},.85);
+              flex-shrink:0;width:36px;text-align:right;">${pct}%</div>
+          </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+
+    } else {
+      // ── 스킬이 없을 때: 4개 핵심 스탯 + 바 차트 ──
+      const bhMax = Math.max(...bh.slice(0, 8));
+      const bhNorm = bh.slice(0, 8).map(h => Math.round(h / bhMax * 100));
+      const statSets = [
+        [{ v:"3×", l:"속도 향상" },{ v:"70%", l:"오류 감소" },{ v:"∞", l:"자동화" },{ v:"100%", l:"품질" }],
+        [{ v:"5×", l:"처리 속도" },{ v:"80%", l:"비용 절감" },{ v:"24/7", l:"무중단" },{ v:"99%", l:"정확도" }],
+        [{ v:"2×", l:"개발 속도" },{ v:"60%", l:"리뷰 시간↓" },{ v:"∞", l:"확장성" },{ v:"A+", l:"코드 품질" }],
+      ];
+      const stats = statSets[(chapterIdx - 1) % 3];
+
+      inlineChartHtml = `
+      <div style="width:100%;flex:1;min-height:200px;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
+          flex-shrink:0;margin-bottom:14px;">
+          ${stats.map(s => `
+          <div style="background:linear-gradient(135deg,rgba(${accentRgb},.09),rgba(${accentRgb},.03));
+            border:1.5px solid rgba(${accentRgb},.14);border-radius:12px;
+            padding:16px 8px;text-align:center;">
+            <div style="font-size:30px;font-weight:900;color:rgba(${accentRgb},1);
+              line-height:1;letter-spacing:-.02em;">${s.v}</div>
+            <div style="font-size:12px;color:#aaa;margin-top:6px;font-weight:600;">${s.l}</div>
+          </div>`).join("")}
         </div>
         <div style="flex:1;min-height:0;position:relative;">
-          <div style="position:absolute;inset:0 0 26px;display:flex;flex-direction:column;
+          <div style="position:absolute;inset:0 0 24px;display:flex;flex-direction:column;
             justify-content:space-between;pointer-events:none;">
-            ${[0,1,2,3,4].map(() =>
+            ${[0,1,2,3].map(() =>
               `<div style="width:100%;height:1px;background:rgba(${accentRgb},.05);"></div>`
             ).join("")}
           </div>
-          <div style="position:absolute;inset:0 0 26px;display:flex;align-items:flex-end;gap:8px;">
+          <div style="position:absolute;inset:0 0 24px;display:flex;align-items:flex-end;gap:7px;">
             ${bhNorm.map((h, idx) => `
             <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;">
-              <div style="font-size:10px;font-weight:700;text-align:center;
-                color:rgba(${accentRgb},.6);margin-bottom:3px;white-space:nowrap;">${bh[idx]}</div>
-              <div style="height:${h}%;background:linear-gradient(180deg,rgba(${accentRgb},.6),rgba(${accentRgb},.15));
-                border-radius:4px 4px 0 0;min-height:4px;"></div>
+              <div style="height:${h}%;
+                background:linear-gradient(180deg,rgba(${accentRgb},.55),rgba(${accentRgb},.1));
+                border-radius:4px 4px 0 0;min-height:3px;"></div>
             </div>`).join("")}
           </div>
-          <div style="position:absolute;bottom:26px;left:0;right:0;
-            height:1.5px;background:rgba(${accentRgb},.15);"></div>
-          <div style="position:absolute;bottom:5px;left:0;right:0;display:flex;gap:8px;">
-            ${chartLabels.map(m => `
-            <div style="flex:1;text-align:center;font-size:10px;color:#bbb;
-              font-weight:600;white-space:nowrap;">${m}</div>`).join("")}
+          <div style="position:absolute;bottom:24px;left:0;right:0;height:1px;
+            background:rgba(${accentRgb},.12);"></div>
+          <div style="position:absolute;bottom:5px;left:0;right:0;display:flex;gap:7px;">
+            ${['Q1','Q2','Q3','Q4','Q5','Q6','Q7','Q8'].map(q => `
+            <div style="flex:1;text-align:center;font-size:10px;color:#bbb;font-weight:600;">${q}</div>`).join("")}
           </div>
         </div>
       </div>`;
+    }
 
     return `
 <div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080814;
