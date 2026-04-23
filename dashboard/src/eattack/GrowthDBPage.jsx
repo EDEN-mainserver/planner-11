@@ -1142,6 +1142,12 @@ export default function GrowthDBPage() {
         setLoading(false);
         if (e.data.error) setApiError(`확장 오류: ${e.data.error}`);
       }
+
+      // Wing 상태 메시지 (로그인 필요, 완료, 오류 등)
+      if (type === 'EKU_WING_STATUS') {
+        const { msg, error } = payload || {};
+        if (error && msg) setApiError(`Wing: ${msg}`);
+      }
     }
     window.addEventListener('message', handleExtMessage);
     return () => window.removeEventListener('message', handleExtMessage);
