@@ -145,50 +145,66 @@ function parseSections(text) {
   return sections.map(s => ({ ...s, content: s.content.trim() }));
 }
 
-// ---SLIDE--- 블록 파싱 → PptxGenJS용 슬라이드 배열
+// 마크다운 기호 및 HTML 엔티티 제거 (PPTX/HTML 출력 전 공통 정리)
+function cleanMarkdown(str) {
+  return (str || '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')   // **bold** → bold
+    .replace(/\*([^*]+)\*/g, '$1')        // *italic* → italic
+    .replace(/`([^`]+)`/g, '$1')          // `code` → code
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+// ---SLIDE--- 블록 파싱 → PptxGenJS/HTML용 슬라이드 배열
 function parseSlidesFromProposal(text) {
   const allSlides = [];
 
-  // Phase 블록 단위로 분리 (--- 구분선 기준)
   const phaseBlocks = text.split(/\n---\n/);
 
   for (const block of phaseBlocks) {
-    // Phase 제목/부제목 추출
     const phaseTitleMatch = block.match(/^# (.+)/m);
     const phaseSubtitleMatch = block.match(/^> (.+)/m);
 
     if (phaseTitleMatch) {
       allSlides.push({
         type: 'section',
-        title: phaseTitleMatch[1].trim(),
-        subtitle: phaseSubtitleMatch ? phaseSubtitleMatch[1].trim() : ''
+        title: cleanMarkdown(phaseTitleMatch[1].trim()),
+        subtitle: phaseSubtitleMatch ? cleanMarkdown(phaseSubtitleMatch[1].trim()) : ''
       });
     }
 
-    // SLIDE 블록들 추출
     const slideMatches = [...block.matchAll(/---SLIDE---([\s\S]*?)---END_SLIDE---/g)];
     for (const match of slideMatches) {
       const content = match[1].trim();
       const lines = content.split('\n');
 
       const titleLine = lines.find(l => l.startsWith('### '));
-      const title = titleLine
-        ? titleLine.replace(/^### \[슬라이드 \d+\]\s*/, '').trim()
-        : '슬라이드';
+      const title = cleanMarkdown(
+        titleLine ? titleLine.replace(/^### \[슬라이드 \d+\]\s*/, '').trim() : '슬라이드'
+      );
 
       const bullets = lines
         .filter(l => l.startsWith('- '))
-        .map(l => l.replace(/^- /, '').trim())
+        .map(l => cleanMarkdown(l.replace(/^- /, '').trim()))
         .filter(Boolean);
 
+      // 📌 줄: cleanMarkdown 먼저 → 📌 제거 → 라벨: 제거 → 값만 추출
       const emphasisLine = lines.find(l => l.startsWith('📌'));
       const emphasis = emphasisLine
-        ? emphasisLine.replace(/^📌\s*핵심 수치\/강조:\s*/, '').trim()
+        ? cleanMarkdown(emphasisLine)       // 1) **bold**, &apos; 등 제거
+            .replace(/^[📌\s]+/, '')         // 2) 앞쪽 📌와 공백 모두 제거
+            .replace(/^[^:：]+[：:]\s*/, '') // 3) '라벨: ' 제거
+            .trim()
         : '';
 
       const noteLine = lines.find(l => l.startsWith('💬'));
       const note = noteLine
-        ? noteLine.replace(/^💬\s*발표 멘트:\s*[""]?/, '').replace(/[""]$/, '').trim()
+        ? cleanMarkdown(noteLine.replace(/^💬\s*발표 멘트:\s*[""]?/, '').replace(/[""]$/, '').trim())
         : '';
 
       allSlides.push({ type: 'content', title, bullets, emphasis, note });
@@ -561,11 +577,11 @@ ${crawlData.text}
       const pptx = new PptxGenJS();
       pptx.layout = 'LAYOUT_16x9';
 
-      // 선택된 템플릿 색상 적용 (없으면 에덴 기본 보라 계열)
+      // 선택된 템플릿 색상 적용 (없으면 HTML 템플릿과 동일한 네이비 계열)
       const tpl = selectedTemplate;
-      const primary = (tpl?.primaryColor || '#4F46E5').replace('#', '');
-      const accent = (tpl?.accentColor || '#7C3AED').replace('#', '');
-      const bg = (tpl?.backgroundColor || '#FFFFFF').replace('#', '');
+      const primary = (tpl?.primaryColor || '#0F172A').replace('#', '');
+      const accent = (tpl?.accentColor || '#3B82F6').replace('#', '');
+      const bg = (tpl?.backgroundColor || '#F8FAFC').replace('#', '');
       const titleTextColor = tpl?.titleColor ? tpl.titleColor.replace('#', '') : 'FFFFFF';
 
       // ─ 표지 슬라이드 ─
