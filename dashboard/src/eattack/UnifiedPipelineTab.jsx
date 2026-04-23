@@ -457,6 +457,16 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
 </div>`;
   });
 
+  const CARD_HEAD = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{background:#111;}</style>
+</head><body>`;
+
+  // 개별 카드 HTML 배열 (미리보기용)
+  buildPremiumTemplate._lastCardHtmls = blocks.map(
+    (b) => `${CARD_HEAD}${b}</body></html>`
+  );
+
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -539,6 +549,8 @@ export default function UnifiedPipelineTab() {
   const [imgProg, setImgProg] = useState({ done: 0, total: 0 });
   const [cards, setCards] = useState([]); // 편집 가능한 카드 데이터
   const [htmlContent, setHtmlContent] = useState("");
+  const [cardHtmls, setCardHtmls] = useState([]); // 카드별 개별 HTML (미리보기용)
+  const [previewIdx, setPreviewIdx] = useState(0); // 현재 미리보기 중인 카드 인덱스
 
   // 템플릿 모드 (프리미엄 인스타 템플릿 vs 기존 AI 이미지)
   const [useTemplate, setUseTemplate] = useState(true);
@@ -644,6 +656,8 @@ export default function UnifiedPipelineTab() {
         ? buildHtmlFromTemplate(assembled, benchmarkTemplate, topic, brandName)
         : buildHtmlCardNews(topic, assembled, brandName, color1, color2, font);
     setHtmlContent(html);
+    setCardHtmls(buildPremiumTemplate._lastCardHtmls || []);
+    setPreviewIdx(0);
     setStep("assembly");
   };
 
@@ -659,6 +673,7 @@ export default function UnifiedPipelineTab() {
           ? buildHtmlFromTemplate(next, benchmarkTemplate, topic, brandName)
           : buildHtmlCardNews(topic, next, brandName, color1, color2, font);
       setHtmlContent(html);
+      setCardHtmls(buildPremiumTemplate._lastCardHtmls || []);
       return next;
     });
   };
@@ -1367,40 +1382,107 @@ export default function UnifiedPipelineTab() {
           ))}
         </div>
 
-        {/* 미리보기 */}
-        {htmlContent && (
-          <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="px-3 py-2 bg-gray-800 flex items-center gap-2">
-              <div className="flex gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+        {/* 미리보기 슬라이더 */}
+        {(cardHtmls.length > 0 || htmlContent) && (() => {
+          const total = cardHtmls.length || cards.length;
+          const safeIdx = Math.min(previewIdx, total - 1);
+          const SCALE = 0.28;
+          const W = Math.round(1080 * SCALE); // 302px
+          const H = Math.round(1350 * SCALE); // 378px
+          const currentHtml = cardHtmls[safeIdx] || htmlContent;
+          return (
+            <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              {/* 상단 바 */}
+              <div className="px-3 py-2 bg-gray-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                  </div>
+                  <p className="text-[11px] text-gray-400 ml-1">카드 미리보기</p>
+                </div>
+                <p className="text-[11px] text-gray-400 font-semibold">
+                  {safeIdx + 1} / {total}
+                </p>
               </div>
-              <p className="text-[11px] text-gray-400 ml-1">
-                카드뉴스 미리보기 (1080×1350 축소)
-              </p>
+
+              {/* 카드 뷰 + 좌우 버튼 */}
+              <div className="bg-gray-900 flex items-center gap-0" style={{ height: `${H + 24}px` }}>
+                {/* 이전 버튼 */}
+                <button
+                  onClick={() => setPreviewIdx((p) => Math.max(0, p - 1))}
+                  disabled={safeIdx === 0}
+                  className="flex-shrink-0 w-9 h-full flex items-center justify-center text-gray-500 hover:text-white disabled:opacity-20 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 18l-6-6 6-6"/>
+                  </svg>
+                </button>
+
+                {/* iframe 카드 */}
+                <div
+                  className="flex-1 flex items-center justify-center"
+                  style={{ height: `${H + 24}px` }}
+                >
+                  <div
+                    style={{
+                      width: `${W}px`,
+                      height: `${H}px`,
+                      overflow: "hidden",
+                      borderRadius: "6px",
+                      flexShrink: 0,
+                      boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+                      position: "relative",
+                    }}
+                  >
+                    <iframe
+                      key={`${safeIdx}-${currentHtml.slice(0, 40)}`}
+                      srcDoc={currentHtml}
+                      style={{
+                        border: "none",
+                        width: "1080px",
+                        height: "1350px",
+                        display: "block",
+                        transformOrigin: "top left",
+                        transform: `scale(${SCALE})`,
+                        pointerEvents: "none",
+                      }}
+                      title={`카드 ${safeIdx + 1}`}
+                      sandbox="allow-same-origin"
+                    />
+                  </div>
+                </div>
+
+                {/* 다음 버튼 */}
+                <button
+                  onClick={() => setPreviewIdx((p) => Math.min(total - 1, p + 1))}
+                  disabled={safeIdx === total - 1}
+                  className="flex-shrink-0 w-9 h-full flex items-center justify-center text-gray-500 hover:text-white disabled:opacity-20 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </button>
+              </div>
+
+              {/* 하단 도트 네비게이션 */}
+              <div className="bg-gray-900 pb-2 flex items-center justify-center gap-1.5">
+                {Array.from({ length: total }).map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setPreviewIdx(i)}
+                    className={`rounded-full transition-all ${
+                      i === safeIdx
+                        ? "w-4 h-1.5 bg-violet-400"
+                        : "w-1.5 h-1.5 bg-gray-600 hover:bg-gray-400"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
-            <div
-              className="bg-gray-900"
-              style={{ position: "relative", width: "100%", height: "370px", overflow: "hidden" }}
-            >
-              <iframe
-                srcDoc={htmlContent}
-                style={{
-                  border: "none",
-                  width: "1080px",
-                  height: "1350px",
-                  display: "block",
-                  transformOrigin: "top left",
-                  transform: "scale(0.3)",
-                  pointerEvents: "none",
-                }}
-                title="카드뉴스 미리보기"
-                sandbox="allow-same-origin"
-              />
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {error && <ErrorBox msg={error} />}
 
