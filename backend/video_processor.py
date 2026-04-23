@@ -141,26 +141,32 @@ def cut_video(
 
     filters = []
 
-    # 세로 크롭 (9:16)
+    # 세로 크롭 (9:16) - 숏폼 세이프존 적용
+    # 상단 ~13%, 하단 ~27% 가 플랫폼 UI로 가려지므로
+    # 원본에서 세이프존(60%) 기준으로 크롭하여 핵심 콘텐츠가 중앙에 오도록 처리
     if crop_vertical:
+        # 1) 9:16 비율로 크롭 (가로 기준)
+        # 2) 세이프존: 상단 13%, 하단 27% 여백을 고려해 콘텐츠를 약간 위로 배치
+        # crop=w:h:x:y → 너비=높이*9/16, 높이=원본높이, x=가운데, y=0
+        # 그 후 scale로 최종 1080x1920 출력
         filters.append("crop=ih*9/16:ih:(iw-ih*9/16)/2:0")
+        filters.append("scale=1080:1920")
 
-    # 자막 번인
+    # 자막 번인 - FFmpeg에 subtitles 필터(libass)가 있는지 확인
+    subtitle_filter = None
     if srt_path and subtitles_data:
-        temp_srt = output_path.replace(".mp4", ".srt")
-        write_temp_srt(subtitles_data, start_seconds, temp_srt)
-        template = SUBTITLE_TEMPLATES.get(subtitle_template, SUBTITLE_TEMPLATES["basic"])
-        escaped = temp_srt.replace("'", "'\\''").replace(":", "\\:")
-        filters.append(
-            f"subtitles='{escaped}':force_style="
-            f"'Fontsize={template['fontsize']}"
-            f",PrimaryColour={hex_to_ass_color(template['fontcolor'])}"
-            f",OutlineColour={hex_to_ass_color(template['bordcolor'])}"
-            f",BorderStyle={'3' if template.get('bg') else '1'}"
-            f",Outline={template['borderw']}"
-            f",Alignment=2"
-            f"'"
-        )
+        check = subprocess.run(["ffmpeg", "-filters"], capture_output=True, text=True)
+        has_subtitles_filter = "subtitles" in check.stdout
+        if has_subtitles_filter:
+            import tempfile
+            temp_srt_file = tempfile.NamedTemporaryFile(suffix=".srt", delete=False, prefix="sub_")
+            temp_srt = temp_srt_file.name
+            temp_srt_file.close()
+            write_temp_srt(subtitles_data, start_seconds, temp_srt)
+            template = SUBTITLE_TEMPLATES.get(subtitle_template, SUBTITLE_TEMPLATES["basic"])
+            subtitle_filter = {"srt_path": temp_srt, "template": template}
+        else:
+            print("[VideoProcessor] FFmpeg에 subtitles 필터(libass)가 없어 자막 번인을 건너뜁니다.")
 
     cmd = [
         "ffmpeg", "-y",
@@ -169,8 +175,25 @@ def cut_video(
         "-t", str(duration),
     ]
 
-    if filters:
-        cmd += ["-vf", ",".join(filters)]
+    # 자막과 크롭을 별도 필터로 구성
+    if filters or subtitle_filter:
+        if subtitle_filter:
+            t = subtitle_filter["template"]
+            escaped_path = subtitle_filter["srt_path"].replace(":", "\\:")
+            # force_style 내 콤마를 \, 로 이스케이프하여 필터 구분자 충돌 방지
+            force_style = (
+                f"Fontsize={t['fontsize']}\\,"
+                f"PrimaryColour={hex_to_ass_color(t['fontcolor'])}\\,"
+                f"OutlineColour={hex_to_ass_color(t['bordcolor'])}\\,"
+                f"BorderStyle={'3' if t.get('bg') else '1'}\\,"
+                f"Outline={t['borderw']}\\,"
+                f"Alignment=2"
+            )
+            sub_part = f"subtitles={escaped_path}:force_style={force_style}"
+            all_filters = filters + [sub_part]
+            cmd += ["-vf", ",".join(all_filters)]
+        else:
+            cmd += ["-vf", ",".join(filters)]
 
     cmd += [
         "-c:v", "libx264",
@@ -233,9 +256,11 @@ def batch_cut_videos(
     srt_path: Optional[str] = None,
     subtitle_template: str = "basic",
     all_subtitles: Optional[List[Dict]] = None,
+    progress_callback=None,
 ) -> List[str]:
     """여러 구간을 한번에 잘라서 출력"""
     results = []
+    total = len(clips)
     for i, clip in enumerate(clips, 1):
         start = parse_time_to_seconds(clip["start_time"])
         end = parse_time_to_seconds(clip["end_time"])
@@ -259,6 +284,8 @@ def batch_cut_videos(
             subtitles_data=sub_data,
         )
         results.append(output_path)
+        if progress_callback:
+            progress_callback(i, total)
 
     return results
 

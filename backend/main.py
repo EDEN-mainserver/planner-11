@@ -38,8 +38,51 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
-# 세션별 상태 저장 (간단한 인메모리 스토어)
+# 세션별 상태 저장 (파일 백업으로 서버 재시작에도 유지)
+SESSIONS_FILE = os.path.join(os.path.dirname(__file__), "..", "output", "sessions.json")
 sessions = {}
+
+def _load_sessions():
+    global sessions
+    if os.path.exists(SESSIONS_FILE):
+        try:
+            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+                sessions = json.load(f)
+        except Exception:
+            sessions = {}
+
+def _save_sessions():
+    try:
+        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(sessions, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+_load_sessions()
+
+# 진행률 추적 (인메모리)
+progress_store = {}
+
+def _update_progress(session_id: str, stage: str, percent: int, message: str = ""):
+    progress_store[session_id] = {
+        "stage": stage,
+        "percent": percent,
+        "message": message,
+    }
+
+
+@app.get("/api/progress/{session_id}")
+def get_progress(session_id: str):
+    """현재 작업 진행률 조회"""
+    return progress_store.get(session_id, {"stage": "idle", "percent": 0, "message": ""})
+
+
+@app.post("/api/progress/start")
+def start_progress():
+    """진행률 추적용 ID를 미리 발급"""
+    pid = str(uuid.uuid4())[:8]
+    _update_progress(pid, "waiting", 0, "대기 중...")
+    return {"progress_id": pid}
 
 
 @app.get("/api/health")
@@ -47,19 +90,48 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/check-subtitle")
+def check_subtitle(url: str):
+    """YouTube URL의 자막 존재 여부를 미리 확인"""
+    if not is_youtube_url(url):
+        return {"has_subtitle": False, "source": None}
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["yt-dlp", "--list-subs", "--skip-download", url],
+            capture_output=True, text=True, timeout=15
+        )
+        output = result.stdout + result.stderr
+        has_ko = "ko" in output and ("subtitle" in output.lower() or "caption" in output.lower())
+        has_en = "en" in output and ("subtitle" in output.lower() or "caption" in output.lower())
+        if has_ko:
+            return {"has_subtitle": True, "source": "YouTube (한국어)"}
+        elif has_en:
+            return {"has_subtitle": True, "source": "YouTube (영어)"}
+        else:
+            return {"has_subtitle": False, "source": None}
+    except Exception:
+        return {"has_subtitle": False, "source": None}
+
+
 @app.post("/api/prepare")
 async def prepare(
     video_input: str = Form(...),
     srt_path: str = Form(""),
     whisper_model: str = Form("base"),
+    progress_id: str = Form(""),
 ):
     """Step 1+2: 영상 준비 (로컬 파일 or YouTube URL) + 자막 준비 (SRT or Whisper 자동생성)"""
+    if not progress_id:
+        progress_id = str(uuid.uuid4())[:8]
+
     video_path = video_input
     srt_file = srt_path if srt_path else None
     youtube_title = None
 
     # YouTube URL인 경우 다운로드
     if is_youtube_url(video_input):
+        _update_progress(progress_id, "download", 10, "YouTube 영상 다운로드 중...")
         try:
             dl_result = download_youtube(video_input, DOWNLOADS_DIR)
             video_path = dl_result["video_path"]
@@ -67,7 +139,9 @@ async def prepare(
             # YouTube에서 자막도 받아왔으면 사용
             if dl_result.get("srt_path") and not srt_file:
                 srt_file = dl_result["srt_path"]
+            _update_progress(progress_id, "download", 50, "YouTube 다운로드 완료")
         except Exception as e:
+            _update_progress(progress_id, "error", 0, str(e))
             raise HTTPException(400, f"YouTube 다운로드 실패: {str(e)}")
 
     # 로컬 파일 확인
@@ -77,21 +151,31 @@ async def prepare(
     # 자막이 없으면 Whisper로 자동 생성
     whisper_used = False
     if not srt_file:
+        _update_progress(progress_id, "whisper", 30, "Whisper 모델 로딩 중...")
         try:
-            srt_file = generate_srt_from_video(video_path, DOWNLOADS_DIR, whisper_model)
+            srt_file = generate_srt_from_video(
+                video_path, DOWNLOADS_DIR, whisper_model,
+                progress_callback=lambda pct, msg: _update_progress(progress_id, "whisper", 30 + int(pct * 0.65), msg)
+            )
             whisper_used = True
+            _update_progress(progress_id, "whisper", 95, "자막 생성 완료")
         except Exception as e:
+            _update_progress(progress_id, "error", 0, str(e))
             raise HTTPException(500, f"Whisper 자막 생성 실패: {str(e)}")
+    else:
+        _update_progress(progress_id, "prepare", 80, "자막 파일 확인 중...")
 
     if not os.path.exists(srt_file):
         raise HTTPException(400, f"자막 파일을 찾을 수 없습니다: {srt_file}")
 
     # 세션 생성
-    session_id = str(uuid.uuid4())[:8]
+    session_id = progress_id
     sessions[session_id] = {
         "video_path": video_path,
         "srt_path": srt_file,
     }
+    _save_sessions()
+    _update_progress(session_id, "done", 100, "준비 완료")
 
     video_info = {}
     try:
@@ -114,10 +198,14 @@ async def analyze(
     session_id: str = Form(...),
     num_clips: int = Form(5),
     custom_prompt: str = Form(""),
+    clip_duration: int = Form(60),
 ):
     """Step 3: AI 자막 분석 → 숏폼 구간 추천"""
     if session_id not in sessions:
         raise HTTPException(400, "세션을 찾을 수 없습니다.")
+
+    # 러닝타임 제한 (10~60초)
+    clip_duration = max(10, min(60, clip_duration))
 
     session = sessions[session_id]
     video_path = session["video_path"]
@@ -126,10 +214,11 @@ async def analyze(
     subtitles = parse_srt(srt_path)
     subtitle_text = subtitles_to_text(subtitles)
 
-    clips = analyze_subtitles(subtitle_text, num_clips, custom_prompt)
+    clips = analyze_subtitles(subtitle_text, num_clips, custom_prompt, clip_duration)
 
     sessions[session_id]["subtitles"] = subtitles
     sessions[session_id]["clips"] = clips
+    _save_sessions()
 
     video_info = {}
     try:
@@ -173,6 +262,8 @@ async def generate(
     session_output = os.path.join(OUTPUT_DIR, session_id)
     os.makedirs(session_output, exist_ok=True)
 
+    _update_progress(session_id, "generate", 5, f"0/{len(selected_clips)}개 영상 생성 중...")
+
     results = batch_cut_videos(
         video_path=session["video_path"],
         clips=selected_clips,
@@ -181,7 +272,14 @@ async def generate(
         srt_path=session["srt_path"] if burn_subtitles else None,
         subtitle_template=subtitle_template,
         all_subtitles=session.get("subtitles") if burn_subtitles else None,
+        progress_callback=lambda done, total: _update_progress(
+            session_id, "generate",
+            5 + int(done / total * 90),
+            f"{done}/{total}개 영상 생성 완료"
+        ),
     )
+
+    _update_progress(session_id, "done", 100, f"{len(results)}개 영상 생성 완료")
 
     return {
         "session_id": session_id,

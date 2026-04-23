@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { analyzeVideo, type PrepareResponse, type AnalyzeResponse } from "@/lib/api";
@@ -26,6 +27,7 @@ export function StepAnalysis({
   onBack,
 }: Props) {
   const [numClips, setNumClips] = useState(5);
+  const [clipDuration, setClipDuration] = useState(60);
   const [customPrompt, setCustomPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -34,7 +36,7 @@ export function StepAnalysis({
     setLoading(true);
     setError("");
     try {
-      const result = await analyzeVideo(sessionId, numClips, customPrompt);
+      const result = await analyzeVideo(sessionId, numClips, customPrompt, clipDuration);
       onAnalyzed(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "분석 중 오류가 발생했습니다.");
@@ -97,6 +99,23 @@ export function StepAnalysis({
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>1개</span>
               <span>15개</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>클립 러닝타임 (초)</Label>
+            <div className="flex items-center gap-3">
+              <Input
+                type="number"
+                min={10}
+                max={60}
+                value={clipDuration}
+                onChange={(e) => setClipDuration(Math.max(10, Math.min(60, Number(e.target.value) || 10)))}
+                className="w-24"
+              />
+              <span className="text-xs text-muted-foreground">
+                10초 ~ 60초 (각 클립의 최대 길이)
+              </span>
             </div>
           </div>
 
