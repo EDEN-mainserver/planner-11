@@ -502,34 +502,50 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
          <div style="position:absolute;inset:0;z-index:0;
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
-    // 인라인 바 차트 — 스킬이 없을 때 빈 공간 채움 (position:absolute로 강제 채움)
-    const inlineChartHtml = skillBullets.length === 0
-      ? `<div style="width:100%;flex:1;min-height:0;position:relative;overflow:hidden;">
-           <!-- 배경 그리드 수평선 -->
-           <div style="position:absolute;inset:16px 0 32px;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;">
-             ${[0,1,2,3].map(() => `<div style="width:100%;height:1px;background:rgba(${accentRgb},.08);"></div>`).join("")}
-           </div>
-           <!-- 바 차트 -->
-           <div style="position:absolute;inset:16px 0 32px;display:flex;align-items:flex-end;gap:9px;">
-             ${bh.slice(0,8).map((h,idx) => `
-             <div style="flex:1;height:${h}%;display:flex;flex-direction:column;justify-content:flex-end;position:relative;">
-               <div style="font-size:13px;font-weight:700;text-align:center;color:rgba(${accentRgb},0.7);margin-bottom:5px;white-space:nowrap;">${h}%</div>
-               <div style="flex:1;background:linear-gradient(180deg,rgba(${accentRgb},.45),rgba(${accentRgb},.08));
-                 border-radius:6px 6px 0 0;"></div>
-             </div>`).join("")}
-           </div>
-           <!-- x축 레이블 -->
-           <div style="position:absolute;bottom:4px;left:0;right:0;display:flex;gap:9px;">
-             ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'].map(m => `
-             <div style="flex:1;text-align:center;font-size:12px;color:#bbb;font-weight:600;">${m}</div>`).join("")}
-           </div>
-           <!-- x축 선 -->
-           <div style="position:absolute;bottom:28px;left:0;right:0;height:2px;background:rgba(${accentRgb},.15);"></div>
-           <!-- 좌측 레이블 -->
-           <div style="position:absolute;top:8px;left:4px;font-size:13px;font-weight:700;
-             color:rgba(${accentRgb},.5);letter-spacing:.1em;">ANALYTICS</div>
-         </div>`
-      : "";
+    // 인라인 바 차트 — 항상 표시, 남은 공간 모두 채움
+    const chartLabels = ['1월','2월','3월','4월','5월','6월','7월','8월'];
+    const chartTitle = skillBullets.length > 0 ? "성과 데이터" : "KEY METRICS";
+    const inlineChartHtml = `
+      <div style="width:100%;flex:1;min-height:${skillBullets.length > 0 ? 140 : 200}px;
+        display:flex;flex-direction:column;overflow:hidden;
+        ${skillBullets.length > 0 ? 'margin-top:20px;border-top:1px solid #f0f0f0;padding-top:16px;' : ''}">
+        <!-- 차트 헤더 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          margin-bottom:12px;flex-shrink:0;">
+          <div style="font-size:14px;font-weight:700;color:rgba(${accentRgb},.6);
+            letter-spacing:.1em;">${chartTitle}</div>
+          <div style="font-size:12px;color:#ccc;font-weight:500;">2024 — 2025</div>
+        </div>
+        <!-- 차트 영역 (flex:1로 나머지 공간 모두 차지) -->
+        <div style="flex:1;min-height:0;position:relative;">
+          <!-- 수평 그리드 -->
+          <div style="position:absolute;inset:0 0 28px;display:flex;flex-direction:column;
+            justify-content:space-between;pointer-events:none;">
+            ${[0,1,2,3,4].map(() =>
+              `<div style="width:100%;height:1px;background:rgba(${accentRgb},.06);"></div>`
+            ).join("")}
+          </div>
+          <!-- 바 -->
+          <div style="position:absolute;inset:0 0 28px;display:flex;align-items:flex-end;gap:10px;">
+            ${bh.slice(0,8).map((h) => `
+            <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;">
+              <div style="font-size:11px;font-weight:700;text-align:center;
+                color:rgba(${accentRgb},.65);margin-bottom:4px;white-space:nowrap;">${h}</div>
+              <div style="height:${h}%;background:linear-gradient(180deg,rgba(${accentRgb},.55),rgba(${accentRgb},.12));
+                border-radius:5px 5px 0 0;min-height:4px;"></div>
+            </div>`).join("")}
+          </div>
+          <!-- x축 선 -->
+          <div style="position:absolute;bottom:28px;left:0;right:0;
+            height:1.5px;background:rgba(${accentRgb},.18);"></div>
+          <!-- x축 레이블 -->
+          <div style="position:absolute;bottom:6px;left:0;right:0;display:flex;gap:10px;">
+            ${chartLabels.map(m => `
+            <div style="flex:1;text-align:center;font-size:11px;color:#c0c0c0;
+              font-weight:600;white-space:nowrap;">${m}</div>`).join("")}
+          </div>
+        </div>
+      </div>`;
 
     return `
 <div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080814;
