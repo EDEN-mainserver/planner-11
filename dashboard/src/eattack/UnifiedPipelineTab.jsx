@@ -462,10 +462,11 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     const bullets = (card.body || "")
       .split(/[·•\n]/).map((l) => l.trim()).filter((l) => l.length > 0);
 
-    const summaryText = bullets[0] || esc(card.headline);
-    const pluginSub   = bullets[1] || "";
-    const skillBullets = bullets.slice(bullets.length > 2 ? 2 : 1, 6);
-    const effectText  = bullets[bullets.length - 1] || `${esc(card.headline)}에 대해 더 알아보세요`;
+    // bullets[0]=요약, bullets[1]=소제목(3개 이상일 때), bullets[2..last-1]=스킬, bullets[last]=효과
+    const summaryText  = bullets[0] || esc(card.headline);
+    const pluginSub    = bullets.length >= 3 ? bullets[1] : "";
+    const skillBullets = bullets.length >= 4 ? bullets.slice(2, bullets.length - 1).slice(0, 4) : [];
+    const effectText   = bullets.length >= 2 ? bullets[bullets.length - 1] : `${esc(card.headline)} — 더 알아보세요`;
 
     const skillsHtml = skillBullets.length > 0
       ? `<div style="width:100%;flex-shrink:0;">
@@ -482,7 +483,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         </div>`
       : "";
 
-    // 배경 레이어 — 이미지 or 차트 그래프 장식
+    // 배경 레이어 — 이미지(+오버레이) or 그리드+글로우
     const chartPatterns = [
       [58,74,40,86,62,44,78,52,92,36],
       [72,48,88,55,76,42,66,84,50,70],
@@ -498,15 +499,18 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
            linear-gradient(rgba(${accentRgb},.04) 1px,transparent 1px),
            linear-gradient(90deg,rgba(${accentRgb},.04) 1px,transparent 1px);
            background-size:64px 64px;"></div>
-         <div style="position:absolute;bottom:44px;left:44px;right:44px;height:46%;
-           display:flex;align-items:flex-end;gap:6px;z-index:0;">
-           ${bh.map(h => `
-           <div style="flex:1;height:${h}%;
-             background:linear-gradient(180deg,rgba(${accentRgb},.22),rgba(${accentRgb},.04));
-             border-radius:4px 4px 0 0;"></div>`).join("")}
-         </div>
          <div style="position:absolute;inset:0;z-index:0;
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
+
+    // 인라인 바 차트 — 스킬이 없을 때 빈 공간 채움
+    const inlineChartHtml = skillBullets.length === 0
+      ? `<div style="width:100%;flex:1;display:flex;align-items:flex-end;gap:7px;
+           padding:16px 0 0;overflow:hidden;min-height:160px;">
+           ${bh.slice(0, 8).map((h) => `
+           <div style="flex:1;height:${h}%;background:linear-gradient(180deg,rgba(${accentRgb},.28),rgba(${accentRgb},.05));
+             border-radius:4px 4px 0 0;"></div>`).join("")}
+         </div>`
+      : "";
 
     return `
 <div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080814;
@@ -533,7 +537,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
           padding:7px 18px;border-radius:8px;letter-spacing:.05em;">Chapter ${chNum}</div>
         <div style="background:#1a1a2e;color:${accent};font-family:'Courier New',monospace;
           font-size:16px;padding:7px 14px;border-radius:8px;white-space:nowrap;overflow:hidden;">
-          ${esc(topic).slice(0, 12)}
+          ${esc(topic.slice(0, 12))}
         </div>
       </div>
       <div style="font-size:52px;font-weight:900;color:#111;text-align:center;
@@ -549,9 +553,10 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
           word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
       </div>
       ${skillsHtml}
+      ${inlineChartHtml}
       <div style="width:100%;background:linear-gradient(90deg,#f0eeff,#e8e4ff);
         border:1.5px solid #c4b5fd;border-radius:12px;padding:15px 20px;
-        margin-top:auto;margin-bottom:16px;
+        margin-top:18px;margin-bottom:16px;
         display:flex;align-items:center;gap:12px;overflow:hidden;flex-shrink:0;">
         <span style="font-size:20px;flex-shrink:0;">💡</span>
         <div style="font-size:20px;color:#333;font-weight:600;word-break:keep-all;overflow:hidden;">${esc(effectText)}</div>
