@@ -5,10 +5,10 @@
 import { useState, useRef } from "react";
 import { callGemini } from "../utils/gemini";
 import EdenServiceSelector from "./EdenServiceSelector";
+import PptTemplateManager from "./PptTemplateManager";
 
 // ── 상수 ──
 const LS_KEY = "eden_proposal_v1";
-const LS_TEMPLATE_KEY = "eden_pdf_template_v1";
 
 const SYSTEM_PROMPT = `
 당신은 10년차 콘텐츠 마케터이자 퍼포먼스 마케터입니다.
@@ -109,12 +109,6 @@ function saveDraft(data) {
 }
 function loadDraft() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)); } catch { return null; }
-}
-function saveTemplate(data) {
-  try { localStorage.setItem(LS_TEMPLATE_KEY, JSON.stringify(data)); } catch {}
-}
-function loadSavedTemplate() {
-  try { return JSON.parse(localStorage.getItem(LS_TEMPLATE_KEY)); } catch { return null; }
 }
 
 // ── 파싱 유틸 ──
@@ -285,14 +279,11 @@ export default function ProposalTab() {
   const [proposalEditable, setProposalEditable] = useState("");
   const [phaseProgress, setPhaseProgress] = useState(0);
 
-  // PDF 디자인 템플릿
-  const [pdfTemplate, setPdfTemplate] = useState(() => loadSavedTemplate());
-  const [pdfTemplateName, setPdfTemplateName] = useState(() => loadSavedTemplate()?.fileName || "");
-  const [pdfAnalyzing, setPdfAnalyzing] = useState(false);
+  // PPT 디자인 템플릿 (PptTemplateManager에서 선택)
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [pptxGenerating, setPptxGenerating] = useState(false);
 
   const tplInputRef = useRef(null);
-  const pdfInputRef = useRef(null);
 
   // ── Step 1 → 2: 분석 시작 ──
   async function handleAnalyze() {
@@ -386,59 +377,6 @@ ${crawlData.text}
     }
   }
 
-  // ── PDF 디자인 템플릿 업로드 ──
-  async function handlePdfTemplateUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.type !== 'application/pdf') {
-      alert('PDF 파일만 업로드 가능합니다.');
-      return;
-    }
-    if (file.size > 3 * 1024 * 1024) {
-      alert('파일 크기가 3MB를 초과합니다. 더 작은 PDF를 사용해 주세요.');
-      return;
-    }
-
-    setPdfAnalyzing(true);
-    try {
-      // PDF → base64
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const result = ev.target?.result;
-          // data:application/pdf;base64,XXX 에서 XXX만 추출
-          resolve(result.split(',')[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const resp = await fetch('/api/parse-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pdfBase64: base64 })
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || 'PDF 분석 실패');
-      }
-
-      const data = await resp.json();
-      const templateData = { ...data.template, fileName: file.name };
-      setPdfTemplate(templateData);
-      setPdfTemplateName(file.name);
-      saveTemplate(templateData);
-
-    } catch (err) {
-      alert(`PDF 분석 실패: ${err.message}`);
-    } finally {
-      setPdfAnalyzing(false);
-      // input 초기화 (같은 파일 재업로드 허용)
-      e.target.value = '';
-    }
-  }
-
   // ── PPT 다운로드 ──
   async function handleDownloadPptx() {
     setPptxGenerating(true);
@@ -447,13 +385,12 @@ ${crawlData.text}
       const pptx = new PptxGenJS();
       pptx.layout = 'LAYOUT_16x9';
 
-      // 디자인 템플릿 색상 적용 (없으면 에덴 기본 보라 계열)
-      const primary = (pdfTemplate?.primaryColor || '#4F46E5').replace('#', '');
-      const accent = (pdfTemplate?.accentColor || '#7C3AED').replace('#', '');
-      const bg = (pdfTemplate?.backgroundColor || '#FFFFFF').replace('#', '');
-      const titleTextColor = pdfTemplate?.titleColor
-        ? pdfTemplate.titleColor.replace('#', '')
-        : 'FFFFFF';
+      // 선택된 템플릿 색상 적용 (없으면 에덴 기본 보라 계열)
+      const tpl = selectedTemplate;
+      const primary = (tpl?.primaryColor || '#4F46E5').replace('#', '');
+      const accent = (tpl?.accentColor || '#7C3AED').replace('#', '');
+      const bg = (tpl?.backgroundColor || '#FFFFFF').replace('#', '');
+      const titleTextColor = tpl?.titleColor ? tpl.titleColor.replace('#', '') : 'FFFFFF';
 
       // ─ 표지 슬라이드 ─
       const cover = pptx.addSlide();
@@ -466,8 +403,8 @@ ${crawlData.text}
         x: 0.5, y: 2.4, w: 9, h: 0.8,
         fontSize: 22, color: 'FFFFFF', align: 'center'
       });
-      if (pdfTemplate?.styleDescription) {
-        cover.addText(pdfTemplate.styleDescription, {
+      if (tpl?.styleDescription && tpl.type !== 'default') {
+        cover.addText(tpl.styleDescription, {
           x: 0.5, y: 3.4, w: 9, h: 0.5,
           fontSize: 13, color: 'FFFFFF', align: 'center', italic: true
         });
@@ -776,82 +713,8 @@ ${crawlData.text}
             </div>
           )}
 
-          {/* PDF 디자인 템플릿 섹션 */}
-          <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
-                </svg>
-                <span className="text-sm font-semibold text-blue-700">PPT 디자인 템플릿</span>
-                <span className="text-xs text-blue-500">기존 제안서 PDF를 업로드하면 디자인을 분석해 재사용합니다</span>
-              </div>
-              <button
-                onClick={() => pdfInputRef.current?.click()}
-                disabled={pdfAnalyzing}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-all disabled:opacity-50"
-              >
-                {pdfAnalyzing ? (
-                  <>
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    분석 중...
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    PDF 업로드
-                  </>
-                )}
-              </button>
-              <input
-                ref={pdfInputRef}
-                type="file"
-                accept=".pdf"
-                className="hidden"
-                onChange={handlePdfTemplateUpload}
-              />
-            </div>
-
-            {/* 분석된 템플릿 정보 표시 */}
-            {pdfTemplate && (
-              <div className="mt-2 pt-2 border-t border-blue-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-semibold text-blue-700">✅ {pdfTemplateName}</span>
-                  <span className="text-xs text-blue-500">— {pdfTemplate.styleDescription}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {/* 색상 스와치 */}
-                  <div className="flex items-center gap-1.5">
-                    {[pdfTemplate.primaryColor, pdfTemplate.accentColor, pdfTemplate.backgroundColor].filter(Boolean).map((color, i) => (
-                      <div key={i} className="flex items-center gap-1">
-                        <div
-                          className="w-4 h-4 rounded-full border border-white shadow-sm"
-                          style={{ backgroundColor: color }}
-                          title={color}
-                        />
-                        <span className="text-[10px] text-gray-500">{color}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <span className="text-xs text-gray-500">·</span>
-                  <span className="text-xs text-gray-600">{pdfTemplate.slideCount}장 구성</span>
-                  <span className="text-xs text-gray-500">·</span>
-                  <span className="text-xs text-gray-600">{pdfTemplate.layoutStyle}</span>
-                  <button
-                    onClick={() => { setPdfTemplate(null); setPdfTemplateName(""); localStorage.removeItem(LS_TEMPLATE_KEY); }}
-                    className="ml-auto text-[10px] text-gray-400 hover:text-red-500 underline"
-                  >
-                    제거
-                  </button>
-                </div>
-              </div>
-            )}
-            {!pdfTemplate && (
-              <p className="text-xs text-blue-400 mt-1">업로드하지 않으면 에덴 기본 보라 계열 디자인으로 생성됩니다</p>
-            )}
-          </div>
+          {/* PPT 디자인 템플릿 매니저 */}
+          <PptTemplateManager onSelect={setSelectedTemplate} />
 
           {/* 섹션들 */}
           {sections.map((sec, idx) => (
@@ -945,24 +808,27 @@ ${crawlData.text}
             </button>
           </div>
 
-          {/* 디자인 템플릿 상태 표시 */}
-          {pdfTemplate ? (
+          {/* 선택된 템플릿 표시 */}
+          {selectedTemplate ? (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
               </svg>
-              디자인 템플릿 적용됨: <strong>{pdfTemplateName}</strong>
+              디자인 템플릿: <strong>{selectedTemplate.name}</strong>
               <span className="flex gap-1 ml-1">
-                {[pdfTemplate.primaryColor, pdfTemplate.accentColor].filter(Boolean).map((c, i) => (
+                {[selectedTemplate.primaryColor, selectedTemplate.accentColor].filter(Boolean).map((c, i) => (
                   <span key={i} className="w-3 h-3 rounded-full border border-white shadow-sm inline-block" style={{ backgroundColor: c }} />
                 ))}
               </span>
+              <button onClick={() => setStep("report")} className="ml-auto text-blue-500 hover:text-blue-700 underline">
+                변경
+              </button>
             </div>
           ) : (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs text-gray-500">
-              디자인 템플릿 없음 — 에덴 기본 보라 계열로 PPT 생성됩니다
+              에덴 기본 보라 계열로 PPT 생성됩니다
               <button onClick={() => setStep("report")} className="ml-auto text-violet-500 hover:text-violet-700 underline">
-                PDF 템플릿 추가
+                템플릿 선택
               </button>
             </div>
           )}
