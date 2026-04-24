@@ -178,19 +178,33 @@ export default function VideoPreview({
   // 스크립트 첫 문장을 훅 문구로 사용
   const bodyText = script?.trim().split(/(?<=[.!?。])\s+/)[0]?.slice(0, 50) || "";
 
-  // TTS 오디오 설정 + currentMs 동기화
+  // TTS 오디오 설정 + requestAnimationFrame으로 60fps 자막 동기화
   useEffect(() => {
     if (!audioUrl) { audioRef.current = null; return; }
     const audio = new Audio(audioUrl);
     audio.preload = "auto";
     audioRef.current = audio;
-    const onTime  = () => setCurrentMs(audio.currentTime * 1000);
-    const onEnded = () => { setPlaying(false); setCurrentMs(0); };
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("ended", onEnded);
+
+    let rafId = null;
+    const tick = () => {
+      setCurrentMs(audio.currentTime * 1000);
+      rafId = requestAnimationFrame(tick);
+    };
+    const onPlay   = () => { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(tick); };
+    const onPause  = () => { cancelAnimationFrame(rafId); rafId = null; };
+    const onEnded  = () => {
+      cancelAnimationFrame(rafId); rafId = null;
+      setPlaying(false); setCurrentMs(0);
+    };
+
+    audio.addEventListener("play",   onPlay);
+    audio.addEventListener("pause",  onPause);
+    audio.addEventListener("ended",  onEnded);
     return () => {
+      cancelAnimationFrame(rafId);
       audio.pause();
-      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("play",  onPlay);
+      audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
       audioRef.current = null;
     };
