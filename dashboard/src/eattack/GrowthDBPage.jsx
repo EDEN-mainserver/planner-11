@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { loadCoupangCreds } from "../pages/AdminPage";
+import { loadCoupangCreds } from "../utils/coupang";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 

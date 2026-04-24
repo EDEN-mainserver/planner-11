@@ -7,17 +7,13 @@ import { useState } from "react";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 import { USERS as SEED_USERS } from "../config/users";
 import { PRESET_PROVIDERS, loadAiKeys, saveAiKeys } from "../utils/aiKeys";
+import { COUPANG_KEY, loadCoupangCreds } from "../utils/coupang";
 
 // ── 스토리지 키 ──
 const USERS_KEY    = "eden_users_v1";
 const igKey        = (u) => `eden_ig_${u}_v1`;
 const threadsKey   = (u) => `eden_threads_${u}_v1`;
 const fullAutoKey  = (u) => `eden_fullauto_${u}_v1`;
-export const COUPANG_KEY = "eden_coupang_api_v1";
-export function loadCoupangCreds() {
-  try { return JSON.parse(localStorage.getItem(COUPANG_KEY)) || {}; }
-  catch { return {}; }
-}
 function saveCoupangCreds(data) { localStorage.setItem(COUPANG_KEY, JSON.stringify(data)); }
 
 // ── 사용자 목록 로드 (최초 1회 seed 주입) ──
@@ -25,7 +21,7 @@ function loadUsers() {
   try {
     const saved = JSON.parse(localStorage.getItem(USERS_KEY));
     if (saved && saved.length > 0) return saved;
-  } catch {}
+  } catch { /* localStorage 파싱 실패 시 seed 사용 */ }
   // 첫 실행: config 파일 seed 사용
   localStorage.setItem(USERS_KEY, JSON.stringify(SEED_USERS));
   return [...SEED_USERS];
@@ -1063,18 +1059,18 @@ const ADMIN_TABS = [
   { key: "aikeys",  label: "🤖 AI API 키" },
 ];
 
+function relativeTime(iso) {
+  if (!iso) return "-";
+  const diff = Date.now() - new Date(iso).getTime();
+  const d = Math.floor(diff / 86400000);
+  if (d === 0) return "오늘";
+  if (d === 1) return "어제";
+  if (d < 7) return `${d}일 전`;
+  return new Date(iso).toLocaleDateString("ko-KR");
+}
+
 export default function AdminPage({ projects = [], trash = [], onLoad }) {
   const [activeTab, setActiveTab] = useState("users");
-
-  const relativeTime = (iso) => {
-    if (!iso) return "-";
-    const diff = Date.now() - new Date(iso).getTime();
-    const d = Math.floor(diff / 86400000);
-    if (d === 0) return "오늘";
-    if (d === 1) return "어제";
-    if (d < 7) return `${d}일 전`;
-    return new Date(iso).toLocaleDateString("ko-KR");
-  };
 
   return (
     <div className="flex-1 overflow-y-auto px-6 sm:px-10 py-8 bg-gray-50">
