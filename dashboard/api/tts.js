@@ -51,25 +51,36 @@ function parseWordTimings(alignment) {
 
 // ── ElevenLabs 에러 응답에서 메시지·상태 추출 ────────────────────────────────
 function parseElevenLabsError(errBody) {
-  // detail이 객체인 경우: { detail: { status: "quota_exceeded", message: "..." } }
-  // detail이 문자열인 경우: { detail: "Invalid API key" }
   const detail = errBody?.detail;
-  if (detail && typeof detail === "object") {
+  // { detail: { status, message } }
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
     return { status: detail.status ?? "", message: detail.message ?? "" };
   }
+  // { detail: "문자열" }
   if (typeof detail === "string") {
     return { status: "", message: detail };
   }
-  return { status: "", message: "" };
+  // { detail: [...] } 배열이거나 없는 경우
+  const fallbackMsg = errBody?.message || errBody?.error || "";
+  return { status: "", message: String(fallbackMsg) };
 }
 
 // ── ElevenLabs 크레딧 에러 여부 판별 ─────────────────────────────────────────
 function isCreditError(httpStatus, apiStatus, msg) {
-  if (httpStatus === 401) return false; // 인증 오류는 폴백 안 함
+  // apiStatus로 먼저 판별 (HTTP 상태코드 무관)
   if (apiStatus === "quota_exceeded" || apiStatus === "insufficient_credits") return true;
-  if (httpStatus === 402 || httpStatus === 429) return true;
+  // 401이지만 quota가 아니면 → 진짜 인증 오류이므로 폴백 안 함
+  if (httpStatus === 401) return false;
+  if (httpStatus === 402 || httpStatus === 422 || httpStatus === 429) {
+    // 422는 다양한 에러를 포함하므로 메시지도 확인
+    if (httpStatus === 422) {
+      const m = (msg ?? "").toLowerCase();
+      return m.includes("quota") || m.includes("credit") || m.includes("insufficient") || m.includes("character");
+    }
+    return true;
+  }
   const m = (msg ?? "").toLowerCase();
-  return m.includes("quota") || m.includes("credit") || m.includes("insufficient");
+  return m.includes("quota") || m.includes("credit") || m.includes("insufficient") || m.includes("character");
 }
 
 // ── Google AI Studio (Gemini) TTS 폴백 ───────────────────────────────────────
@@ -156,8 +167,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // 에러 파싱
+    // 에러 파싱 — 실제 응답 전체 로깅
     const errBody  = await elevenRes.json().catch(() => ({}));
+    console.log("[TTS] ElevenLabs 오류 응답:", JSON.stringify({ httpStatus: elevenRes.status, body: errBody }));
+
     const { status: apiStatus, message: apiMsg } = parseElevenLabsError(errBody);
     const displayMsg = apiMsg || `ElevenLabs 오류 (${elevenRes.status})`;
 
@@ -166,7 +179,7 @@ export default async function handler(req, res) {
     }
 
     // 크레딧 소진 → Google TTS 폴백 시도
-    console.log("[TTS] ElevenLabs 크레딧 소진 감지 (HTTP:", elevenRes.status, "/ status:", apiStatus, "), Google AI Studio로 폴백");
+    console.log("[TTS] 크레딧 소진 감지 → Google AI Studio 폴백 (HTTP:", elevenRes.status, "/ apiStatus:", apiStatus, "/ msg:", apiMsg, ")");
 
   } catch (e) {
     // 네트워크 오류 등 — Google TTS 폴백 시도
