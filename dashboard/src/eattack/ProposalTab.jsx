@@ -33,9 +33,20 @@ const PROPOSAL_SYSTEM_PROMPT = `
 📌 핵심 수치/강조: (있으면 작성)
 💬 발표 멘트: "실제 발표할 때 말할 한두 문장"
 ---END_SLIDE---
+---CHART---
+{"type":"차트타입","title":"차트 제목", ...타입별 데이터}
+---END_CHART---
+
+**차트 타입 및 JSON 형식 (데이터가 있는 슬라이드에는 반드시 포함):**
+- bar:        {"type":"bar","title":"채널별 성과","unit":"%","items":[{"label":"SNS","value":35},{"label":"블로그","value":20}]}
+- doughnut:   {"type":"doughnut","title":"타겟 연령 분포","items":[{"label":"2030대","value":60},{"label":"4050대","value":40}]}
+- line:       {"type":"line","title":"월별 팔로워 성장 예측","unit":"명","items":[{"label":"1개월","value":3000},{"label":"3개월","value":5000},{"label":"6개월","value":8000}]}
+- stats:      {"type":"stats","title":"핵심 지표","items":[{"label":"시장 규모","value":"1.2조"},{"label":"YoY 성장","value":"+23%"},{"label":"경쟁사 수","value":"200+"}]}
+- comparison: {"type":"comparison","title":"에덴 도입 효과","before":{"label":"현재","items":["팔로워 2천명","월 문의 5건","전환율 1%"]},"after":{"label":"3개월 후","items":["팔로워 5천명","월 문의 30건","전환율 4%"]}}
 
 - 글로 풀어 쓰지 말 것. 슬라이드 불릿은 짧게 (10~20자 이내)
 - 긴 문단 금지 — PPT에 들어가는 텍스트만 작성
+- CHART 블록의 JSON은 반드시 유효한 JSON 형식으로 작성 (한국어 label 허용)
 
 ## Impact-8 Framework
 HOOK→SUMMARY→INSIGHT→CONCEPT→ACTION PLAN→MANAGEMENT→WHY US→INVESTMENT 순서
@@ -188,9 +199,14 @@ function parseSlidesFromProposal(text) {
       });
     }
 
-    const slideMatches = [...block.matchAll(/---SLIDE---([\s\S]*?)---END_SLIDE---/g)];
+    const slideMatches = [...block.matchAll(/---SLIDE---([\s\S]*?)---END_SLIDE---(?:\s*---CHART---([\s\S]*?)---END_CHART---)?/g)];
     for (const match of slideMatches) {
       const content = match[1].trim();
+      const chartRaw = match[2];
+      let chart = null;
+      if (chartRaw) {
+        try { chart = JSON.parse(chartRaw.trim()); } catch {}
+      }
       const lines = content.split('\n');
 
       const titleLine = lines.find(l => l.startsWith('### '));
@@ -217,7 +233,7 @@ function parseSlidesFromProposal(text) {
         ? cleanMarkdown(noteLine.replace(/^💬\s*발표 멘트:\s*[""]?/, '').replace(/[""]$/, '').trim())
         : '';
 
-      allSlides.push({ type: 'content', title, bullets, emphasis, note });
+      allSlides.push({ type: 'content', title, bullets, emphasis, note, chart });
     }
   }
 
@@ -277,6 +293,7 @@ ${clientInfo.title} (${clientInfo.domain})
 4. **Win Theme 반복**: 이 섹션 슬라이드 중 하나에 자연스럽게 Win Theme 강조
 5. 긴 문단, 산문체 절대 금지
 6. **FEBA 라벨 준수**: 슬라이드 가이드에 [FEAR]/[EVIDENCE]/[BENEFIT]/[ACTION] 라벨이 있으면 해당 심리 목표를 반드시 달성할 것
+7. **차트 필수**: 숫자·비율·성장·비교 데이터가 있는 슬라이드에는 반드시 ---CHART--- 블록을 추가할 것 (FEAR→stats, EVIDENCE→bar/line, BENEFIT→comparison, WHY US→bar, INVESTMENT→stats)
 `.trim();
 }
 
@@ -284,6 +301,38 @@ ${clientInfo.title} (${clientInfo.domain})
 
 function escHtml(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── 차트 HTML 빌더 ──
+function buildChartHtml(chart, idx, accentColor) {
+  if (!chart) return '';
+  const title = escHtml(chart.title || '');
+  const titleHtml = title ? `<div class="chart-title">${title}</div>` : '';
+
+  // comparison (before/after) — 순수 HTML
+  if (chart.type === 'comparison') {
+    const mkItems = (items) => (items || []).map(i => `<div class="cmp-item">• ${escHtml(i)}</div>`).join('');
+    return `${titleHtml}<div class="cmp-wrap">
+  <div class="cmp-box before"><div class="cmp-label">${escHtml(chart.before?.label||'현재')}</div>${mkItems(chart.before?.items)}</div>
+  <div class="cmp-arrow">→</div>
+  <div class="cmp-box after"><div class="cmp-label">${escHtml(chart.after?.label||'목표')}</div>${mkItems(chart.after?.items)}</div>
+</div>`;
+  }
+
+  // stats (큰 숫자) — 순수 HTML
+  if (chart.type === 'stats') {
+    const statsHtml = (chart.items || []).slice(0, 4).map(item => `
+<div class="stat-item">
+  <div class="stat-value" style="color:${accentColor}">${escHtml(String(item.value))}</div>
+  <div class="stat-label">${escHtml(item.label)}</div>
+</div>`).join('');
+    return `${titleHtml}<div class="stats-wrap">${statsHtml}</div>`;
+  }
+
+  // bar / doughnut / line — Chart.js canvas
+  const dataJson = escHtml(JSON.stringify(chart));
+  const w = chart.type === 'doughnut' ? 260 : 320;
+  return `${titleHtml}<div class="chart-wrap"><canvas id="chart-${idx}" width="${w}" height="240" data-chart="${dataJson}" data-accent="${accentColor}"></canvas></div>`;
 }
 
 function buildCoverSlideHtml(clientInfo, winThemes) {
@@ -334,7 +383,7 @@ function buildSectionSlideHtml(slide, pg, total, color) {
 </div>`;
 }
 
-function buildContentSlideHtml(slide, pg, total, color) {
+function buildContentSlideHtml(slide, pg, total, color, chartIdx) {
   const bullets = slide.bullets.slice(0, 5);
   const bulletsHtml = bullets.map(b => `
     <div class="bullet-item" style="border-left-color:${color}">
@@ -346,6 +395,28 @@ function buildContentSlideHtml(slide, pg, total, color) {
     <span>📌</span>
     <span class="emphasis-text" style="color:${color}">${escHtml(slide.emphasis)}</span>
   </div>` : '';
+
+  if (slide.chart) {
+    const chartHtml = buildChartHtml(slide.chart, chartIdx, color);
+    return `<div class="slide slide-content">
+  <div class="content-header">
+    <div class="accent-bar" style="background:${color}"></div>
+    <div class="content-title">${escHtml(slide.title)}</div>
+  </div>
+  <div class="content-body split">
+    <div class="bullets-col">
+      ${bulletsHtml}
+      ${emphasisHtml}
+    </div>
+    <div class="chart-col">${chartHtml}</div>
+  </div>
+  <div class="slide-footer">
+    <span class="footer-brand">EDEN MARKETING</span>
+    <span class="footer-pg">${pg} / ${total}</span>
+  </div>
+</div>`;
+  }
+
   return `<div class="slide slide-content">
   <div class="content-header">
     <div class="accent-bar" style="background:${color}"></div>
@@ -364,13 +435,14 @@ function buildHtmlDocument(parsedSlides, clientInfo, winThemes) {
   const total = 1 + parsedSlides.length;
   const slideHtmls = [buildCoverSlideHtml(clientInfo, winThemes)];
   let currentColor = '#64748B';
+  let chartIdx = 0;
   parsedSlides.forEach((slide, i) => {
     const pg = i + 2;
     if (slide.type === 'section') {
       currentColor = getPhaseColor(slide.title);
       slideHtmls.push(buildSectionSlideHtml(slide, pg, total, currentColor));
     } else {
-      slideHtmls.push(buildContentSlideHtml(slide, pg, total, currentColor));
+      slideHtmls.push(buildContentSlideHtml(slide, pg, total, currentColor, chartIdx++));
     }
   });
 
@@ -381,6 +453,7 @@ function buildHtmlDocument(parsedSlides, clientInfo, winThemes) {
 <title>${escHtml(clientInfo.title || clientInfo.domain)} 마케팅 제안서</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Noto Sans KR',sans-serif;background:#1E293B;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:32px 32px 80px}
@@ -433,6 +506,29 @@ body{font-family:'Noto Sans KR',sans-serif;background:#1E293B;display:flex;flex-
 .slide-footer{height:40px;background:#0F172A;display:flex;align-items:center;justify-content:space-between;padding:0 40px;flex-shrink:0}
 .footer-brand{font-size:12px;font-weight:700;color:rgba(255,255,255,.4)}
 .footer-pg{font-size:12px;color:rgba(255,255,255,.35)}
+/* ── CHART LAYOUT ── */
+.content-body.split{flex-direction:row;padding:16px 40px 12px;gap:20px;align-items:stretch}
+.bullets-col{flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden;min-width:0}
+.bullets-col .bullet-item{flex-shrink:0}
+.bullets-col .emphasis-box{margin:0;flex-shrink:0}
+.chart-col{width:340px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 0}
+.chart-title{font-size:12px;font-weight:700;color:#475569;text-align:center;margin-bottom:10px;letter-spacing:.02em}
+.chart-wrap{width:100%;display:flex;align-items:center;justify-content:center}
+/* comparison */
+.cmp-wrap{display:flex;flex-direction:row;align-items:stretch;gap:8px;width:100%}
+.cmp-box{flex:1;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.cmp-box.before{background:#FEF2F2;border:2px solid #FCA5A5}
+.cmp-box.after{background:#ECFDF5;border:2px solid #6EE7B7}
+.cmp-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.cmp-box.before .cmp-label{color:#EF4444}
+.cmp-box.after .cmp-label{color:#10B981}
+.cmp-item{font-size:12px;color:#374151;line-height:1.5}
+.cmp-arrow{font-size:28px;color:#94A3B8;display:flex;align-items:center;flex-shrink:0}
+/* stats */
+.stats-wrap{display:flex;flex-direction:column;gap:10px;width:100%}
+.stat-item{background:white;border-radius:12px;padding:12px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.07);border:1px solid #F1F5F9}
+.stat-value{font-size:26px;font-weight:900;line-height:1.1}
+.stat-label{font-size:11px;color:#64748B;margin-top:3px;font-weight:500}
 /* ── NAV ── */
 .nav{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:rgba(15,23,42,.9);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);padding:10px 20px;border-radius:100px;z-index:1000}
 .nav button{background:rgba(255,255,255,.1);border:none;color:white;padding:8px 20px;border-radius:8px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:14px;font-weight:600;transition:background .2s}
@@ -451,6 +547,56 @@ ${slideHtmls.map((h, i) => `<div class="sw${i === 0 ? ' active' : ''}" id="sw${i
 let c=0,t=${total};
 function go(d){document.querySelectorAll('.sw').forEach(e=>e.classList.remove('active'));c=(c+d+t)%t;document.getElementById('sw'+c).classList.add('active');document.getElementById('nc').textContent=(c+1)+' / '+t;}
 document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowDown')go(1);if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(-1);});
+</script>
+<script>
+(function(){
+  var PALETTE=['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#84CC16'];
+  function initCharts(){
+    document.querySelectorAll('canvas[data-chart]').forEach(function(canvas){
+      try{
+        var cfg=JSON.parse(canvas.getAttribute('data-chart'));
+        var accent=canvas.getAttribute('data-accent')||'#3B82F6';
+        var items=cfg.items||[];
+        var labels=items.map(function(d){return d.label;});
+        var values=items.map(function(d){return Number(d.value)||0;});
+        var unit=cfg.unit||'';
+        var isDoughnut=cfg.type==='doughnut';
+        var isLine=cfg.type==='line';
+        var chartType=isDoughnut?'doughnut':isLine?'line':'bar';
+        var bgColors=isDoughnut?PALETTE.slice(0,labels.length):accent+'CC';
+        var borderColors=isDoughnut?PALETTE.slice(0,labels.length):[accent];
+        var options={
+          responsive:false,
+          plugins:{
+            legend:{display:isDoughnut,position:'bottom',labels:{font:{size:11,family:'Noto Sans KR'},padding:8,boxWidth:12}},
+            tooltip:{callbacks:{label:function(c){return c.raw+unit;}}}
+          }
+        };
+        if(!isDoughnut){
+          options.indexAxis='y';
+          options.scales={
+            x:{beginAtZero:true,ticks:{font:{size:11,family:'Noto Sans KR'},callback:function(v){return v+unit;}},grid:{color:'#F1F5F9'}},
+            y:{ticks:{font:{size:11,family:'Noto Sans KR'}},grid:{display:false}}
+          };
+        }
+        if(isLine){
+          delete options.indexAxis;
+          options.scales={
+            y:{beginAtZero:true,ticks:{font:{size:11,family:'Noto Sans KR'},callback:function(v){return v+unit;}},grid:{color:'#F1F5F9'}},
+            x:{ticks:{font:{size:11,family:'Noto Sans KR'}},grid:{display:false}}
+          };
+        }
+        new Chart(canvas.getContext('2d'),{
+          type:chartType,
+          data:{labels:labels,datasets:[{data:values,backgroundColor:bgColors,borderColor:borderColors,borderWidth:2,borderRadius:isDoughnut?0:6,fill:isLine,tension:isLine?0.4:0}]},
+          options:options
+        });
+      }catch(e){}
+    });
+  }
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',initCharts);}
+  else{initCharts();}
+})();
 </script>
 </body>
 </html>`;
