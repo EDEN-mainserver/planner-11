@@ -80,14 +80,6 @@ function CommunityBg({ bgPreset, titleExcerpt, fontFamily }) {
       </div>
 
 
-      {/* 하단 네비게이션 바 */}
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 44,
-        background: "white", borderTop: "1px solid #e9ecef",
-        display: "flex", alignItems: "center", justifyContent: "space-around" }}>
-        {["🏠","🔥","✏️","🔔","👤"].map(icon => (
-          <span key={icon} style={{ fontSize: 18 }}>{icon}</span>
-        ))}
-      </div>
     </div>
   );
 }
@@ -243,7 +235,7 @@ export default function VideoPreview({
 
         {/* 자막 + GIF — 제목 카드 바로 아래 */}
         <div style={{
-          position: "absolute", top: 158, left: 0, right: 0, bottom: 44,
+          position: "absolute", top: 158, left: 0, right: 0, bottom: 0,
           display: "flex", flexDirection: "column", alignItems: "center",
           pointerEvents: "none", padding: "4px 20px 0", gap: 8,
         }}>
