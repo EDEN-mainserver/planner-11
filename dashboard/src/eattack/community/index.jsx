@@ -11,6 +11,33 @@ import {
 } from "./constants";
 import { generateCaptionsFromText, estimateSeconds } from "./utils";
 
+// 실제 오디오 길이에 비례해서 단어별 자막 타이밍 분배
+function buildProportionalCaptions(text, totalDurationMs) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return { captions: [], totalMs: totalDurationMs };
+
+  const totalChars   = words.reduce((sum, w) => sum + w.length, 0);
+  const introMs      = 150;                          // 음성 시작 전 여유
+  const usableMs     = totalDurationMs - introMs - 100; // 뒤 100ms 여유
+  const captions     = [];
+  let currentMs      = introMs;
+
+  for (let i = 0; i < words.length; i++) {
+    const word      = words[i];
+    const duration  = Math.max(150, Math.round((word.length / totalChars) * usableMs));
+    captions.push({
+      text:        i === 0 ? word : ` ${word}`,
+      startMs:     currentMs,
+      endMs:       currentMs + duration,
+      timestampMs: currentMs,
+      confidence:  1,
+    });
+    currentMs += duration + 30; // 단어 간 30ms 간격
+  }
+
+  return { captions, totalMs: totalDurationMs };
+}
+
 const STEPS = [
   { num: 1, label: "스크립트" },
   { num: 2, label: "배경 영상" },
@@ -81,14 +108,14 @@ export default function CommunityTab({ nasState, onGoToNas }) {
         throw new Error(err?.error || `TTS 오류 (${res.status})`);
       }
 
-      const { audioBase64, captions: wordTimings, provider, mimeType } = await res.json();
+      const { audioBase64, captions: wordTimings, provider, mimeType, durationMs: audioDurationMs } = await res.json();
       ttsProvider = provider;
 
       // base64 → Blob URL
-      const binary   = atob(audioBase64);
-      const bytes    = new Uint8Array(binary.length);
+      const binary = atob(audioBase64);
+      const bytes  = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const mime     = mimeType || "audio/mpeg";
+      const mime   = mimeType || "audio/mpeg";
       audioUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
 
       if (wordTimings && wordTimings.length > 0) {
@@ -101,14 +128,18 @@ export default function CommunityTab({ nasState, onGoToNas }) {
           confidence:  1,
         }));
         totalMs = (captions[captions.length - 1]?.endMs ?? 0) + 300;
+      } else if (audioDurationMs) {
+        // Google TTS 폴백: 실제 오디오 길이 기반 비례 분배
+        const built = buildProportionalCaptions(script, audioDurationMs);
+        captions = built.captions;
+        totalMs  = built.totalMs;
+        setTtsInfo("ElevenLabs 크레딧 소진 → Google AI Studio로 자동 전환됐습니다.");
       } else {
-        // Google TTS 폴백: 추정 타이밍 사용 (오디오는 있음)
+        // durationMs 없는 경우 글자수 추정 폴백
         const fallback = generateCaptionsFromText(script);
         captions = fallback.captions;
         totalMs  = fallback.totalMs;
-        if (provider === "google") {
-          setTtsInfo("ElevenLabs 크레딧 소진 → Google AI Studio로 자동 전환됐습니다. 자막 타이밍은 추정값입니다.");
-        }
+        setTtsInfo("ElevenLabs 크레딧 소진 → Google AI Studio로 자동 전환됐습니다. (타이밍 추정)");
       }
 
     } catch (e) {

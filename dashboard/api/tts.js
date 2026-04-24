@@ -85,6 +85,11 @@ function isCreditError(httpStatus, apiStatus, msg) {
 
 // ── PCM(L16) raw 오디오 → WAV 변환 ──────────────────────────────────────────
 // Gemini TTS는 audio/L16;rate=24000 형태의 raw PCM을 반환하므로 WAV 헤더 추가 필요
+function pcmDurationMs(pcmBase64, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
+  const pcm = Buffer.from(pcmBase64, "base64");
+  return Math.round((pcm.length / (sampleRate * numChannels * (bitsPerSample / 8))) * 1000);
+}
+
 function pcmToWavBase64(pcmBase64, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
   const pcm      = Buffer.from(pcmBase64, "base64");
   const dataSize = pcm.length;
@@ -141,19 +146,20 @@ async function googleTTS(text, geminiKey) {
     throw new Error("Google TTS: 오디오 데이터를 받지 못했습니다.");
   }
 
-  const rawMime   = part.inlineData.mimeType ?? "";
-  const isPcm     = rawMime.includes("L16") || rawMime.includes("pcm");
-  const rateMatch = rawMime.match(/rate=(\d+)/);
+  const rawMime    = part.inlineData.mimeType ?? "";
+  const isPcm      = rawMime.includes("L16") || rawMime.includes("pcm");
+  const rateMatch  = rawMime.match(/rate=(\d+)/);
   const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
 
-  // raw PCM → WAV 변환 (브라우저 재생 가능하도록)
-  const audioBase64 = isPcm
-    ? pcmToWavBase64(part.inlineData.data, sampleRate)
-    : part.inlineData.data;
+  // raw PCM → WAV 변환 + 실제 오디오 길이 계산
+  const rawData     = part.inlineData.data;
+  const durationMs  = isPcm ? pcmDurationMs(rawData, sampleRate) : null;
+  const audioBase64 = isPcm ? pcmToWavBase64(rawData, sampleRate) : rawData;
 
   return {
     audioBase64,
     mimeType: "audio/wav",
+    durationMs,   // 프론트에서 비례 자막 분배에 사용
   };
 }
 
@@ -234,7 +240,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       audioBase64,
       mimeType,
-      captions: null,   // 타이밍 없음 → 프론트에서 추정 타이밍 사용
+      captions: null,       // 단어 타이밍 없음 → 프론트에서 비례 분배
+      durationMs,           // 실제 오디오 길이(ms) → 비례 분배 기준
       provider: "google",
     });
   } catch (e) {
