@@ -543,30 +543,74 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       </div>`;
     };
 
+    // 폴더 트리 라인 정의
+    const treeLines = [
+      { indent: 0, icon: '📁', name: 'your-project/', highlight: false },
+      { indent: 1, prefix: '├── ', icon: '📄', name: 'CLAUDE.md', highlight: true, tag: '← 여기!' },
+      { indent: 1, prefix: '├── ', icon: '📁', name: '.claude/', highlight: false },
+      { indent: 2, prefix: '│   ├── ', icon: '📄', name: 'settings.json', highlight: false },
+      { indent: 2, prefix: '│   └── ', icon: '📁', name: 'hooks/', highlight: false },
+      { indent: 1, prefix: '├── ', icon: '📁', name: 'src/', highlight: false },
+      { indent: 1, prefix: '└── ', icon: '📄', name: 'package.json', highlight: false },
+    ];
+
     const contentHtml = `
     <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;
-      overflow:hidden;margin-bottom:14px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-shrink:0;">
+      gap:12px;overflow:hidden;margin-bottom:14px;">
+
+      <!-- 섹션 헤더 -->
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
         <div style="font-size:20px;font-weight:700;color:#222;">⌨️ 바로 써보세요</div>
         <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;
           padding:4px 12px;border-radius:6px;white-space:nowrap;">CLAUDE.md</div>
       </div>
-      <div style="flex:1;min-height:0;background:#0d1117;border-radius:16px;
+
+      <!-- 코드 에디터 (flex:3) -->
+      <div style="flex:3;min-height:0;background:#0d1117;border-radius:14px;
         overflow:hidden;display:flex;flex-direction:column;">
-        <div style="height:38px;background:#161b22;display:flex;align-items:center;
+        <div style="height:36px;background:#161b22;display:flex;align-items:center;
           padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
-          <div style="width:12px;height:12px;border-radius:50%;background:#ff5f57;"></div>
-          <div style="width:12px;height:12px;border-radius:50%;background:#febc2e;"></div>
-          <div style="width:12px;height:12px;border-radius:50%;background:#28c840;"></div>
+          <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+          <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+          <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
           <div style="margin-left:10px;font-size:14px;color:#8b949e;
             font-family:'Courier New',monospace;">CLAUDE.md</div>
-          <div style="margin-left:auto;width:8px;height:8px;border-radius:50%;
-            background:#28c840;box-shadow:0 0 6px #28c840;"></div>
+          <div style="margin-left:auto;width:7px;height:7px;border-radius:50%;
+            background:#28c840;box-shadow:0 0 5px #28c840;"></div>
         </div>
-        <div style="flex:1;padding:16px 12px 16px 0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:0;">
+        <div style="flex:1;padding:12px 12px 12px 0;overflow:hidden;
+          display:flex;flex-direction:column;justify-content:center;gap:0;">
           ${codeLines.map(renderLine).join("")}
         </div>
       </div>
+
+      <!-- 폴더 트리 (flex:2) -->
+      <div style="flex:2;min-height:0;background:#0d1117;border-radius:14px;
+        overflow:hidden;display:flex;flex-direction:column;">
+        <div style="height:36px;background:#161b22;display:flex;align-items:center;
+          padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
+          <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+          <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+          <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+          <div style="margin-left:10px;font-size:14px;color:#8b949e;
+            font-family:'Courier New',monospace;">📁 폴더 구조</div>
+        </div>
+        <div style="flex:1;padding:12px 18px;overflow:hidden;
+          display:flex;flex-direction:column;justify-content:center;gap:3px;">
+          ${treeLines.map(t => `
+          <div style="display:flex;align-items:center;gap:6px;height:26px;">
+            <span style="font-family:'Courier New',monospace;font-size:15px;
+              color:${t.highlight ? '#ffa657' : '#4a5568'};flex-shrink:0;">${t.prefix || ''}</span>
+            <span style="font-size:15px;flex-shrink:0;">${t.icon}</span>
+            <span style="font-family:'Courier New',monospace;font-size:15px;
+              color:${t.highlight ? '#ffa657' : t.name.endsWith('/') ? '#79c0ff' : '#e6edf3'};
+              font-weight:${t.highlight ? '700' : '400'};">${t.name}</span>
+            ${t.tag ? `<span style="font-family:'Courier New',monospace;font-size:14px;
+              color:#28c840;margin-left:8px;font-weight:700;">${t.tag}</span>` : ''}
+          </div>`).join("")}
+        </div>
+      </div>
+
     </div>`;
 
     return `
