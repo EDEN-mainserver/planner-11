@@ -480,100 +480,43 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
          <div style="position:absolute;inset:0;z-index:0;
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
-    // ── 콘텐츠 시각화 — 실제 내용 기반, 그래프 없음 ──
-    const cardIcons = ['📋', '⚙️', '🔍', '✅', '🚀', '💎'];
-    let contentHtml;
+    // ── 콘텐츠 시각화 — 터미널 명령어 블록 ──
+    // skillBullets = 실제로 쓸 수 있는 명령어/프롬프트 목록
+    // 없으면 summaryText + effectText로 대체
+    const cmdList = skillBullets.length >= 1
+      ? skillBullets
+      : [summaryText, effectText].filter((t, i, a) => t && a.indexOf(t) === i);
 
-    if (skillBullets.length >= 2) {
-      // 스킬 2개 이상: 2열 플로우 카드 (행별로 배치)
-      const rows = [];
-      for (let r = 0; r < skillBullets.length; r += 2) {
-        rows.push(skillBullets.slice(r, r + 2));
-      }
-      contentHtml = `
-      <div style="width:100%;flex:1;min-height:160px;display:flex;flex-direction:column;
-        gap:0;overflow:hidden;margin-bottom:14px;">
-        <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;flex-shrink:0;">핵심 기능</div>
-        <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;">
-          ${rows.map((row, ri) => `
-          <div style="flex:1;display:flex;align-items:stretch;gap:10px;">
-            ${row.map((item, ci) => `
-            <div style="flex:1;background:#f7f6ff;border:1.5px solid rgba(${accentRgb},.18);
-              border-radius:12px;padding:18px 14px;
-              display:flex;flex-direction:column;align-items:center;justify-content:center;
-              text-align:center;overflow:hidden;">
-              <div style="font-size:26px;margin-bottom:8px;">${cardIcons[ri * 2 + ci] || '⚡'}</div>
-              <div style="font-size:17px;font-weight:700;color:#222;
-                word-break:keep-all;line-height:1.35;">${esc(item)}</div>
-            </div>`).join(`
-            <div style="display:flex;align-items:center;flex-shrink:0;padding:0 2px;">
-              <div style="font-size:18px;color:rgba(${accentRgb},.7);font-weight:900;">→</div>
-            </div>`)}
-          </div>`).join("")}
-        </div>
-      </div>`;
-
-    } else if (skillBullets.length === 1) {
-      // 스킬 1개: 단독 강조 카드 + 이전/이후
-      contentHtml = `
-      <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;
-        overflow:hidden;margin-bottom:14px;">
-        <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;flex-shrink:0;">핵심 기능</div>
-        <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;">
-          <div style="flex:1;background:#f7f6ff;border:1.5px solid rgba(${accentRgb},.18);
-            border-radius:12px;padding:18px 24px;
-            display:flex;flex-direction:column;align-items:center;justify-content:center;
-            text-align:center;overflow:hidden;">
-            <div style="font-size:30px;margin-bottom:10px;">⚙️</div>
-            <div style="font-size:20px;font-weight:700;color:#222;word-break:keep-all;line-height:1.4;">${esc(skillBullets[0])}</div>
+    const contentHtml = `
+    <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;
+      overflow:hidden;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-shrink:0;">
+        <div style="font-size:20px;font-weight:700;color:#222;">⌨️ 바로 입력해보세요</div>
+        <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;
+          padding:4px 12px;border-radius:6px;white-space:nowrap;">Claude Code / 터미널</div>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;">
+        ${cmdList.map((cmd, i) => `
+        <div style="flex:1;background:#0d1117;border-radius:12px;padding:0;
+          overflow:hidden;display:flex;flex-direction:column;min-height:0;">
+          <div style="height:32px;background:#161b22;display:flex;align-items:center;
+            padding:0 14px;gap:8px;flex-shrink:0;">
+            <div style="width:10px;height:10px;border-radius:50%;background:#ff5f57;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#febc2e;"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#28c840;"></div>
+            <div style="margin-left:6px;font-size:13px;color:#6e7681;font-family:'Courier New',monospace;">
+              prompt ${i + 1}</div>
           </div>
-          <div style="flex:1;display:flex;align-items:stretch;gap:10px;">
-            <div style="flex:1;background:#fff0f0;border:1.5px solid #ffcdd2;border-radius:12px;
-              padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
-              <div style="font-size:16px;font-weight:700;color:#c44;margin-bottom:6px;">❌ 이전</div>
-              <div style="font-size:16px;color:#555;word-break:keep-all;line-height:1.4;">수동 반복 작업</div>
-            </div>
-            <div style="display:flex;align-items:center;flex-shrink:0;padding:0 4px;">
-              <div style="font-size:20px;color:rgba(${accentRgb},.8);font-weight:900;">→</div>
-            </div>
-            <div style="flex:1;background:#f0fff0;border:1.5px solid #b2dfdb;border-radius:12px;
-              padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
-              <div style="font-size:16px;font-weight:700;color:#2a7a3b;margin-bottom:6px;">✅ 이후</div>
-              <div style="font-size:16px;color:#555;word-break:keep-all;line-height:1.4;">${esc(effectText.slice(0, 22))}</div>
-            </div>
+          <div style="flex:1;padding:14px 18px;display:flex;align-items:center;gap:10px;overflow:hidden;">
+            <span style="color:#28c840;font-size:18px;font-weight:900;font-family:'Courier New',monospace;
+              flex-shrink:0;">$</span>
+            <div style="font-size:18px;font-weight:600;color:#e6edf3;
+              font-family:'Courier New',monospace;line-height:1.5;
+              word-break:break-all;overflow:hidden;">${esc(cmd)}</div>
           </div>
-        </div>
-      </div>`;
-
-    } else {
-      // 스킬 없음: 이전 vs 이후 비교 패널 (effectText 사용)
-      contentHtml = `
-      <div style="width:100%;flex:1;min-height:220px;display:flex;flex-direction:column;
-        overflow:hidden;margin-bottom:14px;">
-        <div style="font-size:20px;font-weight:700;color:#222;margin-bottom:12px;flex-shrink:0;">이전 vs 이후</div>
-        <div style="flex:1;min-height:0;display:flex;align-items:stretch;gap:14px;overflow:hidden;">
-          <div style="flex:1;background:#fff0f0;border:1.5px solid #ffcdd2;border-radius:14px;
-            padding:24px 20px;display:flex;flex-direction:column;
-            align-items:center;justify-content:center;text-align:center;overflow:hidden;">
-            <div style="font-size:20px;font-weight:700;color:#c44;margin-bottom:12px;">❌ 이전</div>
-            <div style="font-size:20px;color:#555;line-height:1.55;word-break:keep-all;">
-              혼자 처리하는<br>비효율적인 방식
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;flex-shrink:0;padding:0 4px;">
-            <div style="font-size:28px;color:rgba(${accentRgb},1);font-weight:900;">→</div>
-          </div>
-          <div style="flex:1;background:#f0fff0;border:1.5px solid #b2dfdb;border-radius:14px;
-            padding:24px 20px;display:flex;flex-direction:column;
-            align-items:center;justify-content:center;text-align:center;overflow:hidden;">
-            <div style="font-size:20px;font-weight:700;color:#2a7a3b;margin-bottom:12px;">✅ 이후</div>
-            <div style="font-size:20px;color:#333;line-height:1.55;word-break:keep-all;font-weight:500;">
-              ${esc(effectText)}
-            </div>
-          </div>
-        </div>
-      </div>`;
-    }
+        </div>`).join("")}
+      </div>
+    </div>`;
 
     return `
 <div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080814;
