@@ -673,7 +673,6 @@ function SocialTab() {
 function AiApiTab() {
   // 저장된 키 목록 (배열). 없으면 빈 배열.
   const [keys, setKeys] = useState(() => loadAiKeys());
-  const [saved, setSaved] = useState(false);
   // 추가 패널: null | 'pick' (프리셋 선택) | 'custom' (직접 입력)
   const [addMode, setAddMode] = useState(null);
   const [customForm, setCustomForm] = useState({ id: '', name: '', apiKey: '', model: '' });
@@ -684,18 +683,26 @@ function AiApiTab() {
   const availablePresets = PRESET_PROVIDERS.filter(p => !configuredIds.includes(p.id));
 
   const update = (id, field, value) => {
-    setKeys(prev => prev.map(k => k.id === id ? { ...k, [field]: value } : k));
+    setKeys(prev => {
+      const next = prev.map(k => k.id === id ? { ...k, [field]: value } : k);
+      saveAiKeys(next);
+      return next;
+    });
   };
 
   const addPreset = (preset) => {
-    setKeys(prev => [...prev, {
-      id: preset.id,
-      name: preset.name,
-      apiKey: '',
-      model: preset.defaultModel,
-      enabled: true,
-      custom: false,
-    }]);
+    setKeys(prev => {
+      const next = [...prev, {
+        id: preset.id,
+        name: preset.name,
+        apiKey: '',
+        model: preset.defaultModel,
+        enabled: true,
+        custom: false,
+      }];
+      saveAiKeys(next);
+      return next;
+    });
     setAddMode(null);
   };
 
@@ -703,27 +710,29 @@ function AiApiTab() {
     const id = customForm.id.trim() || `custom_${Date.now()}`;
     if (keys.some(k => k.id === id)) { alert('이미 존재하는 ID입니다'); return; }
     if (!customForm.name.trim()) { alert('이름을 입력하세요'); return; }
-    setKeys(prev => [...prev, {
-      id,
-      name: customForm.name.trim(),
-      apiKey: customForm.apiKey,
-      model: customForm.model,
-      enabled: true,
-      custom: true,
-    }]);
+    setKeys(prev => {
+      const next = [...prev, {
+        id,
+        name: customForm.name.trim(),
+        apiKey: customForm.apiKey,
+        model: customForm.model,
+        enabled: true,
+        custom: true,
+      }];
+      saveAiKeys(next);
+      return next;
+    });
     setCustomForm({ id: '', name: '', apiKey: '', model: '' });
     setAddMode(null);
   };
 
   const remove = (id) => {
     if (!confirm('이 프로바이더를 삭제할까요?')) return;
-    setKeys(prev => prev.filter(k => k.id !== id));
-  };
-
-  const handleSave = () => {
-    saveAiKeys(keys);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setKeys(prev => {
+      const next = prev.filter(k => k.id !== id);
+      saveAiKeys(next);
+      return next;
+    });
   };
 
   return (
@@ -732,30 +741,17 @@ function AiApiTab() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-bold text-gray-800">AI API 키</h3>
-          <p className="text-xs text-gray-400 mt-0.5">설정된 키는 대시보드 전체에서 자동으로 사용됩니다</p>
+          <p className="text-xs text-gray-400 mt-0.5">키 입력 즉시 자동 저장 · 대시보드 전체 AI 기능에 바로 적용</p>
         </div>
-        <div className="flex items-center gap-2">
-          {saved && (
-            <span className="text-xs text-green-600 font-medium bg-green-50 border border-green-200 rounded-lg px-2.5 py-1">
-              ✓ 저장 완료
-            </span>
-          )}
-          <button
-            onClick={() => setAddMode(addMode ? null : 'pick')}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-all"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M5 12h14"/><path d="M12 5v14"/>
-            </svg>
-            프로바이더 추가
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700 transition-all"
-          >
-            전체 저장
-          </button>
-        </div>
+        <button
+          onClick={() => setAddMode(addMode ? null : 'pick')}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-all"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M5 12h14"/><path d="M12 5v14"/>
+          </svg>
+          프로바이더 추가
+        </button>
       </div>
 
       {/* 추가 패널 */}
@@ -927,7 +923,7 @@ function AiApiTab() {
       )}
 
       <p className="text-[11px] text-gray-400">
-        🔒 API 키는 브라우저 로컬스토리지에 저장됩니다. Gemini 키는 대시보드 전체 AI 기능에 즉시 적용됩니다.
+        🔒 API 키는 브라우저 로컬스토리지에 저장됩니다. 입력 즉시 자동 저장되며 새로고침 후에도 유지됩니다.
       </p>
     </div>
   );

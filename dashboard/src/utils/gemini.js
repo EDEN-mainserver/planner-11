@@ -1,8 +1,12 @@
 // Gemini API 호출 — localStorage(관리자 AI API 키) > VITE_GEMINI_API_KEY > 서버 함수 순서로 호출
-import { getApiKey } from './aiKeys';
+import { getApiKey, getModel } from './aiKeys';
 
 function getGeminiKey() {
   return getApiKey('gemini') || import.meta.env.VITE_GEMINI_API_KEY || '';
+}
+
+function getGeminiModel() {
+  return getModel('gemini') || 'gemini-2.5-pro';
 }
 
 // 브라우저 사이드 이미지 → base64 변환 (CORS 허용 이미지에만 동작)
@@ -27,7 +31,8 @@ export async function callGemini(history, systemPrompt) {
   const GEMINI_KEY = getGeminiKey();
   // API 키가 있으면 직접 Google API 호출
   if (GEMINI_KEY) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
+    const model = getGeminiModel();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
     const contents = await Promise.all(history.map(async m => {
       const parts = [{ text: m.content }];
       // 인라인 이미지 (업로드 base64)
