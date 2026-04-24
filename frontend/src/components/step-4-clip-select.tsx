@@ -4,11 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import type { AnalyzeResponse } from "@/lib/api";
+import type { Clip } from "@/lib/api";
 import { Zap, ListChecks, ArrowRight, ArrowLeft, Clock, Star } from "lucide-react";
 
 interface Props {
-  result: AnalyzeResponse;
+  result: { clips: Clip[]; total_subtitles: number };
   selectedIndices: number[];
   onSelectedChange: (indices: number[]) => void;
   mode: "quick" | "detail";
@@ -55,7 +55,6 @@ export function StepClipSelect({
 
   return (
     <div className="space-y-6 mt-4">
-      {/* Mode Toggle */}
       <div className="flex gap-3">
         <Button
           variant={mode === "quick" ? "default" : "outline"}
@@ -80,7 +79,6 @@ export function StepClipSelect({
         </Button>
       </div>
 
-      {/* Clip List */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -160,7 +158,7 @@ export function StepClipSelect({
           disabled={selectedIndices.length === 0}
           className="flex-1"
         >
-          다음: 자막 스타일
+          다음: 드래프트 생성
           <ArrowRight className="w-4 h-4 ml-2" />
         </Button>
       </div>

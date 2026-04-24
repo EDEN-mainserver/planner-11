@@ -7,7 +7,7 @@ import { StepAnalysis } from "@/components/step-3-analysis";
 import { StepClipSelect } from "@/components/step-4-clip-select";
 import { StepGenerate } from "@/components/step-5-generate";
 import { StepResult } from "@/components/step-6-result";
-import type { PrepareResponse, AnalyzeResponse, GenerateResponse } from "@/lib/api";
+import type { Clip, SubtitleEntry } from "@/lib/api";
 import {
   Scissors, Upload, FileText, Brain, ListChecks, Settings, Download,
 } from "lucide-react";
@@ -29,11 +29,11 @@ export default function Home() {
   const [inputType, setInputType] = useState<"local" | "youtube">("local");
 
   // Step 2
-  const [srtPath, setSrtPath] = useState("");
-  const [prepareResult, setPrepareResult] = useState<PrepareResponse | null>(null);
+  const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
+  const [subtitleText, setSubtitleText] = useState("");
 
   // Step 3
-  const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse | null>(null);
+  const [clips, setClips] = useState<Clip[]>([]);
 
   // Step 4
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
@@ -41,18 +41,16 @@ export default function Home() {
 
   // Step 5
   const [cropVertical, setCropVertical] = useState(false);
-
-  // Step 6
-  const [generateResult, setGenerateResult] = useState<GenerateResponse | null>(null);
+  const [generatedDrafts, setGeneratedDrafts] = useState<{ name: string; content: object }[]>([]);
 
   const handleReset = () => {
     setStep(0);
     setVideoInput("");
-    setSrtPath("");
-    setPrepareResult(null);
-    setAnalysisResult(null);
+    setSubtitles([]);
+    setSubtitleText("");
+    setClips([]);
     setSelectedIndices([]);
-    setGenerateResult(null);
+    setGeneratedDrafts([]);
   };
 
   return (
@@ -116,32 +114,31 @@ export default function Home() {
           <StepSubtitle
             videoInput={videoInput}
             inputType={inputType}
-            srtPath={srtPath}
-            onSrtPathChange={setSrtPath}
-            onPrepared={(result) => {
-              setPrepareResult(result);
+            onSubtitleReady={(subs, text) => {
+              setSubtitles(subs);
+              setSubtitleText(text);
               setStep(2);
             }}
             onBack={() => setStep(0)}
           />
         )}
 
-        {step === 2 && prepareResult && (
+        {step === 2 && (
           <StepAnalysis
-            sessionId={prepareResult.session_id}
-            prepareResult={prepareResult}
+            subtitleText={subtitleText}
+            totalSubtitles={subtitles.length}
             onAnalyzed={(result) => {
-              setAnalysisResult(result);
-              setSelectedIndices(result.clips.map((_, i) => i));
+              setClips(result);
+              setSelectedIndices(result.map((_: Clip, i: number) => i));
               setStep(3);
             }}
             onBack={() => setStep(1)}
           />
         )}
 
-        {step === 3 && analysisResult && (
+        {step === 3 && (
           <StepClipSelect
-            result={analysisResult}
+            result={{ clips, total_subtitles: subtitles.length }}
             selectedIndices={selectedIndices}
             onSelectedChange={setSelectedIndices}
             mode={mode}
@@ -151,24 +148,25 @@ export default function Home() {
           />
         )}
 
-        {step === 4 && analysisResult && (
+        {step === 4 && (
           <StepGenerate
-            sessionId={analysisResult.session_id}
+            videoInput={videoInput}
+            clips={clips}
             selectedIndices={selectedIndices}
             mode={mode}
             cropVertical={cropVertical}
             onCropChange={setCropVertical}
-            onGenerated={(result) => {
-              setGenerateResult(result);
+            onGenerated={(drafts) => {
+              setGeneratedDrafts(drafts);
               setStep(5);
             }}
             onBack={() => setStep(3)}
           />
         )}
 
-        {step === 5 && generateResult && (
+        {step === 5 && (
           <StepResult
-            result={generateResult}
+            drafts={generatedDrafts}
             onReset={handleReset}
           />
         )}

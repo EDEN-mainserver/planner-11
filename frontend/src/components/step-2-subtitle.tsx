@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { prepareVideo, startProgress, getProgress, checkSubtitle, type PrepareResponse } from "@/lib/api";
+import { parseSrt, subtitlesToText, checkSubtitle, type SubtitleEntry } from "@/lib/api";
 import {
   FileText, Mic, ArrowLeft, ArrowRight, Loader2, CheckCircle2,
 } from "lucide-react";
@@ -13,34 +13,23 @@ import {
 interface Props {
   videoInput: string;
   inputType: "local" | "youtube";
-  srtPath: string;
-  onSrtPathChange: (v: string) => void;
-  onPrepared: (result: PrepareResponse) => void;
+  onSubtitleReady: (subtitles: SubtitleEntry[], text: string) => void;
   onBack: () => void;
 }
 
 export function StepSubtitle({
   videoInput,
   inputType,
-  srtPath,
-  onSrtPathChange,
-  onPrepared,
+  onSubtitleReady,
   onBack,
 }: Props) {
-  const [subtitleMode, setSubtitleMode] = useState<"file" | "auto">(
-    srtPath ? "file" : "auto"
-  );
-  const [loading, setLoading] = useState(false);
+  const [srtContent, setSrtContent] = useState("");
   const [error, setError] = useState("");
-  const [statusMsg, setStatusMsg] = useState("");
-  const [progressPercent, setProgressPercent] = useState(0);
   const [subtitleInfo, setSubtitleInfo] = useState<{ checked: boolean; has: boolean; source: string | null }>({
     checked: false, has: false, source: null,
   });
   const [checkingSubtitle, setCheckingSubtitle] = useState(false);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // YouTube URL인 경우 자막 존재 여부를 자동 확인
   useEffect(() => {
     if (inputType === "youtube" && videoInput && !subtitleInfo.checked) {
       setCheckingSubtitle(true);
@@ -51,46 +40,21 @@ export function StepSubtitle({
     }
   }, [inputType, videoInput, subtitleInfo.checked]);
 
-  useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
-
-  const handlePrepare = async () => {
-    setLoading(true);
+  const handleNext = () => {
     setError("");
-    setProgressPercent(0);
-
-    try {
-      const progressId = await startProgress();
-
-      pollingRef.current = setInterval(async () => {
-        const p = await getProgress(progressId);
-        setProgressPercent(p.percent);
-        if (p.message) setStatusMsg(p.message);
-        if (p.stage === "done" || p.stage === "error") {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-        }
-      }, 1000);
-
-      setStatusMsg("준비 시작...");
-
-      const result = await prepareVideo(
-        videoInput,
-        subtitleMode === "file" ? srtPath : "",
-        progressId
-      );
-
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      setProgressPercent(100);
-      onPrepared(result);
-    } catch (e) {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-      setError(e instanceof Error ? e.message : "준비 중 오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
+    if (!srtContent.trim()) {
+      setError("SRT 자막 내용을 붙여넣어주세요.");
+      return;
     }
+
+    const subtitles = parseSrt(srtContent);
+    if (subtitles.length === 0) {
+      setError("유효한 SRT 자막을 파싱하지 못했습니다. 형식을 확인해주세요.");
+      return;
+    }
+
+    const text = subtitlesToText(subtitles);
+    onSubtitleReady(subtitles, text);
   };
 
   return (
@@ -99,101 +63,57 @@ export function StepSubtitle({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            자막 준비 방식
+            자막 입력
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* 자막 모드 선택 */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setSubtitleMode("file")}
-              className={`p-4 rounded-lg border-2 text-center transition-all ${
-                subtitleMode === "file"
-                  ? "border-primary bg-primary/10"
-                  : "border-border/50 hover:border-border"
-              }`}
-            >
-              <FileText className="w-8 h-8 mx-auto mb-2 text-primary" />
-              <div className="font-medium">SRT 파일 직접 입력</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                이미 자막 파일이 있는 경우
-              </div>
-            </button>
-            <button
-              onClick={() => setSubtitleMode("auto")}
-              className={`p-4 rounded-lg border-2 text-center transition-all ${
-                subtitleMode === "auto"
-                  ? "border-primary bg-primary/10"
-                  : "border-border/50 hover:border-border"
-              }`}
-            >
-              <Mic className="w-8 h-8 mx-auto mb-2 text-green-500" />
-              <div className="font-medium">자동 자막</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                YouTube 자막 또는 캡컷 자동자막
-              </div>
-            </button>
+          <div className="space-y-2">
+            <Label>SRT 자막 내용</Label>
+            <Textarea
+              placeholder={`1\n00:00:00,000 --> 00:00:03,000\n첫 번째 자막 내용\n\n2\n00:00:03,000 --> 00:00:06,000\n두 번째 자막 내용`}
+              value={srtContent}
+              onChange={(e) => setSrtContent(e.target.value)}
+              rows={12}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              SRT 파일 내용을 복사해서 붙여넣으세요. YouTube에서 자막을 다운로드하거나, 캡컷에서 자동생성한 자막을 사용할 수 있습니다.
+            </p>
           </div>
 
-          {/* SRT 파일 입력 */}
-          {subtitleMode === "file" && (
-            <div className="space-y-2">
-              <Label htmlFor="srt">SRT 파일 경로</Label>
-              <Input
-                id="srt"
-                placeholder="/Users/you/Videos/my_video.srt"
-                value={srtPath}
-                onChange={(e) => onSrtPathChange(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* 자동 자막 안내 */}
-          {subtitleMode === "auto" && (
-            <div className="space-y-2">
-              {inputType === "youtube" && (
-                <div className={`p-3 rounded-lg border text-sm flex items-center gap-2 ${
-                  checkingSubtitle
-                    ? "bg-muted/50 border-border/50 text-muted-foreground"
-                    : subtitleInfo.has
-                      ? "bg-green-500/10 border-green-500/30 text-green-400"
-                      : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"
-                }`}>
-                  {checkingSubtitle ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      YouTube 자막 확인 중...
-                    </>
-                  ) : subtitleInfo.has ? (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      <div>
-                        <span className="font-medium">{subtitleInfo.source} 자막이 존재합니다</span>
-                        <span className="block text-xs opacity-70 mt-0.5">
-                          자동으로 자막을 가져옵니다
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-4 h-4" />
-                      <div>
-                        <span className="font-medium">YouTube 자막이 없습니다</span>
-                        <span className="block text-xs opacity-70 mt-0.5">
-                          캡컷에서 자동자막을 생성할 수 있습니다
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-              {inputType === "local" && (
-                <div className="p-3 rounded-lg border border-blue-500/30 bg-blue-500/10 text-sm text-blue-400">
-                  <span className="font-medium">캡컷 자동자막 사용</span>
-                  <span className="block text-xs opacity-70 mt-0.5">
-                    캡컷에서 드래프트를 열면 자동자막 기능을 사용할 수 있습니다
-                  </span>
-                </div>
+          {inputType === "youtube" && (
+            <div className={`p-3 rounded-lg border text-sm flex items-center gap-2 ${
+              checkingSubtitle
+                ? "bg-muted/50 border-border/50 text-muted-foreground"
+                : subtitleInfo.has
+                  ? "bg-green-500/10 border-green-500/30 text-green-400"
+                  : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"
+            }`}>
+              {checkingSubtitle ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  YouTube 영상 확인 중...
+                </>
+              ) : subtitleInfo.has ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <div>
+                    <span className="font-medium">유효한 YouTube 영상입니다</span>
+                    <span className="block text-xs opacity-70 mt-0.5">
+                      YouTube에서 자막을 다운로드하여 위에 붙여넣으세요
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Mic className="w-4 h-4" />
+                  <div>
+                    <span className="font-medium">캡컷 자동자막을 활용하세요</span>
+                    <span className="block text-xs opacity-70 mt-0.5">
+                      캡컷에서 자동자막 생성 후 SRT로 내보내서 붙여넣으세요
+                    </span>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -206,24 +126,6 @@ export function StepSubtitle({
         </div>
       )}
 
-      {loading && (
-        <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm space-y-3">
-          <div className="flex items-center gap-2 text-blue-400">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {statusMsg || "준비 중..."}
-          </div>
-          <div className="w-full bg-blue-500/20 rounded-full h-3 overflow-hidden">
-            <div
-              className="bg-blue-500 h-3 rounded-full transition-all duration-500"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-          <div className="text-right text-xs text-blue-400/70 font-mono">
-            {progressPercent}%
-          </div>
-        </div>
-      )}
-
       <div className="flex gap-3">
         <Button variant="outline" onClick={onBack} className="flex-1">
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -231,20 +133,11 @@ export function StepSubtitle({
         </Button>
         <Button
           className="flex-1"
-          onClick={handlePrepare}
-          disabled={loading || (subtitleMode === "file" && !srtPath)}
+          onClick={handleNext}
+          disabled={!srtContent.trim()}
         >
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              준비 중...
-            </>
-          ) : (
-            <>
-              다음: AI 분석
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </>
-          )}
+          다음: AI 분석
+          <ArrowRight className="w-4 h-4 ml-2" />
         </Button>
       </div>
     </div>

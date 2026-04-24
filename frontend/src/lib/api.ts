@@ -1,5 +1,3 @@
-const API_BASE = "http://localhost:8000";
-
 export interface Clip {
   title: string;
   start_time: string;
@@ -10,200 +8,192 @@ export interface Clip {
   category: string;
 }
 
-export interface PrepareResponse {
-  session_id: string;
-  video_path: string;
-  srt_path: string | null;
-  youtube_title: string | null;
-  subtitle_mode: string;
-}
-
 export interface AnalyzeResponse {
-  session_id: string;
   clips: Clip[];
-  total_subtitles: number;
 }
 
-export interface GenerateResponse {
-  session_id: string;
-  generated: number;
-  draft_names: string[];
-  output_dir: string;
-  installed_to_capcut: boolean;
-  capcut_paths: string[];
+export interface SubtitleEntry {
+  index: number;
+  start: string;
+  end: string;
+  start_seconds: number;
+  end_seconds: number;
+  text: string;
 }
 
 export interface SubtitleCheck {
   has_subtitle: boolean;
   source: string | null;
+  title?: string;
+  valid?: boolean;
 }
 
+// SRT 파싱 (브라우저에서 처리)
+export function parseSrt(srtContent: string): SubtitleEntry[] {
+  const blocks = srtContent.trim().split(/\n\s*\n/);
+  const entries: SubtitleEntry[] = [];
+
+  for (const block of blocks) {
+    const lines = block.trim().split("\n");
+    if (lines.length < 3) continue;
+
+    const index = parseInt(lines[0]);
+    if (isNaN(index)) continue;
+
+    const timeParts = lines[1].split(" --> ");
+    if (timeParts.length !== 2) continue;
+
+    const start = timeParts[0].trim();
+    const end = timeParts[1].trim();
+    const text = lines.slice(2).join(" ").trim();
+
+    entries.push({
+      index,
+      start,
+      end,
+      start_seconds: timeToSeconds(start),
+      end_seconds: timeToSeconds(end),
+      text,
+    });
+  }
+
+  return entries;
+}
+
+function timeToSeconds(time: string): number {
+  const parts = time.replace(",", ".").split(":");
+  const h = parseInt(parts[0]);
+  const m = parseInt(parts[1]);
+  const s = parseFloat(parts[2]);
+  return h * 3600 + m * 60 + s;
+}
+
+export function subtitlesToText(subtitles: SubtitleEntry[]): string {
+  return subtitles.map((s) => `[${s.start} --> ${s.end}] ${s.text}`).join("\n");
+}
+
+// YouTube 자막 확인
 export async function checkSubtitle(url: string): Promise<SubtitleCheck> {
   try {
-    const res = await fetch(`${API_BASE}/api/check-subtitle?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`/api/check-subtitle?url=${encodeURIComponent(url)}`);
     return res.json();
   } catch {
     return { has_subtitle: false, source: null };
   }
 }
 
-export async function startProgress(): Promise<string> {
-  const res = await fetch(`${API_BASE}/api/progress/start`, { method: "POST" });
-  const data = await res.json();
-  return data.progress_id;
-}
-
-export async function prepareVideo(
-  videoInput: string,
-  srtPath: string = "",
-  progressId: string = ""
-): Promise<PrepareResponse> {
-  const form = new FormData();
-  form.append("video_input", videoInput);
-  form.append("srt_path", srtPath);
-  if (progressId) form.append("progress_id", progressId);
-
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}/api/prepare`, {
-      method: "POST",
-      body: form,
-    });
-  } catch {
-    throw new Error("서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.");
-  }
-
-  if (!res.ok) {
-    let detail = "준비 실패";
-    try {
-      const err = await res.json();
-      detail = err.detail || detail;
-    } catch {
-      detail = `서버 오류 (${res.status})`;
-    }
-    throw new Error(detail);
-  }
-
-  const startData = await res.json();
-  const pid = startData.progress_id || progressId;
-
-  // 폴링으로 완료 대기
-  return new Promise((resolve, reject) => {
-    const poll = setInterval(async () => {
-      try {
-        const p = await getProgress(pid);
-        if (p.stage === "done") {
-          clearInterval(poll);
-          const fullRes = await fetch(`${API_BASE}/api/progress/${pid}`);
-          const fullData = await fullRes.json();
-          if (fullData.result) {
-            resolve(fullData.result as PrepareResponse);
-          } else {
-            resolve({
-              session_id: pid,
-              video_path: "",
-              srt_path: null,
-              youtube_title: null,
-              subtitle_mode: "capcut_auto",
-            });
-          }
-        } else if (p.stage === "error") {
-          clearInterval(poll);
-          reject(new Error(p.message || "준비 중 오류가 발생했습니다."));
-        }
-      } catch {
-        // 폴링 실패는 무시
-      }
-    }, 1500);
-  });
-}
-
-export async function analyzeVideo(
-  sessionId: string,
+// AI 분석 (Next.js API route → Claude)
+export async function analyzeSubtitles(
+  subtitleText: string,
   numClips: number = 5,
   customPrompt: string = "",
   clipDuration: number = 60
 ): Promise<AnalyzeResponse> {
-  const form = new FormData();
-  form.append("session_id", sessionId);
-  form.append("num_clips", numClips.toString());
-  form.append("custom_prompt", customPrompt);
-  form.append("clip_duration", clipDuration.toString());
-
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}/api/analyze`, {
-      method: "POST",
-      body: form,
-    });
-  } catch {
-    throw new Error("서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.");
-  }
+  const res = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subtitleText, numClips, customPrompt, clipDuration }),
+  });
 
   if (!res.ok) {
-    let detail = "분석 실패";
-    try {
-      const err = await res.json();
-      detail = err.detail || detail;
-    } catch {
-      detail = `서버 오류 (${res.status})`;
-    }
-    throw new Error(detail);
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "AI 분석 실패");
   }
+
   return res.json();
 }
 
-export async function generateDrafts(
-  sessionId: string,
-  selectedIndices: string = "all",
-  cropVertical: boolean = false,
-  includeSubtitles: boolean = false,
-  draftMode: string = "individual",
-  installToCapcut: boolean = true,
-): Promise<GenerateResponse> {
-  const form = new FormData();
-  form.append("session_id", sessionId);
-  form.append("selected_indices", selectedIndices);
-  form.append("crop_vertical", cropVertical.toString());
-  form.append("include_subtitles", includeSubtitles.toString());
-  form.append("draft_mode", draftMode);
-  form.append("install_to_capcut", installToCapcut.toString());
+// 캡컷 드래프트 JSON 생성 (브라우저에서 처리)
+export function generateCapcutDraftJson(
+  videoPath: string,
+  clips: Clip[],
+  vertical: boolean = false,
+): { name: string; content: object }[] {
+  const drafts: { name: string; content: object }[] = [];
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}/api/generate`, {
-      method: "POST",
-      body: form,
-    });
-  } catch {
-    throw new Error("서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.");
+  for (let i = 0; i < clips.length; i++) {
+    const clip = clips[i];
+    const startSec = parseTimeToSeconds(clip.start_time);
+    const endSec = parseTimeToSeconds(clip.end_time);
+    const duration = endSec - startSec;
+
+    const safeTitle = clip.title.replace(/[^a-zA-Z0-9가-힣 _-]/g, "_").slice(0, 30);
+    const draftName = `${String(i + 1).padStart(2, "0")}_${safeTitle}`;
+
+    // 캡컷 드래프트 JSON 구조 (간략화)
+    const draftContent = {
+      canvas_config: {
+        width: vertical ? 1080 : 1920,
+        height: vertical ? 1920 : 1080,
+        ratio: vertical ? "9:16" : "16:9",
+      },
+      duration: Math.round(duration * 1000000), // microseconds
+      tracks: [
+        {
+          type: "video",
+          segments: [
+            {
+              material_id: "main_video",
+              target_timerange: {
+                start: 0,
+                duration: Math.round(duration * 1000000),
+              },
+              source_timerange: {
+                start: Math.round(startSec * 1000000),
+                duration: Math.round(duration * 1000000),
+              },
+            },
+          ],
+        },
+      ],
+      materials: {
+        videos: [
+          {
+            id: "main_video",
+            path: videoPath,
+            duration: Math.round(duration * 1000000),
+          },
+        ],
+      },
+      clip_info: {
+        title: clip.title,
+        start_time: clip.start_time,
+        end_time: clip.end_time,
+        reason: clip.reason,
+        hook: clip.hook,
+        virality_score: clip.virality_score,
+        category: clip.category,
+      },
+    };
+
+    drafts.push({ name: draftName, content: draftContent });
   }
 
-  if (!res.ok) {
-    let detail = "생성 실패";
-    try {
-      const err = await res.json();
-      detail = err.detail || detail;
-    } catch {
-      detail = `서버 오류 (${res.status})`;
-    }
-    throw new Error(detail);
-  }
-  return res.json();
+  return drafts;
 }
 
-export interface ProgressInfo {
-  stage: string;
-  percent: number;
-  message: string;
-  result?: PrepareResponse;
+function parseTimeToSeconds(time: string): number {
+  const t = time.replace(",", ".");
+  const parts = t.split(":");
+  return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
 }
 
-export async function getProgress(sessionId: string): Promise<ProgressInfo> {
-  try {
-    const res = await fetch(`${API_BASE}/api/progress/${sessionId}`);
-    return res.json();
-  } catch {
-    return { stage: "idle", percent: 0, message: "" };
-  }
+// 드래프트를 JSON 파일로 다운로드
+export function downloadDraftAsJson(drafts: { name: string; content: object }[]) {
+  const allData = {
+    version: "longshot_v2",
+    generated_at: new Date().toISOString(),
+    drafts: drafts.map((d) => ({
+      name: d.name,
+      ...d.content,
+    })),
+  };
+
+  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `롱숏_캡컷드래프트_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
