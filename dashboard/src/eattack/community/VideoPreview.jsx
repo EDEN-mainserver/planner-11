@@ -25,61 +25,130 @@ function buildChunks(captions) {
   return chunks;
 }
 
-// ─── 커뮤니티 UI 배경 ────────────────────────────────────────────────────────
+// ─── 커뮤니티 UI 배경 (줍줍썰 스타일) ────────────────────────────────────────
 function hashInt(str, min, max) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
   return min + (Math.abs(h) % (max - min));
 }
 
-function CommunityBg({ bgPreset, titleExcerpt, fontFamily }) {
-  const { site, key } = bgPreset ?? {};
-  const siteName  = site?.name  ?? "커뮤니티";
-  const siteColor = site?.color ?? "#1e6dc8";
+function CommunityBg({ bgPreset, titleExcerpt, bodyText }) {
+  const { key } = bgPreset ?? {};
 
-  const views    = hashInt((key ?? "") + "v", 1200, 18000).toLocaleString();
-  const likes    = hashInt((key ?? "") + "l", 50, 450);
-  const comments = hashInt((key ?? "") + "c", 20, 180);
+  const views = hashInt((key ?? "") + "v", 10000, 200000).toLocaleString();
 
-  const today = new Date();
-  const dateStr = `${today.getFullYear()}.${String(today.getMonth()+1).padStart(2,"0")}.${String(today.getDate()).padStart(2,"0")}`;
+  // 시각적으로 자연스러운 시간 (해시 기반)
+  const hour = String(hashInt((key ?? "") + "h", 10, 23)).padStart(2, "0");
+  const min  = String(hashInt((key ?? "") + "m", 0, 59)).padStart(2, "0");
+  const timeStr = `${hour}:${min}`;
 
   return (
-    <div style={{ position: "absolute", inset: 0, background: "#f0f0f2", overflow: "hidden", fontFamily: "'Noto Sans KR', sans-serif" }}>
+    <div style={{
+      position: "absolute", inset: 0,
+      background: "#ffffff",
+      overflow: "hidden",
+      fontFamily: "'Noto Sans KR', sans-serif",
+    }}>
 
-      {/* 커뮤니티 상단 헤더 */}
-      <div style={{ background: siteColor, height: 46, display: "flex", alignItems: "center", padding: "0 12px", gap: 8 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {[0,1,2].map(i => <div key={i} style={{ width: 20, height: 2.5, background: "rgba(255,255,255,0.9)", borderRadius: 2 }}/>)}
-        </div>
-        <span style={{ color: "white", fontWeight: 800, fontSize: 14, flex: 1, textAlign: "center", letterSpacing: "-0.3px" }}>
-          {siteName}
-        </span>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round">
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      {/* 헤더 — 살구색 */}
+      <div style={{
+        background: "#FFD6C1",
+        height: 50,
+        display: "flex",
+        alignItems: "center",
+        padding: "0 14px",
+        gap: 8,
+      }}>
+        {/* 뒤로가기 */}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
         </svg>
+
+        {/* 로고 박스 */}
+        <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+          <div style={{
+            background: "white",
+            padding: "4px 14px",
+            borderRadius: 8,
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            boxShadow: "0 2px 4px rgba(0,0,0,0.08)",
+          }}>
+            <div style={{
+              width: 15, height: 15,
+              background: "#222",
+              borderRadius: "50%",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <span style={{ color: "white", fontSize: 6, letterSpacing: 1 }}>••</span>
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 13, color: "#000", letterSpacing: "-0.3px" }}>줍줍썰</span>
+          </div>
+        </div>
+
+        {/* 메뉴 버튼 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {[0,1,2].map(i => (
+            <div key={i} style={{ width: 18, height: 2, background: "#333", borderRadius: 2 }}/>
+          ))}
+        </div>
       </div>
 
-      {/* 게시물 카드 — 제목만 */}
-      <div style={{ margin: "8px 8px 4px", background: "white", borderRadius: 10, padding: "10px 12px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-        <div style={{ fontSize: 9, color: "#aaa", marginBottom: 6, display: "flex", gap: 5 }}>
-          <span style={{ color: "#888", fontWeight: 600 }}>익명</span>
-          <span>·</span>
-          <span>{dateStr}</span>
-          <span>·</span>
-          <span>조회 {views}</span>
-        </div>
-        <div style={{ fontSize: 16, fontWeight: 800, color: "#111", lineHeight: 1.4,
-          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+      {/* 본문 영역 */}
+      <div style={{ padding: "14px 16px 0", background: "#fff" }}>
+
+        {/* 게시글 제목 */}
+        <h1 style={{
+          fontSize: 15,
+          fontWeight: 700,
+          marginBottom: 8,
+          letterSpacing: "-0.3px",
+          lineHeight: 1.35,
+          color: "#111",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}>
           {titleExcerpt || "제목 없음"}
+        </h1>
+
+        {/* 메타 정보 */}
+        <div style={{
+          fontSize: 10,
+          color: "#888",
+          paddingBottom: 10,
+          borderBottom: "1px solid #222",
+          display: "flex",
+          gap: 5,
+          alignItems: "center",
+        }}>
+          <span style={{ fontWeight: 600, color: "#555" }}>ㅇㅇ</span>
+          <span>|</span>
+          <span>{timeStr}</span>
+          <span>|</span>
+          <span>조회수 {views}</span>
         </div>
-        <div style={{ marginTop: 7, display: "flex", gap: 10 }}>
-          <span style={{ fontSize: 9, color: "#e03131", fontWeight: 600 }}>👍 {likes}</span>
-          <span style={{ fontSize: 9, color: "#868e96" }}>💬 {comments}</span>
-        </div>
+
+        {/* 본문 한 줄 (훅 문구) */}
+        {bodyText && (
+          <p style={{
+            fontSize: 13,
+            fontWeight: 700,
+            textAlign: "center",
+            marginTop: 10,
+            color: "#000",
+            lineHeight: 1.4,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}>
+            {bodyText}
+          </p>
+        )}
       </div>
-
-
     </div>
   );
 }
@@ -106,6 +175,8 @@ export default function VideoPreview({
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
 
   const titleExcerpt = title?.trim() || script?.trim().slice(0, 60) || "";
+  // 스크립트 첫 문장을 훅 문구로 사용
+  const bodyText = script?.trim().split(/(?<=[.!?。])\s+/)[0]?.slice(0, 50) || "";
 
   // TTS 오디오 설정 + currentMs 동기화
   useEffect(() => {
@@ -225,17 +296,17 @@ export default function VideoPreview({
     <div className="flex flex-col items-center gap-3 w-full">
       {/* 9:16 캔버스 */}
       <div className="relative overflow-hidden rounded-2xl shadow-2xl"
-        style={{ width: 270, height: 480, background: "#f0f0f2", flexShrink: 0 }}>
+        style={{ width: 270, height: 480, background: "#ffffff", flexShrink: 0 }}>
 
         <CommunityBg
           bgPreset={bgPreset}
           titleExcerpt={titleExcerpt}
-          fontFamily={fontFamily}
+          bodyText={bodyText}
         />
 
-        {/* 자막 + GIF — 제목 카드 바로 아래 */}
+        {/* 자막 + GIF — 헤더(50) + 본문영역(~160) 아래 */}
         <div style={{
-          position: "absolute", top: 158, left: 0, right: 0, bottom: 0,
+          position: "absolute", top: 210, left: 0, right: 0, bottom: 0,
           display: "flex", flexDirection: "column", alignItems: "center",
           pointerEvents: "none", padding: "4px 20px 0", gap: 8,
         }}>
