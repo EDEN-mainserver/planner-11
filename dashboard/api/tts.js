@@ -3,11 +3,11 @@
  * POST /api/tts  Body: { text, voiceId, voiceSettings? }
  *
  * 1차: ElevenLabs with-timestamps → 오디오 + 단어별 정확한 타이밍 반환
- * 2차: 크레딧 소진 시 Google AI Studio(Gemini) TTS로 자동 폴백
- *      → 오디오 반환, captions: null (프론트에서 추정 타이밍 사용)
+ * 2차: 크레딧 소진 시 Google TTS + Whisper STT 파이프라인으로 폴백
+ *      Google TTS → WAV 오디오 생성 → Whisper로 단어별 타임스탬프 추출
  */
 
-export const config = { maxDuration: 30 };
+export const config = { maxDuration: 60 }; // Google TTS + Whisper 처리 시간 확보
 
 // ── ElevenLabs 문자 정렬 데이터 → 단어별 타이밍 배열 ──────────────────────────
 function parseWordTimings(alignment) {
@@ -49,48 +49,32 @@ function parseWordTimings(alignment) {
   return words;
 }
 
-// ── ElevenLabs 에러 응답에서 메시지·상태 추출 ────────────────────────────────
+// ── ElevenLabs 에러 파싱 ─────────────────────────────────────────────────────
 function parseElevenLabsError(errBody) {
   const detail = errBody?.detail;
-  // { detail: { status, message } }
   if (detail && typeof detail === "object" && !Array.isArray(detail)) {
     return { status: detail.status ?? "", message: detail.message ?? "" };
   }
-  // { detail: "문자열" }
   if (typeof detail === "string") {
     return { status: "", message: detail };
   }
-  // { detail: [...] } 배열이거나 없는 경우
-  const fallbackMsg = errBody?.message || errBody?.error || "";
-  return { status: "", message: String(fallbackMsg) };
+  return { status: "", message: String(errBody?.message || errBody?.error || "") };
 }
 
-// ── ElevenLabs 크레딧 에러 여부 판별 ─────────────────────────────────────────
 function isCreditError(httpStatus, apiStatus, msg) {
-  // apiStatus로 먼저 판별 (HTTP 상태코드 무관)
   if (apiStatus === "quota_exceeded" || apiStatus === "insufficient_credits") return true;
-  // 401이지만 quota가 아니면 → 진짜 인증 오류이므로 폴백 안 함
   if (httpStatus === 401) return false;
-  if (httpStatus === 402 || httpStatus === 422 || httpStatus === 429) {
-    // 422는 다양한 에러를 포함하므로 메시지도 확인
-    if (httpStatus === 422) {
-      const m = (msg ?? "").toLowerCase();
-      return m.includes("quota") || m.includes("credit") || m.includes("insufficient") || m.includes("character");
-    }
-    return true;
+  if (httpStatus === 402 || httpStatus === 429) return true;
+  if (httpStatus === 422) {
+    const m = (msg ?? "").toLowerCase();
+    return m.includes("quota") || m.includes("credit") || m.includes("insufficient") || m.includes("character");
   }
   const m = (msg ?? "").toLowerCase();
-  return m.includes("quota") || m.includes("credit") || m.includes("insufficient") || m.includes("character");
+  return m.includes("quota") || m.includes("credit") || m.includes("insufficient");
 }
 
-// ── PCM(L16) raw 오디오 → WAV 변환 ──────────────────────────────────────────
-// Gemini TTS는 audio/L16;rate=24000 형태의 raw PCM을 반환하므로 WAV 헤더 추가 필요
-function pcmDurationMs(pcmBase64, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
-  const pcm = Buffer.from(pcmBase64, "base64");
-  return Math.round((pcm.length / (sampleRate * numChannels * (bitsPerSample / 8))) * 1000);
-}
-
-function pcmToWavBase64(pcmBase64, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
+// ── PCM(L16) → WAV 변환 ──────────────────────────────────────────────────────
+function pcmToWavBuffer(pcmBase64, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
   const pcm      = Buffer.from(pcmBase64, "base64");
   const dataSize = pcm.length;
   const wav      = Buffer.alloc(44 + dataSize);
@@ -99,21 +83,21 @@ function pcmToWavBase64(pcmBase64, sampleRate = 24000, numChannels = 1, bitsPerS
   wav.writeUInt32LE(36 + dataSize, 4);
   wav.write("WAVE", 8);
   wav.write("fmt ", 12);
-  wav.writeUInt32LE(16, 16);                                          // fmt chunk 크기
-  wav.writeUInt16LE(1, 20);                                           // PCM = 1
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
   wav.writeUInt16LE(numChannels, 22);
   wav.writeUInt32LE(sampleRate, 24);
-  wav.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), 28); // byte rate
-  wav.writeUInt16LE(numChannels * (bitsPerSample / 8), 32);           // block align
+  wav.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), 28);
+  wav.writeUInt16LE(numChannels * (bitsPerSample / 8), 32);
   wav.writeUInt16LE(bitsPerSample, 34);
   wav.write("data", 36);
   wav.writeUInt32LE(dataSize, 40);
   pcm.copy(wav, 44);
 
-  return wav.toString("base64");
+  return wav;
 }
 
-// ── Google AI Studio (Gemini) TTS 폴백 ───────────────────────────────────────
+// ── Google AI Studio (Gemini) TTS ────────────────────────────────────────────
 async function googleTTS(text, geminiKey) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiKey}`;
 
@@ -125,9 +109,7 @@ async function googleTTS(text, geminiKey) {
       generationConfig: {
         responseModalities: ["AUDIO"],
         speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: "Aoede" },
-          },
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } },
         },
       },
     }),
@@ -139,28 +121,50 @@ async function googleTTS(text, geminiKey) {
   }
 
   const data = await res.json();
-  console.log("[Google TTS] 응답 mimeType:", data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType);
-
   const part = data?.candidates?.[0]?.content?.parts?.[0];
-  if (!part?.inlineData?.data) {
-    throw new Error("Google TTS: 오디오 데이터를 받지 못했습니다.");
-  }
+  if (!part?.inlineData?.data) throw new Error("Google TTS: 오디오 데이터 없음");
 
   const rawMime    = part.inlineData.mimeType ?? "";
   const isPcm      = rawMime.includes("L16") || rawMime.includes("pcm");
   const rateMatch  = rawMime.match(/rate=(\d+)/);
   const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
 
-  // raw PCM → WAV 변환 + 실제 오디오 길이 계산
-  const rawData     = part.inlineData.data;
-  const durationMs  = isPcm ? pcmDurationMs(rawData, sampleRate) : null;
-  const audioBase64 = isPcm ? pcmToWavBase64(rawData, sampleRate) : rawData;
+  // raw PCM → WAV Buffer
+  const wavBuffer = isPcm
+    ? pcmToWavBuffer(part.inlineData.data, sampleRate)
+    : Buffer.from(part.inlineData.data, "base64");
 
-  return {
-    audioBase64,
-    mimeType: "audio/wav",
-    durationMs,   // 프론트에서 비례 자막 분배에 사용
-  };
+  return { wavBuffer };
+}
+
+// ── Whisper STT → 단어별 타임스탬프 ─────────────────────────────────────────
+async function whisperTimestamps(wavBuffer, openaiKey) {
+  // Node.js 18+ FormData + Blob 사용
+  const formData = new FormData();
+  formData.append("file", new Blob([wavBuffer], { type: "audio/wav" }), "audio.wav");
+  formData.append("model", "whisper-1");
+  formData.append("response_format", "verbose_json");
+  formData.append("timestamp_granularities[]", "word");
+  formData.append("language", "ko");
+
+  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${openaiKey}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Whisper 오류 (${res.status})`);
+  }
+
+  const data = await res.json();
+  // data.words = [{ word, start, end }]
+  return (data.words ?? []).map(w => ({
+    text:    w.word,
+    startMs: Math.round(w.start * 1000),
+    endMs:   Math.round(w.end   * 1000),
+  }));
 }
 
 // ── 메인 핸들러 ───────────────────────────────────────────────────────────────
@@ -171,9 +175,10 @@ export default async function handler(req, res) {
 
   const elevenKey = process.env.ELEVENLABS_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
 
   if (!elevenKey) {
-    return res.status(500).json({ error: "ELEVENLABS_API_KEY 환경변수가 설정되지 않았습니다." });
+    return res.status(500).json({ error: "ELEVENLABS_API_KEY 환경변수가 없습니다." });
   }
 
   const { text, voiceId, voiceSettings } = req.body;
@@ -181,16 +186,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "text, voiceId는 필수입니다." });
   }
 
-  // ── 1차: ElevenLabs ──────────────────────────────────────────────────────
+  // ── 1차: ElevenLabs (정확한 단어 타임스탬프 포함) ───────────────────────────
   try {
     const elevenRes = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
       {
         method: "POST",
-        headers: {
-          "xi-api-key":   elevenKey,
-          "Content-Type": "application/json",
-        },
+        headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
           model_id:       "eleven_multilingual_v2",
@@ -209,42 +211,55 @@ export default async function handler(req, res) {
       });
     }
 
-    // 에러 파싱 — 실제 응답 전체 로깅
-    const errBody  = await elevenRes.json().catch(() => ({}));
-    console.log("[TTS] ElevenLabs 오류 응답:", JSON.stringify({ httpStatus: elevenRes.status, body: errBody }));
+    const errBody = await elevenRes.json().catch(() => ({}));
+    console.log("[TTS] ElevenLabs 오류:", JSON.stringify({ httpStatus: elevenRes.status, body: errBody }));
 
     const { status: apiStatus, message: apiMsg } = parseElevenLabsError(errBody);
-    const displayMsg = apiMsg || `ElevenLabs 오류 (${elevenRes.status})`;
-
     if (!isCreditError(elevenRes.status, apiStatus, apiMsg)) {
-      return res.status(elevenRes.status).json({ error: displayMsg });
+      return res.status(elevenRes.status).json({ error: apiMsg || `ElevenLabs 오류 (${elevenRes.status})` });
     }
 
-    // 크레딧 소진 → Google TTS 폴백 시도
-    console.log("[TTS] 크레딧 소진 감지 → Google AI Studio 폴백 (HTTP:", elevenRes.status, "/ apiStatus:", apiStatus, "/ msg:", apiMsg, ")");
-
+    console.log("[TTS] 크레딧 소진 → Google TTS + Whisper 파이프라인 시작");
   } catch (e) {
-    // 네트워크 오류 등 — Google TTS 폴백 시도
-    console.log("[TTS] ElevenLabs 호출 실패, Google AI Studio로 폴백:", e.message);
+    console.log("[TTS] ElevenLabs 네트워크 오류:", e.message);
   }
 
-  // ── 2차: Google AI Studio TTS ────────────────────────────────────────────
+  // ── 2차: Google TTS + Whisper STT 파이프라인 ─────────────────────────────
   if (!geminiKey) {
-    return res.status(402).json({
-      error: "ElevenLabs 크레딧이 소진됐고 GEMINI_API_KEY도 설정되지 않았습니다. Vercel 환경변수를 확인해주세요.",
-    });
+    return res.status(402).json({ error: "ElevenLabs 크레딧 소진 + GEMINI_API_KEY 없음" });
   }
 
   try {
-    const { audioBase64, mimeType } = await googleTTS(text, geminiKey);
+    // Step 1: Google TTS로 WAV 오디오 생성
+    console.log("[TTS] Google TTS 생성 중...");
+    const { wavBuffer } = await googleTTS(text, geminiKey);
+    console.log("[TTS] Google TTS 완료, WAV 크기:", wavBuffer.length, "bytes");
+
+    const audioBase64 = wavBuffer.toString("base64");
+
+    // Step 2: Whisper로 단어 타임스탬프 추출
+    let captions = null;
+    if (openaiKey) {
+      try {
+        console.log("[TTS] Whisper STT 시작...");
+        captions = await whisperTimestamps(wavBuffer, openaiKey);
+        console.log("[TTS] Whisper 완료, 단어 수:", captions.length);
+      } catch (whisperErr) {
+        console.log("[TTS] Whisper 실패:", whisperErr.message);
+        // Whisper 실패 시 captions null → 프론트에서 비례 분배 사용
+      }
+    } else {
+      console.log("[TTS] OPENAI_API_KEY 없음 → 비례 분배 사용");
+    }
+
     return res.status(200).json({
       audioBase64,
-      mimeType,
-      captions: null,       // 단어 타이밍 없음 → 프론트에서 비례 분배
-      durationMs,           // 실제 오디오 길이(ms) → 비례 분배 기준
-      provider: "google",
+      mimeType: "audio/wav",
+      captions,                    // Whisper 성공 시 단어 타임스탬프, 실패 시 null
+      provider: "google+whisper",
     });
+
   } catch (e) {
-    return res.status(500).json({ error: `Google TTS 폴백도 실패했습니다: ${e.message}` });
+    return res.status(500).json({ error: `Google TTS 폴백 실패: ${e.message}` });
   }
 }
