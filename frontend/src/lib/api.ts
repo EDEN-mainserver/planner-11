@@ -72,6 +72,23 @@ export function subtitlesToText(subtitles: SubtitleEntry[]): string {
   return subtitles.map((s) => `[${s.start} --> ${s.end}] ${s.text}`).join("\n");
 }
 
+// Gemini로 YouTube 자막 자동 생성
+export async function transcribeYoutube(youtubeUrl: string): Promise<string> {
+  const res = await fetch("/api/transcribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ youtubeUrl }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "자막 생성 실패");
+  }
+
+  const data = await res.json();
+  return data.srt;
+}
+
 // YouTube 자막 확인
 export async function checkSubtitle(url: string): Promise<SubtitleCheck> {
   try {

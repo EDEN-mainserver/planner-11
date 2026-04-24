@@ -5,9 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { parseSrt, subtitlesToText, checkSubtitle, type SubtitleEntry } from "@/lib/api";
+import { parseSrt, subtitlesToText, checkSubtitle, transcribeYoutube, type SubtitleEntry } from "@/lib/api";
 import {
-  FileText, Mic, ArrowLeft, ArrowRight, Loader2, CheckCircle2,
+  FileText, Sparkles, ArrowLeft, ArrowRight, Loader2, CheckCircle2,
 } from "lucide-react";
 
 interface Props {
@@ -25,6 +25,7 @@ export function StepSubtitle({
 }: Props) {
   const [srtContent, setSrtContent] = useState("");
   const [error, setError] = useState("");
+  const [generating, setGenerating] = useState(false);
   const [subtitleInfo, setSubtitleInfo] = useState<{ checked: boolean; has: boolean; source: string | null }>({
     checked: false, has: false, source: null,
   });
@@ -40,10 +41,23 @@ export function StepSubtitle({
     }
   }, [inputType, videoInput, subtitleInfo.checked]);
 
+  const handleAutoGenerate = async () => {
+    setGenerating(true);
+    setError("");
+    try {
+      const srt = await transcribeYoutube(videoInput);
+      setSrtContent(srt);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "자막 생성에 실패했습니다.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleNext = () => {
     setError("");
     if (!srtContent.trim()) {
-      setError("SRT 자막 내용을 붙여넣어주세요.");
+      setError("SRT 자막 내용을 붙여넣거나 자동 생성해주세요.");
       return;
     }
 
@@ -63,10 +77,46 @@ export function StepSubtitle({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            자막 입력
+            자막 준비
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* AI 자동 생성 버튼 */}
+          {inputType === "youtube" && (
+            <div className="space-y-2">
+              {checkingSubtitle ? (
+                <div className="p-3 rounded-lg border border-gray-200 bg-gray-50 text-sm flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  YouTube 영상 확인 중...
+                </div>
+              ) : subtitleInfo.has ? (
+                <div className="p-3 rounded-lg border border-green-200 bg-green-50 text-sm flex items-center gap-2 text-green-700">
+                  <CheckCircle2 className="w-4 h-4" />
+                  유효한 YouTube 영상입니다
+                </div>
+              ) : null}
+
+              <Button
+                onClick={handleAutoGenerate}
+                disabled={generating}
+                variant="outline"
+                className="w-full"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Gemini AI로 자막 생성 중...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    AI 자동 자막 생성 (Gemini)
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label>SRT 자막 내용</Label>
             <Textarea
@@ -77,51 +127,14 @@ export function StepSubtitle({
               className="font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              SRT 파일 내용을 복사해서 붙여넣으세요. YouTube에서 자막을 다운로드하거나, 캡컷에서 자동생성한 자막을 사용할 수 있습니다.
+              SRT 파일 내용을 복사해서 붙여넣거나, 위 버튼으로 AI 자동 생성하세요
             </p>
           </div>
-
-          {inputType === "youtube" && (
-            <div className={`p-3 rounded-lg border text-sm flex items-center gap-2 ${
-              checkingSubtitle
-                ? "bg-muted/50 border-border/50 text-muted-foreground"
-                : subtitleInfo.has
-                  ? "bg-green-500/10 border-green-500/30 text-green-400"
-                  : "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"
-            }`}>
-              {checkingSubtitle ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  YouTube 영상 확인 중...
-                </>
-              ) : subtitleInfo.has ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  <div>
-                    <span className="font-medium">유효한 YouTube 영상입니다</span>
-                    <span className="block text-xs opacity-70 mt-0.5">
-                      YouTube에서 자막을 다운로드하여 위에 붙여넣으세요
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Mic className="w-4 h-4" />
-                  <div>
-                    <span className="font-medium">캡컷 자동자막을 활용하세요</span>
-                    <span className="block text-xs opacity-70 mt-0.5">
-                      캡컷에서 자동자막 생성 후 SRT로 내보내서 붙여넣으세요
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </CardContent>
       </Card>
 
       {error && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
           {error}
         </div>
       )}
