@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +12,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "자막 텍스트가 필요합니다." }, { status: 400 });
     }
 
-    const systemPrompt = `당신은 숏폼 영상 전문 편집자입니다.
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+    const prompt = `당신은 숏폼 영상 전문 편집자입니다.
 긴 영상의 자막을 분석하여, 숏폼(${clipDuration}초 이내)으로 만들기 좋은 구간을 추천해야 합니다.
 
 추천 기준:
@@ -33,22 +35,16 @@ export async function POST(req: NextRequest) {
     "virality_score": 8,
     "category": "funny|insight|emotional|controversial|informative"
   }
-]`;
+]
 
-    const userMessage = `다음 자막에서 숏폼으로 만들기 좋은 구간을 ${numClips}개 추천해주세요.
+다음 자막에서 숏폼으로 만들기 좋은 구간을 ${numClips}개 추천해주세요.
 ${customPrompt ? `추가 요청: ${customPrompt}` : ""}
 
 자막:
 ${subtitleText}`;
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    });
-
-    let text = response.content[0].type === "text" ? response.content[0].text.trim() : "";
+    const result = await model.generateContent(prompt);
+    let text = result.response.text().trim();
 
     if (text.includes("```json")) {
       text = text.split("```json")[1].split("```")[0].trim();
