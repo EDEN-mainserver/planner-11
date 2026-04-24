@@ -128,18 +128,17 @@ export default function CommunityTab({ nasState, onGoToNas }) {
           confidence:  1,
         }));
         totalMs = (captions[captions.length - 1]?.endMs ?? 0) + 300;
-      } else if (audioDurationMs) {
-        // Google TTS 폴백: 실제 오디오 길이 기반 비례 분배
-        const built = buildProportionalCaptions(script, audioDurationMs);
-        captions = built.captions;
-        totalMs  = built.totalMs;
-        setTtsInfo("ElevenLabs 크레딧 소진 → Google AI Studio로 자동 전환됐습니다.");
       } else {
-        // durationMs 없는 경우 글자수 추정 폴백
+        // Whisper 없이 폴백: 글자수 비례 분배
         const fallback = generateCaptionsFromText(script);
         captions = fallback.captions;
         totalMs  = fallback.totalMs;
-        setTtsInfo("ElevenLabs 크레딧 소진 → Google AI Studio로 자동 전환됐습니다. (타이밍 추정)");
+      }
+
+      if (provider === "openai+whisper") {
+        setTtsInfo("ElevenLabs 크레딧 소진 → OpenAI TTS로 자동 전환됐습니다.");
+      } else if (provider === "google+whisper") {
+        setTtsInfo("ElevenLabs 크레딧 소진 → Google AI Studio TTS로 자동 전환됐습니다.");
       }
 
     } catch (e) {

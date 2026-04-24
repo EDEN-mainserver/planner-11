@@ -97,6 +97,31 @@ function pcmToWavBuffer(pcmBase64, sampleRate = 24000, numChannels = 1, bitsPerS
   return wav;
 }
 
+// ── OpenAI TTS ───────────────────────────────────────────────────────────────
+async function openaiTTS(text, openaiKey) {
+  const res = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openaiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "tts-1",
+      input: text,
+      voice: "nova",            // 한국어 자연스러운 편
+      response_format: "wav",
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `OpenAI TTS 오류 (${res.status})`);
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  return { wavBuffer: Buffer.from(arrayBuffer) };
+}
+
 // ── Google AI Studio (Gemini) TTS ────────────────────────────────────────────
 async function googleTTS(text, geminiKey) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiKey}`;
@@ -224,20 +249,48 @@ export default async function handler(req, res) {
     console.log("[TTS] ElevenLabs 네트워크 오류:", e.message);
   }
 
-  // ── 2차: Google TTS + Whisper STT 파이프라인 ─────────────────────────────
+  // ── 2차: OpenAI TTS + Whisper STT 파이프라인 ────────────────────────────
+  if (openaiKey) {
+    try {
+      console.log("[TTS] OpenAI TTS 생성 중...");
+      const { wavBuffer } = await openaiTTS(text, openaiKey);
+      console.log("[TTS] OpenAI TTS 완료, WAV 크기:", wavBuffer.length, "bytes");
+
+      const audioBase64 = wavBuffer.toString("base64");
+
+      let captions = null;
+      try {
+        console.log("[TTS] Whisper STT 시작...");
+        captions = await whisperTimestamps(wavBuffer, openaiKey);
+        console.log("[TTS] Whisper 완료, 단어 수:", captions.length);
+      } catch (whisperErr) {
+        console.log("[TTS] Whisper 실패:", whisperErr.message);
+      }
+
+      return res.status(200).json({
+        audioBase64,
+        mimeType: "audio/wav",
+        captions,
+        provider: "openai+whisper",
+      });
+    } catch (e) {
+      console.log("[TTS] OpenAI TTS 실패:", e.message);
+      // OpenAI도 실패 시 Google TTS로 시도
+    }
+  }
+
+  // ── 3차: Google TTS + Whisper STT 파이프라인 ─────────────────────────────
   if (!geminiKey) {
-    return res.status(402).json({ error: "ElevenLabs 크레딧 소진 + GEMINI_API_KEY 없음" });
+    return res.status(402).json({ error: "ElevenLabs 크레딧 소진, OpenAI/Google TTS 키 없음" });
   }
 
   try {
-    // Step 1: Google TTS로 WAV 오디오 생성
     console.log("[TTS] Google TTS 생성 중...");
     const { wavBuffer } = await googleTTS(text, geminiKey);
     console.log("[TTS] Google TTS 완료, WAV 크기:", wavBuffer.length, "bytes");
 
     const audioBase64 = wavBuffer.toString("base64");
 
-    // Step 2: Whisper로 단어 타임스탬프 추출
     let captions = null;
     if (openaiKey) {
       try {
@@ -246,16 +299,13 @@ export default async function handler(req, res) {
         console.log("[TTS] Whisper 완료, 단어 수:", captions.length);
       } catch (whisperErr) {
         console.log("[TTS] Whisper 실패:", whisperErr.message);
-        // Whisper 실패 시 captions null → 프론트에서 비례 분배 사용
       }
-    } else {
-      console.log("[TTS] OPENAI_API_KEY 없음 → 비례 분배 사용");
     }
 
     return res.status(200).json({
       audioBase64,
       mimeType: "audio/wav",
-      captions,                    // Whisper 성공 시 단어 타임스탬프, 실패 시 null
+      captions,
       provider: "google+whisper",
     });
 
