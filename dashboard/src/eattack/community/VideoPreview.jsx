@@ -1,54 +1,216 @@
 // 9:16 인앱 영상 프리뷰 컴포넌트
-// 배경영상 + TikTok 스타일 단어 하이라이트 자막 실시간 렌더링
+// 커뮤니티 썰 UI 배경 + 자막 한 문장씩 카드 본문에 실시간 렌더링
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 
-const SWITCH_EVERY_MS = 1500;
+// ─── 2-3단어 단위 자막 빌더 ─────────────────────────────────────────────────
+const WORDS_PER_CHUNK = 3;
 
-function buildPages(captions) {
+function buildChunks(captions) {
   if (!captions || captions.length === 0) return [];
-  const pages = [];
-  let page = null;
+  const chunks = [];
+  let cur = null;
+  let wordCount = 0;
+
   for (const cap of captions) {
-    if (!page || cap.startMs - page.startMs >= SWITCH_EVERY_MS) {
-      page = { startMs: cap.startMs, endMs: cap.endMs, tokens: [] };
-      pages.push(page);
+    if (!cur) {
+      cur = { startMs: cap.startMs, endMs: cap.endMs, text: "" };
+      chunks.push(cur);
+      wordCount = 0;
     }
-    page.tokens.push({ text: cap.text, fromMs: cap.startMs, toMs: cap.endMs });
-    page.endMs = Math.max(page.endMs, cap.endMs);
+    cur.text += cap.text;
+    cur.endMs = Math.max(cur.endMs, cap.endMs);
+    if (cap.text.trim()) wordCount++;
+    if (wordCount >= WORDS_PER_CHUNK) { cur = null; }
   }
-  return pages;
+  return chunks;
 }
 
-export default function VideoPreview({
-  backgroundVideoUrl,
-  captions,
-  highlightColor,
-  fontFamily,
-  captionPos,
-  totalMs,
-}) {
-  const videoRef                          = useRef(null);
-  const intervalRef                       = useRef(null);
-  const [playing, setPlaying]             = useState(false);
-  const [currentMs, setCurrentMs]         = useState(0);
-  const [videoLoaded, setVideoLoaded]     = useState(false);
-  const [videoError, setVideoError]       = useState(false);
+// ─── 커뮤니티 UI 배경 (줍줍썰 스타일) ────────────────────────────────────────
+function hashInt(str, min, max) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+  return min + (Math.abs(h) % (max - min));
+}
 
-  const pages      = useMemo(() => buildPages(captions), [captions]);
+// 배경색 밝기 계산 → 텍스트 색 자동 결정
+function isDark(hex) {
+  const c = hex?.replace("#", "") ?? "ffffff";
+  const r = parseInt(c.slice(0,2), 16);
+  const g = parseInt(c.slice(2,4), 16);
+  const b = parseInt(c.slice(4,6), 16);
+  return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+}
+
+function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName, headerColor, bodyBgColor }) {
+  const { key } = bgPreset ?? {};
+
+  const views = hashInt((key ?? "") + "v", 10000, 200000).toLocaleString();
+
+  // 시각적으로 자연스러운 시간 (해시 기반)
+  const hour = String(hashInt((key ?? "") + "h", 10, 23)).padStart(2, "0");
+  const min  = String(hashInt((key ?? "") + "m", 0, 59)).padStart(2, "0");
+  const timeStr = `${hour}:${min}`;
+
+  const bodyDark    = isDark(bodyBgColor || "#ffffff");
+  const textMain    = bodyDark ? "#ffffff" : "#111111";
+  const textSub     = bodyDark ? "#aaaaaa" : "#888888";
+  const dividerColor = bodyDark ? "#444444" : "#222222";
+
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: bodyBgColor || "#ffffff",
+      overflow: "hidden",
+      fontFamily: "'Noto Sans KR', sans-serif",
+    }}>
+
+      {/* 헤더 */}
+      <div style={{
+        background: headerColor || "#FFD6C1",
+        height: 50,
+        display: "flex",
+        alignItems: "center",
+        padding: "0 14px",
+        gap: 8,
+      }}>
+        {/* 뒤로가기 */}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+
+        {/* 로고 박스 */}
+        <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+          <div style={{
+            background: "white",
+            padding: "4px 14px",
+            borderRadius: 8,
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            boxShadow: "0 2px 4px rgba(0,0,0,0.08)",
+          }}>
+            <div style={{
+              width: 15, height: 15,
+              background: "#222",
+              borderRadius: "50%",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <span style={{ color: "white", fontSize: 6, letterSpacing: 1 }}>••</span>
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 13, color: "#000", letterSpacing: "-0.3px" }}>{siteName || "줍줍썰"}</span>
+          </div>
+        </div>
+
+        {/* 메뉴 버튼 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {[0,1,2].map(i => (
+            <div key={i} style={{ width: 18, height: 2, background: "#333", borderRadius: 2 }}/>
+          ))}
+        </div>
+      </div>
+
+      {/* 본문 영역 */}
+      <div style={{ padding: "14px 16px 0", background: bodyBgColor || "#fff" }}>
+
+        {/* 게시글 제목 */}
+        <h1 style={{
+          fontSize: 15,
+          fontWeight: 700,
+          marginBottom: 8,
+          letterSpacing: "-0.3px",
+          lineHeight: 1.35,
+          color: textMain,
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}>
+          {titleExcerpt || "제목 없음"}
+        </h1>
+
+        {/* 메타 정보 */}
+        <div style={{
+          fontSize: 10,
+          color: textSub,
+          paddingBottom: 10,
+          borderBottom: `1px solid ${dividerColor}`,
+          display: "flex",
+          gap: 5,
+          alignItems: "center",
+        }}>
+          <span style={{ fontWeight: 600, color: textSub }}>ㅇㅇ</span>
+          <span>|</span>
+          <span>{timeStr}</span>
+          <span>|</span>
+          <span>조회수 {views}</span>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ─── 메인 컴포넌트 ───────────────────────────────────────────────────────────
+export default function VideoPreview({
+  bgPreset,
+  title,
+  siteName,
+  headerColor,
+  bodyBgColor,
+  script,
+  audioUrl,
+  captions,
+  fontFamily,
+  totalMs,
+  gifQuery,
+  bgmFile,
+}) {
+  const audioRef    = useRef(null);
+  const bgmRef      = useRef(null);
+  const intervalRef = useRef(null);
+  const [playing, setPlaying]     = useState(false);
+  const [currentMs, setCurrentMs] = useState(0);
+
+  const sentences  = useMemo(() => buildChunks(captions), [captions]);
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
 
-  // 영상 → currentMs 동기화
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const onTime = () => setCurrentMs(video.currentTime * 1000);
-    video.addEventListener("timeupdate", onTime);
-    return () => video.removeEventListener("timeupdate", onTime);
-  }, [videoLoaded]);
+  const titleExcerpt = title?.trim() || script?.trim().slice(0, 60) || "";
+  // 스크립트 첫 문장을 훅 문구로 사용
+  const bodyText = script?.trim().split(/(?<=[.!?。])\s+/)[0]?.slice(0, 50) || "";
 
-  // 영상 실패 시 폴백 타이머 (자막 싱크용)
+  // TTS 오디오 설정 + currentMs 동기화
   useEffect(() => {
-    if (!videoError || !playing) return;
+    if (!audioUrl) { audioRef.current = null; return; }
+    const audio = new Audio(audioUrl);
+    audio.preload = "auto";
+    audioRef.current = audio;
+    const onTime  = () => setCurrentMs(audio.currentTime * 1000);
+    const onEnded = () => { setPlaying(false); setCurrentMs(0); };
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnded);
+    return () => {
+      audio.pause();
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("ended", onEnded);
+      audioRef.current = null;
+    };
+  }, [audioUrl]);
+
+  // BGM 설정 (볼륨 30%, 루프)
+  useEffect(() => {
+    if (!bgmFile) { bgmRef.current = null; return; }
+    const bgm = new Audio(bgmFile);
+    bgm.volume = 0.3;
+    bgmRef.current = bgm;
+    return () => {
+      bgm.pause();
+      bgmRef.current = null;
+    };
+  }, [bgmFile]);
+
+  // 오디오 없을 때 폴백 타이머
+  useEffect(() => {
+    if (audioUrl || !playing) return;
     intervalRef.current = setInterval(() => {
       setCurrentMs(prev => {
         const next = prev + 100;
@@ -57,108 +219,121 @@ export default function VideoPreview({
       });
     }, 100);
     return () => clearInterval(intervalRef.current);
-  }, [videoError, playing, durationMs]);
+  }, [audioUrl, playing, durationMs]);
 
-  const currentPage = useMemo(() => {
+  // 현재 문장 계산
+  const currentSentence = useMemo(() => {
+    if (!sentences.length) return null;
     let found = null;
-    for (const p of pages) {
-      if (currentMs >= p.startMs) found = p;
+    for (const s of sentences) {
+      if (currentMs >= s.startMs) found = s;
       else break;
     }
-    if (found && currentMs <= found.endMs + 400) return found;
+    if (found && currentMs <= found.endMs + 500) return found.text;
     return null;
-  }, [pages, currentMs]);
+  }, [sentences, currentMs]);
+
+  // Klipy GIF — 캐시로 즉시 표시, 새 GIF 로드 완료 후 교체
+  const [gifUrl, setGifUrl] = useState(null);
+  const gifCacheRef = useRef({});
+
+  const fetchAndSetGif = useCallback((q, keepPrevious = false) => {
+    if (!q) return;
+    // 캐시 히트 → 즉시 표시
+    if (gifCacheRef.current[q]) {
+      setGifUrl(gifCacheRef.current[q]);
+      return;
+    }
+    // 캐시 미스 → 이전 GIF 유지하며 로드
+    if (!keepPrevious) setGifUrl(null);
+    let cancelled = false;
+    fetch(`/api/klipy?q=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!cancelled && d?.url) {
+          gifCacheRef.current[q] = d.url;
+          setGifUrl(d.url);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // 초기 GIF (gifQuery 기반)
+  useEffect(() => {
+    if (gifQuery) fetchAndSetGif(gifQuery, false);
+  }, [gifQuery, fetchAndSetGif]);
+
+  // 자막 청크 변경 시 GIF 교체 — 이전 GIF 유지하다가 새 것 로드되면 교체
+  useEffect(() => {
+    if (!currentSentence) { setGifUrl(null); return; }
+    return fetchAndSetGif(currentSentence, true); // keepPrevious=true
+  }, [currentSentence, fetchAndSetGif]);
 
   const togglePlay = useCallback(() => {
-    const video = videoRef.current;
-    if (video && !videoError) {
-      if (playing) {
-        video.pause(); setPlaying(false);
-      } else {
-        video.play().catch(() => { setVideoError(true); setPlaying(true); });
-        setPlaying(true);
-      }
+    const audio = audioRef.current;
+    if (playing) {
+      audio?.pause();
+      bgmRef.current?.pause();
+      setPlaying(false);
     } else {
-      setPlaying(p => !p);
+      audio?.play().catch(e => console.error("[VideoPreview] audio.play() 실패:", e));
+      if (bgmRef.current) {
+        bgmRef.current.currentTime = 0; // 항상 처음부터
+        bgmRef.current.play().catch(e => console.error("[BGM] play 실패:", e));
+      }
+      setPlaying(true);
     }
-  }, [playing, videoError]);
+  }, [playing]);
 
   const handleSeek = useCallback((e) => {
     const ms = Number(e.target.value);
     setCurrentMs(ms);
-    if (videoRef.current && !videoError) videoRef.current.currentTime = ms / 1000;
-  }, [videoError]);
-
-  const captionStyle =
-    captionPos === "bottom"
-      ? { justifyContent: "flex-end", paddingBottom: 72 }
-      : { justifyContent: "center" };
+    if (audioRef.current) audioRef.current.currentTime = ms / 1000;
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-3 w-full">
       {/* 9:16 캔버스 */}
-      <div
-        className="relative overflow-hidden rounded-2xl shadow-2xl"
-        style={{ width: 270, height: 480, background: "#0a0a0a", flexShrink: 0 }}
-      >
-        {!videoError && (
-          <video
-            ref={videoRef}
-            src={backgroundVideoUrl}
-            loop muted playsInline
-            onLoadedData={() => setVideoLoaded(true)}
-            onError={() => setVideoError(true)}
-            style={{
-              position: "absolute", inset: 0,
-              width: "100%", height: "100%",
-              objectFit: "cover",
-              opacity: videoLoaded ? 1 : 0,
-              transition: "opacity 0.4s",
-            }}
-          />
-        )}
+      <div className="relative overflow-hidden rounded-2xl shadow-2xl"
+        style={{ width: 270, height: 480, background: "#ffffff", flexShrink: 0 }}>
 
-        {/* 배경 (영상 로딩 중/실패 폴백) */}
+        <CommunityBg
+          bgPreset={bgPreset}
+          titleExcerpt={titleExcerpt}
+          bodyText={bodyText}
+          siteName={siteName}
+          headerColor={headerColor}
+          bodyBgColor={bodyBgColor}
+        />
+
+        {/* 자막 + GIF — 헤더(50) + 제목/메타(~100) 아래 */}
         <div style={{
-          position: "absolute", inset: 0,
-          background: videoLoaded && !videoError
-            ? "linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0) 80%)"
-            : "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
-          transition: "background 0.4s",
-        }} />
-
-        {!videoLoaded && !videoError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <svg className="animate-spin text-white/40" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-            </svg>
-            <p className="text-white/30 text-[10px]">배경 로딩 중…</p>
-          </div>
-        )}
-
-        {/* 자막 */}
-        <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", flexDirection: "column",
-          alignItems: "center", padding: "0 14px",
-          pointerEvents: "none",
-          ...captionStyle,
+          position: "absolute", top: 148, left: 0, right: 0, bottom: 0,
+          display: "flex", flexDirection: "column", alignItems: "center",
+          pointerEvents: "none", padding: "4px 20px 0", gap: 8,
         }}>
-          {currentPage && (
-            <div style={{ background: "rgba(0,0,0,0.5)", borderRadius: 10, padding: "9px 14px", maxWidth: "92%", textAlign: "center" }}>
-              <p style={{ fontFamily, fontSize: 19, fontWeight: 900, lineHeight: 1.35, margin: 0, whiteSpace: "pre-wrap" }}>
-                {currentPage.tokens.map((token, i) => {
-                  const isActive = token.fromMs <= currentMs && token.toMs > currentMs;
-                  return (
-                    <span key={i} style={{
-                      color: isActive ? highlightColor : "#ffffff",
-                      textShadow: "-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000",
-                      transition: "color 0.05s",
-                    }}>{token.text}</span>
-                  );
-                })}
-              </p>
-            </div>
+          {currentSentence && (
+            <p style={{
+              fontFamily: fontFamily ?? "'Noto Sans KR', sans-serif",
+              fontSize: 13, fontWeight: 700, color: "#111",
+              textAlign: "center", margin: 0, lineHeight: 1.5,
+              flexShrink: 0,
+            }}>
+              {currentSentence}
+            </p>
+          )}
+
+          {/* Klipy GIF — 하단 바와 겹치지 않게 maxHeight 제한 */}
+          {gifUrl && (
+            <img
+              src={gifUrl}
+              alt="reaction"
+              style={{
+                width: 160, borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
+                maxHeight: 200, objectFit: "contain",
+              }}
+            />
           )}
         </div>
 
@@ -167,13 +342,13 @@ export default function VideoPreview({
           <button onClick={togglePlay} style={{
             position: "absolute", inset: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
-            background: "rgba(0,0,0,0.3)", border: "none", cursor: "pointer",
+            background: "rgba(0,0,0,0.18)", border: "none", cursor: "pointer",
           }}>
             <div style={{
               width: 56, height: 56, borderRadius: "50%",
               background: "rgba(255,255,255,0.92)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
             }}>
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="#111">
                 <polygon points="5 3 19 12 5 21 5 3"/>
@@ -184,33 +359,31 @@ export default function VideoPreview({
 
         {/* 재생 중 일시정지 버튼 */}
         {playing && (
-          <button onClick={togglePlay} className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ background: "rgba(0,0,0,0.5)", border: "none", cursor: "pointer" }}>
+          <button onClick={togglePlay}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.35)", border: "none", cursor: "pointer" }}>
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="white">
               <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
             </svg>
           </button>
-        )}
-
-        {videoError && (
-          <div className="absolute top-3 left-3 px-2 py-0.5 rounded-full text-[9px] font-medium"
-            style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.5)" }}>
-            배경 로드 실패 · 자막만 표시
-          </div>
         )}
       </div>
 
       {/* 타임라인 */}
       <div className="w-full" style={{ maxWidth: 270 }}>
         <div className="flex items-center gap-2">
-          <button onClick={togglePlay} className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 hover:bg-indigo-700 transition-colors">
+          <button onClick={togglePlay}
+            className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 hover:bg-indigo-700 transition-colors">
             {playing
               ? <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               : <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             }
           </button>
-          <input type="range" min={0} max={durationMs} value={currentMs} onChange={handleSeek} className="flex-1 accent-indigo-600" style={{ height: 3 }} />
-          <span className="text-[11px] text-gray-400 font-mono w-10 text-right flex-shrink-0">{(currentMs / 1000).toFixed(1)}s</span>
+          <input type="range" min={0} max={durationMs} value={currentMs}
+            onChange={handleSeek} className="flex-1 accent-indigo-600" style={{ height: 3 }}/>
+          <span className="text-[11px] text-gray-400 font-mono w-10 text-right flex-shrink-0">
+            {(currentMs / 1000).toFixed(1)}s
+          </span>
         </div>
       </div>
     </div>

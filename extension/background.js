@@ -875,6 +875,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  // ── Wing 데이터 수집 ──
+  if (message.type === 'EDEN_WING_FETCH') {
+    sendResponse({ ok: true });
+    runWingFetch(message.targets || []).catch(err => {
+      console.error('[Eden Wing BG] 오류:', err);
+      setWingStatus(`오류: ${err.message}`, true, true);
+    });
+    return false;
+  }
+
   // ── LinkedIn 수집 시작 ──
   if (message.type === 'EDEN_START_LINKEDIN_CRAWL') {
     const { keyword, count = 20 } = message;
@@ -1258,6 +1268,189 @@ async function runLinkedInCrawl(rawKeyword, defaultCount) {
   } finally {
     isLinkedInCrawling    = false;
     linkedInStopRequested = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Wing 쿠팡 데이터 수집 모듈
+// Wing 로그인 세션을 이용해 내부 API 직접 호출
+// ══════════════════════════════════════════════════════════════
+
+const WING_STATUS_KEY = 'eden_wing_status';
+const WING_DATA_KEY   = 'eden_wing_data';
+const WING_APIS_KEY   = 'eden_wing_apis';
+
+function setWingStatus(msg, done = false, error = false) {
+  console.log('[Eden Wing BG] 상태:', msg);
+  chrome.storage.local.set({ [WING_STATUS_KEY]: { msg, done, error, ts: Date.now() } });
+}
+
+// ── Wing 탭 찾기 (이미 열려있으면 재사용) ──
+async function getWingTab() {
+  const tabs = await chrome.tabs.query({ url: 'https://wing.coupang.com/*' });
+  if (tabs.length > 0) return tabs[0];
+  return null;
+}
+
+// ── Wing 페이지에서 직접 API 호출 ──
+async function callWingAPI(tabId, path, params = {}) {
+  const query = Object.keys(params).length
+    ? '?' + new URLSearchParams(params).toString()
+    : '';
+
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: async (p) => {
+      try {
+        const resp = await fetch(p, {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const text = await resp.text();
+        return { ok: resp.ok, status: resp.status, text };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    },
+    args: [path + query],
+  });
+
+  if (!result?.result?.ok) return null;
+  try { return JSON.parse(result.result.text); } catch (_) { return null; }
+}
+
+// ── Wing API 탐색 (주요 페이지 방문 → fetch 인터셉터가 API 수집) ──
+async function discoverWingAPIs(tabId) {
+  const pages = [
+    'https://wing.coupang.com/wing/order/list',
+    'https://wing.coupang.com/wing/settlement',
+    'https://wing.coupang.com/wing/statistics',
+  ];
+
+  const seenAPIs = {};
+
+  // 이벤트 리스너 등록 (MAIN world에서 dispatched 이벤트를 ISOLATED world에서 수신)
+  // content_wing.js가 MAIN world에서 실행되므로, storage.onChanged로 수신
+  for (const pageUrl of pages) {
+    await chrome.tabs.update(tabId, { url: pageUrl });
+    await waitForTabLoad(tabId);
+    await sleep(3000); // 페이지가 API 호출할 시간
+
+    // 현재까지 수집된 API 목록 가져오기
+    const stored = await chrome.storage.local.get(WING_APIS_KEY);
+    Object.assign(seenAPIs, stored[WING_APIS_KEY] || {});
+  }
+
+  return seenAPIs;
+}
+
+// ── Wing 알려진 API 직접 시도 ──
+async function tryKnownAPIs(tabId) {
+  const now = new Date();
+  const year  = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  // 최근 30일
+  const fromDate = new Date(now - 30 * 24 * 3600 * 1000);
+  const from = fromDate.toISOString().slice(0, 10);
+  const to   = now.toISOString().slice(0, 10);
+
+  const candidates = [
+    // 주문 목록
+    ['/api/v1/order/orderList', { searchStartDate: from, searchEndDate: to, pageNum: 1, pageSize: 50 }],
+    ['/api/v2/order/list',      { startDate: from, endDate: to }],
+    ['/order/list',             { startDate: from, endDate: to }],
+    // 정산
+    ['/api/v1/revenue/monthly', { year, month }],
+    ['/api/v2/settlement/monthly', { year, month }],
+    ['/settlement/monthly',     { year, month }],
+    // 매출 통계
+    ['/api/v1/statistics/sale', { startDate: from, endDate: to }],
+    ['/api/v2/sale/summary',    { startDate: from, endDate: to }],
+    // 재고
+    ['/api/v1/product/inventory', { pageNum: 1, pageSize: 50 }],
+    ['/api/v2/vendor/inventory',  {}],
+  ];
+
+  const results = {};
+
+  for (const [path, params] of candidates) {
+    try {
+      const data = await callWingAPI(tabId, path, params);
+      if (data && !data.error) {
+        results[path] = data;
+        console.log('[Eden Wing BG] API 성공:', path, JSON.stringify(data).slice(0, 100));
+        // 성공한 API 기록
+        const stored = await chrome.storage.local.get(WING_APIS_KEY);
+        const apis   = stored[WING_APIS_KEY] || {};
+        apis[path]   = { url: 'https://wing.coupang.com' + path, found: true, ts: Date.now() };
+        chrome.storage.local.set({ [WING_APIS_KEY]: apis });
+      }
+    } catch (_) {}
+  }
+
+  return results;
+}
+
+// ── Wing 데이터 수집 메인 ──
+async function runWingFetch(targets = ['orders', 'settlement', 'inventory']) {
+  setWingStatus('Wing 탭 확인 중...');
+
+  let tab = await getWingTab();
+  let tabCreated = false;
+
+  if (!tab) {
+    // Wing 탭이 없으면 새로 열기
+    tab = await chrome.tabs.create({ url: 'https://wing.coupang.com', active: false });
+    tabCreated = true;
+    await waitForTabLoad(tab.id);
+    await sleep(2000);
+  }
+
+  // Wing 로그인 확인
+  const [urlCheck] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => ({ href: location.href, title: document.title }),
+  });
+  const currentUrl = urlCheck?.result?.href || '';
+  if (currentUrl.includes('/login') || currentUrl.includes('accounts/login')) {
+    setWingStatus('Wing 로그인이 필요합니다. wing.coupang.com에서 로그인 후 재시도하세요.', true, true);
+    if (tabCreated) await chrome.tabs.remove(tab.id).catch(() => {});
+    return;
+  }
+
+  setWingStatus('Wing API 호출 중...');
+
+  // 1단계: 알려진 API 직접 시도
+  const knownResults = await tryKnownAPIs(tab.id);
+  const knownCount   = Object.keys(knownResults).length;
+
+  let collectedData = { ...knownResults };
+
+  // 2단계: API 미발견 시 페이지 방문으로 인터셉트 탐색
+  if (knownCount === 0) {
+    setWingStatus('API 탐색 중 (페이지 방문)...');
+    const discovered = await discoverWingAPIs(tab.id);
+    const discoveredCount = Object.keys(discovered).length;
+    setWingStatus(`API ${discoveredCount}개 발견. 데이터 수집 중...`);
+  }
+
+  // 수집된 데이터 저장
+  chrome.storage.local.set({
+    [WING_DATA_KEY]: {
+      data: collectedData,
+      apiCount: knownCount,
+      ts: Date.now(),
+    },
+  });
+
+  if (tabCreated) await chrome.tabs.remove(tab.id).catch(() => {});
+
+  if (knownCount > 0) {
+    setWingStatus(`완료 — ${knownCount}개 API에서 데이터 수집`, true);
+  } else {
+    setWingStatus('직접 API 호출 실패. Wing 페이지에서 수동으로 주문/정산 페이지를 열어주세요.', true, false);
   }
 }
 

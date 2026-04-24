@@ -1,13 +1,12 @@
 // 커뮤니티 영상 자동화 탭
 // 썰 스크립트 → 배경 영상 + TikTok 자막 → Remotion 숏폼 영상 자동 생성
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import CaptionPreview from "./CaptionPreview";
 import VideoPreview from "./VideoPreview";
 import {
   BG_PRESETS,
+  BGM_LIST,
   FONT_OPTIONS,
-  HIGHLIGHT_COLORS,
-  VOICE_OPTIONS,
   EXAMPLE_SCRIPTS,
 } from "./constants";
 import { generateCaptionsFromText, estimateSeconds } from "./utils";
@@ -21,16 +20,35 @@ const STEPS = [
 
 export default function CommunityTab({ nasState, onGoToNas }) {
   const [step, setStep]                     = useState(1);
+  const [title, setTitle]                   = useState("");
   const [script, setScript]                 = useState("");
   const [selectedBg, setSelectedBg]         = useState("minecraft");
-  const [highlightColor, setHighlightColor] = useState("#FFE600");
   const [fontFamily, setFontFamily]         = useState("Noto Sans KR");
-  const [captionPos, setCaptionPos]         = useState("center");
-  const [elevenlabsKey, setElevenlabsKey]   = useState("");
-  const [voiceId, setVoiceId]               = useState(VOICE_OPTIONS[0].id);
+  const [voices, setVoices]                 = useState([]);
+  const [voicesLoading, setVoicesLoading]   = useState(true);
+  const [voicesError, setVoicesError]       = useState("");
+  const [voiceId, setVoiceId]               = useState("");
+  const [bgmKey, setBgmKey]                 = useState("none");
+  const [siteName, setSiteName]             = useState("줍줍썰");
+  const [headerColor, setHeaderColor]       = useState("#FFD6C1");
+  const [bodyBgColor, setBodyBgColor]       = useState("#ffffff");
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
-  const [showKeyInput, setShowKeyInput]     = useState(false);
+  const [ttsError, setTtsError]             = useState("");
+
+  // 컴포넌트 마운트 시 보이스 목록 로드
+  useEffect(() => {
+    fetch("/api/voices")
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        const list = data.voices ?? [];
+        setVoices(list);
+        if (list.length > 0) setVoiceId(list[0].id);
+      })
+      .catch(e => setVoicesError(e.message))
+      .finally(() => setVoicesLoading(false));
+  }, []);
 
   const scriptLen  = script.trim().length;
   const wordCount  = script.trim().split(/\s+/).filter(Boolean).length;
@@ -41,28 +59,80 @@ export default function CommunityTab({ nasState, onGoToNas }) {
     if (!script.trim()) return;
     setGenerating(true);
     setGenerated(null);
+    setTtsError("");
 
-    const { captions, totalMs } = generateCaptionsFromText(script);
+    let captions = [];
+    let totalMs  = 0;
+    let audioUrl = null;
+    let ttsProvider = null;
 
-    const params = new URLSearchParams({
-      script: script.slice(0, 200),
-      bg: selectedBg,
-      highlight: highlightColor,
-      font: fontFamily,
-      pos: captionPos,
-    });
+    // 백엔드 TTS 프록시 호출
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: script, voiceId }),
+      });
 
-    await new Promise(r => setTimeout(r, 1200));
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `TTS 오류 (${res.status})`);
+      }
+
+      const { audioBase64, captions: wordTimings, provider, mimeType } = await res.json();
+      ttsProvider = provider;
+
+      // base64 → Blob URL
+      const binary   = atob(audioBase64);
+      const bytes    = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const mime     = mimeType || "audio/mpeg";
+      audioUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+
+      if (wordTimings && wordTimings.length > 0) {
+        // ElevenLabs: 정확한 단어 타이밍 사용
+        captions = wordTimings.map((w, i) => ({
+          text:        i === 0 ? w.text : ` ${w.text}`,
+          startMs:     w.startMs,
+          endMs:       w.endMs,
+          timestampMs: w.startMs,
+          confidence:  1,
+        }));
+        totalMs = (captions[captions.length - 1]?.endMs ?? 0) + 300;
+      } else {
+        // Google TTS 폴백: 추정 타이밍 사용 (오디오는 있음)
+        const fallback = generateCaptionsFromText(script);
+        captions = fallback.captions;
+        totalMs  = fallback.totalMs;
+        if (provider === "google") {
+          setTtsError("ElevenLabs 크레딧 소진 → Google AI Studio로 생성했습니다. 자막 타이밍은 추정값입니다.");
+        }
+      }
+
+    } catch (e) {
+      setTtsError(e.message);
+      // TTS 전체 실패 시 추정 자막 폴백 (오디오 없음)
+      const fallback = generateCaptionsFromText(script);
+      captions = fallback.captions;
+      totalMs  = fallback.totalMs;
+    }
 
     setGenerated({
       captions,
       totalMs,
       wordCount,
       estSeconds,
-      backgroundVideoUrl: BG_PRESETS.find(b => b.key === selectedBg)?.videoUrl ?? "",
+      audioUrl,
+      bgPreset: BG_PRESETS.find(b => b.key === selectedBg),
+      title,
+      siteName,
+      headerColor,
+      bodyBgColor,
+      gifQuery: title.trim() || script.trim().slice(0, 40),
+      bgmFile: BGM_LIST.find(b => b.key === bgmKey)?.file ?? null,
     });
     setGenerating(false);
-  }, [script, selectedBg, highlightColor, fontFamily, captionPos, wordCount, estSeconds]);
+  }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title, bgmKey, siteName, headerColor, bodyBgColor]);
 
   const handleDownloadCaptions = useCallback(() => {
     if (!generated) return;
@@ -125,11 +195,35 @@ export default function CommunityTab({ nasState, onGoToNas }) {
         {/* ── STEP 1: 썰 스크립트 입력 ── */}
         {step === 1 && (
           <div className="space-y-4">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-sm font-semibold text-gray-700 block mb-2">게시물 제목</label>
+                <input
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  maxLength={60}
+                  placeholder="예: 회사 팀장이 편의점에서 한 짓"
+                  className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 transition-colors font-medium"
+                />
+                <p className="text-[11px] text-gray-400 mt-1 text-right">{title.length}/60자</p>
+              </div>
+              <div className="w-28 flex-shrink-0">
+                <label className="text-sm font-semibold text-gray-700 block mb-2">사이트명</label>
+                <input
+                  value={siteName}
+                  onChange={e => setSiteName(e.target.value)}
+                  maxLength={10}
+                  placeholder="줍줍썰"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 transition-colors font-medium"
+                />
+              </div>
+            </div>
+
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-semibold text-gray-700">썰 스크립트</label>
-                <span className={`text-xs ${scriptLen > 800 ? "text-red-500" : "text-gray-400"}`}>
-                  {scriptLen} / 1000자 · 약 {estSeconds}초 영상
+                <span className={`text-xs ${scriptLen > 800 ? "text-red-500" : scriptLen > 500 ? "text-orange-400" : "text-gray-400"}`}>
+                  {scriptLen}자 · 약 {estSeconds}초
                 </span>
               </div>
               <textarea
@@ -177,40 +271,135 @@ export default function CommunityTab({ nasState, onGoToNas }) {
           </div>
         )}
 
-        {/* ── STEP 2: 배경 영상 선택 ── */}
+        {/* ── STEP 2: 색상 선택 ── */}
         {step === 2 && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+
+            {/* 미니 프리뷰 */}
+            <div className="flex justify-center">
+              <div className="rounded-2xl overflow-hidden shadow-lg border border-gray-100" style={{ width: 120, height: 214, flexShrink: 0 }}>
+                <div style={{ height: 22, background: headerColor, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: "#000", background: "white", borderRadius: 4, padding: "1px 6px" }}>{siteName || "줍줍썰"}</span>
+                </div>
+                <div style={{ flex: 1, background: bodyBgColor, padding: "6px 8px" }}>
+                  <div style={{ height: 7, background: "#eee", borderRadius: 3, marginBottom: 4, width: "80%" }} />
+                  <div style={{ height: 5, background: "#eee", borderRadius: 3, marginBottom: 4, width: "60%" }} />
+                  <div style={{ height: 1, background: "#222", margin: "5px 0" }} />
+                  <div style={{ height: 5, background: "#f0f0f0", borderRadius: 3, width: "90%" }} />
+                </div>
+              </div>
+            </div>
+
+            {/* 헤더 색상 */}
             <div>
-              <p className="text-sm font-semibold text-gray-700 mb-1">배경 영상 선택</p>
-              <p className="text-xs text-gray-400 mb-4">썰 영상에 어울리는 배경을 고르세요. 저작권 무료 영상입니다.</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {BG_PRESETS.map(bg => (
+              <p className="text-sm font-semibold text-gray-700 mb-3">헤더 색상</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {[
+                  { label: "살구", color: "#FFD6C1" },
+                  { label: "하늘", color: "#C1DEFF" },
+                  { label: "민트", color: "#C1FFE8" },
+                  { label: "라벤더", color: "#DCC1FF" },
+                  { label: "노랑", color: "#FFF5C1" },
+                  { label: "핑크", color: "#FFC1E3" },
+                  { label: "연두", color: "#D4FFC1" },
+                  { label: "다크", color: "#2D2D2D" },
+                ].map(({ label, color }) => (
                   <button
-                    key={bg.key}
-                    onClick={() => setSelectedBg(bg.key)}
-                    className={`relative rounded-xl border-2 p-4 text-left transition-all ${
-                      selectedBg === bg.key
-                        ? "border-indigo-400 bg-indigo-50 shadow-md"
-                        : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
+                    key={color}
+                    onClick={() => setHeaderColor(color)}
+                    title={label}
+                    className="flex flex-col items-center gap-1"
                   >
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${bg.color} flex items-center justify-center mb-2 text-lg shadow-sm`}>
-                      {bg.emoji}
-                    </div>
-                    <p className={`text-xs font-bold ${selectedBg === bg.key ? "text-indigo-700" : "text-gray-800"}`}>
-                      {bg.label}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{bg.desc}</p>
-                    <span className="mt-1.5 inline-block px-1.5 py-0.5 rounded-full text-[9px] bg-gray-100 text-gray-500">{bg.category}</span>
-                    {selectedBg === bg.key && (
-                      <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="m20 6-11 11-5-5"/>
-                        </svg>
-                      </div>
-                    )}
+                    <div
+                      className="w-9 h-9 rounded-xl border-2 transition-all shadow-sm"
+                      style={{
+                        background: color,
+                        borderColor: headerColor === color ? "#6366f1" : "transparent",
+                        boxShadow: headerColor === color ? "0 0 0 2px #6366f1" : undefined,
+                      }}
+                    />
+                    <span className="text-[9px] text-gray-400">{label}</span>
                   </button>
                 ))}
+                {/* 커스텀 컬러피커 */}
+                <label className="flex flex-col items-center gap-1 cursor-pointer">
+                  <div className="w-9 h-9 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden relative hover:border-indigo-400 transition-colors">
+                    <div className="w-full h-full" style={{ background: headerColor }} />
+                    <input
+                      type="color"
+                      value={headerColor}
+                      onChange={e => setHeaderColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </div>
+                  <span className="text-[9px] text-gray-400">직접입력</span>
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">HEX</span>
+                <input
+                  type="text"
+                  value={headerColor}
+                  onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) setHeaderColor(e.target.value); }}
+                  className="w-28 px-2 py-1 text-xs border border-gray-200 rounded-lg font-mono focus:outline-none focus:border-indigo-400"
+                />
+                <div className="w-5 h-5 rounded border border-gray-200" style={{ background: headerColor }} />
+              </div>
+            </div>
+
+            {/* 본문 배경색 */}
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-3">본문 배경색</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {[
+                  { label: "화이트", color: "#ffffff" },
+                  { label: "아이보리", color: "#FFFDF5" },
+                  { label: "연회색", color: "#F5F5F5" },
+                  { label: "연파랑", color: "#F0F5FF" },
+                  { label: "연핑크", color: "#FFF0F5" },
+                  { label: "연노랑", color: "#FFFBF0" },
+                  { label: "다크", color: "#1a1a1a" },
+                  { label: "네이비", color: "#0f172a" },
+                ].map(({ label, color }) => (
+                  <button
+                    key={color}
+                    onClick={() => setBodyBgColor(color)}
+                    title={label}
+                    className="flex flex-col items-center gap-1"
+                  >
+                    <div
+                      className="w-9 h-9 rounded-xl border-2 transition-all shadow-sm"
+                      style={{
+                        background: color,
+                        borderColor: bodyBgColor === color ? "#6366f1" : "#e5e7eb",
+                        boxShadow: bodyBgColor === color ? "0 0 0 2px #6366f1" : undefined,
+                      }}
+                    />
+                    <span className="text-[9px] text-gray-400">{label}</span>
+                  </button>
+                ))}
+                <label className="flex flex-col items-center gap-1 cursor-pointer">
+                  <div className="w-9 h-9 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden relative hover:border-indigo-400 transition-colors">
+                    <div className="w-full h-full" style={{ background: bodyBgColor }} />
+                    <input
+                      type="color"
+                      value={bodyBgColor}
+                      onChange={e => setBodyBgColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </div>
+                  <span className="text-[9px] text-gray-400">직접입력</span>
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">HEX</span>
+                <input
+                  type="text"
+                  value={bodyBgColor}
+                  onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) setBodyBgColor(e.target.value); }}
+                  className="w-28 px-2 py-1 text-xs border border-gray-200 rounded-lg font-mono focus:outline-none focus:border-indigo-400"
+                />
+                <div className="w-5 h-5 rounded border border-gray-200" style={{ background: bodyBgColor }} />
               </div>
             </div>
 
@@ -234,7 +423,6 @@ export default function CommunityTab({ nasState, onGoToNas }) {
               <div className="flex-shrink-0 w-[120px]">
                 <CaptionPreview
                   script={script || "지금 말하고 있는 자막 스타일 미리보기입니다"}
-                  highlightColor={highlightColor}
                   fontFamily={fontFamily}
                 />
               </div>
@@ -259,39 +447,27 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   </div>
                 </div>
 
-                {/* 하이라이트 색상 */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">하이라이트 색상</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {HIGHLIGHT_COLORS.map(c => (
-                      <button
-                        key={c.key}
-                        onClick={() => setHighlightColor(c.key)}
-                        title={c.label}
-                        className={`w-7 h-7 rounded-full border-2 transition-all ${highlightColor === c.key ? "border-gray-700 scale-110" : "border-transparent"}`}
-                        style={{ background: c.key }}
-                      />
-                    ))}
-                  </div>
-                </div>
+              </div>
+            </div>
 
-                {/* 자막 위치 */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">자막 위치</label>
-                  <div className="flex gap-2">
-                    {[{ k: "center", l: "중앙" }, { k: "bottom", l: "하단" }].map(p => (
-                      <button
-                        key={p.k}
-                        onClick={() => setCaptionPos(p.k)}
-                        className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
-                          captionPos === p.k ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-semibold" : "border-gray-200 text-gray-600"
-                        }`}
-                      >
-                        {p.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            {/* BGM 선택 */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-2">배경 음악 (BGM)</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {BGM_LIST.map(b => (
+                  <button
+                    key={b.key}
+                    onClick={() => setBgmKey(b.key)}
+                    className={`px-3 py-2 rounded-lg border text-left transition-colors ${
+                      bgmKey === b.key
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <p className="text-xs font-semibold truncate">{b.label}</p>
+                    {b.mood && <p className="text-[10px] text-gray-400">{b.mood}</p>}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -312,64 +488,49 @@ export default function CommunityTab({ nasState, onGoToNas }) {
             <p className="text-sm font-semibold text-gray-700">AI 보이스 설정</p>
 
             <div className="rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
-              <div className="flex items-start gap-3">
+              <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">11</div>
                 <div className="flex-1">
                   <p className="text-sm font-bold text-gray-800">ElevenLabs TTS</p>
                   <p className="text-xs text-gray-500 mt-0.5">가장 자연스러운 한국어 AI 목소리 제공</p>
                 </div>
-                <button
-                  onClick={() => setShowKeyInput(o => !o)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${elevenlabsKey ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-                >
-                  {elevenlabsKey ? "연결됨 ✓" : "API 키 입력"}
-                </button>
+                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700">연결됨 ✓</span>
               </div>
-
-              {showKeyInput && (
-                <div className="space-y-2">
-                  <input
-                    type="password"
-                    value={elevenlabsKey}
-                    onChange={e => setElevenlabsKey(e.target.value)}
-                    placeholder="sk-... ElevenLabs API 키"
-                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-400 font-mono"
-                  />
-                  <p className="text-[10px] text-gray-400">
-                    키는 브라우저에만 저장되며 서버로 전송되지 않습니다.{" "}
-                    <a
-                      className="text-indigo-500 underline"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      href="https://elevenlabs.io/app/speech-synthesis"
-                    >
-                      ElevenLabs에서 무료로 받기 →
-                    </a>
-                  </p>
-                </div>
-              )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-2">보이스 선택</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {VOICE_OPTIONS.map(v => (
-                    <button
-                      key={v.id}
-                      onClick={() => setVoiceId(v.id)}
-                      className={`text-left p-2.5 rounded-lg border transition-all ${
-                        voiceId === v.id ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <p className={`text-xs font-semibold ${voiceId === v.id ? "text-indigo-700" : "text-gray-800"}`}>{v.name}</p>
-                      <p className="text-[10px] text-gray-400">{v.desc}</p>
-                    </button>
-                  ))}
-                </div>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">
+                  보이스 선택 {!voicesLoading && <span className="text-gray-400 font-normal">({voices.length}개)</span>}
+                </label>
+                {voicesLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                    <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    보이스 목록 불러오는 중…
+                  </div>
+                ) : voicesError ? (
+                  <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                    보이스 로딩 실패: {voicesError}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                    {voices.map(v => (
+                      <button
+                        key={v.id}
+                        onClick={() => setVoiceId(v.id)}
+                        className={`text-left p-2.5 rounded-lg border transition-all ${
+                          voiceId === v.id ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <p className={`text-xs font-semibold truncate ${voiceId === v.id ? "text-indigo-700" : "text-gray-800"}`}>{v.name}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{v.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {!elevenlabsKey && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-                  API 키 없이도 자막 영상을 생성할 수 있습니다. (음성 없음)
+              {ttsError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                  음성 생성 실패: {ttsError} · 자막만으로 계속합니다.
                 </div>
               )}
             </div>
@@ -387,15 +548,8 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   <p className="font-semibold text-gray-800">{bgPreset?.emoji} {bgPreset?.label}</p>
                 </div>
                 <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
-                  <p className="text-gray-400">하이라이트</p>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full" style={{ background: highlightColor }} />
-                    <span className="font-semibold text-gray-800">{HIGHLIGHT_COLORS.find(c => c.key === highlightColor)?.label}</span>
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg px-3 py-2 border border-gray-100">
                   <p className="text-gray-400">AI 보이스</p>
-                  <p className="font-semibold text-gray-800">{elevenlabsKey ? "ElevenLabs" : "없음 (자막만)"}</p>
+                  <p className="font-semibold text-gray-800">ElevenLabs · {voices.find(v => v.id === voiceId)?.name ?? voiceId}</p>
                 </div>
               </div>
             </div>
@@ -443,12 +597,18 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                 </div>
 
                 <VideoPreview
-                  backgroundVideoUrl={generated.backgroundVideoUrl}
+                  bgPreset={generated.bgPreset}
+                  title={generated.title}
+                  siteName={generated.siteName}
+                  headerColor={generated.headerColor}
+                  bodyBgColor={generated.bodyBgColor}
+                  script={script}
+                  audioUrl={generated.audioUrl}
                   captions={generated.captions}
-                  highlightColor={highlightColor}
                   fontFamily={fontFamily}
-                  captionPos={captionPos}
                   totalMs={generated.totalMs}
+                  gifQuery={generated.gifQuery}
+                  bgmFile={generated.bgmFile}
                 />
 
                 <div className="flex gap-2">
@@ -462,7 +622,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                     captions.json
                   </button>
                   <button
-                    onClick={() => { setGenerated(null); setStep(1); setScript(""); }}
+                    onClick={() => { setGenerated(null); setStep(1); setTitle(""); setScript(""); }}
                     className="flex-1 py-2 rounded-lg bg-indigo-600 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
                   >
                     새 영상 만들기

@@ -1,7 +1,7 @@
 // 자막 미리보기 컴포넌트 (9:16 숏폼 시뮬레이션)
 import { useState, useEffect } from "react";
 
-export default function CaptionPreview({ script, highlightColor, fontFamily }) {
+export default function CaptionPreview({ script, fontFamily }) {
   const words = script.trim().split(/\s+/).filter(Boolean).slice(0, 12);
   const [activeIdx, setActiveIdx] = useState(0);
 
@@ -32,14 +32,9 @@ export default function CaptionPreview({ script, highlightColor, fontFamily }) {
           className="rounded-xl px-4 py-2 text-center"
           style={{ background: "rgba(0,0,0,0.5)", fontFamily }}
         >
-          <p className="text-white font-black leading-tight" style={{ fontSize: 18, textShadow: "0 0 8px #000" }}>
+          <p className="font-black leading-tight" style={{ fontSize: 18, color: "#111" }}>
             {words.map((w, i) => (
-              <span
-                key={i}
-                style={{ color: i === activeIdx ? highlightColor : "#fff", transition: "color 0.1s" }}
-              >
-                {i === 0 ? w : ` ${w}`}
-              </span>
+              <span key={i}>{i === 0 ? w : ` ${w}`}</span>
             ))}
           </p>
         </div>

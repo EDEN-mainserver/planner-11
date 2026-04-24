@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>에쿠 GrowthDB — COUPLUS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+    /* 고정 레이아웃 */
+    #hdr  { position:fixed; top:0; left:0; right:0; height:56px; z-index:100; }
+    #side { position:fixed; top:56px; left:0; bottom:0; width:210px; z-index:90; overflow-y:auto;
+            transition: width .2s ease; }
+    #main { margin-top:56px; margin-left:210px; transition: margin-left .2s ease; }
+
+    /* 사이드바 접힘 */
+    body.nav-collapsed #side { width:48px; }
+    body.nav-collapsed #main { margin-left:48px; }
+    body.nav-collapsed .nav-txt,
+    body.nav-collapsed .nav-arrow,
+    body.nav-collapsed .nav-badge,
+    body.nav-collapsed .acc-body { display:none !important; }
+
+    /* 아코디언 화살표 */
+    .acc-arrow { transition: transform .18s; }
+    .acc-arrow.open { transform: rotate(180deg); }
+
+    /* 토글 스위치 */
+    .sw input:checked ~ .sw-track { background:#f97316; }
+    .sw input:checked ~ .sw-track .sw-thumb { transform: translateX(16px); }
+    .sw-track { width:34px; height:18px; background:#d1d5db; border-radius:9px;
+                position:relative; cursor:pointer; transition:background .15s; }
+    .sw-thumb { width:14px; height:14px; background:#fff; border-radius:50%;
+                position:absolute; top:2px; left:2px; transition:transform .15s;
+                box-shadow:0 1px 3px rgba(0,0,0,.2); }
+
+    /* 필터 탭 */
+    .ftab { transition: all .12s; }
+    .ftab.on { color:#fff !important; border-color:transparent !important; }
+
+    /* 테이블 헤더 sticky */
+    .dtbl th { position:sticky; top:0; z-index:10;
+               background:#fff7ed; border-bottom:1px solid #fed7aa;
+               white-space:nowrap; font-weight:600; }
+    .dtbl td { white-space:nowrap; }
+    .dtbl tbody tr:hover { background:#fff7ed55; }
+
+    /* 등급 뱃지 */
+    .bg-gold   { background:#fef9c3; color:#92400e; border:1px solid #fbbf24; }
+    .bg-silver { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
+    .bg-bronze { background:#fff1f2; color:#9f1239; border:1px solid #fca5a5; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+<!-- ═══════════════ 헤더 ═══════════════ -->
+<header id="hdr" class="bg-white border-b border-gray-200 flex items-center px-4 gap-3 shadow-sm">
+  <button onclick="toggleNav()"
+    class="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 transition-colors">
+    <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+    </svg>
+  </button>
+
+  <div class="flex items-center gap-1.5 font-bold text-base" style="color:#00838F">
+    <div class="w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold"
+         style="background:#00BCD4">C</div>
+    <span>COUPLUS</span>
+  </div>
+
+  <div class="flex-1"></div>
+
+  <span class="text-xs text-gray-400 hidden md:block cursor-pointer hover:text-gray-600">사용자 메뉴얼</span>
+  <span class="text-xs text-gray-400 hidden md:block cursor-pointer hover:text-gray-600">확장프로그램</span>
+  <button class="text-xs px-2.5 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-50">CLI 미연결</button>
+  <button class="text-xs px-2.5 py-1 rounded text-white font-medium" style="background:#00BCD4">자동수집</button>
+  <button class="text-xs px-2.5 py-1 rounded border font-medium" style="border-color:#00BCD4;color:#00838F">계정관리</button>
+  <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold cursor-pointer"
+       style="background:#00BCD4">정</div>
+</header>
+
+<!-- ═══════════════ 사이드바 ═══════════════ -->
+<nav id="side" class="bg-white border-r border-gray-100">
+  <div class="py-2 px-2 space-y-0.5">
+
+    <!-- ── 로켓그로스 ── -->
+    <div>
+      <button onclick="toggleAcc(this)"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700
+               hover:bg-gray-50 font-medium transition-colors">
+        <span class="text-base shrink-0">🚀</span>
+        <span class="nav-txt flex-1 text-left">로켓그로스</span>
+        <svg class="acc-arrow nav-arrow w-3.5 h-3.5 text-gray-400 open" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <!-- 서브메뉴 -->
+      <div class="acc-body pl-1 mt-0.5 space-y-0.5">
+
+        <!-- ★ 에쿠 GrowthDB — 활성 항목 ★ -->
+        <div onclick="showPage('growthdb')"
+          class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+                 bg-orange-50 text-orange-700 font-medium">
+          <span class="text-base">📊</span>
+          <span class="nav-txt">에쿠 GrowthDB</span>
+        </div>
+
+        <div onclick="showPage('scm')"
+          class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+                 text-gray-600 hover:bg-gray-100">
+          <span class="text-base">📦</span>
+          <span class="nav-txt">공급관리(SCM)</span>
+        </div>
+        <div onclick="showPage('salesledger')"
+          class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+                 text-gray-600 hover:bg-gray-100">
+          <span class="text-base">📒</span>
+          <span class="nav-txt">판매장부</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 로켓배송 ── -->
+    <div>
+      <button onclick="toggleAcc(this)"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700
+               hover:bg-gray-50 font-medium transition-colors">
+        <span class="text-base shrink-0">🛵</span>
+        <span class="nav-txt flex-1 text-left">로켓배송</span>
+        <svg class="acc-arrow nav-arrow w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div class="acc-body hidden pl-1 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-600 hover:bg-gray-100">
+          <span class="text-base">🤖</span><span class="nav-txt">AI상품등록</span>
+          <span class="nav-badge ml-auto text-xs px-1.5 py-0.5 rounded text-white" style="background:#4CAF50;font-size:10px">new</span>
+        </div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-600 hover:bg-gray-100">
+          <span class="text-base">🗂️</span><span class="nav-txt">상품관리(신규)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 소싱분석 ── -->
+    <div>
+      <button onclick="toggleAcc(this)"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700
+               hover:bg-gray-50 font-medium transition-colors">
+        <span class="text-base shrink-0">🔍</span>
+        <span class="nav-txt flex-1 text-left">소싱분석</span>
+        <svg class="acc-arrow nav-arrow w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div class="acc-body hidden pl-1 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-600 hover:bg-gray-100"><span>🏷️</span><span class="nav-txt">카테고리소싱분석</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-600 hover:bg-gray-100"><span>🔑</span><span class="nav-txt">키워드소싱분석</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-600 hover:bg-gray-100"><span>📈</span><span class="nav-txt">상품경쟁력분석</span></div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-600 hover:bg-gray-100"><span>📊</span><span class="nav-txt">키워드분석</span></div>
+      </div>
+    </div>
+
+    <!-- ── AI도구 ── -->
+    <div>
+      <button onclick="toggleAcc(this)"
+        class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700
+               hover:bg-gray-50 font-medium transition-colors">
+        <span class="text-base shrink-0">✨</span>
+        <span class="nav-txt flex-1 text-left">AI 도구</span>
+        <svg class="acc-arrow nav-arrow w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div class="acc-body hidden pl-1 mt-0.5 space-y-0.5">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-600 hover:bg-gray-100">
+          <span>🪄</span><span class="nav-txt">나노바나나 이미지에디터</span>
+        </div>
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer text-gray-600 hover:bg-gray-100">
+          <span>🐱</span><span class="nav-txt">AI 소싱 챗</span>
+          <span class="nav-badge ml-auto text-xs px-1.5 py-0.5 rounded text-white" style="background:#4CAF50;font-size:10px">new</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</nav>
+
+<!-- ═══════════════ 메인 콘텐츠 ═══════════════ -->
+<main id="main" class="min-h-screen">
+
+  <!-- ── GrowthDB 페이지 ── -->
+  <div id="page-growthdb" class="p-5">
+
+    <!-- 타이틀 행 -->
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div>
+        <h1 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+          <span>📊</span> 에쿠 GrowthDB
+        </h1>
+        <p class="text-xs text-gray-400 mt-0.5">로켓그로스 상품 DB 통합 관리</p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- 토글 -->
+        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+          <label class="sw"><input type="checkbox" class="hidden"><span class="sw-track"><span class="sw-thumb"></span></span></label>
+          <span>반품상품보기</span>
+        </label>
+        <label class="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+          <label class="sw"><input type="checkbox" class="hidden"><span class="sw-track"><span class="sw-thumb"></span></span></label>
+          <span>번들상품보기</span>
+        </label>
+        <div class="w-px h-5 bg-gray-200"></div>
+        <button class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md text-white font-medium hover:opacity-90 transition-opacity" style="background:#00BCD4">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          상품DB 수집
+        </button>
+        <button class="text-xs px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50">허용스토어 설정</button>
+      </div>
+    </div>
+
+    <!-- 필터 + 컨트롤 카드 -->
+    <div class="bg-white rounded-xl border border-gray-200 p-3 mb-3 shadow-sm">
+
+      <!-- 필터 탭 -->
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <button class="ftab on text-xs px-3 py-1.5 rounded-md border text-gray-600 font-medium" style="background:#f97316;border-color:#f97316" onclick="setTab(this)">
+          전체 <span class="ml-1 rounded-full px-1.5 py-0.5 text-[10px]" style="background:rgba(255,255,255,.25)">247</span>
+        </button>
+        <button class="ftab text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600" onclick="setTab(this)">
+          노출ID변경 <span class="ml-1 bg-gray-100 rounded-full px-1.5 py-0.5 text-[10px]">12</span>
+        </button>
+        <button class="ftab text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600" onclick="setTab(this)">
+          타사매칭 <span class="ml-1 bg-gray-100 rounded-full px-1.5 py-0.5 text-[10px]">8</span>
+        </button>
+        <button class="ftab text-xs px-3 py-1.5 rounded-md border border-orange-200 text-orange-600 hover:bg-orange-50" onclick="setTab(this,'#f97316')">
+          아이템루저 <span class="ml-1 bg-orange-100 rounded-full px-1.5 py-0.5 text-[10px]">31</span>
+        </button>
+        <button class="ftab text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600" onclick="setTab(this)">
+          뱃지없음 <span class="ml-1 bg-gray-100 rounded-full px-1.5 py-0.5 text-[10px]">54</span>
+        </button>
+        <button class="ftab text-xs px-3 py-1.5 rounded-md border border-pink-200 text-pink-600 hover:bg-pink-50" onclick="setTab(this,'#ec4899')">
+          반품 <span class="ml-1 bg-pink-100 rounded-full px-1.5 py-0.5 text-[10px]">7</span>
+        </button>
+        <button class="ftab text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600" onclick="setTab(this)">
+          번들 <span class="ml-1 bg-gray-100 rounded-full px-1.5 py-0.5 text-[10px]">19</span>
+        </button>
+        <button class="ftab text-xs px-3 py-1.5 rounded-md border border-red-200 text-red-500 hover:bg-red-50" onclick="setTab(this,'#ef4444')">
+          구매정보없음 <span class="ml-1 bg-red-100 rounded-full px-1.5 py-0.5 text-[10px]">23</span>
+        </button>
+        <button class="ftab text-xs px-3 py-1.5 rounded-md border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600" onclick="setTab(this)">
+          매입정보없음 <span class="ml-1 bg-gray-100 rounded-full px-1.5 py-0.5 text-[10px]">41</span>
+        </button>
+        <div class="flex-1"></div>
+        <button class="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          DB 다운로드
+        </button>
+        <button class="text-xs px-2.5 py-1.5 rounded-md text-white font-medium" style="background:#d946a8">매입정보 관리</button>
+      </div>
+
+      <!-- 테이블 컨트롤 -->
+      <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 flex-wrap">
+        <div class="relative">
+          <svg class="w-3.5 h-3.5 text-gray-300 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/></svg>
+          <input type="text" placeholder="Search…"
+            class="text-xs pl-7 pr-3 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:border-orange-400 w-40" />
+        </div>
+        <select class="text-xs px-2 py-1.5 border border-gray-200 rounded-md text-gray-600 focus:outline-none">
+          <option>20 / page</option><option>50 / page</option><option>100 / page</option>
+        </select>
+        <button class="flex items-center gap-1 text-xs px-2 py-1.5 border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          컬럼선택
+        </button>
+        <div class="flex items-center gap-1.5 text-xs text-gray-500">
+          높이고정
+          <label class="flex items-center gap-0.5 cursor-pointer"><input type="radio" name="rh" checked class="accent-orange-500"> Y</label>
+          <label class="flex items-center gap-0.5 cursor-pointer"><input type="radio" name="rh" class="accent-orange-500"> N</label>
+        </div>
+        <span class="ml-auto text-xs text-gray-400">총 247개 상품</span>
+      </div>
+    </div>
+
+    <!-- 데이터 테이블 -->
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div class="overflow-x-auto" style="max-height:calc(100vh - 300px);overflow-y:auto">
+        <table class="dtbl w-full text-xs text-left">
+          <thead>
+            <tr class="text-gray-600 text-[11px]">
+              <th class="px-3 py-2.5 w-8"><input type="checkbox" class="rounded accent-orange-500"></th>
+              <th class="px-3 py-2.5">등급</th>
+              <th class="px-3 py-2.5">이미지</th>
+              <th class="px-3 py-2.5 min-w-[170px]">상품명</th>
+              <th class="px-3 py-2.5">노출ID</th>
+              <th class="px-3 py-2.5">옵션ID</th>
+              <th class="px-3 py-2.5">바코드</th>
+              <th class="px-3 py-2.5">판매링크</th>
+              <th class="px-3 py-2.5">구매관리</th>
+              <th class="px-3 py-2.5">매입관리</th>
+              <th class="px-3 py-2.5">밀크런</th>
+              <th class="px-3 py-2.5">아이템위너</th>
+              <th class="px-3 py-2.5">사이즈</th>
+              <th class="px-3 py-2.5">쿠팡재고</th>
+              <th class="px-3 py-2.5">판매가</th>
+              <th class="px-3 py-2.5">수수료</th>
+              <th class="px-3 py-2.5">마진</th>
+              <th class="px-3 py-2.5">마진율</th>
+              <th class="px-3 py-2.5">ROI</th>
+              <th class="px-3 py-2.5">ROAS</th>
+              <th class="px-3 py-2.5">7일매출</th>
+              <th class="px-3 py-2.5">30일매출</th>
+              <th class="px-3 py-2.5">판매량</th>
+            </tr>
+          </thead>
+          <tbody id="tbd"></tbody>
+        </table>
+      </div>
+      <!-- 페이지네이션 -->
+      <div class="flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50">
+        <span class="text-xs text-gray-400">1–20 / 247개</span>
+        <div class="flex items-center gap-1">
+          <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400 disabled:opacity-30" disabled>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <button class="w-7 h-7 flex items-center justify-center rounded text-xs font-semibold text-white" style="background:#f97316">1</button>
+          <button class="w-7 h-7 flex items-center justify-center rounded text-xs text-gray-600 hover:bg-gray-100">2</button>
+          <button class="w-7 h-7 flex items-center justify-center rounded text-xs text-gray-600 hover:bg-gray-100">3</button>
+          <span class="text-xs text-gray-300 px-0.5">…</span>
+          <button class="w-7 h-7 flex items-center justify-center rounded text-xs text-gray-600 hover:bg-gray-100">13</button>
+          <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div><!-- /page-growthdb -->
+
+  <!-- ── 플레이스홀더 페이지 ── -->
+  <div id="page-scm" class="p-5 hidden">
+    <div class="flex items-center justify-center h-64 text-gray-400 flex-col gap-3">
+      <span class="text-4xl">📦</span>
+      <p class="text-sm font-medium text-gray-500">공급관리(SCM)</p>
+      <p class="text-xs">준비 중입니다</p>
+    </div>
+  </div>
+  <div id="page-salesledger" class="p-5 hidden">
+    <div class="flex items-center justify-center h-64 text-gray-400 flex-col gap-3">
+      <span class="text-4xl">📒</span>
+      <p class="text-sm font-medium text-gray-500">판매장부</p>
+      <p class="text-xs">준비 중입니다</p>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─── 사이드바 토글 ───
+function toggleNav() {
+  document.body.classList.toggle('nav-collapsed');
+}
+
+// ─── 아코디언 ───
+function toggleAcc(btn) {
+  const body = btn.nextElementSibling;
+  const arrow = btn.querySelector('.acc-arrow');
+  if (!body) return;
+  const hidden = body.classList.toggle('hidden');
+  if (arrow) arrow.classList.toggle('open', !hidden);
+}
+
+// ─── 페이지 전환 ───
+function showPage(id) {
+  document.querySelectorAll('[id^="page-"]').forEach(el => el.classList.add('hidden'));
+  const pg = document.getElementById('page-' + id);
+  if (pg) pg.classList.remove('hidden');
+
+  // 사이드바 활성 항목 업데이트
+  document.querySelectorAll('[onclick^="showPage"]').forEach(el => {
+    el.classList.remove('bg-orange-50','text-orange-700','font-medium');
+    el.classList.add('text-gray-600','hover:bg-gray-100');
+  });
+  const active = document.querySelector(`[onclick="showPage('${id}')"]`);
+  if (active) {
+    active.classList.add('bg-orange-50','text-orange-700','font-medium');
+    active.classList.remove('text-gray-600','hover:bg-gray-100');
+  }
+}
+
+// ─── 필터 탭 ───
+function setTab(btn, color) {
+  document.querySelectorAll('.ftab').forEach(t => {
+    t.classList.remove('on');
+    t.style.background = '';
+    t.style.color = '';
+    t.style.borderColor = '';
+  });
+  btn.classList.add('on');
+  const c = color || '#3b82f6';
+  btn.style.background = c;
+  btn.style.borderColor = c;
+  btn.style.color = '#fff';
+}
+
+// ─── 샘플 데이터 렌더 ───
+const pNames = [
+  '쿠팡 로켓 그로스 데님 자켓 (남성용) 2024 신상',
+  'A급 프리미엄 무선 블루투스 이어폰 노이즈캔슬링',
+  '유기농 녹차 추출물 세럼 50ml 민감성 피부용',
+  '스테인레스 텀블러 500ml 보온보냉 12시간',
+  '고탄력 필라테스 레깅스 여성 운동복 세트',
+  '캠핑 접이식 테이블 알루미늄 경량 휴대용',
+  '국내산 흑마늘 진액 80ml × 30포 선물세트',
+  '아동용 LED 운동화 야광 사이즈 150–230',
+  '프리미엄 양면 테이프 다용도 방수 투명 10M',
+  '반려동물 자동 급식기 스마트 타이머 3L',
+  '대용량 수납 정리함 뚜껑형 패브릭 박스 40L',
+  '모공케어 토너 히알루론산 수분 300ml',
+  '다용도 주방 가위 스테인레스 분리형 세척가능',
+  '컴팩트 미니 선풍기 USB 충전식 휴대용',
+  '프리미엄 원두커피 200g 싱글오리진 에티오피아',
+  '멀티 충전기 C타입 60W 고속 4포트',
+  '기능성 메모리폼 목베개 여행용 U자형',
+  '친환경 대나무 도마 항균 대형 40×30cm',
+  '어린이 빅사이즈 수영 튜브 자동 충기 세트',
+  '에어팟 케이스 호환 실리콘 키링 패션 아이템',
+];
+const opts  = ['블랙','화이트','네이비','그레이','핑크','베이지','레드'];
+const grads = [
+  ['골드','bg-gold'],
+  ['실버','bg-silver'],
+  ['브론즈','bg-bronze'],
+];
+const r = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
+const fmt = n => n.toLocaleString();
+
+(function renderTable(){
+  let h = '';
+  for (let i = 0; i < 20; i++) {
+    const [gLabel, gCls] = grads[r(0,2)];
+    const name  = pNames[i % pNames.length];
+    const opt   = opts[r(0,opts.length-1)];
+    const expId = r(10000000,99999999);
+    const optId = r(100000000,999999999);
+    const bc    = `88${r(10000000000,99999999999)}`;
+    const stock = r(0,600);
+    const price = r(8900,89000);
+    const fee   = Math.round(price * 0.1);
+    const margin= r(500, Math.floor(price*0.35));
+    const mr    = (margin/price*100).toFixed(1);
+    const roi   = (margin/(price-margin)*100).toFixed(0);
+    const roas  = (price/fee*100).toFixed(0);
+    const s7    = r(50000,5000000);
+    const s30   = s7 * r(3,5);
+    const qty   = r(10,500);
+    const win   = r(0,1);
+    const mlk   = r(200,1500);
+
+    const stockCls = stock<10 ? 'text-red-500 font-bold' : stock<50 ? 'text-orange-500 font-semibold' : 'text-gray-700';
+    const mrCls = parseFloat(mr)>=20 ? 'text-green-600 font-semibold' : parseFloat(mr)>=10 ? 'text-orange-500' : 'text-red-500';
+
+    h += `<tr class="border-b border-gray-100 transition-colors">
+      <td class="px-3 py-2"><input type="checkbox" class="rounded accent-orange-500"></td>
+      <td class="px-3 py-2"><span class="text-[10px] px-2 py-0.5 rounded-full ${gCls} font-medium">${gLabel}</span></td>
+      <td class="px-3 py-2">
+        <div class="w-9 h-9 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center text-gray-300 text-lg overflow-hidden">🖼</div>
+      </td>
+      <td class="px-3 py-2 max-w-[170px]">
+        <p class="truncate text-gray-800 font-medium leading-snug">${name}</p>
+        <p class="truncate text-gray-400 text-[10px] mt-0.5">${opt}</p>
+      </td>
+      <td class="px-3 py-2 font-mono text-gray-500 text-[11px]">${expId}</td>
+      <td class="px-3 py-2 font-mono text-gray-500 text-[11px]">${optId}</td>
+      <td class="px-3 py-2 font-mono text-gray-400 text-[11px]">${bc}</td>
+      <td class="px-3 py-2"><a href="#" class="text-blue-500 hover:underline">링크🔗</a></td>
+      <td class="px-3 py-2">
+        <button class="text-[11px] px-2 py-0.5 rounded text-white font-medium" style="background:#00BCD4">구매관리</button>
+      </td>
+      <td class="px-3 py-2">
+        <button class="text-[11px] px-2 py-0.5 rounded text-white font-medium" style="background:#d946a8">매입관리</button>
+      </td>
+      <td class="px-3 py-2 text-right text-gray-600">₩${fmt(mlk)}</td>
+      <td class="px-3 py-2 text-center">
+        ${win ? '<span class="text-green-500 font-bold">✓ 위너</span>' : '<span class="text-red-400">✗</span>'}
+      </td>
+      <td class="px-3 py-2 text-gray-400">—</td>
+      <td class="px-3 py-2 text-right ${stockCls}">${fmt(stock)}</td>
+      <td class="px-3 py-2 text-right font-semibold text-gray-800">₩${fmt(price)}</td>
+      <td class="px-3 py-2 text-right text-gray-500">₩${fmt(fee)}</td>
+      <td class="px-3 py-2 text-right font-semibold ${margin>0?'text-green-600':'text-red-500'}">₩${fmt(margin)}</td>
+      <td class="px-3 py-2 text-right ${mrCls}">${mr}%</td>
+      <td class="px-3 py-2 text-right text-gray-600">${roi}%</td>
+      <td class="px-3 py-2 text-right text-gray-600">${roas}%</td>
+      <td class="px-3 py-2 text-right text-gray-700">₩${fmt(s7)}</td>
+      <td class="px-3 py-2 text-right text-gray-700">₩${fmt(s30)}</td>
+      <td class="px-3 py-2 text-right text-gray-700">${fmt(qty)}</td>
+    </tr>`;
+  }
+  document.getElementById('tbd').innerHTML = h;
+})();
+</script>
+</body>
+</html>

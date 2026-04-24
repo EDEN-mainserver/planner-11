@@ -1,8 +1,11 @@
 import { useState } from "react";
 import BlogPage from "./BlogPage";
+import FunnelBlogPage from "./FunnelBlogPage";
 import CrawlingPage from "./crawling/CrawlingPage";
 import ImagePage from "./ImagePage";
 import VideoPage from "./VideoPage";
+import IbossPage from "./IbossPage";
+import FullAutoPage from "./FullAutoPage";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -50,6 +53,17 @@ const CONTENT_TYPES = [
     gradient: "from-blue-500 to-cyan-600",
     description: "웹사이트를 크롤링하여 콘텐츠 소스를 자동으로 수집합니다",
   },
+  {
+    key: "fullAuto",
+    label: "풀가동화 콘텐츠",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>
+    ),
+    gradient: "from-orange-500 to-amber-500",
+    description: "크롤링부터 글 생성·포스팅까지 전 과정을 자동으로 실행합니다",
+  },
 ];
 
 const TEXT_CHANNELS = [
@@ -74,7 +88,6 @@ const TEXT_CHANNELS = [
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
       </svg>
     ),
-    disabled: true,
   },
 ];
 
@@ -134,6 +147,8 @@ function ChannelCard({ item, onClick }) {
 export default function EAttackPage() {
   // depth: 'root' → 글/이미지/영상 | 'text' → 블로그/아이보스 | 'blog' → 블로그 대시보드
   const [depth, setDepth] = useState("root");
+  // 크롤링 페이지에서 선택한 레퍼런스 포스트
+  const [referencePost, setReferencePost] = useState(null);
 
   // 콘텐츠 타입 클릭
   const handleTypeClick = (type) => {
@@ -145,22 +160,50 @@ export default function EAttackPage() {
       setDepth("image");
     } else if (type.key === "video") {
       setDepth("video");
+    } else if (type.key === "fullAuto") {
+      setDepth("fullAuto");
     }
   };
 
   // 채널 클릭
   const handleChannelClick = (channel) => {
     if (channel.key === "blog") {
-      setDepth("blog");
+      setDepth("funnelblog");
+    } else if (channel.key === "iboss") {
+      setDepth("iboss");
     }
   };
 
   // 크롤링 대시보드
   if (depth === "crawling") {
-    return <CrawlingPage onBack={() => setDepth("root")} />;
+    return (
+      <CrawlingPage
+        onBack={() => setDepth("root")}
+        onRecompose={(post, content) => {
+          setReferencePost({ ...post, content_raw: content });
+          setDepth("iboss");
+        }}
+      />
+    );
   }
 
-  // 블로그 대시보드
+  // 아이보스 대시보드
+  if (depth === "iboss") {
+    return (
+      <IbossPage
+        onBack={() => { setReferencePost(null); setDepth("text"); }}
+        referencePost={referencePost}
+        onClearReference={() => setReferencePost(null)}
+      />
+    );
+  }
+
+  // 퍼널 블로그 생성
+  if (depth === "funnelblog") {
+    return <FunnelBlogPage onBack={() => setDepth("text")} />;
+  }
+
+  // 블로그 대시보드 (레거시 — 직접 접근 시)
   if (depth === "blog") {
     return <BlogPage onBack={() => setDepth("text")} />;
   }
@@ -173,6 +216,11 @@ export default function EAttackPage() {
   // 영상 대시보드
   if (depth === "video") {
     return <VideoPage onBack={() => setDepth("root")} />;
+  }
+
+  // 풀가동화 콘텐츠 대시보드
+  if (depth === "fullAuto") {
+    return <FullAutoPage onBack={() => setDepth("root")} />;
   }
 
   return (

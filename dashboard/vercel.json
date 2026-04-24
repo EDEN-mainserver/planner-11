@@ -3,7 +3,22 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
   "functions": {
+    "api/parse-pdf.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/image-generate.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "api/gemini.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
     "api/threads-crawl.js": {
       "maxDuration": 60,
       "memory": 1024
@@ -15,6 +30,20 @@
     "api/x-trends.js": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "api/full-auto-run.js": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "api/full-auto-cron.js": {
+      "maxDuration": 300,
+      "memory": 1024
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/full-auto-cron",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

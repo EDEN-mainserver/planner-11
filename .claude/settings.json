@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/eden/Desktop/planner-11/.claude/auto-deploy.sh",
+            "timeout": 60,
+            "statusMessage": "GitHub 푸시 중..."
+          }
+        ]
+      }
+    ]
+  }
+}

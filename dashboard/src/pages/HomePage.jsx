@@ -4,6 +4,8 @@ import { relativeTime } from "../utils/storage";
 import { IconArrowUp } from "../components/Icons";
 import EAttackPage from "../eattack/EAttackPage";
 import MoneyPage from "../eattack/MoneyPage";
+import GrowthDBPage from "../eattack/GrowthDBPage";
+import AdminPage from "./AdminPage";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [idea, setIdea] = useState('');
@@ -13,7 +15,6 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
   const [activePage, setActivePage] = useState('home'); // 'home' | 'projects' | 'trash' | 'admin'
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [permDeleteId, setPermDeleteId] = useState(null);
-
   const handleSuggest = async () => {
     setIsLoading(true);
     setSuggestedTopics([]);
@@ -100,6 +101,19 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
               ${activePage === 'money' ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
             <span className="text-base">💸</span>
             이걸 돈내고 써?
+          </div>
+        </div>
+        {/* 대표전용 툴 섹션 */}
+        <div className="px-2 mt-6 pt-4 border-t border-gray-200">
+          <div className="px-2 mb-2">
+            <div className="text-xs text-gray-400 font-medium">대표전용 툴</div>
+          </div>
+          <div
+            onClick={() => setActivePage('growthdb')}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors
+              ${activePage === 'growthdb' ? 'bg-orange-50 text-orange-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}>
+            <span className="text-base">📊</span>
+            에쿠 GrowthDB
           </div>
         </div>
         <div className="mt-auto px-4 py-3 border-t border-gray-100">
@@ -258,67 +272,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
 
         {/* ════ 관리자 화면 ════ */}
         {activePage === 'admin' && (
-          <div className="flex-1 overflow-y-auto px-10 py-8 bg-gray-50">
-            <div className="mb-8">
-              <h2 className="text-xl font-bold text-gray-800">관리자</h2>
-              <p className="text-sm text-gray-400 mt-0.5">프로젝트 현황 및 사용 통계</p>
-            </div>
-
-            {/* 통계 카드 */}
-            <div className="grid grid-cols-4 gap-4 mb-8">
-              {[
-                { label: '전체 프로젝트', value: projects.length, icon: '📋', color: 'purple' },
-                { label: '기능명세서 생성', value: projects.filter(p => p.specData).length, icon: '📄', color: 'indigo' },
-                { label: '유저플로우 생성', value: projects.filter(p => p.flowData).length, icon: '🔀', color: 'blue' },
-                { label: '휴지통', value: trash.length, icon: '🗑️', color: 'red' },
-              ].map(stat => (
-                <div key={stat.label} className="bg-white rounded-2xl p-5 border border-gray-200">
-                  <div className="text-2xl mb-2">{stat.icon}</div>
-                  <div className="text-2xl font-bold text-gray-800">{stat.value}</div>
-                  <div className="text-xs text-gray-400 mt-1">{stat.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* 프로젝트 목록 테이블 */}
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-700">프로젝트 목록</h3>
-              </div>
-              {projects.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-10">프로젝트가 없습니다.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      {['프로젝트명', '한 줄 설명', '기능명세서', '유저플로우', '마지막 수정'].map(h => (
-                        <th key={h} className="text-left px-6 py-3 text-xs font-semibold text-gray-500">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {projects.map(p => (
-                      <tr key={p.id} className="hover:bg-gray-50 cursor-pointer transition-colors" onClick={() => onLoad(p)}>
-                        <td className="px-6 py-3.5 font-medium text-gray-800 max-w-[180px] truncate">{p.title}</td>
-                        <td className="px-6 py-3.5 text-gray-500 max-w-[220px] truncate">{p.prd?.overview?.one_liner || '-'}</td>
-                        <td className="px-6 py-3.5">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.specData ? 'bg-purple-50 text-purple-600' : 'bg-gray-100 text-gray-400'}`}>
-                            {p.specData ? '완료' : '미생성'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-3.5">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.flowData ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
-                            {p.flowData ? '완료' : '미생성'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-3.5 text-gray-400">{relativeTime(p.updatedAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+          <AdminPage projects={projects} trash={trash} onLoad={onLoad} />
         )}
 
         {/* ════ E-Attack 화면 ════ */}
@@ -329,6 +283,12 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
         {/* ════ 이걸 돈내고 써? 화면 ════ */}
         {activePage === 'money' && (
           <MoneyPage onBack={() => setActivePage('eattack')} />
+        )}
+
+
+        {/* ════ 에쿠 GrowthDB ════ */}
+        {activePage === 'growthdb' && (
+          <GrowthDBPage />
         )}
 
         {/* ════ 홈 화면 ════ */}

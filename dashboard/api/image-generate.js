@@ -15,12 +15,12 @@ export default async function handler(req, res) {
     });
   }
 
-  const { prompt } = req.body;
+  const { prompt, aspectRatio = '16:9' } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt가 필요합니다.' });
 
   try {
-    // Imagen 3 호출
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_KEY}`;
+    // Imagen 4 Fast 호출 (imagen-3 → imagen-4로 업그레이드됨)
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key=${GEMINI_KEY}`;
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -28,20 +28,23 @@ export default async function handler(req, res) {
         instances: [{ prompt }],
         parameters: {
           sampleCount: 1,
-          aspectRatio: '16:9',  // 블로그 이미지에 적합한 비율
+          aspectRatio,
           safetyFilterLevel: 'BLOCK_ONLY_HIGH',
         },
       }),
     });
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Imagen API 오류 ${resp.status}`);
+      const errBody = await resp.json().catch(() => ({}));
+      const msg = errBody.error?.message || errBody.error?.status || JSON.stringify(errBody);
+      console.error('[image-generate] Imagen API error:', resp.status, msg);
+      throw new Error(`Imagen ${resp.status}: ${msg}`);
     }
 
     const data = await resp.json();
     const prediction = data.predictions?.[0];
     if (!prediction?.bytesBase64Encoded) {
+      console.error('[image-generate] No image data in response:', JSON.stringify(data).slice(0, 200));
       throw new Error('이미지 데이터를 받지 못했습니다.');
     }
 

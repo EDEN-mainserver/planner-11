@@ -1,40 +1,52 @@
 // 커뮤니티 영상 자동화 — 상수 정의
 
+// bgPreset: site(커뮤니티 사이트 정보) + character(애니 캐릭터 감정/색상) 조합
 export const BG_PRESETS = [
-  { key: "minecraft", label: "마인크래프트", emoji: "⛏️", category: "게임",
-    color: "from-green-500 to-emerald-600", desc: "파쿠르 & 서바이벌",
-    videoUrl: "https://www.pexels.com/video/854221/download/" },
-  { key: "subway",    label: "서브웨이 서퍼", emoji: "🏃", category: "게임",
-    color: "from-orange-500 to-red-500", desc: "무한 달리기 게임",
-    videoUrl: "https://www.pexels.com/video/2278095/download/" },
-  { key: "cooking",   label: "요리 영상",    emoji: "🍳", category: "요리",
-    color: "from-yellow-500 to-orange-500", desc: "맛있는 요리 과정",
-    videoUrl: "https://www.pexels.com/video/8485248/download/" },
-  { key: "rain",      label: "빗소리",       emoji: "🌧️", category: "자연",
-    color: "from-blue-400 to-slate-500", desc: "창문 빗소리 ASMR",
-    videoUrl: "https://www.pexels.com/video/1448735/download/" },
-  { key: "city",      label: "도시 야경",    emoji: "🌃", category: "야경",
-    color: "from-purple-500 to-indigo-600", desc: "빛나는 도시 야경",
-    videoUrl: "https://www.pexels.com/video/3571264/download/" },
-  { key: "satisfying", label: "새틴파잉",    emoji: "✨", category: "힐링",
-    color: "from-pink-400 to-rose-500", desc: "보는 것만으로 힐링",
-    videoUrl: "https://www.pexels.com/video/3129671/download/" },
+  { key: "fmkorea_angry",   label: "에펨코리아 열혈글", emoji: "🔥", category: "커뮤니티",
+    color: "from-blue-600 to-blue-800",      desc: "FM코리아 분노 썰",
+    site: { name: "에펨코리아",   color: "#1e6dc8" },
+    character: { mood: "angry",   hairColor: "#2c1a0e", clothesColor: "#dc2626" } },
+  { key: "ruliweb_shocked", label: "루리웹 경악글",     emoji: "😱", category: "커뮤니티",
+    color: "from-orange-500 to-red-500",     desc: "루리웹 황당 썰",
+    site: { name: "루리웹",       color: "#e8500a" },
+    character: { mood: "shocked", hairColor: "#1a1a2e", clothesColor: "#7c3aed" } },
+  { key: "dcinside_laugh",  label: "디씨 웃긴 글",     emoji: "😂", category: "커뮤니티",
+    color: "from-yellow-500 to-orange-500",  desc: "디씨인사이드 병맛 썰",
+    site: { name: "디씨인사이드", color: "#0066cc" },
+    character: { mood: "laugh",   hairColor: "#4a3728", clothesColor: "#16a34a" } },
+  { key: "theqoo_happy",    label: "더쿠 수다글",       emoji: "💬", category: "커뮤니티",
+    color: "from-pink-400 to-rose-500",      desc: "더쿠 연예인 수다",
+    site: { name: "더쿠",         color: "#e91e8c" },
+    character: { mood: "happy",   hairColor: "#7c2d12", clothesColor: "#ec4899" } },
+  { key: "instiz_sad",      label: "인스티즈 공감글",   emoji: "😢", category: "커뮤니티",
+    color: "from-blue-400 to-slate-500",     desc: "인스티즈 감성 공감",
+    site: { name: "인스티즈",     color: "#4c75af" },
+    character: { mood: "sad",     hairColor: "#374151", clothesColor: "#3b82f6" } },
+  { key: "blind_work",      label: "블라인드 직장 썰",  emoji: "🏢", category: "직장",
+    color: "from-gray-600 to-gray-800",      desc: "블라인드 직장 공감 썰",
+    site: { name: "블라인드",     color: "#222222" },
+    character: { mood: "angry",   hairColor: "#1c1c1c", clothesColor: "#374151" } },
+];
+
+// BGM 프리셋 — public/bgm/ 폴더의 파일 기반
+// 새 파일 추가 시: public/bgm/ 에 MP3 넣고 아래 목록에 추가
+export const BGM_LIST = [
+  { key: "none",          label: "없음",                file: null },
+  { key: "brain_trust",   label: "Brain Trust",         file: "/bgm/Brain Trust - Wayne Jones.mp3",                                   mood: "경쾌" },
+  { key: "humorous",      label: "Humorous Escalation", file: "/bgm/Humorous Escalation - Creable Music - Julieta Alcantara Kids.mp3", mood: "개그" },
+  { key: "mystery_box",   label: "Mystery Box",         file: "/bgm/Mystery box - VML.mp3",                                           mood: "긴장" },
+  { key: "omc",           label: "OMC",                 file: "/bgm/OMC - VML.mp3",                                                   mood: "경쾌" },
+  { key: "white_color",   label: "White Color",         file: "/bgm/White Color - Lunatic Souls.mp3",                                 mood: "감성" },
+  { key: "coral",         label: "🪸 Eliza Ivanova",   file: "/bgm/🪸 - Eliza Ivanova.mp3",                                         mood: "감성" },
+  { key: "rabbit",        label: "엉뚱한토끼",           file: "/bgm/엉뚱한토끼 - VML (1).mp3",                                       mood: "개그" },
 ];
 
 export const FONT_OPTIONS = [
-  { key: "Noto Sans KR",    label: "노토 산스 (기본)" },
-  { key: "Black Han Sans",  label: "검은 한 산스 (굵게)" },
-  { key: "Gmarket Sans",    label: "지마켓 산스" },
+  { key: "Noto Sans KR",   label: "노토 산스 (기본)" },
+  { key: "Black Han Sans", label: "검은 한 산스 (굵게)" },
+  { key: "Nanum Gothic",   label: "나눔 고딕" },
 ];
 
-export const HIGHLIGHT_COLORS = [
-  { key: "#FFE600", label: "노랑" },
-  { key: "#FF3D3D", label: "빨강" },
-  { key: "#00FF9D", label: "연두" },
-  { key: "#00CFFF", label: "하늘" },
-  { key: "#FF6BF5", label: "분홍" },
-  { key: "#FF8800", label: "주황" },
-];
 
 export const VOICE_OPTIONS = [
   { id: "cgSgspJ2msm6clMCkdW9", name: "서준 (남성)", desc: "차분하고 신뢰감" },
