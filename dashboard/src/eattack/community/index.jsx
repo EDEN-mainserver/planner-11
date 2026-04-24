@@ -64,8 +64,9 @@ export default function CommunityTab({ nasState, onGoToNas }) {
     let captions = [];
     let totalMs  = 0;
     let audioUrl = null;
+    let ttsProvider = null;
 
-    // 백엔드 TTS 프록시 호출 — with-timestamps로 정확한 단어 타이밍 수신
+    // 백엔드 TTS 프록시 호출
     try {
       const res = await fetch("/api/tts", {
         method: "POST",
@@ -78,27 +79,39 @@ export default function CommunityTab({ nasState, onGoToNas }) {
         throw new Error(err?.error || `TTS 오류 (${res.status})`);
       }
 
-      const { audioBase64, captions: wordTimings } = await res.json();
+      const { audioBase64, captions: wordTimings, provider, mimeType } = await res.json();
+      ttsProvider = provider;
 
       // base64 → Blob URL
-      const binary = atob(audioBase64);
-      const bytes  = new Uint8Array(binary.length);
+      const binary   = atob(audioBase64);
+      const bytes    = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      audioUrl = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+      const mime     = mimeType || "audio/mpeg";
+      audioUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
 
-      // ElevenLabs가 반환한 정확한 단어 타이밍 사용
-      captions = wordTimings.map((w, i) => ({
-        text:        i === 0 ? w.text : ` ${w.text}`,
-        startMs:     w.startMs,
-        endMs:       w.endMs,
-        timestampMs: w.startMs,
-        confidence:  1,
-      }));
-      totalMs = (captions[captions.length - 1]?.endMs ?? 0) + 300;
+      if (wordTimings && wordTimings.length > 0) {
+        // ElevenLabs: 정확한 단어 타이밍 사용
+        captions = wordTimings.map((w, i) => ({
+          text:        i === 0 ? w.text : ` ${w.text}`,
+          startMs:     w.startMs,
+          endMs:       w.endMs,
+          timestampMs: w.startMs,
+          confidence:  1,
+        }));
+        totalMs = (captions[captions.length - 1]?.endMs ?? 0) + 300;
+      } else {
+        // Google TTS 폴백: 추정 타이밍 사용 (오디오는 있음)
+        const fallback = generateCaptionsFromText(script);
+        captions = fallback.captions;
+        totalMs  = fallback.totalMs;
+        if (provider === "google") {
+          setTtsError("ElevenLabs 크레딧 소진 → Google AI Studio로 생성했습니다. 자막 타이밍은 추정값입니다.");
+        }
+      }
 
     } catch (e) {
       setTtsError(e.message);
-      // TTS 실패 시 추정 자막 폴백
+      // TTS 전체 실패 시 추정 자막 폴백 (오디오 없음)
       const fallback = generateCaptionsFromText(script);
       captions = fallback.captions;
       totalMs  = fallback.totalMs;
