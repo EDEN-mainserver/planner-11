@@ -144,11 +144,11 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       }
 
     } catch (e) {
-      setTtsError(e.message);
-      // TTS 전체 실패 시 추정 자막 폴백 (오디오 없음)
+      // TTS 전체 실패 → 브라우저 Web Speech API로 재생 (audioUrl=null)
       const fallback = generateCaptionsFromText(script);
       captions = fallback.captions;
       totalMs  = fallback.totalMs;
+      setTtsInfo("API TTS 크레딧 소진 → 브라우저 내장 음성으로 대체됩니다. (재생 버튼 클릭 시 자동 실행)");
     }
 
     setGenerated({

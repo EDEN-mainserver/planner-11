@@ -165,11 +165,21 @@ export default function VideoPreview({
   gifQuery,
   bgmFile,
 }) {
-  const audioRef    = useRef(null);
-  const bgmRef      = useRef(null);
-  const intervalRef = useRef(null);
+  const audioRef       = useRef(null);
+  const bgmRef         = useRef(null);
+  const intervalRef    = useRef(null);
+  const speechStartRef = useRef(null);   // Web Speech 시작 시각
+  const speechRafRef   = useRef(null);   // Web Speech RAF ID
   const [playing, setPlaying]     = useState(false);
   const [currentMs, setCurrentMs] = useState(0);
+
+  // 언마운트 시 Web Speech 정리
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis?.cancel();
+      cancelAnimationFrame(speechRafRef.current);
+    };
+  }, []);
 
   const sentences  = useMemo(() => buildChunks(captions), [captions]);
   const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
@@ -289,16 +299,54 @@ export default function VideoPreview({
     if (playing) {
       audio?.pause();
       bgmRef.current?.pause();
+      window.speechSynthesis?.cancel();
+      cancelAnimationFrame(speechRafRef.current);
+      speechRafRef.current = null;
       setPlaying(false);
     } else {
-      audio?.play().catch(e => console.error("[VideoPreview] audio.play() 실패:", e));
+      if (audio) {
+        // API TTS 오디오 재생
+        audio.play().catch(e => console.error("[VideoPreview] audio.play() 실패:", e));
+      } else if (script && window.speechSynthesis) {
+        // Web Speech API 폴백 — 브라우저 내장 TTS
+        window.speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance(script);
+        utt.lang  = "ko-KR";
+        utt.rate  = 0.95;
+
+        utt.onstart = () => {
+          speechStartRef.current = Date.now();
+          const tick = () => {
+            if (speechStartRef.current !== null) {
+              setCurrentMs(Date.now() - speechStartRef.current);
+            }
+            speechRafRef.current = requestAnimationFrame(tick);
+          };
+          speechRafRef.current = requestAnimationFrame(tick);
+        };
+        utt.onend = () => {
+          cancelAnimationFrame(speechRafRef.current);
+          speechRafRef.current  = null;
+          speechStartRef.current = null;
+          setPlaying(false);
+          setCurrentMs(0);
+        };
+        utt.onerror = () => {
+          cancelAnimationFrame(speechRafRef.current);
+          speechRafRef.current  = null;
+          speechStartRef.current = null;
+          setPlaying(false);
+        };
+        window.speechSynthesis.speak(utt);
+      }
+
       if (bgmRef.current) {
-        bgmRef.current.currentTime = 0; // 항상 처음부터
+        bgmRef.current.currentTime = 0;
         bgmRef.current.play().catch(e => console.error("[BGM] play 실패:", e));
       }
       setPlaying(true);
     }
-  }, [playing]);
+  }, [playing, script]);
 
   const handleSeek = useCallback((e) => {
     const ms = Number(e.target.value);
