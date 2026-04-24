@@ -145,23 +145,6 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName, headerColor, 
           <span>조회수 {views}</span>
         </div>
 
-        {/* 본문 한 줄 (훅 문구) */}
-        {bodyText && (
-          <p style={{
-            fontSize: 13,
-            fontWeight: 700,
-            textAlign: "center",
-            marginTop: 10,
-            color: textMain,
-            lineHeight: 1.4,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}>
-            {bodyText}
-          </p>
-        )}
       </div>
     </div>
   );
@@ -324,9 +307,9 @@ export default function VideoPreview({
           bodyBgColor={bodyBgColor}
         />
 
-        {/* 자막 + GIF — 헤더(50) + 본문영역(~160) 아래 */}
+        {/* 자막 + GIF — 헤더(50) + 제목/메타(~100) 아래 */}
         <div style={{
-          position: "absolute", top: 210, left: 0, right: 0, bottom: 0,
+          position: "absolute", top: 148, left: 0, right: 0, bottom: 0,
           display: "flex", flexDirection: "column", alignItems: "center",
           pointerEvents: "none", padding: "4px 20px 0", gap: 8,
         }}>
