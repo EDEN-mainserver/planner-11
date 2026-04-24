@@ -83,9 +83,33 @@ function isCreditError(httpStatus, apiStatus, msg) {
   return m.includes("quota") || m.includes("credit") || m.includes("insufficient") || m.includes("character");
 }
 
+// ── PCM(L16) raw 오디오 → WAV 변환 ──────────────────────────────────────────
+// Gemini TTS는 audio/L16;rate=24000 형태의 raw PCM을 반환하므로 WAV 헤더 추가 필요
+function pcmToWavBase64(pcmBase64, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
+  const pcm      = Buffer.from(pcmBase64, "base64");
+  const dataSize = pcm.length;
+  const wav      = Buffer.alloc(44 + dataSize);
+
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + dataSize, 4);
+  wav.write("WAVE", 8);
+  wav.write("fmt ", 12);
+  wav.writeUInt32LE(16, 16);                                          // fmt chunk 크기
+  wav.writeUInt16LE(1, 20);                                           // PCM = 1
+  wav.writeUInt16LE(numChannels, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), 28); // byte rate
+  wav.writeUInt16LE(numChannels * (bitsPerSample / 8), 32);           // block align
+  wav.writeUInt16LE(bitsPerSample, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(dataSize, 40);
+  pcm.copy(wav, 44);
+
+  return wav.toString("base64");
+}
+
 // ── Google AI Studio (Gemini) TTS 폴백 ───────────────────────────────────────
 async function googleTTS(text, geminiKey) {
-  // Gemini 2.5 Flash TTS 모델 사용
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${geminiKey}`;
 
   const res = await fetch(url, {
@@ -110,14 +134,26 @@ async function googleTTS(text, geminiKey) {
   }
 
   const data = await res.json();
+  console.log("[Google TTS] 응답 mimeType:", data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType);
+
   const part = data?.candidates?.[0]?.content?.parts?.[0];
   if (!part?.inlineData?.data) {
     throw new Error("Google TTS: 오디오 데이터를 받지 못했습니다.");
   }
 
+  const rawMime   = part.inlineData.mimeType ?? "";
+  const isPcm     = rawMime.includes("L16") || rawMime.includes("pcm");
+  const rateMatch = rawMime.match(/rate=(\d+)/);
+  const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
+
+  // raw PCM → WAV 변환 (브라우저 재생 가능하도록)
+  const audioBase64 = isPcm
+    ? pcmToWavBase64(part.inlineData.data, sampleRate)
+    : part.inlineData.data;
+
   return {
-    audioBase64: part.inlineData.data,
-    mimeType: part.inlineData.mimeType ?? "audio/wav",
+    audioBase64,
+    mimeType: "audio/wav",
   };
 }
 

@@ -35,6 +35,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
   const [ttsError, setTtsError]             = useState("");
+  const [ttsInfo, setTtsInfo]               = useState("");
 
   // 컴포넌트 마운트 시 보이스 목록 로드
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
     setGenerating(true);
     setGenerated(null);
     setTtsError("");
+    setTtsInfo("");
 
     let captions = [];
     let totalMs  = 0;
@@ -105,7 +107,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
         captions = fallback.captions;
         totalMs  = fallback.totalMs;
         if (provider === "google") {
-          setTtsError("ElevenLabs 크레딧 소진 → Google AI Studio로 생성했습니다. 자막 타이밍은 추정값입니다.");
+          setTtsInfo("ElevenLabs 크레딧 소진 → Google AI Studio로 자동 전환됐습니다. 자막 타이밍은 추정값입니다.");
         }
       }
 
@@ -528,6 +530,11 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                 )}
               </div>
 
+              {ttsInfo && (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700">
+                  ℹ️ {ttsInfo}
+                </div>
+              )}
               {ttsError && (
                 <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
                   음성 생성 실패: {ttsError} · 자막만으로 계속합니다.
