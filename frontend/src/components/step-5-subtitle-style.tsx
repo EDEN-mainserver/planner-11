@@ -118,11 +118,11 @@ export function StepSubtitleStyle({
                 자막 스타일 선택
               </CardTitle>
               <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
+                <DialogTrigger
+                  render={<Button variant="outline" size="sm" />}
+                >
                     <Palette className="w-4 h-4 mr-1" />
                     커스텀 만들기
-                  </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
@@ -142,7 +142,7 @@ export function StepSubtitleStyle({
                       <Slider
                         value={[editTemplate.fontsize]}
                         onValueChange={(v) =>
-                          setEditTemplate((t) => ({ ...t, fontsize: v[0] }))
+                          setEditTemplate((t) => ({ ...t, fontsize: Array.isArray(v) ? v[0] : v }))
                         }
                         min={12}
                         max={48}
@@ -184,7 +184,7 @@ export function StepSubtitleStyle({
                       <Slider
                         value={[editTemplate.borderw]}
                         onValueChange={(v) =>
-                          setEditTemplate((t) => ({ ...t, borderw: v[0] }))
+                          setEditTemplate((t) => ({ ...t, borderw: Array.isArray(v) ? v[0] : v }))
                         }
                         min={0}
                         max={6}

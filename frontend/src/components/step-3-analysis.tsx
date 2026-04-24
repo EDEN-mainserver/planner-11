@@ -90,7 +90,7 @@ export function StepAnalysis({
             <Label>추출할 숏폼 개수: {numClips}개</Label>
             <Slider
               value={[numClips]}
-              onValueChange={(v) => setNumClips(v[0])}
+              onValueChange={(v) => setNumClips(Array.isArray(v) ? v[0] : v)}
               min={1}
               max={15}
               step={1}

@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import uuid
+import threading
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,7 +74,7 @@ def _update_progress(session_id: str, stage: str, percent: int, message: str = "
 
 @app.get("/api/progress/{session_id}")
 def get_progress(session_id: str):
-    """현재 작업 진행률 조회"""
+    """현재 작업 진행률 조회 (완료 시 result 포함)"""
     return progress_store.get(session_id, {"stage": "idle", "percent": 0, "message": ""})
 
 
@@ -114,17 +115,8 @@ def check_subtitle(url: str):
         return {"has_subtitle": False, "source": None}
 
 
-@app.post("/api/prepare")
-async def prepare(
-    video_input: str = Form(...),
-    srt_path: str = Form(""),
-    whisper_model: str = Form("base"),
-    progress_id: str = Form(""),
-):
-    """Step 1+2: 영상 준비 (로컬 파일 or YouTube URL) + 자막 준비 (SRT or Whisper 자동생성)"""
-    if not progress_id:
-        progress_id = str(uuid.uuid4())[:8]
-
+def _prepare_worker(progress_id: str, video_input: str, srt_path: str, whisper_model: str):
+    """백그라운드에서 영상 준비 작업 수행"""
     video_path = video_input
     srt_file = srt_path if srt_path else None
     youtube_title = None
@@ -136,17 +128,17 @@ async def prepare(
             dl_result = download_youtube(video_input, DOWNLOADS_DIR)
             video_path = dl_result["video_path"]
             youtube_title = dl_result["title"]
-            # YouTube에서 자막도 받아왔으면 사용
             if dl_result.get("srt_path") and not srt_file:
                 srt_file = dl_result["srt_path"]
             _update_progress(progress_id, "download", 50, "YouTube 다운로드 완료")
         except Exception as e:
-            _update_progress(progress_id, "error", 0, str(e))
-            raise HTTPException(400, f"YouTube 다운로드 실패: {str(e)}")
+            _update_progress(progress_id, "error", 0, f"YouTube 다운로드 실패: {str(e)}")
+            return
 
     # 로컬 파일 확인
     if not os.path.exists(video_path):
-        raise HTTPException(400, f"영상 파일을 찾을 수 없습니다: {video_path}")
+        _update_progress(progress_id, "error", 0, f"영상 파일을 찾을 수 없습니다: {video_path}")
+        return
 
     # 자막이 없으면 Whisper로 자동 생성
     whisper_used = False
@@ -160,37 +152,61 @@ async def prepare(
             whisper_used = True
             _update_progress(progress_id, "whisper", 95, "자막 생성 완료")
         except Exception as e:
-            _update_progress(progress_id, "error", 0, str(e))
-            raise HTTPException(500, f"Whisper 자막 생성 실패: {str(e)}")
+            _update_progress(progress_id, "error", 0, f"Whisper 자막 생성 실패: {str(e)}")
+            return
     else:
         _update_progress(progress_id, "prepare", 80, "자막 파일 확인 중...")
 
     if not os.path.exists(srt_file):
-        raise HTTPException(400, f"자막 파일을 찾을 수 없습니다: {srt_file}")
+        _update_progress(progress_id, "error", 0, f"자막 파일을 찾을 수 없습니다: {srt_file}")
+        return
 
     # 세션 생성
-    session_id = progress_id
-    sessions[session_id] = {
-        "video_path": video_path,
-        "srt_path": srt_file,
-    }
-    _save_sessions()
-    _update_progress(session_id, "done", 100, "준비 완료")
-
     video_info = {}
     try:
         video_info = get_video_info(video_path)
     except Exception:
         pass
 
-    return {
-        "session_id": session_id,
+    sessions[progress_id] = {
+        "video_path": video_path,
+        "srt_path": srt_file,
+    }
+    _save_sessions()
+
+    # 결과를 progress_store에 저장하여 프론트엔드가 폴링으로 가져갈 수 있게 함
+    _update_progress(progress_id, "done", 100, "준비 완료")
+    progress_store[progress_id]["result"] = {
+        "session_id": progress_id,
         "video_path": video_path,
         "srt_path": srt_file,
         "youtube_title": youtube_title,
         "whisper_used": whisper_used,
         "video_info": video_info,
     }
+
+
+@app.post("/api/prepare")
+async def prepare(
+    video_input: str = Form(...),
+    srt_path: str = Form(""),
+    whisper_model: str = Form("base"),
+    progress_id: str = Form(""),
+):
+    """Step 1+2: 영상 준비 - 백그라운드로 실행하고 즉시 응답"""
+    if not progress_id:
+        progress_id = str(uuid.uuid4())[:8]
+
+    _update_progress(progress_id, "starting", 5, "작업 시작 중...")
+
+    thread = threading.Thread(
+        target=_prepare_worker,
+        args=(progress_id, video_input, srt_path, whisper_model),
+        daemon=True,
+    )
+    thread.start()
+
+    return {"progress_id": progress_id, "status": "started"}
 
 
 @app.post("/api/analyze")

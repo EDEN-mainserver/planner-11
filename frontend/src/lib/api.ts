@@ -82,6 +82,7 @@ export async function prepareVideo(
   form.append("whisper_model", whisperModel);
   if (progressId) form.append("progress_id", progressId);
 
+  // 백엔드가 즉시 응답하고 백그라운드로 작업을 수행
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/prepare`, {
@@ -102,7 +103,42 @@ export async function prepareVideo(
     }
     throw new Error(detail);
   }
-  return res.json();
+
+  const startData = await res.json();
+  const pid = startData.progress_id || progressId;
+
+  // 폴링으로 완료 대기
+  return new Promise((resolve, reject) => {
+    const poll = setInterval(async () => {
+      try {
+        const p = await getProgress(pid);
+        if (p.stage === "done") {
+          clearInterval(poll);
+          // result가 포함된 progress 데이터에서 결과 가져오기
+          const fullRes = await fetch(`${API_BASE}/api/progress/${pid}`);
+          const fullData = await fullRes.json();
+          if (fullData.result) {
+            resolve(fullData.result as PrepareResponse);
+          } else {
+            // fallback: session이 생성되었으므로 기본 응답 구성
+            resolve({
+              session_id: pid,
+              video_path: "",
+              srt_path: "",
+              youtube_title: null,
+              whisper_used: false,
+              video_info: {},
+            });
+          }
+        } else if (p.stage === "error") {
+          clearInterval(poll);
+          reject(new Error(p.message || "준비 중 오류가 발생했습니다."));
+        }
+      } catch {
+        // 폴링 실패는 무시 (네트워크 일시 오류)
+      }
+    }, 1500);
+  });
 }
 
 export async function analyzeVideo(
@@ -208,6 +244,7 @@ export interface ProgressInfo {
   stage: string;
   percent: number;
   message: string;
+  result?: PrepareResponse;
 }
 
 export async function getProgress(sessionId: string): Promise<ProgressInfo> {
