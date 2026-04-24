@@ -1155,7 +1155,7 @@ export default function GrowthDBPage() {
   const [adData, setAdData] = useState({ adList: [], updatedAt: null });
   // 쿠팡 DOM 크롤 데이터 (EKU_COUPANG_CRAWL)
   const [coupangSales, setCoupangSales] = useState(null);   // Wing 판매분석
-  const [coupangAds, setCoupangAds] = useState(null);       // 광고센터 캠페인
+  const [_coupangAds, setCoupangAds] = useState(null);      // 광고센터 캠페인 (수신 전용)
 
   const hasKey = !!(creds.accessKey && creds.secretKey && creds.vendorId);
   const fmt    = n => Number(n).toLocaleString();
@@ -1266,7 +1266,8 @@ export default function GrowthDBPage() {
     return () => window.removeEventListener('message', handleExtMessage);
   }, []);
 
-  // 에쿠 확장 경유 수집 (브라우저 IP → 쿠팡 IP 차단 없음)
+  // 에쿠 확장 경유 수집 (브라우저 IP → 쿠팡 IP 차단 없음) — 향후 사용 예정
+  // eslint-disable-next-line no-unused-vars
   const loadFromExtension = useCallback(() => {
     if (!hasKey) return;
     setLoading(true);
@@ -1347,6 +1348,7 @@ export default function GrowthDBPage() {
     setLoading(false);
   }, [creds, hasKey]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (hasKey) loadFromAPI(); }, []);
 
   const filtered = useMemo(() =>
@@ -1385,8 +1387,7 @@ export default function GrowthDBPage() {
         {activeSection === 'growthdb' && <>
 
         {/* ── 상품DB ── */}
-        {true && (
-          <>
+        <>
             {/* 상태 배너 */}
             {!hasKey && (
               <div className="bg-orange-50 border-b border-orange-200 px-6 py-2 flex items-center gap-2">
@@ -1681,8 +1682,7 @@ export default function GrowthDBPage() {
                 </div>
               </div>
             </div>
-          </>
-        )}
+        </>
         </> /* growthdb section end */}
       </div>
     </div>
