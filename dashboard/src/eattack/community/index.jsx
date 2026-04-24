@@ -30,6 +30,8 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [voiceId, setVoiceId]               = useState("");
   const [bgmKey, setBgmKey]                 = useState("none");
   const [siteName, setSiteName]             = useState("줍줍썰");
+  const [headerColor, setHeaderColor]       = useState("#FFD6C1");
+  const [bodyBgColor, setBodyBgColor]       = useState("#ffffff");
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
   const [ttsError, setTtsError]             = useState("");
@@ -111,11 +113,13 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       bgPreset: BG_PRESETS.find(b => b.key === selectedBg),
       title,
       siteName,
+      headerColor,
+      bodyBgColor,
       gifQuery: title.trim() || script.trim().slice(0, 40),
       bgmFile: BGM_LIST.find(b => b.key === bgmKey)?.file ?? null,
     });
     setGenerating(false);
-  }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title, bgmKey, siteName]);
+  }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title, bgmKey, siteName, headerColor, bodyBgColor]);
 
   const handleDownloadCaptions = useCallback(() => {
     if (!generated) return;
@@ -254,40 +258,135 @@ export default function CommunityTab({ nasState, onGoToNas }) {
           </div>
         )}
 
-        {/* ── STEP 2: 배경 영상 선택 ── */}
+        {/* ── STEP 2: 색상 선택 ── */}
         {step === 2 && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+
+            {/* 미니 프리뷰 */}
+            <div className="flex justify-center">
+              <div className="rounded-2xl overflow-hidden shadow-lg border border-gray-100" style={{ width: 120, height: 214, flexShrink: 0 }}>
+                <div style={{ height: 22, background: headerColor, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: "#000", background: "white", borderRadius: 4, padding: "1px 6px" }}>{siteName || "줍줍썰"}</span>
+                </div>
+                <div style={{ flex: 1, background: bodyBgColor, padding: "6px 8px" }}>
+                  <div style={{ height: 7, background: "#eee", borderRadius: 3, marginBottom: 4, width: "80%" }} />
+                  <div style={{ height: 5, background: "#eee", borderRadius: 3, marginBottom: 4, width: "60%" }} />
+                  <div style={{ height: 1, background: "#222", margin: "5px 0" }} />
+                  <div style={{ height: 5, background: "#f0f0f0", borderRadius: 3, width: "90%" }} />
+                </div>
+              </div>
+            </div>
+
+            {/* 헤더 색상 */}
             <div>
-              <p className="text-sm font-semibold text-gray-700 mb-1">배경 영상 선택</p>
-              <p className="text-xs text-gray-400 mb-4">썰 영상에 어울리는 배경을 고르세요. 저작권 무료 영상입니다.</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {BG_PRESETS.map(bg => (
+              <p className="text-sm font-semibold text-gray-700 mb-3">헤더 색상</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {[
+                  { label: "살구", color: "#FFD6C1" },
+                  { label: "하늘", color: "#C1DEFF" },
+                  { label: "민트", color: "#C1FFE8" },
+                  { label: "라벤더", color: "#DCC1FF" },
+                  { label: "노랑", color: "#FFF5C1" },
+                  { label: "핑크", color: "#FFC1E3" },
+                  { label: "연두", color: "#D4FFC1" },
+                  { label: "다크", color: "#2D2D2D" },
+                ].map(({ label, color }) => (
                   <button
-                    key={bg.key}
-                    onClick={() => setSelectedBg(bg.key)}
-                    className={`relative rounded-xl border-2 p-4 text-left transition-all ${
-                      selectedBg === bg.key
-                        ? "border-indigo-400 bg-indigo-50 shadow-md"
-                        : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
+                    key={color}
+                    onClick={() => setHeaderColor(color)}
+                    title={label}
+                    className="flex flex-col items-center gap-1"
                   >
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${bg.color} flex items-center justify-center mb-2 text-lg shadow-sm`}>
-                      {bg.emoji}
-                    </div>
-                    <p className={`text-xs font-bold ${selectedBg === bg.key ? "text-indigo-700" : "text-gray-800"}`}>
-                      {bg.label}
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{bg.desc}</p>
-                    <span className="mt-1.5 inline-block px-1.5 py-0.5 rounded-full text-[9px] bg-gray-100 text-gray-500">{bg.category}</span>
-                    {selectedBg === bg.key && (
-                      <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="m20 6-11 11-5-5"/>
-                        </svg>
-                      </div>
-                    )}
+                    <div
+                      className="w-9 h-9 rounded-xl border-2 transition-all shadow-sm"
+                      style={{
+                        background: color,
+                        borderColor: headerColor === color ? "#6366f1" : "transparent",
+                        boxShadow: headerColor === color ? "0 0 0 2px #6366f1" : undefined,
+                      }}
+                    />
+                    <span className="text-[9px] text-gray-400">{label}</span>
                   </button>
                 ))}
+                {/* 커스텀 컬러피커 */}
+                <label className="flex flex-col items-center gap-1 cursor-pointer">
+                  <div className="w-9 h-9 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden relative hover:border-indigo-400 transition-colors">
+                    <div className="w-full h-full" style={{ background: headerColor }} />
+                    <input
+                      type="color"
+                      value={headerColor}
+                      onChange={e => setHeaderColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </div>
+                  <span className="text-[9px] text-gray-400">직접입력</span>
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">HEX</span>
+                <input
+                  type="text"
+                  value={headerColor}
+                  onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) setHeaderColor(e.target.value); }}
+                  className="w-28 px-2 py-1 text-xs border border-gray-200 rounded-lg font-mono focus:outline-none focus:border-indigo-400"
+                />
+                <div className="w-5 h-5 rounded border border-gray-200" style={{ background: headerColor }} />
+              </div>
+            </div>
+
+            {/* 본문 배경색 */}
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-3">본문 배경색</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {[
+                  { label: "화이트", color: "#ffffff" },
+                  { label: "아이보리", color: "#FFFDF5" },
+                  { label: "연회색", color: "#F5F5F5" },
+                  { label: "연파랑", color: "#F0F5FF" },
+                  { label: "연핑크", color: "#FFF0F5" },
+                  { label: "연노랑", color: "#FFFBF0" },
+                  { label: "다크", color: "#1a1a1a" },
+                  { label: "네이비", color: "#0f172a" },
+                ].map(({ label, color }) => (
+                  <button
+                    key={color}
+                    onClick={() => setBodyBgColor(color)}
+                    title={label}
+                    className="flex flex-col items-center gap-1"
+                  >
+                    <div
+                      className="w-9 h-9 rounded-xl border-2 transition-all shadow-sm"
+                      style={{
+                        background: color,
+                        borderColor: bodyBgColor === color ? "#6366f1" : "#e5e7eb",
+                        boxShadow: bodyBgColor === color ? "0 0 0 2px #6366f1" : undefined,
+                      }}
+                    />
+                    <span className="text-[9px] text-gray-400">{label}</span>
+                  </button>
+                ))}
+                <label className="flex flex-col items-center gap-1 cursor-pointer">
+                  <div className="w-9 h-9 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden relative hover:border-indigo-400 transition-colors">
+                    <div className="w-full h-full" style={{ background: bodyBgColor }} />
+                    <input
+                      type="color"
+                      value={bodyBgColor}
+                      onChange={e => setBodyBgColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </div>
+                  <span className="text-[9px] text-gray-400">직접입력</span>
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">HEX</span>
+                <input
+                  type="text"
+                  value={bodyBgColor}
+                  onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value)) setBodyBgColor(e.target.value); }}
+                  className="w-28 px-2 py-1 text-xs border border-gray-200 rounded-lg font-mono focus:outline-none focus:border-indigo-400"
+                />
+                <div className="w-5 h-5 rounded border border-gray-200" style={{ background: bodyBgColor }} />
               </div>
             </div>
 
@@ -488,6 +587,8 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                   bgPreset={generated.bgPreset}
                   title={generated.title}
                   siteName={generated.siteName}
+                  headerColor={generated.headerColor}
+                  bodyBgColor={generated.bodyBgColor}
                   script={script}
                   audioUrl={generated.audioUrl}
                   captions={generated.captions}

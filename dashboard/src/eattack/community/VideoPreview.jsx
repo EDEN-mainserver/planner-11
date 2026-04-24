@@ -32,7 +32,16 @@ function hashInt(str, min, max) {
   return min + (Math.abs(h) % (max - min));
 }
 
-function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName }) {
+// 배경색 밝기 계산 → 텍스트 색 자동 결정
+function isDark(hex) {
+  const c = hex?.replace("#", "") ?? "ffffff";
+  const r = parseInt(c.slice(0,2), 16);
+  const g = parseInt(c.slice(2,4), 16);
+  const b = parseInt(c.slice(4,6), 16);
+  return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+}
+
+function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName, headerColor, bodyBgColor }) {
   const { key } = bgPreset ?? {};
 
   const views = hashInt((key ?? "") + "v", 10000, 200000).toLocaleString();
@@ -42,17 +51,22 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName }) {
   const min  = String(hashInt((key ?? "") + "m", 0, 59)).padStart(2, "0");
   const timeStr = `${hour}:${min}`;
 
+  const bodyDark    = isDark(bodyBgColor || "#ffffff");
+  const textMain    = bodyDark ? "#ffffff" : "#111111";
+  const textSub     = bodyDark ? "#aaaaaa" : "#888888";
+  const dividerColor = bodyDark ? "#444444" : "#222222";
+
   return (
     <div style={{
       position: "absolute", inset: 0,
-      background: "#ffffff",
+      background: bodyBgColor || "#ffffff",
       overflow: "hidden",
       fontFamily: "'Noto Sans KR', sans-serif",
     }}>
 
-      {/* 헤더 — 살구색 */}
+      {/* 헤더 */}
       <div style={{
-        background: "#FFD6C1",
+        background: headerColor || "#FFD6C1",
         height: 50,
         display: "flex",
         alignItems: "center",
@@ -96,7 +110,7 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName }) {
       </div>
 
       {/* 본문 영역 */}
-      <div style={{ padding: "14px 16px 0", background: "#fff" }}>
+      <div style={{ padding: "14px 16px 0", background: bodyBgColor || "#fff" }}>
 
         {/* 게시글 제목 */}
         <h1 style={{
@@ -105,7 +119,7 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName }) {
           marginBottom: 8,
           letterSpacing: "-0.3px",
           lineHeight: 1.35,
-          color: "#111",
+          color: textMain,
           display: "-webkit-box",
           WebkitLineClamp: 2,
           WebkitBoxOrient: "vertical",
@@ -117,14 +131,14 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName }) {
         {/* 메타 정보 */}
         <div style={{
           fontSize: 10,
-          color: "#888",
+          color: textSub,
           paddingBottom: 10,
-          borderBottom: "1px solid #222",
+          borderBottom: `1px solid ${dividerColor}`,
           display: "flex",
           gap: 5,
           alignItems: "center",
         }}>
-          <span style={{ fontWeight: 600, color: "#555" }}>ㅇㅇ</span>
+          <span style={{ fontWeight: 600, color: textSub }}>ㅇㅇ</span>
           <span>|</span>
           <span>{timeStr}</span>
           <span>|</span>
@@ -138,7 +152,7 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName }) {
             fontWeight: 700,
             textAlign: "center",
             marginTop: 10,
-            color: "#000",
+            color: textMain,
             lineHeight: 1.4,
             display: "-webkit-box",
             WebkitLineClamp: 2,
@@ -158,6 +172,8 @@ export default function VideoPreview({
   bgPreset,
   title,
   siteName,
+  headerColor,
+  bodyBgColor,
   script,
   audioUrl,
   captions,
@@ -304,6 +320,8 @@ export default function VideoPreview({
           titleExcerpt={titleExcerpt}
           bodyText={bodyText}
           siteName={siteName}
+          headerColor={headerColor}
+          bodyBgColor={bodyBgColor}
         />
 
         {/* 자막 + GIF — 헤더(50) + 본문영역(~160) 아래 */}
