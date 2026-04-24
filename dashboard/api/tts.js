@@ -49,17 +49,27 @@ function parseWordTimings(alignment) {
   return words;
 }
 
+// ── ElevenLabs 에러 응답에서 메시지·상태 추출 ────────────────────────────────
+function parseElevenLabsError(errBody) {
+  // detail이 객체인 경우: { detail: { status: "quota_exceeded", message: "..." } }
+  // detail이 문자열인 경우: { detail: "Invalid API key" }
+  const detail = errBody?.detail;
+  if (detail && typeof detail === "object") {
+    return { status: detail.status ?? "", message: detail.message ?? "" };
+  }
+  if (typeof detail === "string") {
+    return { status: "", message: detail };
+  }
+  return { status: "", message: "" };
+}
+
 // ── ElevenLabs 크레딧 에러 여부 판별 ─────────────────────────────────────────
-function isCreditError(status, msg) {
-  if (status === 401) return false;
-  return (
-    status === 402 ||
-    (msg && (
-      msg.toLowerCase().includes("quota") ||
-      msg.toLowerCase().includes("credit") ||
-      msg.toLowerCase().includes("insufficient")
-    ))
-  );
+function isCreditError(httpStatus, apiStatus, msg) {
+  if (httpStatus === 401) return false; // 인증 오류는 폴백 안 함
+  if (apiStatus === "quota_exceeded" || apiStatus === "insufficient_credits") return true;
+  if (httpStatus === 402 || httpStatus === 429) return true;
+  const m = (msg ?? "").toLowerCase();
+  return m.includes("quota") || m.includes("credit") || m.includes("insufficient");
 }
 
 // ── Google AI Studio (Gemini) TTS 폴백 ───────────────────────────────────────
@@ -146,16 +156,17 @@ export default async function handler(req, res) {
       });
     }
 
-    // 크레딧 에러가 아니면 즉시 에러 반환
-    const err = await elevenRes.json().catch(() => ({}));
-    const msg = err?.detail?.message || `ElevenLabs 오류 (${elevenRes.status})`;
+    // 에러 파싱
+    const errBody  = await elevenRes.json().catch(() => ({}));
+    const { status: apiStatus, message: apiMsg } = parseElevenLabsError(errBody);
+    const displayMsg = apiMsg || `ElevenLabs 오류 (${elevenRes.status})`;
 
-    if (!isCreditError(elevenRes.status, msg)) {
-      return res.status(elevenRes.status).json({ error: msg });
+    if (!isCreditError(elevenRes.status, apiStatus, apiMsg)) {
+      return res.status(elevenRes.status).json({ error: displayMsg });
     }
 
     // 크레딧 소진 → Google TTS 폴백 시도
-    console.log("[TTS] ElevenLabs 크레딧 소진, Google AI Studio로 폴백:", msg);
+    console.log("[TTS] ElevenLabs 크레딧 소진 감지 (HTTP:", elevenRes.status, "/ status:", apiStatus, "), Google AI Studio로 폴백");
 
   } catch (e) {
     // 네트워크 오류 등 — Google TTS 폴백 시도
