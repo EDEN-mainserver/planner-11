@@ -991,221 +991,18 @@ function CaptionPreview({ script, highlightColor, fontFamily }) {
 
 // ── 롱폼을 숏폼으로 탭 PLACEHOLDER (아래 실제 함수와 중복 방지용 제거)
 // ── 롱폼을 숏폼으로 탭 ───────────────────────────────────────────
-function LongToShortTab({ nasState, onGoToNas }) {
-  const [step, setStep] = useState("input");
-  const [url, setUrl] = useState("");
-  const [urlError, setUrlError] = useState("");
-  const [settings, setSettings] = useState({ length: 60, titleLang: "ko", subtitleLang: "ko" });
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [progress, setProgress] = useState(0);
-  const [progressMsg, setProgressMsg] = useState("");
-  const [results, setResults] = useState([]);
-  const [errorMsg, setErrorMsg] = useState("");
-
-  const templates = [
-    { id: "dynamic", label: "다이나믹", desc: "빠른 컷 + 자막 강조" },
-    { id: "calm", label: "잔잔한", desc: "부드러운 전환 + 미니멀 자막" },
-    { id: "news", label: "뉴스형", desc: "하단 자막 바 + 정보 전달" },
-  ];
-  const lengthOptions = [
-    { value: 30, label: "30초 이하" },
-    { value: 60, label: "60초 이하" },
-    { value: 90, label: "90초 이하" },
-    { value: 180, label: "3분 이하" },
-  ];
-  const langOptions = [
-    { value: "ko", label: "한국어" },
-    { value: "en", label: "영어" },
-    { value: "ja", label: "일본어" },
-  ];
-
-  const validateUrl = (v) =>
-    /^https?:\/\/(www\.)?(youtube\.com\/watch|youtu\.be\/)/.test(v);
-
-  const handleConvert = () => {
-    if (!validateUrl(url)) { setUrlError("YouTube URL을 정확히 입력해 주세요."); return; }
-    setUrlError("");
-    setStep("settings");
-  };
-
-  const pollStatus = (jobId) => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`http://localhost:8000/status/${jobId}`);
-        const data = await res.json();
-        setProgress(data.progress || 0);
-        setProgressMsg(data.message || "");
-        if (data.status === "done") {
-          clearInterval(interval);
-          setResults(data.results || []);
-          setStep("result");
-        } else if (data.status === "error") {
-          clearInterval(interval);
-          setErrorMsg(data.message || "오류가 발생했습니다.");
-          setStep("error");
-        }
-      } catch (e) {
-        clearInterval(interval);
-        setErrorMsg("서버 연결 실패. localhost:8000 확인해 주세요.");
-        setStep("error");
-      }
-    }, 1500);
-  };
-
-  const handleGenerate = async () => {
-    if (!selectedTemplate) return;
-    setStep("loading");
-    setProgress(0);
-    setProgressMsg("시작 중...");
-    try {
-      const res = await fetch("http://localhost:8000/convert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url,
-          length: settings.length,
-          title_lang: settings.titleLang,
-          subtitle_lang: settings.subtitleLang,
-          template: selectedTemplate,
-        }),
-      });
-      const data = await res.json();
-      pollStatus(data.job_id);
-    } catch (e) {
-      setErrorMsg("서버 연결 실패. localhost:8000 확인해 주세요.");
-      setStep("error");
-    }
-  };
-
-  const handleReset = () => {
-    setStep("input"); setUrl(""); setSelectedTemplate(null);
-    setResults([]); setErrorMsg(""); setProgress(0);
-  };
-
-  if (step === "input") return (
-    <div className="flex flex-col items-center justify-center py-12 gap-6 px-4">
-      <div className="text-center">
-        <p className="text-lg font-semibold text-gray-800">YouTube URL을 입력하세요</p>
-        <p className="text-sm text-gray-500 mt-1">AI가 핵심 장면을 추출해 쇼츠·릴스로 변환합니다</p>
-      </div>
-      <div className="w-full max-w-lg flex flex-col gap-2">
-        <div className="flex gap-2">
-          <input type="text"
-            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-            placeholder="https://www.youtube.com/watch?v=..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleConvert()}
-          />
-          <button onClick={handleConvert}
-            className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-5 py-2 rounded-lg font-medium transition-colors">
-            변환하기
-          </button>
-        </div>
-        {urlError && <p className="text-xs text-red-500">{urlError}</p>}
-      </div>
+function LongToShortTab() {
+  return (
+    <div className="w-full" style={{ minHeight: "600px" }}>
+      <iframe
+        src="https://frontend-eden-planner.vercel.app"
+        className="w-full border-0 rounded-lg"
+        style={{ height: "calc(100vh - 300px)", minHeight: "600px" }}
+        allow="clipboard-read; clipboard-write"
+        title="롱숏 - 숏폼 자동 생성"
+      />
     </div>
   );
-
-  if (step === "settings") return (
-    <div className="flex flex-col gap-5 px-4 py-6 max-w-lg mx-auto w-full">
-      <p className="text-sm font-semibold text-gray-700">변환 설정</p>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500">쇼츠 길이</label>
-        <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          value={settings.length}
-          onChange={(e) => setSettings({ ...settings, length: Number(e.target.value) })}>
-          {lengthOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500">제목 언어</label>
-        <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          value={settings.titleLang}
-          onChange={(e) => setSettings({ ...settings, titleLang: e.target.value })}>
-          {langOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-gray-500">자막 언어</label>
-        <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-          value={settings.subtitleLang}
-          onChange={(e) => setSettings({ ...settings, subtitleLang: e.target.value })}>
-          {langOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </div>
-      <div className="flex flex-col gap-2">
-        <label className="text-xs text-gray-500">템플릿 선택</label>
-        <div className="flex gap-2">
-          {templates.map((t) => (
-            <button key={t.id} onClick={() => setSelectedTemplate(t.id)}
-              className={`flex-1 border rounded-lg px-3 py-2 text-sm text-left transition-all ${selectedTemplate === t.id ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-300 text-gray-700 hover:border-purple-300"}`}>
-              <p className="font-medium">{t.label}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{t.desc}</p>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="flex gap-2 pt-2">
-        <button onClick={() => setStep("input")}
-          className="flex-1 border border-gray-300 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">이전</button>
-        <button onClick={handleGenerate} disabled={!selectedTemplate}
-          className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${selectedTemplate ? "bg-purple-600 hover:bg-purple-700 text-white" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}>
-          쇼츠 생성하기
-        </button>
-      </div>
-    </div>
-  );
-
-  if (step === "loading") return (
-    <div className="flex flex-col items-center justify-center py-16 gap-4 px-4">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-2xl animate-pulse">✂️</div>
-      <p className="text-sm font-semibold text-gray-700">쇼츠 변환 중...</p>
-      <div className="w-full max-w-sm bg-gray-200 rounded-full h-2">
-        <div className="bg-purple-500 h-2 rounded-full transition-all duration-700" style={{ width: progress + "%" }} />
-      </div>
-      <p className="text-xs text-gray-400">{progress}% 완료</p>
-      <p className="text-xs text-gray-400">{progressMsg}</p>
-    </div>
-  );
-
-  if (step === "error") return (
-    <div className="flex flex-col items-center justify-center py-16 gap-4 px-4">
-      <p className="text-sm text-red-500 font-semibold">오류 발생</p>
-      <p className="text-xs text-gray-500 text-center">{errorMsg}</p>
-      <button onClick={handleReset} className="text-sm text-purple-600 hover:underline">다시 시도</button>
-    </div>
-  );
-
-  if (step === "result") return (
-    <div className="flex flex-col gap-4 px-4 py-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-gray-700">변환 완료 — {results.length}개 쇼츠</p>
-        <button onClick={handleReset} className="text-xs text-purple-600 hover:underline">새 변환</button>
-      </div>
-      <div className="flex flex-col gap-3">
-        {results.map((r) => (
-          <div key={r.id} className="flex items-center gap-3 border border-gray-200 rounded-xl p-3">
-            <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center text-xl">🎬</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{r.title}</p>
-              <p className="text-xs text-gray-400">{r.duration}</p>
-              <p className="text-xs text-gray-400 truncate">{r.text}</p>
-            </div>
-            <div className="flex gap-1">
-              <a href={`http://localhost:8000${r.url}`} target="_blank" rel="noopener noreferrer"
-                className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg">편집</a>
-              <button
-                onClick={() => nasState?.connected ? onGoToNas() : alert("NAS를 먼저 연결해 주세요.")}
-                className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded-lg">저장</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  return null;
 }
 
 export default function VideoPage({ onBack }) {
@@ -1325,7 +1122,7 @@ export default function VideoPage({ onBack }) {
           {activeTab === "autoedit"    && <AutoEditTab    nasState={nasState} onGoToNas={goToNas} />}
           {activeTab === "fullgraphic" && <FullGraphicTab nasState={nasState} onGoToNas={goToNas} />}
           {activeTab === "community"   && <CommunityTab   nasState={nasState} onGoToNas={goToNas} />}
-          {activeTab === "longshort"   && <LongToShortTab nasState={nasState} onGoToNas={goToNas} />}
+          {activeTab === "longshort"   && <LongToShortTab />}
         </div>
 
       </div>
