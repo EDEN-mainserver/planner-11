@@ -480,41 +480,92 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
          <div style="position:absolute;inset:0;z-index:0;
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
-    // ── 콘텐츠 시각화 — 터미널 명령어 블록 ──
-    // skillBullets = 실제로 쓸 수 있는 명령어/프롬프트 목록
-    // 없으면 summaryText + effectText로 대체
+    // ── 콘텐츠 시각화 — 코드 에디터 스타일 설정 블록 ──
+    // skillBullets → key: value 형태로 렌더링 (CLAUDE.md / settings.json 스타일)
     const cmdList = skillBullets.length >= 1
       ? skillBullets
       : [summaryText, effectText].filter((t, i, a) => t && a.indexOf(t) === i);
+
+    // 각 bullet을 kebab-case 키로 변환 (index 기반 의미있는 이름)
+    const keyNames = [
+      'auto-plan', 'auto-review', 'auto-debug', 'auto-test',
+      'auto-commit', 'auto-deploy', 'multi-agent', 'pdca-mode',
+    ];
+    const valColors = ['#a5d6ff', '#7ee787', '#ffa657', '#ff7b72', '#d2a8ff', '#a5d6ff'];
+
+    // 라인 넘버 시작값 (헤더 2줄 + 빈줄 포함)
+    let lineNum = 1;
+    const headerLines = [
+      { type: 'comment', text: '# CLAUDE.md — 바로 붙여넣기 가능한 설정' },
+      { type: 'comment', text: `# Plugin: ${esc(card.headline).slice(0, 20)}` },
+      { type: 'blank' },
+    ];
+    const codeLines = [
+      ...headerLines,
+      ...cmdList.map((cmd, i) => ({
+        type: 'setting',
+        key: keyNames[i] || `feature-${i + 1}`,
+        value: esc(cmd),
+        valColor: valColors[i % valColors.length],
+      })),
+      { type: 'blank' },
+      { type: 'bool', key: 'hooks-enabled', value: 'true' },
+    ];
+
+    const renderLine = (line) => {
+      const n = lineNum++;
+      const numHtml = `<span style="color:#4a5568;font-size:16px;font-family:'Courier New',monospace;
+        width:32px;text-align:right;padding-right:16px;flex-shrink:0;user-select:none;">${n}</span>`;
+      if (line.type === 'blank') {
+        return `<div style="display:flex;align-items:center;height:26px;">${numHtml}</div>`;
+      }
+      if (line.type === 'comment') {
+        return `<div style="display:flex;align-items:center;height:28px;">
+          ${numHtml}
+          <span style="color:#6e7681;font-size:16px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span>
+        </div>`;
+      }
+      if (line.type === 'bool') {
+        return `<div style="display:flex;align-items:center;height:28px;">
+          ${numHtml}
+          <span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;">${line.key}</span>
+          <span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;">: </span>
+          <span style="color:#ff7b72;font-size:16px;font-family:'Courier New',monospace;">${line.value}</span>
+        </div>`;
+      }
+      // setting: key: "value"
+      return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">
+        ${numHtml}
+        <span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span>
+        <span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span>
+        <span style="color:${line.valColor};font-size:16px;font-family:'Courier New',monospace;
+          word-break:keep-all;line-height:1.5;">&quot;${line.value}&quot;</span>
+      </div>`;
+    };
 
     const contentHtml = `
     <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;
       overflow:hidden;margin-bottom:14px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-shrink:0;">
-        <div style="font-size:20px;font-weight:700;color:#222;">⌨️ 바로 입력해보세요</div>
+        <div style="font-size:20px;font-weight:700;color:#222;">⌨️ 바로 써보세요</div>
         <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;
-          padding:4px 12px;border-radius:6px;white-space:nowrap;">Claude Code / 터미널</div>
+          padding:4px 12px;border-radius:6px;white-space:nowrap;">CLAUDE.md</div>
       </div>
-      <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;">
-        ${cmdList.map((cmd, i) => `
-        <div style="flex:1;background:#0d1117;border-radius:12px;padding:0;
-          overflow:hidden;display:flex;flex-direction:column;min-height:0;">
-          <div style="height:32px;background:#161b22;display:flex;align-items:center;
-            padding:0 14px;gap:8px;flex-shrink:0;">
-            <div style="width:10px;height:10px;border-radius:50%;background:#ff5f57;"></div>
-            <div style="width:10px;height:10px;border-radius:50%;background:#febc2e;"></div>
-            <div style="width:10px;height:10px;border-radius:50%;background:#28c840;"></div>
-            <div style="margin-left:6px;font-size:13px;color:#6e7681;font-family:'Courier New',monospace;">
-              prompt ${i + 1}</div>
-          </div>
-          <div style="flex:1;padding:14px 18px;display:flex;align-items:center;gap:10px;overflow:hidden;">
-            <span style="color:#28c840;font-size:18px;font-weight:900;font-family:'Courier New',monospace;
-              flex-shrink:0;">$</span>
-            <div style="font-size:18px;font-weight:600;color:#e6edf3;
-              font-family:'Courier New',monospace;line-height:1.5;
-              word-break:break-all;overflow:hidden;">${esc(cmd)}</div>
-          </div>
-        </div>`).join("")}
+      <div style="flex:1;min-height:0;background:#0d1117;border-radius:16px;
+        overflow:hidden;display:flex;flex-direction:column;">
+        <div style="height:38px;background:#161b22;display:flex;align-items:center;
+          padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
+          <div style="width:12px;height:12px;border-radius:50%;background:#ff5f57;"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#febc2e;"></div>
+          <div style="width:12px;height:12px;border-radius:50%;background:#28c840;"></div>
+          <div style="margin-left:10px;font-size:14px;color:#8b949e;
+            font-family:'Courier New',monospace;">CLAUDE.md</div>
+          <div style="margin-left:auto;width:8px;height:8px;border-radius:50%;
+            background:#28c840;box-shadow:0 0 6px #28c840;"></div>
+        </div>
+        <div style="flex:1;padding:16px 12px 16px 0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:0;">
+          ${codeLines.map(renderLine).join("")}
+        </div>
       </div>
     </div>`;
 
