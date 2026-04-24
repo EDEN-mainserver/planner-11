@@ -29,6 +29,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [voicesError, setVoicesError]       = useState("");
   const [voiceId, setVoiceId]               = useState("");
   const [bgmKey, setBgmKey]                 = useState("none");
+  const [siteName, setSiteName]             = useState("줍줍썰");
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
   const [ttsError, setTtsError]             = useState("");
@@ -109,11 +110,12 @@ export default function CommunityTab({ nasState, onGoToNas }) {
       audioUrl,
       bgPreset: BG_PRESETS.find(b => b.key === selectedBg),
       title,
+      siteName,
       gifQuery: title.trim() || script.trim().slice(0, 40),
       bgmFile: BGM_LIST.find(b => b.key === bgmKey)?.file ?? null,
     });
     setGenerating(false);
-  }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title, bgmKey]);
+  }, [script, selectedBg, fontFamily, wordCount, estSeconds, voiceId, title, bgmKey, siteName]);
 
   const handleDownloadCaptions = useCallback(() => {
     if (!generated) return;
@@ -176,16 +178,28 @@ export default function CommunityTab({ nasState, onGoToNas }) {
         {/* ── STEP 1: 썰 스크립트 입력 ── */}
         {step === 1 && (
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-2">게시물 제목</label>
-              <input
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                maxLength={60}
-                placeholder="예: 회사 팀장이 편의점에서 한 짓"
-                className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 transition-colors font-medium"
-              />
-              <p className="text-[11px] text-gray-400 mt-1 text-right">{title.length}/60자</p>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-sm font-semibold text-gray-700 block mb-2">게시물 제목</label>
+                <input
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  maxLength={60}
+                  placeholder="예: 회사 팀장이 편의점에서 한 짓"
+                  className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 transition-colors font-medium"
+                />
+                <p className="text-[11px] text-gray-400 mt-1 text-right">{title.length}/60자</p>
+              </div>
+              <div className="w-28 flex-shrink-0">
+                <label className="text-sm font-semibold text-gray-700 block mb-2">사이트명</label>
+                <input
+                  value={siteName}
+                  onChange={e => setSiteName(e.target.value)}
+                  maxLength={10}
+                  placeholder="줍줍썰"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-400 transition-colors font-medium"
+                />
+              </div>
             </div>
 
             <div>
@@ -473,6 +487,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
                 <VideoPreview
                   bgPreset={generated.bgPreset}
                   title={generated.title}
+                  siteName={generated.siteName}
                   script={script}
                   audioUrl={generated.audioUrl}
                   captions={generated.captions}

@@ -32,7 +32,7 @@ function hashInt(str, min, max) {
   return min + (Math.abs(h) % (max - min));
 }
 
-function CommunityBg({ bgPreset, titleExcerpt, bodyText }) {
+function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName }) {
   const { key } = bgPreset ?? {};
 
   const views = hashInt((key ?? "") + "v", 10000, 200000).toLocaleString();
@@ -83,7 +83,7 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText }) {
             }}>
               <span style={{ color: "white", fontSize: 6, letterSpacing: 1 }}>••</span>
             </div>
-            <span style={{ fontWeight: 700, fontSize: 13, color: "#000", letterSpacing: "-0.3px" }}>줍줍썰</span>
+            <span style={{ fontWeight: 700, fontSize: 13, color: "#000", letterSpacing: "-0.3px" }}>{siteName || "줍줍썰"}</span>
           </div>
         </div>
 
@@ -157,6 +157,7 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText }) {
 export default function VideoPreview({
   bgPreset,
   title,
+  siteName,
   script,
   audioUrl,
   captions,
@@ -302,6 +303,7 @@ export default function VideoPreview({
           bgPreset={bgPreset}
           titleExcerpt={titleExcerpt}
           bodyText={bodyText}
+          siteName={siteName}
         />
 
         {/* 자막 + GIF — 헤더(50) + 본문영역(~160) 아래 */}
