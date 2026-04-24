@@ -244,72 +244,73 @@ export default async function handler(req, res) {
       return res.status(elevenRes.status).json({ error: apiMsg || `ElevenLabs 오류 (${elevenRes.status})` });
     }
 
-    console.log("[TTS] 크레딧 소진 → Google TTS + Whisper 파이프라인 시작");
+    console.log("[TTS] 크레딧 소진 → OpenAI TTS + Whisper 파이프라인 시작");
   } catch (e) {
     console.log("[TTS] ElevenLabs 네트워크 오류:", e.message);
   }
 
   // ── 2차: OpenAI TTS + Whisper STT 파이프라인 ────────────────────────────
-  if (openaiKey) {
-    try {
-      console.log("[TTS] OpenAI TTS 생성 중...");
-      const { wavBuffer } = await openaiTTS(text, openaiKey);
-      console.log("[TTS] OpenAI TTS 완료, WAV 크기:", wavBuffer.length, "bytes");
-
-      const audioBase64 = wavBuffer.toString("base64");
-
-      let captions = null;
-      try {
-        console.log("[TTS] Whisper STT 시작...");
-        captions = await whisperTimestamps(wavBuffer, openaiKey);
-        console.log("[TTS] Whisper 완료, 단어 수:", captions.length);
-      } catch (whisperErr) {
-        console.log("[TTS] Whisper 실패:", whisperErr.message);
-      }
-
-      return res.status(200).json({
-        audioBase64,
-        mimeType: "audio/wav",
-        captions,
-        provider: "openai+whisper",
-      });
-    } catch (e) {
-      console.log("[TTS] OpenAI TTS 실패:", e.message);
-      // OpenAI도 실패 시 Google TTS로 시도
-    }
-  }
-
-  // ── 3차: Google TTS + Whisper STT 파이프라인 ─────────────────────────────
-  if (!geminiKey) {
-    return res.status(402).json({ error: "ElevenLabs 크레딧 소진, OpenAI/Google TTS 키 없음" });
+  if (!openaiKey) {
+    return res.status(402).json({ error: "ElevenLabs 크레딧 소진 + OPENAI_API_KEY 없음" });
   }
 
   try {
-    console.log("[TTS] Google TTS 생성 중...");
-    const { wavBuffer } = await googleTTS(text, geminiKey);
-    console.log("[TTS] Google TTS 완료, WAV 크기:", wavBuffer.length, "bytes");
+    console.log("[TTS] OpenAI TTS 생성 중...");
+    const { wavBuffer } = await openaiTTS(text, openaiKey);
+    console.log("[TTS] OpenAI TTS 완료, WAV 크기:", wavBuffer.length, "bytes");
 
     const audioBase64 = wavBuffer.toString("base64");
 
     let captions = null;
-    if (openaiKey) {
-      try {
-        console.log("[TTS] Whisper STT 시작...");
-        captions = await whisperTimestamps(wavBuffer, openaiKey);
-        console.log("[TTS] Whisper 완료, 단어 수:", captions.length);
-      } catch (whisperErr) {
-        console.log("[TTS] Whisper 실패:", whisperErr.message);
-      }
+    try {
+      console.log("[TTS] Whisper STT 시작...");
+      captions = await whisperTimestamps(wavBuffer, openaiKey);
+      console.log("[TTS] Whisper 완료, 단어 수:", captions.length);
+    } catch (whisperErr) {
+      console.log("[TTS] Whisper 실패:", whisperErr.message);
     }
 
     return res.status(200).json({
       audioBase64,
       mimeType: "audio/wav",
       captions,
-      provider: "google+whisper",
+      provider: "openai+whisper",
     });
-
   } catch (e) {
-    return res.status(500).json({ error: `Google TTS 폴백 실패: ${e.message}` });
+    // OpenAI TTS 실패 시 에러 반환 (Google TTS로 넘기지 않음 — 한도 문제 있음)
+    return res.status(500).json({ error: `OpenAI TTS 폴백 실패: ${e.message}` });
+  }
+
+  // ── (미사용) Google TTS 예비 ─────────────────────────────────────────────
+  // Google AI Studio 무료 티어 한도(분당 10회) 초과 문제로 비활성화
+  // geminiKey가 있고 openaiKey가 없을 때만 아래 코드를 활성화할 것
+  if (false && geminiKey) {
+    try {
+      console.log("[TTS] Google TTS 생성 중...");
+      const { wavBuffer } = await googleTTS(text, geminiKey);
+      console.log("[TTS] Google TTS 완료, WAV 크기:", wavBuffer.length, "bytes");
+
+      const audioBase64 = wavBuffer.toString("base64");
+
+      let captions = null;
+      if (openaiKey) {
+        try {
+          console.log("[TTS] Whisper STT 시작...");
+          captions = await whisperTimestamps(wavBuffer, openaiKey);
+          console.log("[TTS] Whisper 완료, 단어 수:", captions.length);
+        } catch (whisperErr) {
+          console.log("[TTS] Whisper 실패:", whisperErr.message);
+        }
+      }
+
+      return res.status(200).json({
+        audioBase64,
+        mimeType: "audio/wav",
+        captions,
+        provider: "google+whisper",
+      });
+    } catch (e) {
+      return res.status(500).json({ error: `Google TTS 폴백 실패: ${e.message}` });
+    }
   }
 }
