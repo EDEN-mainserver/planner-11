@@ -5,12 +5,11 @@ import { StepVideoInput } from "@/components/step-1-video-input";
 import { StepSubtitle } from "@/components/step-2-subtitle";
 import { StepAnalysis } from "@/components/step-3-analysis";
 import { StepClipSelect } from "@/components/step-4-clip-select";
-import { StepSubtitleStyle } from "@/components/step-5-subtitle-style";
-import { StepVideoSettings } from "@/components/step-6-video-settings";
-import { StepResult } from "@/components/step-7-result";
+import { StepGenerate } from "@/components/step-5-generate";
+import { StepResult } from "@/components/step-6-result";
 import type { PrepareResponse, AnalyzeResponse, GenerateResponse } from "@/lib/api";
 import {
-  Scissors, Upload, FileText, Brain, ListChecks, Type, Settings, Download,
+  Scissors, Upload, FileText, Brain, ListChecks, Settings, Download,
 } from "lucide-react";
 
 const STEPS = [
@@ -18,38 +17,32 @@ const STEPS = [
   { label: "자막 준비", icon: FileText },
   { label: "AI 분석", icon: Brain },
   { label: "구간 선택", icon: ListChecks },
-  { label: "자막 스타일", icon: Type },
-  { label: "영상 설정", icon: Settings },
+  { label: "드래프트 생성", icon: Settings },
   { label: "완료", icon: Download },
 ];
 
 export default function Home() {
   const [step, setStep] = useState(0);
 
-  // Step 1: 영상 입력
+  // Step 1
   const [videoInput, setVideoInput] = useState("");
   const [inputType, setInputType] = useState<"local" | "youtube">("local");
 
-  // Step 2: 자막 준비
+  // Step 2
   const [srtPath, setSrtPath] = useState("");
-  const [whisperModel, setWhisperModel] = useState("base");
   const [prepareResult, setPrepareResult] = useState<PrepareResponse | null>(null);
 
-  // Step 3: AI 분석
+  // Step 3
   const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse | null>(null);
 
-  // Step 4: 구간 선택
+  // Step 4
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [mode, setMode] = useState<"quick" | "detail">("detail");
 
-  // Step 5: 자막 스타일
-  const [burnSubtitles, setBurnSubtitles] = useState(false);
-  const [subtitleTemplate, setSubtitleTemplate] = useState("basic");
-
-  // Step 6: 영상 설정
+  // Step 5
   const [cropVertical, setCropVertical] = useState(false);
 
-  // Step 7: 결과
+  // Step 6
   const [generateResult, setGenerateResult] = useState<GenerateResponse | null>(null);
 
   const handleReset = () => {
@@ -64,18 +57,16 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
           <Scissors className="w-6 h-6 text-primary" />
           <h1 className="text-xl font-bold tracking-tight">롱숏</h1>
           <span className="text-sm text-muted-foreground ml-1">
-            긴 영상 &rarr; 숏폼 자동 생성
+            긴 영상 &rarr; 캡컷 숏폼 자동 생성
           </span>
         </div>
       </header>
 
-      {/* Step Indicator */}
       <div className="max-w-5xl mx-auto px-6 pt-6 pb-2">
         <div className="flex items-center gap-1 overflow-x-auto pb-2">
           {STEPS.map((s, i) => {
@@ -110,7 +101,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Content */}
       <main className="max-w-5xl mx-auto px-6 pb-12">
         {step === 0 && (
           <StepVideoInput
@@ -127,9 +117,7 @@ export default function Home() {
             videoInput={videoInput}
             inputType={inputType}
             srtPath={srtPath}
-            whisperModel={whisperModel}
             onSrtPathChange={setSrtPath}
-            onWhisperModelChange={setWhisperModel}
             onPrepared={(result) => {
               setPrepareResult(result);
               setStep(2);
@@ -163,38 +151,24 @@ export default function Home() {
           />
         )}
 
-        {step === 4 && (
-          <StepSubtitleStyle
-            burnSubtitles={burnSubtitles}
-            subtitleTemplate={subtitleTemplate}
-            onBurnChange={setBurnSubtitles}
-            onTemplateChange={setSubtitleTemplate}
-            onNext={() => setStep(5)}
-            onBack={() => setStep(3)}
-          />
-        )}
-
-        {step === 5 && analysisResult && (
-          <StepVideoSettings
+        {step === 4 && analysisResult && (
+          <StepGenerate
             sessionId={analysisResult.session_id}
             selectedIndices={selectedIndices}
             mode={mode}
             cropVertical={cropVertical}
-            burnSubtitles={burnSubtitles}
-            subtitleTemplate={subtitleTemplate}
             onCropChange={setCropVertical}
             onGenerated={(result) => {
               setGenerateResult(result);
-              setStep(6);
+              setStep(5);
             }}
-            onBack={() => setStep(4)}
+            onBack={() => setStep(3)}
           />
         )}
 
-        {step === 6 && generateResult && analysisResult && (
+        {step === 5 && generateResult && (
           <StepResult
             result={generateResult}
-            sessionId={analysisResult.session_id}
             onReset={handleReset}
           />
         )}

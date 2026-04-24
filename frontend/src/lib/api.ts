@@ -13,41 +13,24 @@ export interface Clip {
 export interface PrepareResponse {
   session_id: string;
   video_path: string;
-  srt_path: string;
+  srt_path: string | null;
   youtube_title: string | null;
-  whisper_used: boolean;
-  video_info: Record<string, unknown>;
+  subtitle_mode: string;
 }
 
 export interface AnalyzeResponse {
   session_id: string;
   clips: Clip[];
   total_subtitles: number;
-  video_info: Record<string, unknown>;
 }
 
 export interface GenerateResponse {
   session_id: string;
   generated: number;
-  files: string[];
+  draft_names: string[];
   output_dir: string;
-}
-
-export interface SubtitleTemplate {
-  name: string;
-  fontsize: number;
-  fontcolor: string;
-  borderw: number;
-  bordcolor: string;
-  font: string;
-  position: string;
-  bg: boolean;
-  bg_color?: string;
-}
-
-export interface TemplatesResponse {
-  default: Record<string, SubtitleTemplate>;
-  user: Record<string, SubtitleTemplate>;
+  installed_to_capcut: boolean;
+  capcut_paths: string[];
 }
 
 export interface SubtitleCheck {
@@ -73,16 +56,13 @@ export async function startProgress(): Promise<string> {
 export async function prepareVideo(
   videoInput: string,
   srtPath: string = "",
-  whisperModel: string = "base",
   progressId: string = ""
 ): Promise<PrepareResponse> {
   const form = new FormData();
   form.append("video_input", videoInput);
   form.append("srt_path", srtPath);
-  form.append("whisper_model", whisperModel);
   if (progressId) form.append("progress_id", progressId);
 
-  // 백엔드가 즉시 응답하고 백그라운드로 작업을 수행
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/prepare`, {
@@ -114,20 +94,17 @@ export async function prepareVideo(
         const p = await getProgress(pid);
         if (p.stage === "done") {
           clearInterval(poll);
-          // result가 포함된 progress 데이터에서 결과 가져오기
           const fullRes = await fetch(`${API_BASE}/api/progress/${pid}`);
           const fullData = await fullRes.json();
           if (fullData.result) {
             resolve(fullData.result as PrepareResponse);
           } else {
-            // fallback: session이 생성되었으므로 기본 응답 구성
             resolve({
               session_id: pid,
               video_path: "",
-              srt_path: "",
+              srt_path: null,
               youtube_title: null,
-              whisper_used: false,
-              video_info: {},
+              subtitle_mode: "capcut_auto",
             });
           }
         } else if (p.stage === "error") {
@@ -135,7 +112,7 @@ export async function prepareVideo(
           reject(new Error(p.message || "준비 중 오류가 발생했습니다."));
         }
       } catch {
-        // 폴링 실패는 무시 (네트워크 일시 오류)
+        // 폴링 실패는 무시
       }
     }, 1500);
   });
@@ -176,19 +153,21 @@ export async function analyzeVideo(
   return res.json();
 }
 
-export async function generateClips(
+export async function generateDrafts(
   sessionId: string,
   selectedIndices: string = "all",
   cropVertical: boolean = false,
-  burnSubtitles: boolean = false,
-  subtitleTemplate: string = "basic"
+  includeSubtitles: boolean = false,
+  draftMode: string = "individual",
+  installToCapcut: boolean = true,
 ): Promise<GenerateResponse> {
   const form = new FormData();
   form.append("session_id", sessionId);
   form.append("selected_indices", selectedIndices);
   form.append("crop_vertical", cropVertical.toString());
-  form.append("burn_subtitles", burnSubtitles.toString());
-  form.append("subtitle_template", subtitleTemplate);
+  form.append("include_subtitles", includeSubtitles.toString());
+  form.append("draft_mode", draftMode);
+  form.append("install_to_capcut", installToCapcut.toString());
 
   let res: Response;
   try {
@@ -211,33 +190,6 @@ export async function generateClips(
     throw new Error(detail);
   }
   return res.json();
-}
-
-export async function getTemplates(): Promise<TemplatesResponse> {
-  const res = await fetch(`${API_BASE}/api/templates`);
-  return res.json();
-}
-
-export async function saveTemplate(
-  name: string,
-  template: SubtitleTemplate
-): Promise<void> {
-  const form = new FormData();
-  form.append("name", name);
-  form.append("template_data", JSON.stringify(template));
-
-  await fetch(`${API_BASE}/api/templates/save`, {
-    method: "POST",
-    body: form,
-  });
-}
-
-export async function deleteTemplate(name: string): Promise<void> {
-  await fetch(`${API_BASE}/api/templates/${name}`, { method: "DELETE" });
-}
-
-export function getDownloadUrl(sessionId: string, filename: string): string {
-  return `${API_BASE}/api/download/${sessionId}/${filename}`;
 }
 
 export interface ProgressInfo {

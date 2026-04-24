@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { generateClips, getProgress, type GenerateResponse } from "@/lib/api";
+import { generateDrafts, getProgress, type GenerateResponse } from "@/lib/api";
 import {
   Crop, ArrowLeft, Loader2, Play,
 } from "lucide-react";
@@ -15,20 +15,16 @@ interface Props {
   selectedIndices: number[];
   mode: "quick" | "detail";
   cropVertical: boolean;
-  burnSubtitles: boolean;
-  subtitleTemplate: string;
   onCropChange: (v: boolean) => void;
   onGenerated: (result: GenerateResponse) => void;
   onBack: () => void;
 }
 
-export function StepVideoSettings({
+export function StepGenerate({
   sessionId,
   selectedIndices,
   mode,
   cropVertical,
-  burnSubtitles,
-  subtitleTemplate,
   onCropChange,
   onGenerated,
   onBack,
@@ -49,9 +45,8 @@ export function StepVideoSettings({
     setLoading(true);
     setError("");
     setProgressPercent(0);
-    setProgressMsg("영상 생성 시작...");
+    setProgressMsg("캡컷 드래프트 생성 시작...");
 
-    // 진행률 폴링
     pollingRef.current = setInterval(async () => {
       const p = await getProgress(sessionId);
       setProgressPercent(p.percent);
@@ -63,12 +58,10 @@ export function StepVideoSettings({
 
     try {
       const indices = mode === "quick" ? "all" : selectedIndices.join(",");
-      const result = await generateClips(
+      const result = await generateDrafts(
         sessionId,
         indices,
         cropVertical,
-        burnSubtitles,
-        subtitleTemplate
       );
       if (pollingRef.current) clearInterval(pollingRef.current);
       setProgressPercent(100);
@@ -87,15 +80,15 @@ export function StepVideoSettings({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Crop className="w-5 h-5" />
-            영상 출력 설정
+            캡컷 드래프트 설정
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <Label>세로 크롭 (9:16)</Label>
+              <Label>세로 모드 (9:16)</Label>
               <p className="text-xs text-muted-foreground">
-                가로 영상을 세로 숏폼 비율로 자동 크롭합니다
+                숏폼용 세로 비율로 드래프트를 생성합니다
               </p>
             </div>
             <Switch checked={cropVertical} onCheckedChange={onCropChange} />
@@ -109,19 +102,18 @@ export function StepVideoSettings({
           <CardTitle>최종 확인</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-2 gap-4 text-center">
             <div>
               <div className="text-2xl font-bold">{selectedIndices.length}</div>
               <div className="text-xs text-muted-foreground">선택된 구간</div>
             </div>
             <div>
-              <div className="text-2xl font-bold">{cropVertical ? "9:16" : "원본"}</div>
+              <div className="text-2xl font-bold">{cropVertical ? "9:16" : "16:9"}</div>
               <div className="text-xs text-muted-foreground">영상 비율</div>
             </div>
-            <div>
-              <div className="text-2xl font-bold">{burnSubtitles ? "ON" : "OFF"}</div>
-              <div className="text-xs text-muted-foreground">자막 삽입</div>
-            </div>
+          </div>
+          <div className="mt-4 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground text-center">
+            각 클립별 캡컷 드래프트가 생성되어 캡컷에 자동 설치됩니다
           </div>
         </CardContent>
       </Card>
@@ -130,7 +122,7 @@ export function StepVideoSettings({
         <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm space-y-3">
           <div className="flex items-center gap-2 text-blue-400">
             <Loader2 className="w-4 h-4 animate-spin" />
-            {progressMsg || "영상 생성 중..."}
+            {progressMsg || "드래프트 생성 중..."}
           </div>
           <div className="w-full bg-blue-500/20 rounded-full h-3 overflow-hidden">
             <div
@@ -159,12 +151,12 @@ export function StepVideoSettings({
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              영상 생성 중... {progressPercent}%
+              드래프트 생성 중... {progressPercent}%
             </>
           ) : (
             <>
               <Play className="w-4 h-4 mr-2" />
-              {selectedIndices.length}개 영상 생성
+              {selectedIndices.length}개 캡컷 드래프트 생성
             </>
           )}
         </Button>

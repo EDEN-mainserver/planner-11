@@ -14,28 +14,16 @@ interface Props {
   videoInput: string;
   inputType: "local" | "youtube";
   srtPath: string;
-  whisperModel: string;
   onSrtPathChange: (v: string) => void;
-  onWhisperModelChange: (v: string) => void;
   onPrepared: (result: PrepareResponse) => void;
   onBack: () => void;
 }
-
-const WHISPER_MODELS = [
-  { value: "tiny", label: "Tiny", desc: "가장 빠름, 정확도 낮음" },
-  { value: "base", label: "Base", desc: "빠름, 적당한 정확도 (추천)" },
-  { value: "small", label: "Small", desc: "보통 속도, 좋은 정확도" },
-  { value: "medium", label: "Medium", desc: "느림, 높은 정확도" },
-  { value: "large", label: "Large", desc: "가장 느림, 최고 정확도" },
-];
 
 export function StepSubtitle({
   videoInput,
   inputType,
   srtPath,
-  whisperModel,
   onSrtPathChange,
-  onWhisperModelChange,
   onPrepared,
   onBack,
 }: Props) {
@@ -75,10 +63,8 @@ export function StepSubtitle({
     setProgressPercent(0);
 
     try {
-      // 진행률 추적 ID 발급
       const progressId = await startProgress();
 
-      // 진행률 폴링 시작
       pollingRef.current = setInterval(async () => {
         const p = await getProgress(progressId);
         setProgressPercent(p.percent);
@@ -93,7 +79,6 @@ export function StepSubtitle({
       const result = await prepareVideo(
         videoInput,
         subtitleMode === "file" ? srtPath : "",
-        whisperModel,
         progressId
       );
 
@@ -143,9 +128,9 @@ export function StepSubtitle({
               }`}
             >
               <Mic className="w-8 h-8 mx-auto mb-2 text-green-500" />
-              <div className="font-medium">Whisper 자동 생성</div>
+              <div className="font-medium">자동 자막</div>
               <div className="text-xs text-muted-foreground mt-1">
-                AI가 음성에서 자막 추출
+                YouTube 자막 또는 캡컷 자동자막
               </div>
             </button>
           </div>
@@ -163,33 +148,9 @@ export function StepSubtitle({
             </div>
           )}
 
-          {/* Whisper 모델 선택 */}
+          {/* 자동 자막 안내 */}
           {subtitleMode === "auto" && (
             <div className="space-y-2">
-              <Label>Whisper 모델 선택</Label>
-              <div className="grid grid-cols-1 gap-2">
-                {WHISPER_MODELS.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => onWhisperModelChange(m.value)}
-                    className={`flex items-center justify-between p-3 rounded-lg border text-left transition-all ${
-                      whisperModel === m.value
-                        ? "border-primary bg-primary/10"
-                        : "border-border/50 hover:border-border"
-                    }`}
-                  >
-                    <div>
-                      <span className="font-medium">{m.label}</span>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        {m.desc}
-                      </span>
-                    </div>
-                    {whisperModel === m.value && (
-                      <CheckCircle2 className="w-4 h-4 text-primary" />
-                    )}
-                  </button>
-                ))}
-              </div>
               {inputType === "youtube" && (
                 <div className={`p-3 rounded-lg border text-sm flex items-center gap-2 ${
                   checkingSubtitle
@@ -209,7 +170,7 @@ export function StepSubtitle({
                       <div>
                         <span className="font-medium">{subtitleInfo.source} 자막이 존재합니다</span>
                         <span className="block text-xs opacity-70 mt-0.5">
-                          Whisper 없이 빠르게 진행됩니다
+                          자동으로 자막을 가져옵니다
                         </span>
                       </div>
                     </>
@@ -219,11 +180,19 @@ export function StepSubtitle({
                       <div>
                         <span className="font-medium">YouTube 자막이 없습니다</span>
                         <span className="block text-xs opacity-70 mt-0.5">
-                          Whisper로 자막을 생성합니다 (수 분 소요)
+                          캡컷에서 자동자막을 생성할 수 있습니다
                         </span>
                       </div>
                     </>
                   )}
+                </div>
+              )}
+              {inputType === "local" && (
+                <div className="p-3 rounded-lg border border-blue-500/30 bg-blue-500/10 text-sm text-blue-400">
+                  <span className="font-medium">캡컷 자동자막 사용</span>
+                  <span className="block text-xs opacity-70 mt-0.5">
+                    캡컷에서 드래프트를 열면 자동자막 기능을 사용할 수 있습니다
+                  </span>
                 </div>
               )}
             </div>
