@@ -8,6 +8,7 @@ import {
   BGM_LIST,
   FONT_OPTIONS,
   EXAMPLE_SCRIPTS,
+  POPULAR_SCRIPTS,
 } from "./constants";
 import { generateCaptionsFromText, estimateSeconds } from "./utils";
 
@@ -59,6 +60,7 @@ export default function CommunityTab({ nasState, onGoToNas }) {
   const [siteName, setSiteName]             = useState("줍줍썰");
   const [headerColor, setHeaderColor]       = useState("#FFD6C1");
   const [bodyBgColor, setBodyBgColor]       = useState("#ffffff");
+  const [showPopular, setShowPopular]       = useState(false);
   const [generating, setGenerating]         = useState(false);
   const [generated, setGenerated]           = useState(null);
   const [ttsError, setTtsError]             = useState("");
@@ -253,11 +255,42 @@ export default function CommunityTab({ nasState, onGoToNas }) {
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-semibold text-gray-700">썰 스크립트</label>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700">썰 스크립트</label>
+                  <button
+                    onClick={() => setShowPopular(p => !p)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-violet-200 text-violet-600 bg-violet-50 hover:bg-violet-100 transition-all"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    인기글에서 가져오기
+                  </button>
+                </div>
                 <span className={`text-xs ${scriptLen > 800 ? "text-red-500" : scriptLen > 500 ? "text-orange-400" : "text-gray-400"}`}>
                   {scriptLen}자 · 약 {estSeconds}초
                 </span>
               </div>
+              {showPopular && (
+                <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50/60 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-violet-100">
+                    <span className="text-[11px] font-bold text-violet-700">인기 썰 모음</span>
+                    <button onClick={() => setShowPopular(false)} className="text-violet-400 hover:text-violet-600 text-xs">✕</button>
+                  </div>
+                  <div className="divide-y divide-violet-100 max-h-52 overflow-y-auto">
+                    {POPULAR_SCRIPTS.map((p, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { setTitle(p.title); setScript(p.text); setShowPopular(false); }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-violet-100 transition-colors"
+                      >
+                        <p className="text-xs font-semibold text-gray-800 truncate">{p.title}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-1">{p.text.slice(0, 50)}…</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <textarea
                 value={script}
                 onChange={e => setScript(e.target.value)}
