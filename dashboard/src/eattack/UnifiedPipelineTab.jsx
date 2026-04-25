@@ -1952,31 +1952,64 @@ export default function UnifiedPipelineTab() {
               <label className="text-xs font-bold text-gray-600">
                 ② 비즈니스 계정 ID
               </label>
-              <button
-                onClick={async () => {
-                  if (!igConfig.accessToken) {
-                    addLog("error", "토큰을 먼저 입력하세요");
-                    return;
-                  }
-                  try {
-                    addLog("info", "계정 ID 조회 중...");
-                    const res = await fetch(
-                      `https://graph.instagram.com/me?fields=id,username&access_token=${igConfig.accessToken}`
-                    );
-                    const data = await res.json();
-                    if (data.error) throw new Error(data.error.message);
-                    const next = { ...igConfig, accountId: data.id };
-                    setIgConfig(next);
-                    saveSocial(igKey, session.username, next);
-                    addLog("info", `✅ 자동 조회 성공: @${data.username} → ${data.id}`);
-                  } catch (e) {
-                    addLog("error", `계정 ID 조회 실패: ${e.message}`);
-                  }
-                }}
-                className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
-              >
-                🔍 토큰으로 자동 조회
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={async () => {
+                    const imgUrls = cards.map((c) => c.imageUrl).filter(Boolean);
+                    if (imgUrls.length === 0 && cardHtmls.length === 0) {
+                      addLog("error", "다운로드할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
+                      return;
+                    }
+                    try {
+                      addLog("info", "이미지 다운로드 준비 중...");
+                      let downloadList = imgUrls;
+                      if (downloadList.length === 0) {
+                        addLog("info", `HTML 캡처 시작: ${cardHtmls.length}장`);
+                        downloadList = await captureCardHtmls(cardHtmls);
+                      }
+                      downloadList.forEach((src, i) => {
+                        const a = document.createElement("a");
+                        a.href = src;
+                        a.download = `card-${String(i + 1).padStart(2, "0")}.jpg`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      });
+                      addLog("info", `✅ ${downloadList.length}장 다운로드 완료`);
+                    } catch (e) {
+                      addLog("error", `다운로드 실패: ${e.message}`);
+                    }
+                  }}
+                  className="text-[10px] font-bold text-emerald-600 hover:text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5"
+                >
+                  📥 이미지 다운로드
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!igConfig.accessToken) {
+                      addLog("error", "토큰을 먼저 입력하세요");
+                      return;
+                    }
+                    try {
+                      addLog("info", "계정 ID 조회 중...");
+                      const res = await fetch(
+                        `https://graph.instagram.com/me?fields=id,username&access_token=${igConfig.accessToken}`
+                      );
+                      const data = await res.json();
+                      if (data.error) throw new Error(data.error.message);
+                      const next = { ...igConfig, accountId: data.id };
+                      setIgConfig(next);
+                      saveSocial(igKey, session.username, next);
+                      addLog("info", `✅ 자동 조회 성공: @${data.username} → ${data.id}`);
+                    } catch (e) {
+                      addLog("error", `계정 ID 조회 실패: ${e.message}`);
+                    }
+                  }}
+                  className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
+                >
+                  🔍 토큰으로 자동 조회
+                </button>
+              </div>
             </div>
             <input
               type="text"
