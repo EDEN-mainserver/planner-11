@@ -1219,7 +1219,7 @@ export default function UnifiedPipelineTab() {
 
         {showTopicPicker && (
           <TopicPicker
-            onSelect={v => setTopic(v)}
+            onSelect={v => setTopic(typeof v === "string" ? v : v.text || v.title || "")}
             onClose={() => setShowTopicPicker(false)}
           />
         )}
