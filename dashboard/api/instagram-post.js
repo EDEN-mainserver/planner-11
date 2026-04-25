@@ -13,25 +13,38 @@ export const config = { api: { bodyParser: { sizeLimit: "25mb" } } };
 
 const IG_API = "https://graph.instagram.com/v21.0";
 
-// HTTP URL → 서버에서 다운로드 → JPEG 변환 → Blob 업로드 → 공개 URL 반환
-// Instagram이 접근 가능한 안정적인 공개 URL이 필요하므로 항상 Blob을 경유
-async function uploadHttpUrlToBlob(httpUrl, filename) {
+// imgbb 업로드 — Instagram이 확실히 접근 가능한 i.ibb.co URL 반환
+async function uploadToImgbb(b64Pure, apiKey) {
+  const params = new URLSearchParams({ key: apiKey, image: b64Pure });
+  const res = await fetch("https://api.imgbb.com/1/upload", {
+    method: "POST",
+    body: params,
+  });
+  const data = await res.json();
+  if (!data.success) {
+    throw new Error(`imgbb 업로드 실패: ${JSON.stringify(data.error || data)}`);
+  }
+  return data.data.url; // https://i.ibb.co/xxxxx/image.jpg
+}
+
+// HTTP URL → 다운로드 → JPEG 변환 → 공개 URL (imgbb 우선, Blob 폴백)
+async function uploadHttpUrl(httpUrl, filename) {
   const res = await fetch(httpUrl);
-  if (!res.ok) throw new Error(`이미지 다운로드 실패 [${res.status}]: ${httpUrl.slice(0, 80)}`);
+  if (!res.ok) throw new Error(`이미지 다운로드 실패 [${res.status}]`);
   const arrayBuffer = await res.arrayBuffer();
   const { default: sharp } = await import("sharp");
   const buffer = await sharp(Buffer.from(arrayBuffer)).jpeg({ quality: 92 }).toBuffer();
+
+  if (process.env.IMGBB_API_KEY) {
+    return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+  }
   const jpegFilename = filename.replace(/\.\w+$/, ".jpg");
-  const blob = await put(`ig-temp/${jpegFilename}`, buffer, {
-    access: "public",
-    contentType: "image/jpeg",
-  });
-  return blob.url;
+  const blob = await put(`ig-temp/${jpegFilename}`, buffer, { access: "public", contentType: "image/jpeg" });
+  return { url: toProxyUrl(blob.url), blobUrl: blob.url };
 }
 
-// base64 데이터 URL → JPEG 변환 → Blob 업로드 → 공개 URL 반환
-// Instagram은 JPEG만 허용하므로 PNG 등은 sharp로 변환
-async function uploadBase64ToBlob(base64DataUrl, filename) {
+// base64 데이터 URL → JPEG 변환 → 공개 URL (imgbb 우선, Blob 폴백)
+async function uploadBase64(base64DataUrl, filename) {
   const match = base64DataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) throw new Error("잘못된 이미지 형식");
 
@@ -41,12 +54,12 @@ async function uploadBase64ToBlob(base64DataUrl, filename) {
   const { default: sharp } = await import("sharp");
   buffer = await sharp(buffer).jpeg({ quality: 92 }).toBuffer();
 
+  if (process.env.IMGBB_API_KEY) {
+    return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+  }
   const jpegFilename = filename.replace(/\.\w+$/, ".jpg");
-  const blob = await put(`ig-temp/${jpegFilename}`, buffer, {
-    access: "public",
-    contentType: "image/jpeg",
-  });
-  return blob.url;
+  const blob = await put(`ig-temp/${jpegFilename}`, buffer, { access: "public", contentType: "image/jpeg" });
+  return { url: toProxyUrl(blob.url), blobUrl: blob.url };
 }
 
 // 단일 미디어 컨테이너 생성
@@ -161,33 +174,28 @@ export default async function handler(req, res) {
   try {
     log("요청 수신", { accountId, imageCount: images.length, captionLen: (caption||"").length });
 
-    // BLOB_READ_WRITE_TOKEN 체크
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      log("경고: BLOB_READ_WRITE_TOKEN 없음 — HTTP URL 이미지만 처리 가능");
+    // 1. 이미지 업로드 → Instagram 접근 가능한 공개 URL 획득
+    // imgbb API key 있으면 imgbb 사용, 없으면 Vercel Blob + 프록시 폴백
+    if (!process.env.IMGBB_API_KEY && !process.env.BLOB_READ_WRITE_TOKEN) {
+      throw new Error("IMGBB_API_KEY 또는 BLOB_READ_WRITE_TOKEN 환경변수가 필요합니다");
     }
+    log(process.env.IMGBB_API_KEY ? "imgbb 업로드 모드" : "Vercel Blob 프록시 모드");
 
-    // 1. 이미지 업로드 (base64 → Vercel Blob 공개 URL)
     const uploadedUrls = await Promise.all(
       images.map(async (img, i) => {
-        if (!process.env.BLOB_READ_WRITE_TOKEN) {
-          throw new Error("BLOB_READ_WRITE_TOKEN 환경변수가 없습니다. Vercel Storage → Blob 설정 필요");
-        }
         const filename = `card-${Date.now()}-${i}.jpg`;
         if (typeof img === "string" && img.startsWith("http")) {
-          // HTTP URL도 Instagram 접근 보장을 위해 Vercel Blob으로 재업로드
-          log(`이미지 ${i+1}: HTTP URL → Blob 재업로드 시작`, img.slice(0, 60));
-          const blobUrl = await uploadHttpUrlToBlob(img, filename);
-          blobUrls.push(blobUrl);
-          const proxyUrl = toProxyUrl(blobUrl);
-          log(`이미지 ${i+1}: Blob 재업로드 완료 → 프록시 URL`, proxyUrl);
-          return proxyUrl;
+          log(`이미지 ${i+1}: HTTP URL → 변환 업로드 시작`, img.slice(0, 60));
+          const { url, blobUrl } = await uploadHttpUrl(img, filename);
+          if (blobUrl) blobUrls.push(blobUrl);
+          log(`이미지 ${i+1}: 업로드 완료`, url);
+          return url;
         }
-        log(`이미지 ${i+1}: base64 → Blob 업로드 시작`);
-        const blobUrl = await uploadBase64ToBlob(img, filename);
-        blobUrls.push(blobUrl);
-        const proxyUrl = toProxyUrl(blobUrl);
-        log(`이미지 ${i+1}: Blob 업로드 완료 → 프록시 URL`, proxyUrl);
-        return proxyUrl;
+        log(`이미지 ${i+1}: base64 → 업로드 시작`);
+        const { url, blobUrl } = await uploadBase64(img, filename);
+        if (blobUrl) blobUrls.push(blobUrl);
+        log(`이미지 ${i+1}: 업로드 완료`, url);
+        return url;
       })
     );
 
