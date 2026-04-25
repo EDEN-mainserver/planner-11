@@ -38,6 +38,10 @@
     "api/full-auto-cron.js": {
       "maxDuration": 300,
       "memory": 1024
+    },
+    "api/instagram-post.js": {
+      "maxDuration": 120,
+      "memory": 1024
     }
   },
   "crons": [
