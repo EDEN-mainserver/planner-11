@@ -1,7 +1,7 @@
-// Vercel Serverless Function — Gemini API 프록시
-// API 키는 서버에만 존재하며 브라우저에 노출되지 않음
+// Vercel Serverless Function — Gemini API 프록시 (Claude fallback 포함)
+// 우선순위: gemini-2.5-pro → gemini-2.5-flash → gemini-2.0-flash-lite → claude-sonnet-4-6
 
-const MODELS = [
+const GEMINI_MODELS = [
   'gemini-2.5-pro',
   'gemini-2.5-flash',
   'gemini-2.0-flash-lite',
@@ -15,6 +15,34 @@ async function callModel(modelName, body, apiKey) {
     body: JSON.stringify(body),
   });
   return resp;
+}
+
+// Claude API fallback — Gemini 전체 실패 시 사용
+async function callClaude(systemPrompt, history, apiKey) {
+  const messages = history.map(m => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content,
+  }));
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      system: systemPrompt,
+      messages,
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Claude 오류 ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data.content?.[0]?.text || '';
 }
 
 // 이미지 URL을 서버 사이드에서 base64로 변환
@@ -77,9 +105,9 @@ export default async function handler(req, res) {
     generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
   };
 
-  // 모델 순서대로 시도 (실패 시 다음 모델로 폴백)
+  // 1단계: Gemini 모델 순서대로 시도
   let lastError = '';
-  for (const model of MODELS) {
+  for (const model of GEMINI_MODELS) {
     try {
       const resp = await callModel(model, requestBody, GEMINI_KEY);
       if (resp.ok) {
@@ -90,11 +118,20 @@ export default async function handler(req, res) {
       const err = await resp.json();
       lastError = err.error?.message || `오류 ${resp.status}`;
       // 503(과부하) 또는 429(한도 초과)일 때만 다음 모델로 폴백
-      if (resp.status !== 503 && resp.status !== 429) {
-        return res.status(resp.status).json({ error: lastError });
-      }
+      if (resp.status !== 503 && resp.status !== 429) break;
     } catch (err) {
       lastError = err.message;
+    }
+  }
+
+  // 2단계: Gemini 전체 실패 → Claude fallback
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+  if (ANTHROPIC_KEY) {
+    try {
+      const text = await callClaude(systemPrompt, history, ANTHROPIC_KEY);
+      return res.status(200).json({ text, model: 'claude-sonnet-4-6' });
+    } catch (err) {
+      lastError = `Gemini 실패(${lastError}) / Claude 실패(${err.message})`;
     }
   }
 
