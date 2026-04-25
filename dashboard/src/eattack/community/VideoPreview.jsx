@@ -194,6 +194,7 @@ export default function VideoPreview({
   const speechRafRef   = useRef(null);
   const webWordRef     = useRef([]);
   const previewDivRef  = useRef(null);  // 녹화용 div ref
+  const currentGifRef  = useRef({ url: null, el: null }); // 녹화 중 GIF 오버레이용
   const [playing, setPlaying]         = useState(false);
   const [currentMs, setCurrentMs]     = useState(0);
   const [webCaptions, setWebCaptions] = useState(null);
@@ -210,6 +211,17 @@ export default function VideoPreview({
 
   // audioUrl 바뀌면 webCaptions 초기화
   useEffect(() => { setWebCaptions(null); webWordRef.current = []; }, [audioUrl]);
+
+  // 녹화 중 GIF 오버레이용: gifUrl 변경 시 Image 프리로드
+  useEffect(() => {
+    if (!gifUrl) { currentGifRef.current = { url: null, el: null }; return; }
+    if (currentGifRef.current.url === gifUrl) return;
+    const el = new Image();
+    el.crossOrigin = "anonymous";
+    el.src = gifUrl;
+    el.onload  = () => { currentGifRef.current = { url: gifUrl, el }; };
+    el.onerror = () => { currentGifRef.current = { url: gifUrl, el: null }; };
+  }, [gifUrl]);
 
   // Web Speech 실시간 자막이 있으면 우선 사용, 없으면 prop captions
   const activeCaptions = webCaptions ?? captions;
@@ -463,17 +475,29 @@ export default function VideoPreview({
     const videoStream = canvas.captureStream(8); // 8fps
     const streams = [...videoStream.getVideoTracks()];
 
-    // 오디오 스트림 (가능하면 캡처)
+    // ── 오디오 스트림: AudioBuffer 방식 (createMediaElementSource 대신) ──
+    // createMediaElementSource 는 같은 element 에 두 번 연결 불가 + 브라우저 호환 문제
+    // → audioUrl 을 직접 fetch → decodeAudioData → BufferSource → MediaStreamDestination
     let audioCtx = null;
-    if (audioRef.current) {
+    let bufferSource = null;
+    if (audioUrl) {
       try {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const src = audioCtx.createMediaElementSource(audioRef.current);
+        await audioCtx.resume();
+        const resp2 = await fetch(audioUrl);
+        const arrayBuffer = await resp2.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        bufferSource = audioCtx.createBufferSource();
+        bufferSource.buffer = audioBuffer;
         const dest = audioCtx.createMediaStreamDestination();
-        src.connect(dest);
-        src.connect(audioCtx.destination); // 스피커 출력 유지
+        bufferSource.connect(dest);
+        // 스피커 출력은 audioRef.current 재생으로 처리하므로 destination 연결 안 함
         streams.push(...dest.stream.getAudioTracks());
-      } catch (_) { audioCtx = null; }
+      } catch (err) {
+        console.error("[handleDownloadMp4] AudioBuffer 오류:", err);
+        audioCtx = null;
+        bufferSource = null;
+      }
     }
 
     // MIME 타입 선택
@@ -496,14 +520,15 @@ export default function VideoPreview({
       setRecProgress(0);
     };
 
-    // 처음부터 재생 시작
+    // html2canvas 미리 로드 (재생 시작 전)
+    const { default: html2canvas } = await import("html2canvas");
+
+    // 처음부터 동시 시작 (audioRef + bufferSource 동기화)
     setCurrentMs(0);
     if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
     if (bgmRef.current)   { bgmRef.current.currentTime = 0;   bgmRef.current.play().catch(() => {}); }
+    bufferSource?.start(0); // AudioBuffer 동시 시작 → 녹화 스트림에 오디오 공급
     setPlaying(true);
-
-    // html2canvas 로드
-    const { default: html2canvas } = await import("html2canvas");
 
     recorder.start(200);
     const startTs = performance.now();
@@ -514,6 +539,7 @@ export default function VideoPreview({
         recorder.stop();
         setPlaying(false);
         if (audioRef.current) audioRef.current.pause();
+        try { bufferSource?.stop(); } catch (_) {}
         return;
       }
       setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
@@ -522,6 +548,17 @@ export default function VideoPreview({
           scale: 2, useCORS: true, allowTaint: true, logging: false,
         });
         ctx.drawImage(cap, 0, 0, W, H);
+
+        // ── GIF 오버레이 ──
+        // html2canvas 는 cross-origin GIF(Klipy CDN) 를 캡처 못함
+        // → currentGifRef 에 미리 로드된 Image 를 수동으로 그려 덮어씌움
+        const gif = currentGifRef.current.el;
+        if (gif && gif.complete && gif.naturalWidth > 0) {
+          const gifW = 320;
+          const gifX = (W - gifW) / 2; // 110px (540 기준 중앙 정렬)
+          const gifH = Math.min(gif.naturalHeight * (gifW / gif.naturalWidth), 400);
+          ctx.drawImage(gif, gifX, 340, gifW, gifH);
+        }
       } catch (_) {}
       setTimeout(loop, 125); // ~8fps
     };
