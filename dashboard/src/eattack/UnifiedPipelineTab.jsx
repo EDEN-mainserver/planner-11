@@ -780,6 +780,7 @@ export default function UnifiedPipelineTab() {
   const [igConfig, setIgConfig]   = useState(() => loadSocial(igKey,      getSession()?.username || "__guest"));
   const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
   const [igPosting, setIgPosting] = useState(false);
+  const [igCaptureProgress, setIgCaptureProgress] = useState({ step: "", done: 0, total: 0 });
   const [thPosting, setThPosting] = useState(false);
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
