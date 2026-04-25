@@ -151,6 +151,28 @@ function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName, headerColor, 
 }
 
 // ─── 메인 컴포넌트 ───────────────────────────────────────────────────────────
+// ── SRT 자막 생성 ──
+function buildSRT(captions) {
+  const WORDS_PER = 3;
+  const chunks = [];
+  let cur = null, wc = 0;
+  for (const cap of captions) {
+    if (!cur) { cur = { startMs: cap.startMs, endMs: cap.endMs, text: "" }; chunks.push(cur); wc = 0; }
+    cur.text += cap.text;
+    cur.endMs = Math.max(cur.endMs, cap.endMs);
+    if (cap.text.trim()) wc++;
+    if (wc >= WORDS_PER) cur = null;
+  }
+  const pad2 = n => String(n).padStart(2, "0");
+  const pad3 = n => String(n).padStart(3, "0");
+  const fmt = ms => {
+    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000), mils = ms % 1000;
+    return `${pad2(h)}:${pad2(m)}:${pad2(s)},${pad3(mils)}`;
+  };
+  return chunks.map((c, i) => `${i + 1}\n${fmt(c.startMs)} --> ${fmt(c.endMs)}\n${c.text.trim()}`).join("\n\n");
+}
+
 export default function VideoPreview({
   bgPreset,
   title,
@@ -168,12 +190,15 @@ export default function VideoPreview({
   const audioRef       = useRef(null);
   const bgmRef         = useRef(null);
   const intervalRef    = useRef(null);
-  const speechStartRef = useRef(null);   // Web Speech 시작 시각
-  const speechRafRef   = useRef(null);   // Web Speech RAF ID
-  const webWordRef     = useRef([]);     // onboundary로 쌓은 실시간 단어 타이밍
+  const speechStartRef = useRef(null);
+  const speechRafRef   = useRef(null);
+  const webWordRef     = useRef([]);
+  const previewDivRef  = useRef(null);  // 녹화용 div ref
   const [playing, setPlaying]         = useState(false);
   const [currentMs, setCurrentMs]     = useState(0);
-  const [webCaptions, setWebCaptions] = useState(null); // Web Speech 실시간 자막
+  const [webCaptions, setWebCaptions] = useState(null);
+  const [recording, setRecording]     = useState(false);
+  const [recProgress, setRecProgress] = useState(0);
 
   // 언마운트 시 Web Speech 정리
   useEffect(() => {
@@ -401,10 +426,112 @@ export default function VideoPreview({
     if (audioRef.current) audioRef.current.currentTime = ms / 1000;
   }, []);
 
+  // ── 오디오 다운로드 ──
+  const handleDownloadAudio = useCallback(() => {
+    if (!audioUrl) return;
+    const a = document.createElement("a");
+    a.href = audioUrl;
+    a.download = "tts-audio.mp3";
+    a.click();
+  }, [audioUrl]);
+
+  // ── SRT 자막 다운로드 (Premiere Pro 임포트용) ──
+  const handleDownloadSRT = useCallback(() => {
+    if (!captions?.length) return;
+    const srt = buildSRT(captions);
+    const blob = new Blob([srt], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "subtitles.srt";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [captions]);
+
+  // ── MP4(WebM) 녹화 다운로드 ──
+  const handleDownloadMp4 = useCallback(async () => {
+    if (recording || !previewDivRef.current) return;
+    setRecording(true);
+    setRecProgress(0);
+
+    // 캔버스 준비 (540×960 = 2× 프리뷰 크기)
+    const W = 540, H = 960;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+
+    // 비디오 스트림
+    const videoStream = canvas.captureStream(8); // 8fps
+    const streams = [...videoStream.getVideoTracks()];
+
+    // 오디오 스트림 (가능하면 캡처)
+    let audioCtx = null;
+    if (audioRef.current) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createMediaElementSource(audioRef.current);
+        const dest = audioCtx.createMediaStreamDestination();
+        src.connect(dest);
+        src.connect(audioCtx.destination); // 스피커 출력 유지
+        streams.push(...dest.stream.getAudioTracks());
+      } catch (_) { audioCtx = null; }
+    }
+
+    // MIME 타입 선택
+    const mimeType = ["video/mp4", "video/webm;codecs=vp9", "video/webm"]
+      .find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
+    const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+
+    const chunks = [];
+    const recorder = new MediaRecorder(new MediaStream(streams), { mimeType, videoBitsPerSecond: 3_000_000 });
+    recorder.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `community-video.${ext}`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      audioCtx?.close();
+      setRecording(false);
+      setRecProgress(0);
+    };
+
+    // 처음부터 재생 시작
+    setCurrentMs(0);
+    if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
+    if (bgmRef.current)   { bgmRef.current.currentTime = 0;   bgmRef.current.play().catch(() => {}); }
+    setPlaying(true);
+
+    // html2canvas 로드
+    const { default: html2canvas } = await import("html2canvas");
+
+    recorder.start(200);
+    const startTs = performance.now();
+
+    const loop = async () => {
+      const elapsed = performance.now() - startTs;
+      if (elapsed > totalMs + 1000) {
+        recorder.stop();
+        setPlaying(false);
+        if (audioRef.current) audioRef.current.pause();
+        return;
+      }
+      setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
+      try {
+        const cap = await html2canvas(previewDivRef.current, {
+          scale: 2, useCORS: true, allowTaint: true, logging: false,
+        });
+        ctx.drawImage(cap, 0, 0, W, H);
+      } catch (_) {}
+      setTimeout(loop, 125); // ~8fps
+    };
+    loop();
+  }, [recording, totalMs, audioUrl]);
+
   return (
     <div className="flex flex-col items-center gap-3 w-full">
       {/* 9:16 캔버스 */}
-      <div className="relative overflow-hidden rounded-2xl shadow-2xl"
+      <div ref={previewDivRef} className="relative overflow-hidden rounded-2xl shadow-2xl"
         style={{ width: 270, height: 480, background: "#ffffff", flexShrink: 0 }}>
 
         <CommunityBg
@@ -494,6 +621,62 @@ export default function VideoPreview({
             {(currentMs / 1000).toFixed(1)}s
           </span>
         </div>
+      </div>
+
+      {/* 다운로드 버튼 */}
+      <div className="w-full flex flex-col gap-2" style={{ maxWidth: 270 }}>
+        {/* MP4 녹화 */}
+        <button
+          onClick={handleDownloadMp4}
+          disabled={recording}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-70"
+        >
+          {recording ? (
+            <>
+              <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              녹화 중... {recProgress}%
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
+              </svg>
+              MP4 다운로드
+            </>
+          )}
+        </button>
+
+        {/* PR 에셋 (오디오 + SRT) */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleDownloadAudio}
+            disabled={!audioUrl}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-40"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+            </svg>
+            오디오 (.mp3)
+          </button>
+          <button
+            onClick={handleDownloadSRT}
+            disabled={!captions?.length}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-40"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              <line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/>
+            </svg>
+            자막 PR (.srt)
+          </button>
+        </div>
+
+        {recording && (
+          <p className="text-[10px] text-gray-400 text-center">영상이 처음부터 재생되며 녹화됩니다. 완료 시 자동 다운로드됩니다.</p>
+        )}
       </div>
     </div>
   );
