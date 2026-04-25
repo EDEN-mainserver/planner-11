@@ -61,11 +61,16 @@ async function convertToScript(rawText) {
       history: [{ role: "user", content: `다음 SNS 게시물을 커뮤니티 썰 스크립트로 변환해줘:\n\n${rawText}` }],
     }),
   });
-  if (!resp.ok) throw new Error("변환 실패");
-  const text = await resp.text();
+  if (!resp.ok) {
+    const errData = await resp.json().catch(() => ({}));
+    throw new Error(errData.error || `서버 오류 (${resp.status})`);
+  }
+  // API는 { text, model } 형식으로 반환 — text가 AI 생성 내용
+  const data = await resp.json();
+  const aiText = data.text || "";
   // JSON 추출 (마크다운 코드블록 대응)
-  const match = text.match(/\{[\s\S]*"title"[\s\S]*"text"[\s\S]*\}/);
-  if (!match) throw new Error("응답 파싱 실패");
+  const match = aiText.match(/\{[\s\S]*?"title"[\s\S]*?"text"[\s\S]*?\}/);
+  if (!match) throw new Error("응답 파싱 실패: " + aiText.slice(0, 100));
   return JSON.parse(match[0]);
 }
 
