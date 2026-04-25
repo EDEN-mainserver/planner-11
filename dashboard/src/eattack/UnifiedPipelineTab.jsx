@@ -1022,24 +1022,29 @@ export default function UnifiedPipelineTab() {
         iframe.onload = async () => {
           try {
             const doc = iframe.contentDocument;
-            // 폰트 로드 대기
+            // 폰트 로드 대기 (fonts.ready + 실제 글리프 로드 확인)
             await doc.fonts.ready;
-            // 렌더링 안정화 대기
-            await new Promise((r) => setTimeout(r, 600));
+            // 한글 폰트 글리프 강제 로드 — 'Noto Sans KR'이 실제로 렌더 가능한 상태인지 확인
+            await Promise.allSettled([
+              doc.fonts.load('700 48px "Noto Sans KR"', "가나다라마바사"),
+              doc.fonts.load('400 24px "Noto Sans KR"', "가나다라마바사"),
+            ]);
+            // 렌더링 안정화 대기 (1.5초로 증가)
+            await new Promise((r) => setTimeout(r, 1500));
 
             const canvas = await html2canvas(doc.documentElement, {
               width: 1080,
               height: 1350,
               windowWidth: 1080,
               windowHeight: 1350,
-              scale: 1,
+              scale: 2,
               useCORS: true,
               allowTaint: false,
               backgroundColor: "#080814",
               logging: false,
               x: 0,
               y: 0,
-              imageTimeout: 10000,
+              imageTimeout: 15000,
             });
 
             const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
