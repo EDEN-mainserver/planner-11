@@ -785,6 +785,13 @@ export default function UnifiedPipelineTab() {
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
+  const [igLogs, setIgLogs] = useState([]);
+
+  const addLog = (level, msg, detail = null) => {
+    const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
+    setIgLogs(prev => [...prev.slice(-49), entry]); // 최대 50줄
+    console[level === "error" ? "error" : "log"](`[IG] ${msg}`, detail || "");
+  };
 
   // 로그인 핸들러
   const handleLogin = (s) => {
@@ -1069,22 +1076,31 @@ export default function UnifiedPipelineTab() {
     setIgPosting(true);
     setIgResult(null);
     setError("");
+    setIgLogs([]);
     setIgCaptureProgress({ step: "", done: 0, total: 0 });
     try {
+      addLog("info", `계정 ID: ${igConfig.accountId}`);
+      addLog("info", `토큰: ${igConfig.accessToken.slice(0, 12)}...${igConfig.accessToken.slice(-4)}`);
+
       // 1. cards[].imageUrl 우선 — AI 이미지 생성한 경우
       let imageList = cards.map((c) => c.imageUrl).filter(Boolean);
+      addLog("info", `AI 이미지: ${imageList.length}장`);
 
       // 2. imageUrl 없으면 브라우저에서 직접 카드 HTML 캡처
       if (imageList.length === 0) {
         if (cardHtmls.length === 0) {
           throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
         }
+        addLog("info", `HTML 카드 캡처 시작: ${cardHtmls.length}장`);
         setIgCaptureProgress({ step: "capture", done: 0, total: cardHtmls.length });
         imageList = await captureCardHtmls(cardHtmls);
+        addLog("info", `캡처 완료: ${imageList.length}장`);
         setIgCaptureProgress({ step: "uploading", done: imageList.length, total: imageList.length });
       }
 
       if (imageList.length === 0) throw new Error("캡처된 이미지가 없습니다.");
+
+      addLog("info", `API 호출: POST /api/instagram-post (이미지 ${imageList.length}장)`);
 
       const res = await fetch("/api/instagram-post", {
         method: "POST",
@@ -1098,7 +1114,17 @@ export default function UnifiedPipelineTab() {
       });
 
       const data = await res.json();
+
+      // 서버 로그 병합
+      if (data.logs?.length) {
+        data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
+      }
+      addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
+
       if (!res.ok) throw new Error(data.error || "게시 실패");
+
+      addLog("info", `게시 성공! mediaId: ${data.mediaId}`);
+      if (data.permalink) addLog("info", `URL: ${data.permalink}`);
 
       setIgResult({
         status: "success",
@@ -1106,6 +1132,7 @@ export default function UnifiedPipelineTab() {
         permalink: data.permalink,
       });
     } catch (e) {
+      addLog("error", `오류: ${e.message}`);
       setError(e.message);
     } finally {
       setIgPosting(false);
@@ -2004,6 +2031,43 @@ export default function UnifiedPipelineTab() {
                     게시물 보기
                   </a>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ── 실행 로그 패널 ── */}
+          {igLogs.length > 0 && (
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900">
+                <span className="text-[11px] font-bold text-gray-300 font-mono">실행 로그</span>
+                <button
+                  onClick={() => setIgLogs([])}
+                  className="text-[10px] text-gray-500 hover:text-gray-300"
+                >
+                  지우기
+                </button>
+              </div>
+              <div className="bg-gray-950 p-3 max-h-52 overflow-y-auto space-y-1 font-mono">
+                {igLogs.map((log, i) => (
+                  <div key={i} className="flex gap-2 text-[11px] leading-relaxed">
+                    <span className="text-gray-600 flex-shrink-0">{log.time}</span>
+                    <span className={`flex-shrink-0 font-bold ${
+                      log.level === "error" ? "text-red-400" : "text-emerald-400"
+                    }`}>
+                      {log.level === "error" ? "ERR" : "LOG"}
+                    </span>
+                    <span className={log.level === "error" ? "text-red-300" : "text-gray-200"}>
+                      {log.msg}
+                    </span>
+                    {log.detail && (
+                      <span className="text-gray-500 truncate">
+                        {typeof log.detail === "object"
+                          ? JSON.stringify(log.detail)
+                          : String(log.detail)}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
