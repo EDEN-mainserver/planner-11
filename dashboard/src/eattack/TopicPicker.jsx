@@ -5,6 +5,7 @@
  * Props: onSelect(topicString), onClose
  */
 import { useState, useEffect, useRef } from "react";
+import { POPULAR_SCRIPTS } from "./community/constants";
 
 // ── 로컬스토리지 키 ──
 const LS_IBOSS   = "eden_tp_iboss_v1";
@@ -337,11 +338,35 @@ function XTab({ onSelect }) {
   );
 }
 
+// ── 커뮤니티 썰 탭 ──
+function CommunityTab({ onSelect }) {
+  return (
+    <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+      {POPULAR_SCRIPTS.map((p, i) => (
+        <button
+          key={i}
+          onClick={() => onSelect(p.title)}
+          className="group w-full text-left px-3 py-3 hover:bg-violet-50 transition-colors flex items-start justify-between gap-2"
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-800 truncate">{p.title}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">{p.text.slice(0, 60)}…</p>
+          </div>
+          <svg className="flex-shrink-0 mt-0.5 group-hover:text-violet-500 text-gray-300 transition-colors" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── 메인 TopicPicker ──
 const TABS = [
-  { key: "iboss",   label: "아이보스", icon: "🅱" },
-  { key: "threads", label: "쓰레드",   icon: "🧵" },
-  { key: "x",       label: "X",        icon: "𝕏" },
+  { key: "iboss",     label: "아이보스",   icon: "🅱" },
+  { key: "threads",   label: "쓰레드",     icon: "🧵" },
+  { key: "x",         label: "X",          icon: "𝕏" },
+  { key: "community", label: "커뮤니티 썰", icon: "💬" },
 ];
 
 export default function TopicPicker({ onSelect, onClose }) {
@@ -368,9 +393,11 @@ export default function TopicPicker({ onSelect, onClose }) {
         {/* 탭 바 */}
         <div className="flex border-b border-gray-100 px-2 flex-shrink-0">
           {TABS.map(t => {
-            const hasCache = !!loadCache(
-              t.key === "iboss" ? LS_IBOSS : t.key === "threads" ? LS_THREADS : LS_X
-            )?.posts?.length;
+            const hasCache = t.key === "community"
+              ? false
+              : !!loadCache(
+                  t.key === "iboss" ? LS_IBOSS : t.key === "threads" ? LS_THREADS : LS_X
+                )?.posts?.length;
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
@@ -389,9 +416,10 @@ export default function TopicPicker({ onSelect, onClose }) {
 
         {/* 탭 내용 */}
         <div className="flex-1 overflow-hidden p-4 flex flex-col min-h-0">
-          {tab === "iboss"   && <IbossTab   onSelect={v => { onSelect(v); onClose(); }} />}
-          {tab === "threads" && <ThreadsTab onSelect={v => { onSelect(v); onClose(); }} />}
-          {tab === "x"       && <XTab       onSelect={v => { onSelect(v); onClose(); }} />}
+          {tab === "iboss"     && <IbossTab     onSelect={v => { onSelect(v); onClose(); }} />}
+          {tab === "threads"   && <ThreadsTab   onSelect={v => { onSelect(v); onClose(); }} />}
+          {tab === "x"         && <XTab         onSelect={v => { onSelect(v); onClose(); }} />}
+          {tab === "community" && <CommunityTab onSelect={v => { onSelect(v); onClose(); }} />}
         </div>
       </div>
     </div>
