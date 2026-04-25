@@ -43,35 +43,18 @@ function currentMonth() {
 
 // ── AI 커뮤니티 썰 변환 ──
 async function convertToScript(rawText) {
-  const systemPrompt = `당신은 커뮤니티 게시판(디씨인사이드, 에펨코리아 등) 스타일의 썰 작가입니다.
-주어진 SNS 게시물을 바탕으로 커뮤니티 스타일 썰 스크립트를 작성해주세요.
-
-규칙:
-- 제목: 클릭을 유도하는 커뮤니티 스타일 제목 (15~25자, 짧고 궁금증 유발)
-- 스크립트: 1인칭 구어체, 짧은 문장으로 리듬감, 줄바꿈으로 호흡 조절
-- 길이: 10~15문장 (너무 길지 않게)
-- 말투: "~거든", "~잖아", "~인데", "~였어" 등 자연스러운 구어체
-- 반드시 JSON 형식으로만 응답: {"title": "제목", "text": "스크립트"}`;
-
-  const resp = await fetch("/api/gemini", {
+  const resp = await fetch("/api/convert-script", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemPrompt,
-      history: [{ role: "user", content: `다음 SNS 게시물을 커뮤니티 썰 스크립트로 변환해줘:\n\n${rawText}` }],
-    }),
+    body: JSON.stringify({ text: rawText }),
   });
   if (!resp.ok) {
     const errData = await resp.json().catch(() => ({}));
     throw new Error(errData.error || `서버 오류 (${resp.status})`);
   }
-  // API는 { text, model } 형식으로 반환 — text가 AI 생성 내용
   const data = await resp.json();
-  const aiText = data.text || "";
-  // JSON 추출 (마크다운 코드블록 대응)
-  const match = aiText.match(/\{[\s\S]*?"title"[\s\S]*?"text"[\s\S]*?\}/);
-  if (!match) throw new Error("응답 파싱 실패: " + aiText.slice(0, 100));
-  return JSON.parse(match[0]);
+  if (!data.title || !data.text) throw new Error("응답 형식 오류");
+  return { title: data.title, text: data.text };
 }
 
 // ── 포스트 선택 패널 (변환 버튼 포함) ──
