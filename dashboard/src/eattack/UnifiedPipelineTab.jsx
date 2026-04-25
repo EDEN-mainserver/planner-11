@@ -1928,52 +1928,10 @@ export default function UnifiedPipelineTab() {
             </span>
           </div>
 
-          {/* 계정 ID */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-gray-600">
-                비즈니스 계정 ID
-              </label>
-              {igConfig.accessToken && (
-                <button
-                  onClick={async () => {
-                    try {
-                      const res = await fetch(
-                        `https://graph.instagram.com/me?fields=id,username&access_token=${igConfig.accessToken}`
-                      );
-                      const data = await res.json();
-                      if (data.error) throw new Error(data.error.message);
-                      const next = { ...igConfig, accountId: data.id };
-                      setIgConfig(next);
-                      saveSocial(igKey, session.username, next);
-                      addLog("info", `계정 ID 자동 조회 성공: @${data.username} → ${data.id}`);
-                    } catch (e) {
-                      addLog("error", `계정 ID 조회 실패: ${e.message}`);
-                    }
-                  }}
-                  className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
-                >
-                  토큰으로 자동 조회
-                </button>
-              )}
-            </div>
-            <input
-              type="text"
-              placeholder="예: 17841400000000000"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
-              value={igConfig.accountId}
-              onChange={(e) => {
-                const next = { ...igConfig, accountId: e.target.value };
-                setIgConfig(next);
-                saveSocial(igKey, session.username, next);
-              }}
-            />
-          </div>
-
-          {/* 액세스 토큰 */}
+          {/* 액세스 토큰 — 먼저 입력 */}
           <div>
             <label className="text-xs font-bold text-gray-600 block mb-1.5">
-              액세스 토큰 (Access Token)
+              ① 액세스 토큰 (Access Token)
             </label>
             <input
               type="password"
@@ -1982,6 +1940,51 @@ export default function UnifiedPipelineTab() {
               value={igConfig.accessToken}
               onChange={(e) => {
                 const next = { ...igConfig, accessToken: e.target.value };
+                setIgConfig(next);
+                saveSocial(igKey, session.username, next);
+              }}
+            />
+          </div>
+
+          {/* 계정 ID — 토큰 입력 후 자동 조회 */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-gray-600">
+                ② 비즈니스 계정 ID
+              </label>
+              <button
+                onClick={async () => {
+                  if (!igConfig.accessToken) {
+                    addLog("error", "토큰을 먼저 입력하세요");
+                    return;
+                  }
+                  try {
+                    addLog("info", "계정 ID 조회 중...");
+                    const res = await fetch(
+                      `https://graph.instagram.com/me?fields=id,username&access_token=${igConfig.accessToken}`
+                    );
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error.message);
+                    const next = { ...igConfig, accountId: data.id };
+                    setIgConfig(next);
+                    saveSocial(igKey, session.username, next);
+                    addLog("info", `✅ 자동 조회 성공: @${data.username} → ${data.id}`);
+                  } catch (e) {
+                    addLog("error", `계정 ID 조회 실패: ${e.message}`);
+                  }
+                }}
+                className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
+              >
+                🔍 토큰으로 자동 조회
+              </button>
+            </div>
+            <input
+              type="text"
+              placeholder="예: 17841400000000000"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
+              value={igConfig.accountId || ""}
+              onChange={(e) => {
+                const next = { ...igConfig, accountId: e.target.value };
                 setIgConfig(next);
                 saveSocial(igKey, session.username, next);
               }}
