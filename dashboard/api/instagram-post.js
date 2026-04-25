@@ -13,17 +13,22 @@ export const config = { api: { bodyParser: { sizeLimit: "25mb" } } };
 
 const IG_API = "https://graph.instagram.com/v21.0";
 
-// base64 데이터 URL → Blob 업로드 → 공개 URL 반환
+// base64 데이터 URL → JPEG 변환 → Blob 업로드 → 공개 URL 반환
+// Instagram은 JPEG만 허용하므로 PNG 등은 sharp로 변환
 async function uploadBase64ToBlob(base64DataUrl, filename) {
-  // "data:image/png;base64,xxxx" → Buffer
   const match = base64DataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) throw new Error("잘못된 이미지 형식");
-  const mimeType = match[1];
-  const buffer = Buffer.from(match[2], "base64");
 
-  const blob = await put(`ig-temp/${filename}`, buffer, {
+  let buffer = Buffer.from(match[2], "base64");
+
+  // PNG/webp 등 → JPEG 변환 (Instagram 요구사항)
+  const { default: sharp } = await import("sharp");
+  buffer = await sharp(buffer).jpeg({ quality: 92 }).toBuffer();
+
+  const jpegFilename = filename.replace(/\.\w+$/, ".jpg");
+  const blob = await put(`ig-temp/${jpegFilename}`, buffer, {
     access: "public",
-    contentType: mimeType,
+    contentType: "image/jpeg",
   });
   return blob.url;
 }
