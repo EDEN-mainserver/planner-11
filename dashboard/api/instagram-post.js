@@ -42,6 +42,7 @@ async function createMediaContainer(accountId, accessToken, imageUrl, caption, i
     access_token: accessToken,
   });
   if (isCarouselItem) {
+    params.set("media_type", "IMAGE");
     params.set("is_carousel_item", "true");
   } else {
     params.set("media_type", "IMAGE");
@@ -54,7 +55,9 @@ async function createMediaContainer(accountId, accessToken, imageUrl, caption, i
   });
   const data = await res.json();
   if (!res.ok || !data.id) {
-    throw new Error(data.error?.message || `미디어 컨테이너 생성 실패 (${res.status})`);
+    // 전체 에러 객체 포함해서 던짐
+    const errDetail = JSON.stringify(data.error || data);
+    throw new Error(`미디어 컨테이너 생성 실패 [${res.status}]: ${errDetail}`);
   }
   return data.id;
 }
