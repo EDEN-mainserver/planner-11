@@ -1966,7 +1966,7 @@ export default function UnifiedPipelineTab() {
             </label>
             <input
               type="password"
-              placeholder="IGAAxxxxxxxxxxxxxxx..."
+              placeholder="EAAxxxxxxxxxxxxxxx..."
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
               value={igConfig.accessToken}
               onChange={(e) => {
@@ -2022,16 +2022,38 @@ export default function UnifiedPipelineTab() {
                       return;
                     }
                     try {
-                      addLog("info", "계정 ID 조회 중...");
-                      const res = await fetch(
-                        `https://graph.instagram.com/me?fields=id,username&access_token=${igConfig.accessToken}`
+                      addLog("info", "Facebook 페이지 → Instagram 계정 ID 조회 중...");
+                      // Facebook 페이지 목록 조회
+                      const pagesRes = await fetch(
+                        `https://graph.facebook.com/v21.0/me/accounts?access_token=${igConfig.accessToken}`
                       );
-                      const data = await res.json();
-                      if (data.error) throw new Error(data.error.message);
-                      const next = { ...igConfig, accountId: data.id };
+                      const pagesData = await pagesRes.json();
+                      if (pagesData.error) throw new Error(pagesData.error.message);
+                      if (!pagesData.data?.length) throw new Error("연결된 Facebook 페이지가 없습니다. Facebook 페이지와 Instagram 비즈니스 계정을 연결해주세요.");
+
+                      // 각 페이지에서 Instagram 비즈니스 계정 찾기
+                      let foundId = null, foundUsername = null;
+                      for (const page of pagesData.data) {
+                        const igRes = await fetch(
+                          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${igConfig.accessToken}`
+                        );
+                        const igData = await igRes.json();
+                        if (igData.instagram_business_account?.id) {
+                          foundId = igData.instagram_business_account.id;
+                          // username 조회
+                          const uRes = await fetch(
+                            `https://graph.facebook.com/v21.0/${foundId}?fields=username&access_token=${igConfig.accessToken}`
+                          );
+                          const uData = await uRes.json();
+                          foundUsername = uData.username || foundId;
+                          break;
+                        }
+                      }
+                      if (!foundId) throw new Error("Facebook 페이지에 연결된 Instagram 비즈니스 계정을 찾을 수 없습니다.");
+                      const next = { ...igConfig, accountId: foundId };
                       setIgConfig(next);
                       saveSocial(igKey, session.username, next);
-                      addLog("info", `✅ 자동 조회 성공: @${data.username} → ${data.id}`);
+                      addLog("info", `✅ 조회 성공: @${foundUsername} → ${foundId}`);
                     } catch (e) {
                       addLog("error", `계정 ID 조회 실패: ${e.message}`);
                     }

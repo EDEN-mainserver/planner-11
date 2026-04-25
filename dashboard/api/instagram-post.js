@@ -11,7 +11,7 @@ function slog(msg, data) {
 // 카드 1장 base64 JPEG ≈ 1MB, 10장 ≈ 10MB → 기본 1MB 제한 초과 방지
 export const config = { api: { bodyParser: { sizeLimit: "25mb" } } };
 
-const IG_API = "https://graph.instagram.com/v21.0";
+const IG_API = "https://graph.facebook.com/v21.0";
 
 // imgbb 업로드 — Instagram이 확실히 접근 가능한 i.ibb.co URL 반환
 async function uploadToImgbb(b64Pure, apiKey) {
