@@ -339,13 +339,14 @@ function XTab({ onSelect }) {
 }
 
 // ── 커뮤니티 썰 탭 ──
+// onSelect에 { title, text } 객체 전달 → 호출부에서 용도에 맞게 처리
 function CommunityTab({ onSelect }) {
   return (
     <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
       {POPULAR_SCRIPTS.map((p, i) => (
         <button
           key={i}
-          onClick={() => onSelect(p.title)}
+          onClick={() => onSelect({ title: p.title, text: p.text })}
           className="group w-full text-left px-3 py-3 hover:bg-violet-50 transition-colors flex items-start justify-between gap-2"
         >
           <div className="flex-1 min-w-0">
