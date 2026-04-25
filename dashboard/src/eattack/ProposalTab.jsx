@@ -331,8 +331,9 @@ function buildChartHtml(chart, idx, accentColor) {
 
   // bar / doughnut / line — Chart.js canvas
   const dataJson = escHtml(JSON.stringify(chart));
-  const w = chart.type === 'doughnut' ? 260 : 320;
-  return `${titleHtml}<div class="chart-wrap"><canvas id="chart-${idx}" width="${w}" height="240" data-chart="${dataJson}" data-accent="${accentColor}"></canvas></div>`;
+  const w = chart.type === 'doughnut' ? 380 : 430;
+  const h = chart.type === 'doughnut' ? 380 : 460;
+  return `${titleHtml}<div class="chart-wrap"><canvas id="chart-${idx}" width="${w}" height="${h}" data-chart="${dataJson}" data-accent="${accentColor}"></canvas></div>`;
 }
 
 function buildCoverSlideHtml(clientInfo, winThemes) {
@@ -507,28 +508,30 @@ body{font-family:'Noto Sans KR',sans-serif;background:#1E293B;display:flex;flex-
 .footer-brand{font-size:12px;font-weight:700;color:rgba(255,255,255,.4)}
 .footer-pg{font-size:12px;color:rgba(255,255,255,.35)}
 /* ── CHART LAYOUT ── */
-.content-body.split{flex-direction:row;padding:16px 40px 12px;gap:20px;align-items:stretch}
+.content-body.split{flex-direction:row;padding:14px 32px 10px;gap:24px;align-items:stretch}
 .bullets-col{flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden;min-width:0}
 .bullets-col .bullet-item{flex-shrink:0}
 .bullets-col .emphasis-box{margin:0;flex-shrink:0}
-.chart-col{width:340px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 0}
-.chart-title{font-size:12px;font-weight:700;color:#475569;text-align:center;margin-bottom:10px;letter-spacing:.02em}
-.chart-wrap{width:100%;display:flex;align-items:center;justify-content:center}
+/* chart-col: 슬라이드 우측 전체 높이를 채우는 컬럼 */
+.chart-col{width:460px;flex-shrink:0;display:flex;flex-direction:column;padding:12px 16px;align-self:stretch}
+.chart-title{font-size:13px;font-weight:700;color:#475569;text-align:center;margin-bottom:14px;letter-spacing:.02em;flex-shrink:0}
+/* chart-wrap: 남은 세로 공간 전부 사용 */
+.chart-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;width:100%}
 /* comparison */
-.cmp-wrap{display:flex;flex-direction:row;align-items:stretch;gap:8px;width:100%}
-.cmp-box{flex:1;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.cmp-wrap{flex:1;min-height:0;display:flex;flex-direction:row;align-items:stretch;gap:10px;width:100%}
+.cmp-box{flex:1;border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
 .cmp-box.before{background:#FEF2F2;border:2px solid #FCA5A5}
 .cmp-box.after{background:#ECFDF5;border:2px solid #6EE7B7}
-.cmp-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.cmp-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
 .cmp-box.before .cmp-label{color:#EF4444}
 .cmp-box.after .cmp-label{color:#10B981}
-.cmp-item{font-size:12px;color:#374151;line-height:1.5}
-.cmp-arrow{font-size:28px;color:#94A3B8;display:flex;align-items:center;flex-shrink:0}
+.cmp-item{font-size:14px;color:#374151;line-height:1.6}
+.cmp-arrow{font-size:32px;color:#94A3B8;display:flex;align-items:center;flex-shrink:0}
 /* stats */
-.stats-wrap{display:flex;flex-direction:column;gap:10px;width:100%}
-.stat-item{background:white;border-radius:12px;padding:12px 14px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.07);border:1px solid #F1F5F9}
-.stat-value{font-size:26px;font-weight:900;line-height:1.1}
-.stat-label{font-size:11px;color:#64748B;margin-top:3px;font-weight:500}
+.stats-wrap{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;width:100%;justify-content:space-evenly}
+.stat-item{background:white;border-radius:14px;padding:16px 20px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.08);border:1px solid #F1F5F9;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.stat-value{font-size:38px;font-weight:900;line-height:1}
+.stat-label{font-size:13px;color:#64748B;margin-top:6px;font-weight:500}
 /* ── NAV ── */
 .nav{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:rgba(15,23,42,.9);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);padding:10px 20px;border-radius:100px;z-index:1000}
 .nav button{background:rgba(255,255,255,.1);border:none;color:white;padding:8px 20px;border-radius:8px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:14px;font-weight:600;transition:background .2s}
@@ -575,15 +578,17 @@ document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowD
         if(!isDoughnut){
           options.indexAxis='y';
           options.scales={
-            x:{beginAtZero:true,ticks:{font:{size:11,family:'Noto Sans KR'},callback:function(v){return v+unit;}},grid:{color:'#F1F5F9'}},
-            y:{ticks:{font:{size:11,family:'Noto Sans KR'}},grid:{display:false}}
+            x:{beginAtZero:true,ticks:{font:{size:13,family:'Noto Sans KR'},callback:function(v){return v+unit;}},grid:{color:'#F1F5F9'}},
+            y:{ticks:{font:{size:13,family:'Noto Sans KR'},color:'#334155'},grid:{display:false}}
           };
+          if(!options.plugins)options.plugins={};
+          options.plugins.legend={display:false};
         }
         if(isLine){
           delete options.indexAxis;
           options.scales={
-            y:{beginAtZero:true,ticks:{font:{size:11,family:'Noto Sans KR'},callback:function(v){return v+unit;}},grid:{color:'#F1F5F9'}},
-            x:{ticks:{font:{size:11,family:'Noto Sans KR'}},grid:{display:false}}
+            y:{beginAtZero:true,ticks:{font:{size:13,family:'Noto Sans KR'},callback:function(v){return v+unit;}},grid:{color:'#F1F5F9'}},
+            x:{ticks:{font:{size:13,family:'Noto Sans KR'}},grid:{display:false}}
           };
         }
         new Chart(canvas.getContext('2d'),{
