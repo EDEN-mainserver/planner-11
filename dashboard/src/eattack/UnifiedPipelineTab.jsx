@@ -978,13 +978,27 @@ export default function UnifiedPipelineTab() {
     setIgResult(null);
     setError("");
     try {
-      // 카드 이미지 배열 추출 (imageUrl 없는 카드는 제외)
-      const imageList = cards
-        .map((c) => c.imageUrl)
-        .filter(Boolean);
+      // 1. cards[].imageUrl 우선 — AI 이미지 생성한 경우
+      let imageList = cards.map((c) => c.imageUrl).filter(Boolean);
+
+      // 2. imageUrl 없으면 cardHtmls(조립된 카드 HTML)를 스크린샷으로 변환
+      if (imageList.length === 0) {
+        const htmlsToShot = cardHtmls.length > 0 ? cardHtmls : null;
+        if (!htmlsToShot) {
+          throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
+        }
+        const shotRes = await fetch("/api/html-screenshot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ htmls: htmlsToShot }),
+        });
+        const shotData = await shotRes.json();
+        if (!shotRes.ok) throw new Error(shotData.error || "카드 이미지 변환 실패");
+        imageList = shotData.images;
+      }
 
       if (imageList.length === 0) {
-        throw new Error("게시할 이미지가 없습니다. 이미지 생성 후 다시 시도해주세요.");
+        throw new Error("변환된 이미지가 없습니다.");
       }
 
       const res = await fetch("/api/instagram-post", {
