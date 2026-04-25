@@ -41,8 +41,118 @@ function currentMonth() {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+// ── AI 커뮤니티 썰 변환 ──
+async function convertToScript(rawText) {
+  const systemPrompt = `당신은 커뮤니티 게시판(디씨인사이드, 에펨코리아 등) 스타일의 썰 작가입니다.
+주어진 SNS 게시물을 바탕으로 커뮤니티 스타일 썰 스크립트를 작성해주세요.
+
+규칙:
+- 제목: 클릭을 유도하는 커뮤니티 스타일 제목 (15~25자, 짧고 궁금증 유발)
+- 스크립트: 1인칭 구어체, 짧은 문장으로 리듬감, 줄바꿈으로 호흡 조절
+- 길이: 10~15문장 (너무 길지 않게)
+- 말투: "~거든", "~잖아", "~인데", "~였어" 등 자연스러운 구어체
+- 반드시 JSON 형식으로만 응답: {"title": "제목", "text": "스크립트"}`;
+
+  const resp = await fetch("/api/gemini", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemPrompt,
+      history: [{ role: "user", content: `다음 SNS 게시물을 커뮤니티 썰 스크립트로 변환해줘:\n\n${rawText}` }],
+    }),
+  });
+  if (!resp.ok) throw new Error("변환 실패");
+  const text = await resp.text();
+  // JSON 추출 (마크다운 코드블록 대응)
+  const match = text.match(/\{[\s\S]*"title"[\s\S]*"text"[\s\S]*\}/);
+  if (!match) throw new Error("응답 파싱 실패");
+  return JSON.parse(match[0]);
+}
+
+// ── 포스트 선택 패널 (변환 버튼 포함) ──
+function ConvertPanel({ post, onUseRaw, onConfirm, onBack }) {
+  const rawText = post.title || post.content || post.text || post.full_text || post.subject || "";
+  const [converting, setConverting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  async function handleConvert() {
+    setConverting(true); setError("");
+    try {
+      const r = await convertToScript(rawText);
+      setResult(r);
+    } catch (e) {
+      setError(e.message || "변환 중 오류가 발생했습니다");
+    } finally {
+      setConverting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 h-full">
+      {/* 뒤로 */}
+      <button onClick={onBack} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors w-fit">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
+        목록으로
+      </button>
+
+      {/* 원문 */}
+      <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+        <p className="text-[10px] text-gray-400 font-medium mb-1.5">원문</p>
+        <p className="text-xs text-gray-700 whitespace-pre-wrap break-words line-clamp-6">{rawText}</p>
+      </div>
+
+      {/* 변환 결과 */}
+      {result && (
+        <div className="bg-violet-50 rounded-lg p-3 border border-violet-200 flex flex-col gap-2">
+          <p className="text-[10px] text-violet-500 font-medium">변환 결과</p>
+          <div>
+            <p className="text-[10px] text-gray-500 mb-0.5">제목</p>
+            <p className="text-sm font-semibold text-gray-800">{result.title}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-500 mb-0.5">스크립트</p>
+            <p className="text-xs text-gray-700 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">{result.text}</p>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-500 px-1">{error}</p>}
+
+      {/* 버튼 */}
+      <div className="flex gap-2 mt-auto pt-1">
+        <button
+          onClick={() => onUseRaw(rawText)}
+          className="flex-1 px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all"
+        >
+          그냥 사용
+        </button>
+        {result ? (
+          <button
+            onClick={() => onConfirm(result)}
+            className="flex-1 px-3 py-2 text-xs font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-all"
+          >
+            사용하기
+          </button>
+        ) : (
+          <button
+            onClick={handleConvert}
+            disabled={converting}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-all disabled:opacity-60"
+          >
+            {converting
+              ? <><svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>변환 중...</>
+              : <>🤖 커뮤니티 썰로 변환</>
+            }
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── 공통 포스트 리스트 ──
-function PostList({ posts, onSelect, emptyMsg, accentClass = "violet" }) {
+function PostList({ posts, onPreview, emptyMsg, accentClass = "violet" }) {
   const colorMap = {
     blue:   { num: "text-blue-400",   hover: "hover:border-blue-300 hover:bg-blue-50",   arrow: "group-hover:text-blue-400"   },
     purple: { num: "text-purple-400", hover: "hover:border-purple-300 hover:bg-purple-50", arrow: "group-hover:text-purple-400" },
@@ -68,7 +178,7 @@ function PostList({ posts, onSelect, emptyMsg, accentClass = "violet" }) {
         return (
           <button
             key={i}
-            onClick={() => onSelect(text)}
+            onClick={() => onPreview(post)}
             className={`w-full text-left px-3 py-2.5 rounded-lg border border-gray-100 transition-all group ${c.hover}`}
           >
             <div className="flex items-start gap-2">
@@ -107,6 +217,7 @@ function IbossTab({ onSelect }) {
   const [month, setMonth] = useState(cached?.month || currentMonth());
   const [posts, setPosts] = useState(cached?.posts || []);
   const [loading, setLoading] = useState(false);
+  const [selectedPost, setSelectedPost] = useState(null);
   const [error, setError] = useState("");
   const [cache, setCache] = useState(cached);
   const timerRef = useRef(null);
@@ -166,12 +277,21 @@ function IbossTab({ onSelect }) {
       {error && <p className="text-xs text-red-500 px-1">{error}</p>}
       {loading && <p className="text-xs text-blue-500 px-1 animate-pulse">아이보스 인기글 수집 중... (최대 20초)</p>}
 
-      <PostList
-        posts={posts}
-        onSelect={onSelect}
-        accentClass="blue"
-        emptyMsg={<>월 선택 후 가져오기를 누르세요<br/><span className="text-[10px] text-gray-300 mt-1 block">Eden Crawl 확장 프로그램 필요</span></>}
-      />
+      {selectedPost ? (
+        <ConvertPanel
+          post={selectedPost}
+          onBack={() => setSelectedPost(null)}
+          onUseRaw={text => onSelect(text)}
+          onConfirm={r => onSelect({ title: r.title, text: r.text })}
+        />
+      ) : (
+        <PostList
+          posts={posts}
+          onPreview={setSelectedPost}
+          accentClass="blue"
+          emptyMsg={<>월 선택 후 가져오기를 누르세요<br/><span className="text-[10px] text-gray-300 mt-1 block">Eden Crawl 확장 프로그램 필요</span></>}
+        />
+      )}
     </div>
   );
 }
@@ -185,6 +305,7 @@ function ThreadsTab({ onSelect }) {
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
   const [cache, setCache] = useState(cached);
+  const [selectedPost, setSelectedPost] = useState(null);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -261,12 +382,21 @@ function ThreadsTab({ onSelect }) {
         </p>
       )}
 
-      <PostList
-        posts={posts}
-        onSelect={onSelect}
-        accentClass="purple"
-        emptyMsg={<>키워드 입력 후 수집을 누르세요<br/><span className="text-[10px] text-gray-300 mt-1 block">Eden Crawl 확장 프로그램 필요</span></>}
-      />
+      {selectedPost ? (
+        <ConvertPanel
+          post={selectedPost}
+          onBack={() => setSelectedPost(null)}
+          onUseRaw={text => onSelect(text)}
+          onConfirm={r => onSelect({ title: r.title, text: r.text })}
+        />
+      ) : (
+        <PostList
+          posts={posts}
+          onPreview={setSelectedPost}
+          accentClass="purple"
+          emptyMsg={<>키워드 입력 후 수집을 누르세요<br/><span className="text-[10px] text-gray-300 mt-1 block">Eden Crawl 확장 프로그램 필요</span></>}
+        />
+      )}
     </div>
   );
 }
@@ -279,6 +409,7 @@ function XTab({ onSelect }) {
   const [crawling, setCrawling] = useState(false);
   const [error, setError] = useState("");
   const [cache, setCache] = useState(cached);
+  const [selectedPost, setSelectedPost] = useState(null);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -342,12 +473,21 @@ function XTab({ onSelect }) {
       {error && <p className="text-xs text-red-500 px-1">{error}</p>}
       {crawling && <p className="text-xs text-gray-500 px-1 animate-pulse">X 인기글 수집 중... (최대 30초)</p>}
 
-      <PostList
-        posts={posts}
-        onSelect={onSelect}
-        accentClass="gray"
-        emptyMsg={<>키워드 입력 후 수집을 누르세요<br/><span className="text-[10px] text-gray-300 mt-1 block">Eden Crawl 확장 프로그램 필요</span></>}
-      />
+      {selectedPost ? (
+        <ConvertPanel
+          post={selectedPost}
+          onBack={() => setSelectedPost(null)}
+          onUseRaw={text => onSelect(text)}
+          onConfirm={r => onSelect({ title: r.title, text: r.text })}
+        />
+      ) : (
+        <PostList
+          posts={posts}
+          onPreview={setSelectedPost}
+          accentClass="gray"
+          emptyMsg={<>키워드 입력 후 수집을 누르세요<br/><span className="text-[10px] text-gray-300 mt-1 block">Eden Crawl 확장 프로그램 필요</span></>}
+        />
+      )}
     </div>
   );
 }
