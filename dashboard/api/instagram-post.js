@@ -34,9 +34,11 @@ async function uploadBase64ToBlob(base64DataUrl, filename) {
 }
 
 // 단일 미디어 컨테이너 생성
+// graph.instagram.com API는 media_type=IMAGE 명시 필수
 async function createMediaContainer(accountId, accessToken, imageUrl, caption, isCarouselItem) {
   const params = new URLSearchParams({
     image_url: imageUrl,
+    media_type: "IMAGE",
     access_token: accessToken,
   });
   if (isCarouselItem) {
@@ -148,7 +150,7 @@ export default async function handler(req, res) {
         log(`이미지 ${i+1}: Blob 업로드 시작`);
         const url = await uploadBase64ToBlob(img, `card-${Date.now()}-${i}.jpg`);
         blobUrls.push(url);
-        log(`이미지 ${i+1}: Blob 업로드 완료`, url.slice(0, 60));
+        log(`이미지 ${i+1}: Blob 업로드 완료 (JPEG)`, url);
         return url;
       })
     );
