@@ -1926,7 +1926,7 @@ export default function UnifiedPipelineTab() {
             </label>
             <input
               type="password"
-              placeholder="EAAxxxxxxxxxxxxxxx..."
+              placeholder="IGAAxxxxxxxxxxxxxxx..."
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
               value={igConfig.accessToken}
               onChange={(e) => {
