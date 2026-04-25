@@ -1930,9 +1930,33 @@ export default function UnifiedPipelineTab() {
 
           {/* 계정 ID */}
           <div>
-            <label className="text-xs font-bold text-gray-600 block mb-1.5">
-              비즈니스 계정 ID
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-gray-600">
+                비즈니스 계정 ID
+              </label>
+              {igConfig.accessToken && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(
+                        `https://graph.instagram.com/me?fields=id,username&access_token=${igConfig.accessToken}`
+                      );
+                      const data = await res.json();
+                      if (data.error) throw new Error(data.error.message);
+                      const next = { ...igConfig, accountId: data.id };
+                      setIgConfig(next);
+                      saveSocial(igKey, session.username, next);
+                      addLog("info", `계정 ID 자동 조회 성공: @${data.username} → ${data.id}`);
+                    } catch (e) {
+                      addLog("error", `계정 ID 조회 실패: ${e.message}`);
+                    }
+                  }}
+                  className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
+                >
+                  토큰으로 자동 조회
+                </button>
+              )}
+            </div>
             <input
               type="text"
               placeholder="예: 17841400000000000"
