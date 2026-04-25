@@ -3,6 +3,9 @@
 
 import { put, del } from "@vercel/blob";
 
+// 카드 1장 base64 JPEG ≈ 1MB, 10장 ≈ 10MB → 기본 1MB 제한 초과 방지
+export const config = { api: { bodyParser: { sizeLimit: "25mb" } } };
+
 const IG_API = "https://graph.facebook.com/v19.0";
 
 // base64 데이터 URL → Blob 업로드 → 공개 URL 반환

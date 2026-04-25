@@ -1027,11 +1027,12 @@ export default function UnifiedPipelineTab() {
               windowHeight: 1350,
               scale: 1,
               useCORS: true,
-              allowTaint: true,
+              allowTaint: false,
               backgroundColor: "#080814",
               logging: false,
               x: 0,
               y: 0,
+              imageTimeout: 10000,
             });
 
             const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
