@@ -129,6 +129,15 @@ async function getPermalink(mediaId, accessToken) {
   }
 }
 
+// Vercel Blob URL → 우리 앱 도메인 프록시 URL 변환
+// Instagram 크롤러는 vercel-storage.com 접근 불가 → vercel.app 도메인으로 우회
+function toProxyUrl(blobUrl) {
+  const appBase = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  return `${appBase}/api/ig-serve?u=${encodeURIComponent(blobUrl)}`;
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -167,16 +176,18 @@ export default async function handler(req, res) {
         if (typeof img === "string" && img.startsWith("http")) {
           // HTTP URL도 Instagram 접근 보장을 위해 Vercel Blob으로 재업로드
           log(`이미지 ${i+1}: HTTP URL → Blob 재업로드 시작`, img.slice(0, 60));
-          const url = await uploadHttpUrlToBlob(img, filename);
-          blobUrls.push(url);
-          log(`이미지 ${i+1}: Blob 재업로드 완료`, url);
-          return url;
+          const blobUrl = await uploadHttpUrlToBlob(img, filename);
+          blobUrls.push(blobUrl);
+          const proxyUrl = toProxyUrl(blobUrl);
+          log(`이미지 ${i+1}: Blob 재업로드 완료 → 프록시 URL`, proxyUrl);
+          return proxyUrl;
         }
         log(`이미지 ${i+1}: base64 → Blob 업로드 시작`);
-        const url = await uploadBase64ToBlob(img, filename);
-        blobUrls.push(url);
-        log(`이미지 ${i+1}: Blob 업로드 완료 (JPEG)`, url);
-        return url;
+        const blobUrl = await uploadBase64ToBlob(img, filename);
+        blobUrls.push(blobUrl);
+        const proxyUrl = toProxyUrl(blobUrl);
+        log(`이미지 ${i+1}: Blob 업로드 완료 → 프록시 URL`, proxyUrl);
+        return proxyUrl;
       })
     );
 
