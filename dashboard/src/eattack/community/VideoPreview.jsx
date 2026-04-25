@@ -170,8 +170,10 @@ export default function VideoPreview({
   const intervalRef    = useRef(null);
   const speechStartRef = useRef(null);   // Web Speech 시작 시각
   const speechRafRef   = useRef(null);   // Web Speech RAF ID
-  const [playing, setPlaying]     = useState(false);
-  const [currentMs, setCurrentMs] = useState(0);
+  const webWordRef     = useRef([]);     // onboundary로 쌓은 실시간 단어 타이밍
+  const [playing, setPlaying]         = useState(false);
+  const [currentMs, setCurrentMs]     = useState(0);
+  const [webCaptions, setWebCaptions] = useState(null); // Web Speech 실시간 자막
 
   // 언마운트 시 Web Speech 정리
   useEffect(() => {
@@ -181,8 +183,13 @@ export default function VideoPreview({
     };
   }, []);
 
-  const sentences  = useMemo(() => buildChunks(captions), [captions]);
-  const durationMs = totalMs || (captions?.[captions.length - 1]?.endMs ?? 0) + 500;
+  // audioUrl 바뀌면 webCaptions 초기화
+  useEffect(() => { setWebCaptions(null); webWordRef.current = []; }, [audioUrl]);
+
+  // Web Speech 실시간 자막이 있으면 우선 사용, 없으면 prop captions
+  const activeCaptions = webCaptions ?? captions;
+  const sentences  = useMemo(() => buildChunks(activeCaptions), [activeCaptions]);
+  const durationMs = totalMs || (activeCaptions?.[activeCaptions.length - 1]?.endMs ?? 0) + 500;
 
   const titleExcerpt = title?.trim() || script?.trim().slice(0, 60) || "";
   // 스크립트 첫 문장을 훅 문구로 사용
@@ -314,6 +321,10 @@ export default function VideoPreview({
         utt.lang  = "ko-KR";
         utt.rate  = 0.95;
 
+        // 실시간 단어 타이밍 초기화
+        webWordRef.current = [];
+        setWebCaptions(null);
+
         utt.onstart = () => {
           speechStartRef.current = Date.now();
           const tick = () => {
@@ -324,16 +335,52 @@ export default function VideoPreview({
           };
           speechRafRef.current = requestAnimationFrame(tick);
         };
+
+        // onboundary: 단어가 실제로 발음되는 순간마다 발생 → 정확한 타임스탬프 수집
+        utt.onboundary = (event) => {
+          if (event.name !== "word") return;
+          if (speechStartRef.current === null) return;
+          const nowMs    = Date.now() - speechStartRef.current;
+          const charIdx  = event.charIndex;
+          const charLen  = event.charLength ?? (script.slice(charIdx).search(/\s|$/) || 1);
+          const wordText = script.slice(charIdx, charIdx + charLen).replace(/\s+$/, "");
+          if (!wordText) return;
+
+          // 이전 단어의 endMs 확정
+          const words = webWordRef.current;
+          if (words.length > 0) words[words.length - 1].endMs = nowMs;
+
+          // 새 단어 추가
+          words.push({ text: wordText, startMs: nowMs, endMs: null });
+
+          // 실시간으로 자막 업데이트
+          setWebCaptions(words.map((w, i) => ({
+            text:    i === 0 ? w.text : ` ${w.text}`,
+            startMs: w.startMs,
+            endMs:   w.endMs ?? w.startMs + 600,
+          })));
+        };
+
         utt.onend = () => {
           cancelAnimationFrame(speechRafRef.current);
-          speechRafRef.current  = null;
+          speechRafRef.current   = null;
           speechStartRef.current = null;
+          // 마지막 단어 endMs 확정
+          const words = webWordRef.current;
+          if (words.length > 0 && !words[words.length - 1].endMs) {
+            words[words.length - 1].endMs = words[words.length - 1].startMs + 600;
+            setWebCaptions(words.map((w, i) => ({
+              text:    i === 0 ? w.text : ` ${w.text}`,
+              startMs: w.startMs,
+              endMs:   w.endMs,
+            })));
+          }
           setPlaying(false);
           setCurrentMs(0);
         };
         utt.onerror = () => {
           cancelAnimationFrame(speechRafRef.current);
-          speechRafRef.current  = null;
+          speechRafRef.current   = null;
           speechStartRef.current = null;
           setPlaying(false);
         };
