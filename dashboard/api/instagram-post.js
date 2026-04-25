@@ -13,6 +13,22 @@ export const config = { api: { bodyParser: { sizeLimit: "25mb" } } };
 
 const IG_API = "https://graph.instagram.com/v21.0";
 
+// HTTP URL → 서버에서 다운로드 → JPEG 변환 → Blob 업로드 → 공개 URL 반환
+// Instagram이 접근 가능한 안정적인 공개 URL이 필요하므로 항상 Blob을 경유
+async function uploadHttpUrlToBlob(httpUrl, filename) {
+  const res = await fetch(httpUrl);
+  if (!res.ok) throw new Error(`이미지 다운로드 실패 [${res.status}]: ${httpUrl.slice(0, 80)}`);
+  const arrayBuffer = await res.arrayBuffer();
+  const { default: sharp } = await import("sharp");
+  const buffer = await sharp(Buffer.from(arrayBuffer)).jpeg({ quality: 92 }).toBuffer();
+  const jpegFilename = filename.replace(/\.\w+$/, ".jpg");
+  const blob = await put(`ig-temp/${jpegFilename}`, buffer, {
+    access: "public",
+    contentType: "image/jpeg",
+  });
+  return blob.url;
+}
+
 // base64 데이터 URL → JPEG 변환 → Blob 업로드 → 공개 URL 반환
 // Instagram은 JPEG만 허용하므로 PNG 등은 sharp로 변환
 async function uploadBase64ToBlob(base64DataUrl, filename) {
@@ -144,15 +160,20 @@ export default async function handler(req, res) {
     // 1. 이미지 업로드 (base64 → Vercel Blob 공개 URL)
     const uploadedUrls = await Promise.all(
       images.map(async (img, i) => {
-        if (typeof img === "string" && img.startsWith("http")) {
-          log(`이미지 ${i+1}: 이미 HTTP URL`, img.slice(0, 60));
-          return img;
-        }
         if (!process.env.BLOB_READ_WRITE_TOKEN) {
           throw new Error("BLOB_READ_WRITE_TOKEN 환경변수가 없습니다. Vercel Storage → Blob 설정 필요");
         }
-        log(`이미지 ${i+1}: Blob 업로드 시작`);
-        const url = await uploadBase64ToBlob(img, `card-${Date.now()}-${i}.jpg`);
+        const filename = `card-${Date.now()}-${i}.jpg`;
+        if (typeof img === "string" && img.startsWith("http")) {
+          // HTTP URL도 Instagram 접근 보장을 위해 Vercel Blob으로 재업로드
+          log(`이미지 ${i+1}: HTTP URL → Blob 재업로드 시작`, img.slice(0, 60));
+          const url = await uploadHttpUrlToBlob(img, filename);
+          blobUrls.push(url);
+          log(`이미지 ${i+1}: Blob 재업로드 완료`, url);
+          return url;
+        }
+        log(`이미지 ${i+1}: base64 → Blob 업로드 시작`);
+        const url = await uploadBase64ToBlob(img, filename);
         blobUrls.push(url);
         log(`이미지 ${i+1}: Blob 업로드 완료 (JPEG)`, url);
         return url;
