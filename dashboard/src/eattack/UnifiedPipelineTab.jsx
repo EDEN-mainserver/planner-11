@@ -970,6 +970,73 @@ export default function UnifiedPipelineTab() {
     }
   };
 
+  // 카드 HTML → 브라우저에서 직접 JPEG base64 캡처 (puppeteer 없음)
+  const captureCardHtmls = async (htmlArray) => {
+    const { default: html2canvas } = await import("html2canvas");
+    const images = [];
+    const targets = htmlArray.slice(0, 10);
+
+    for (let i = 0; i < targets.length; i++) {
+      setIgCaptureProgress({ step: "capture", done: i, total: targets.length });
+
+      const html = targets[i];
+      const base64 = await new Promise((resolve, reject) => {
+        const blob = new Blob([html], { type: "text/html" });
+        const blobUrl = URL.createObjectURL(blob);
+
+        const iframe = document.createElement("iframe");
+        iframe.style.cssText =
+          "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
+        iframe.src = blobUrl;
+
+        iframe.onload = async () => {
+          try {
+            const doc = iframe.contentDocument;
+            // 폰트 로드 대기
+            await doc.fonts.ready;
+            // 렌더링 안정화 대기
+            await new Promise((r) => setTimeout(r, 600));
+
+            const canvas = await html2canvas(doc.documentElement, {
+              width: 1080,
+              height: 1350,
+              windowWidth: 1080,
+              windowHeight: 1350,
+              scale: 1,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: "#080814",
+              logging: false,
+              x: 0,
+              y: 0,
+            });
+
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+            URL.revokeObjectURL(blobUrl);
+            iframe.remove();
+            resolve(dataUrl);
+          } catch (e) {
+            URL.revokeObjectURL(blobUrl);
+            iframe.remove();
+            reject(e);
+          }
+        };
+
+        iframe.onerror = (e) => {
+          URL.revokeObjectURL(blobUrl);
+          iframe.remove();
+          reject(new Error("iframe 로드 실패"));
+        };
+
+        document.body.appendChild(iframe);
+      });
+
+      images.push(base64);
+    }
+
+    return images;
+  };
+
   const postToInstagram = async () => {
     if (!igConfig.accountId || !igConfig.accessToken) {
       setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
@@ -978,29 +1045,22 @@ export default function UnifiedPipelineTab() {
     setIgPosting(true);
     setIgResult(null);
     setError("");
+    setIgCaptureProgress({ step: "", done: 0, total: 0 });
     try {
       // 1. cards[].imageUrl 우선 — AI 이미지 생성한 경우
       let imageList = cards.map((c) => c.imageUrl).filter(Boolean);
 
-      // 2. imageUrl 없으면 cardHtmls(조립된 카드 HTML)를 스크린샷으로 변환
+      // 2. imageUrl 없으면 브라우저에서 직접 카드 HTML 캡처
       if (imageList.length === 0) {
-        const htmlsToShot = cardHtmls.length > 0 ? cardHtmls : null;
-        if (!htmlsToShot) {
+        if (cardHtmls.length === 0) {
           throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
         }
-        const shotRes = await fetch("/api/html-screenshot", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ htmls: htmlsToShot }),
-        });
-        const shotData = await shotRes.json();
-        if (!shotRes.ok) throw new Error(shotData.error || "카드 이미지 변환 실패");
-        imageList = shotData.images;
+        setIgCaptureProgress({ step: "capture", done: 0, total: cardHtmls.length });
+        imageList = await captureCardHtmls(cardHtmls);
+        setIgCaptureProgress({ step: "uploading", done: imageList.length, total: imageList.length });
       }
 
-      if (imageList.length === 0) {
-        throw new Error("변환된 이미지가 없습니다.");
-      }
+      if (imageList.length === 0) throw new Error("캡처된 이미지가 없습니다.");
 
       const res = await fetch("/api/instagram-post", {
         method: "POST",
@@ -1025,6 +1085,7 @@ export default function UnifiedPipelineTab() {
       setError(e.message);
     } finally {
       setIgPosting(false);
+      setIgCaptureProgress({ step: "", done: 0, total: 0 });
     }
   };
 
@@ -1881,7 +1942,11 @@ export default function UnifiedPipelineTab() {
                 <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
                 </svg>
-                인스타그램에 게시 중...
+                {igCaptureProgress.step === "capture" && igCaptureProgress.total > 0
+                  ? `카드 캡처 중... (${igCaptureProgress.done + 1}/${igCaptureProgress.total})`
+                  : igCaptureProgress.step === "uploading"
+                  ? "인스타그램 업로드 중..."
+                  : "게시 중..."}
               </>
             ) : (
               <>
