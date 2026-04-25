@@ -34,17 +34,18 @@ async function uploadBase64ToBlob(base64DataUrl, filename) {
 }
 
 // 단일 미디어 컨테이너 생성
-// graph.instagram.com API는 media_type=IMAGE 명시 필수
+// 캐러셀 아이템: is_carousel_item=true만, media_type 없음
+// 단일 이미지: media_type=IMAGE 명시
 async function createMediaContainer(accountId, accessToken, imageUrl, caption, isCarouselItem) {
   const params = new URLSearchParams({
     image_url: imageUrl,
-    media_type: "IMAGE",
     access_token: accessToken,
   });
   if (isCarouselItem) {
     params.set("is_carousel_item", "true");
-  } else if (caption) {
-    params.set("caption", caption);
+  } else {
+    params.set("media_type", "IMAGE");
+    if (caption) params.set("caption", caption);
   }
 
   const res = await fetch(`${IG_API}/${accountId}/media`, {
