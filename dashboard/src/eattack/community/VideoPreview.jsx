@@ -282,13 +282,16 @@ export default function VideoPreview({
     };
   }, [audioUrl]);
 
-  // BGM 설정 (볼륨 30%, 루프)
+  // BGM 설정 (볼륨 30%, 앞 15초 반복)
   useEffect(() => {
     if (!bgmFile) { bgmRef.current = null; return; }
     const bgm = new Audio(bgmFile);
     bgm.volume = 0.3;
+    const onTimeUpdate = () => { if (bgm.currentTime >= 15) bgm.currentTime = 0; };
+    bgm.addEventListener("timeupdate", onTimeUpdate);
     bgmRef.current = bgm;
     return () => {
+      bgm.removeEventListener("timeupdate", onTimeUpdate);
       bgm.pause();
       bgmRef.current = null;
     };
@@ -603,21 +606,44 @@ export default function VideoPreview({
     const videoStream = canvas.captureStream(8);
     const streams = [...videoStream.getVideoTracks()];
 
-    // ── 오디오: HTMLMediaElement.captureStream() ──
-    // createMediaElementSource / AudioBuffer 방식보다 단순하고 신뢰성 높음
-    if (audioRef.current) {
-      try {
-        const capFn = audioRef.current.captureStream ?? audioRef.current.mozCaptureStream;
-        if (capFn) {
-          const audioStream = capFn.call(audioRef.current);
-          const tracks = audioStream.getAudioTracks();
-          if (tracks.length > 0) {
-            streams.push(...tracks);
-          }
-        }
-      } catch (err) {
-        console.warn("[rec] audio captureStream 실패:", err);
+    // ── 오디오: AudioBuffer 방식 (TTS + BGM 모두 녹화에 포함) ──
+    // captureStream()은 브라우저마다 불안정 → fetch로 직접 디코딩
+    let recAudioCtx = null, ttsSource = null, bgmRecSource = null;
+    try {
+      recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      await recAudioCtx.resume();
+      const recDest = recAudioCtx.createMediaStreamDestination();
+
+      // TTS 음성
+      if (audioUrl) {
+        const resp = await fetch(audioUrl);
+        const ab   = await resp.arrayBuffer();
+        const buf  = await recAudioCtx.decodeAudioData(ab);
+        ttsSource  = recAudioCtx.createBufferSource();
+        ttsSource.buffer = buf;
+        ttsSource.connect(recDest);
       }
+
+      // BGM (볼륨 30%, 루프)
+      if (bgmFile) {
+        try {
+          const resp   = await fetch(bgmFile);
+          const ab     = await resp.arrayBuffer();
+          const buf    = await recAudioCtx.decodeAudioData(ab);
+          bgmRecSource = recAudioCtx.createBufferSource();
+          bgmRecSource.buffer = buf;
+          bgmRecSource.loop   = true;
+          const gain = recAudioCtx.createGain();
+          gain.gain.value = 0.3;
+          bgmRecSource.connect(gain);
+          gain.connect(recDest);
+        } catch (e) { console.warn("[rec] BGM AudioBuffer 실패:", e); }
+      }
+
+      streams.push(...recDest.stream.getAudioTracks());
+    } catch (err) {
+      console.warn("[rec] AudioContext 설정 실패:", err);
+      recAudioCtx?.close(); recAudioCtx = null;
     }
 
     const mimeType = ["video/mp4", "video/webm;codecs=vp9", "video/webm"]
@@ -634,6 +660,7 @@ export default function VideoPreview({
       a.download = `community-video.${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
+      recAudioCtx?.close();
       setRecording(false);
       setRecProgress(0);
     };
@@ -641,22 +668,26 @@ export default function VideoPreview({
     // 폰트 로드 완료 대기 (Noto Sans KR 등)
     await document.fonts.ready;
 
-    // 처음부터 재생 시작
+    // 처음부터 재생 시작 — AudioBuffer 소스와 audioRef 동시 시작
     setCurrentMs(0);
     if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
     if (bgmRef.current)   { bgmRef.current.currentTime = 0;   bgmRef.current.play().catch(() => {}); }
+    ttsSource?.start(0);     // 녹화 스트림에 TTS 공급
+    bgmRecSource?.start(0);  // 녹화 스트림에 BGM 공급
     setPlaying(true);
 
     recorder.start(200);
     const startTs = performance.now();
 
-    // 동기 루프 — html2canvas 없이 canvas에 직접 그림 (위치 정확, 빠름)
+    // 동기 루프 — canvas에 직접 그림
     const loop = () => {
       const elapsed = performance.now() - startTs;
       if (elapsed > totalMs + 1000) {
         recorder.stop();
         setPlaying(false);
         if (audioRef.current) audioRef.current.pause();
+        try { ttsSource?.stop(); } catch (_) {}
+        try { bgmRecSource?.stop(); } catch (_) {}
         return;
       }
       setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
@@ -673,7 +704,7 @@ export default function VideoPreview({
       setTimeout(loop, 125);
     };
     loop();
-  }, [recording, totalMs, audioUrl, sentences, drawPreviewFrame]);
+  }, [recording, totalMs, audioUrl, bgmFile, sentences, drawPreviewFrame]);
 
   return (
     <div className="flex flex-col items-center gap-3 w-full">
