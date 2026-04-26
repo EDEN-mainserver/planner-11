@@ -2,7 +2,7 @@
 # planner-11 Claude Stop 훅 — 변경사항 커밋만 담당
 # push는 글로벌 post-commit 훅(~/.git-hooks/post-commit)이 자동 처리함
 
-cd /Users/eden/Desktop/planner-11
+cd /c/Users/gram/Desktop/planforge_complete
 
 # 변경사항 없으면 스킵
 if [[ -z $(git status --porcelain) ]]; then
