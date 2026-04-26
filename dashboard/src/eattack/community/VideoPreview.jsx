@@ -201,6 +201,7 @@ export default function VideoPreview({
   const [webCaptions, setWebCaptions] = useState(null);
   const [recording, setRecording]     = useState(false);
   const [recProgress, setRecProgress] = useState(0);
+  const [gifUrl, setGifUrl]           = useState(null);  // gifUrl을 useEffect보다 먼저 선언 (TDZ 방지)
 
   // 언마운트 시 Web Speech 정리
   useEffect(() => {
@@ -305,7 +306,6 @@ export default function VideoPreview({
   }, [sentences, currentMs]);
 
   // Klipy GIF — 캐시로 즉시 표시, 새 GIF 로드 완료 후 교체
-  const [gifUrl, setGifUrl] = useState(null);
   const gifCacheRef = useRef({});
 
   const fetchAndSetGif = useCallback((q, keepPrevious = false) => {
