@@ -266,6 +266,7 @@ export default function VideoPreview({
     const onPause  = () => { cancelAnimationFrame(rafId); rafId = null; };
     const onEnded  = () => {
       cancelAnimationFrame(rafId); rafId = null;
+      audio.currentTime = 0; // 다시 재생 가능하도록 리셋
       setPlaying(false); setCurrentMs(0);
     };
 
@@ -285,7 +286,8 @@ export default function VideoPreview({
   // BGM 설정 (볼륨 30%, 앞 15초 반복)
   useEffect(() => {
     if (!bgmFile) { bgmRef.current = null; return; }
-    const bgm = new Audio(bgmFile);
+    // encodeURI: 파일명에 한글·이모지·공백이 있어도 올바른 URL로 변환
+    const bgm = new Audio(encodeURI(bgmFile));
     bgm.volume = 0.3;
     const onTimeUpdate = () => { if (bgm.currentTime >= 15) bgm.currentTime = 0; };
     bgm.addEventListener("timeupdate", onTimeUpdate);
@@ -369,7 +371,8 @@ export default function VideoPreview({
       setPlaying(false);
     } else {
       if (audio) {
-        // API TTS 오디오 재생
+        // API TTS 오디오 재생 (ended 상태면 처음부터 재생)
+        if (audio.ended) audio.currentTime = 0;
         audio.play().catch(e => console.error("[VideoPreview] audio.play() 실패:", e));
       } else if (script && window.speechSynthesis) {
         // Web Speech API 폴백 — 브라우저 내장 TTS
@@ -627,7 +630,7 @@ export default function VideoPreview({
       // BGM (볼륨 30%, 루프)
       if (bgmFile) {
         try {
-          const resp   = await fetch(bgmFile);
+          const resp   = await fetch(encodeURI(bgmFile));
           const ab     = await resp.arrayBuffer();
           const buf    = await recAudioCtx.decodeAudioData(ab);
           bgmRecSource = recAudioCtx.createBufferSource();
@@ -685,7 +688,10 @@ export default function VideoPreview({
       if (elapsed > totalMs + 1000) {
         recorder.stop();
         setPlaying(false);
-        if (audioRef.current) audioRef.current.pause();
+        // TTS 오디오: 일시정지 + currentTime 리셋 (다음 재생 시 처음부터 시작)
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+        // BGM: 일시정지 + 리셋
+        if (bgmRef.current) { bgmRef.current.pause(); bgmRef.current.currentTime = 0; }
         try { ttsSource?.stop(); } catch (_) {}
         try { bgmRecSource?.stop(); } catch (_) {}
         return;
