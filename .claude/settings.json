@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/eden/Desktop/planner-11/.claude/auto-deploy.sh",
+            "command": "bash /c/Users/gram/Desktop/planforge_complete/.claude/auto-deploy.sh",
             "timeout": 60,
             "statusMessage": "GitHub 푸시 중..."
           }

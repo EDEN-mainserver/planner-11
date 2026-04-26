@@ -480,138 +480,164 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
          <div style="position:absolute;inset:0;z-index:0;
            background:radial-gradient(ellipse 70% 45% at 50% 108%,rgba(${accentRgb},.14) 0%,transparent 60%);"></div>`;
 
-    // ── 콘텐츠 시각화 — 코드 에디터 스타일 설정 블록 ──
-    // skillBullets → key: value 형태로 렌더링 (CLAUDE.md / settings.json 스타일)
+    // ── 콘텐츠 시각화 — 카드 내용에 따라 자동 선택 ──
+    const allText = [card.headline, ...(bullets || [])].join(' ');
+    const isFolder  = /폴더|디렉토리|구조|파일|경로|프로젝트|셋업|setup|directory|folder/i.test(allText);
+    const isSteps   = skillBullets.length >= 2 && /단계|순서|먼저|다음으로|마지막|절차|방법|step|과정/i.test(allText);
+    const isStats   = skillBullets.some(b => /\d[\d,]*%|\d+배|\d+만|\d+억|\d+개|\d+명|\d+시간/.test(b));
+    const isCompare = /\bvs\b|비교|차이점|장단점|vs\./.test(allText);
+
     const cmdList = skillBullets.length >= 1
       ? skillBullets
-      : [summaryText, effectText].filter((t, i, a) => t && a.indexOf(t) === i);
+      : [summaryText, effectText].filter((t, ii, a) => t && a.indexOf(t) === ii);
 
-    // 각 bullet을 kebab-case 키로 변환 (index 기반 의미있는 이름)
-    const keyNames = [
-      'auto-plan', 'auto-review', 'auto-debug', 'auto-test',
-      'auto-commit', 'auto-deploy', 'multi-agent', 'pdca-mode',
-    ];
-    const valColors = ['#a5d6ff', '#7ee787', '#ffa657', '#ff7b72', '#d2a8ff', '#a5d6ff'];
+    let contentHtml;
 
-    // 라인 넘버 시작값 (헤더 2줄 + 빈줄 포함)
-    let lineNum = 1;
-    const headerLines = [
-      { type: 'comment', text: '# CLAUDE.md — 바로 붙여넣기 가능한 설정' },
-      { type: 'comment', text: `# Plugin: ${esc(card.headline).slice(0, 20)}` },
-      { type: 'blank' },
-    ];
-    const codeLines = [
-      ...headerLines,
-      ...cmdList.map((cmd, i) => ({
-        type: 'setting',
-        key: keyNames[i] || `feature-${i + 1}`,
-        value: esc(cmd),
-        valColor: valColors[i % valColors.length],
-      })),
-      { type: 'blank' },
-      { type: 'bool', key: 'hooks-enabled', value: 'true' },
-    ];
-
-    const renderLine = (line) => {
-      const n = lineNum++;
-      const numHtml = `<span style="color:#4a5568;font-size:16px;font-family:'Courier New',monospace;
-        width:32px;text-align:right;padding-right:16px;flex-shrink:0;user-select:none;">${n}</span>`;
-      if (line.type === 'blank') {
-        return `<div style="display:flex;align-items:center;height:26px;">${numHtml}</div>`;
-      }
-      if (line.type === 'comment') {
-        return `<div style="display:flex;align-items:center;height:28px;">
-          ${numHtml}
-          <span style="color:#6e7681;font-size:16px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span>
-        </div>`;
-      }
-      if (line.type === 'bool') {
-        return `<div style="display:flex;align-items:center;height:28px;">
-          ${numHtml}
-          <span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;">${line.key}</span>
-          <span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;">: </span>
-          <span style="color:#ff7b72;font-size:16px;font-family:'Courier New',monospace;">${line.value}</span>
-        </div>`;
-      }
-      // setting: key: "value"
-      return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">
-        ${numHtml}
-        <span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span>
-        <span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span>
-        <span style="color:${line.valColor};font-size:16px;font-family:'Courier New',monospace;
-          word-break:keep-all;line-height:1.5;">&quot;${line.value}&quot;</span>
+    if (isFolder) {
+      // ── 폴더 구조 시각화 ──
+      const rootName = esc(card.headline).slice(0, 16).replace(/\s/g, '-').toLowerCase() + '/';
+      const items = cmdList.slice(0, 6).map((b, ii) => {
+        const isFile = /\.\w{2,5}$/.test(b.split(' ')[0]) || /파일|\.md|\.json|\.js|\.py|\.ts/.test(b);
+        const last = ii === cmdList.slice(0, 6).length - 1;
+        return { prefix: last ? '└── ' : '├── ', icon: isFile ? '📄' : '📁',
+          name: esc(b.slice(0, 22)), highlight: ii === 0, last };
+      });
+      contentHtml = `
+      <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <div style="font-size:20px;font-weight:700;color:#222;">📁 구조 파악</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">directory</div>
+        </div>
+        <div style="flex:1;min-height:0;background:#0d1117;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;">
+          <div style="height:36px;background:#161b22;display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
+            <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+            <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+            <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+            <div style="margin-left:10px;font-size:14px;color:#8b949e;font-family:'Courier New',monospace;">📁 ${rootName}</div>
+          </div>
+          <div style="flex:1;padding:14px 20px;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:4px;">
+            ${items.map(t => `
+            <div style="display:flex;align-items:center;gap:6px;height:28px;">
+              <span style="font-family:'Courier New',monospace;font-size:16px;color:${t.highlight ? '#ffa657' : '#4a5568'};flex-shrink:0;">${t.prefix}</span>
+              <span style="font-size:16px;flex-shrink:0;">${t.icon}</span>
+              <span style="font-family:'Courier New',monospace;font-size:16px;color:${t.highlight ? '#ffa657' : '#e6edf3'};font-weight:${t.highlight ? '700' : '400'};overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${t.name}</span>
+              ${t.highlight ? `<span style="font-family:'Courier New',monospace;font-size:14px;color:#28c840;margin-left:8px;font-weight:700;">← 핵심</span>` : ''}
+            </div>`).join('')}
+          </div>
+        </div>
       </div>`;
-    };
 
-    // 폴더 트리 라인 정의
-    const treeLines = [
-      { indent: 0, icon: '📁', name: 'your-project/', highlight: false },
-      { indent: 1, prefix: '├── ', icon: '📄', name: 'CLAUDE.md', highlight: true, tag: '← 여기!' },
-      { indent: 1, prefix: '├── ', icon: '📁', name: '.claude/', highlight: false },
-      { indent: 2, prefix: '│   ├── ', icon: '📄', name: 'settings.json', highlight: false },
-      { indent: 2, prefix: '│   └── ', icon: '📁', name: 'hooks/', highlight: false },
-      { indent: 1, prefix: '├── ', icon: '📁', name: 'src/', highlight: false },
-      { indent: 1, prefix: '└── ', icon: '📄', name: 'package.json', highlight: false },
-    ];
-
-    const contentHtml = `
-    <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;
-      gap:12px;overflow:hidden;margin-bottom:14px;">
-
-      <!-- 섹션 헤더 -->
-      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-        <div style="font-size:20px;font-weight:700;color:#222;">⌨️ 바로 써보세요</div>
-        <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;
-          padding:4px 12px;border-radius:6px;white-space:nowrap;">CLAUDE.md</div>
-      </div>
-
-      <!-- 코드 에디터 (flex:3) -->
-      <div style="flex:3;min-height:0;background:#0d1117;border-radius:14px;
-        overflow:hidden;display:flex;flex-direction:column;">
-        <div style="height:36px;background:#161b22;display:flex;align-items:center;
-          padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
-          <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
-          <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
-          <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
-          <div style="margin-left:10px;font-size:14px;color:#8b949e;
-            font-family:'Courier New',monospace;">CLAUDE.md</div>
-          <div style="margin-left:auto;width:7px;height:7px;border-radius:50%;
-            background:#28c840;box-shadow:0 0 5px #28c840;"></div>
+    } else if (isStats) {
+      // ── 통계 카드 시각화 ──
+      const statItems = cmdList.slice(0, 4);
+      const statColors = [accent, '#22c55e', '#f59e0b', '#ec4899'];
+      contentHtml = `
+      <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <div style="font-size:20px;font-weight:700;color:#222;">📊 핵심 수치</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">stats</div>
         </div>
-        <div style="flex:1;padding:12px 12px 12px 0;overflow:hidden;
-          display:flex;flex-direction:column;justify-content:center;gap:0;">
-          ${codeLines.map(renderLine).join("")}
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
+          ${statItems.map((b, ii) => {
+            const numMatch = b.match(/(\d[\d,]*%?|\d+배|\d+만|\d+억|\d+개|\d+명|\d+시간)/);
+            const num = numMatch ? numMatch[1] : `0${ii+1}`;
+            const label = b.replace(num, '').trim().slice(0, 18) || esc(b).slice(0, 18);
+            return `<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:16px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;">
+              <div style="font-size:36px;font-weight:900;color:${statColors[ii % 4]};line-height:1;margin-bottom:6px;overflow:hidden;white-space:nowrap;">${esc(num)}</div>
+              <div style="font-size:15px;color:#aaa;word-break:keep-all;overflow:hidden;line-height:1.3;">${esc(label)}</div>
+            </div>`;
+          }).join('')}
         </div>
-      </div>
+      </div>`;
 
-      <!-- 폴더 트리 (flex:2) -->
-      <div style="flex:2;min-height:0;background:#0d1117;border-radius:14px;
-        overflow:hidden;display:flex;flex-direction:column;">
-        <div style="height:36px;background:#161b22;display:flex;align-items:center;
-          padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
-          <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
-          <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
-          <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
-          <div style="margin-left:10px;font-size:14px;color:#8b949e;
-            font-family:'Courier New',monospace;">📁 폴더 구조</div>
+    } else if (isSteps) {
+      // ── 단계별 타임라인 시각화 ──
+      const stepItems = cmdList.slice(0, 5);
+      contentHtml = `
+      <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <div style="font-size:20px;font-weight:700;color:#222;">⚡ 실행 순서</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">${stepItems.length} steps</div>
         </div>
-        <div style="flex:1;padding:12px 18px;overflow:hidden;
-          display:flex;flex-direction:column;justify-content:center;gap:3px;">
-          ${treeLines.map(t => `
-          <div style="display:flex;align-items:center;gap:6px;height:26px;">
-            <span style="font-family:'Courier New',monospace;font-size:15px;
-              color:${t.highlight ? '#ffa657' : '#4a5568'};flex-shrink:0;">${t.prefix || ''}</span>
-            <span style="font-size:15px;flex-shrink:0;">${t.icon}</span>
-            <span style="font-family:'Courier New',monospace;font-size:15px;
-              color:${t.highlight ? '#ffa657' : t.name.endsWith('/') ? '#79c0ff' : '#e6edf3'};
-              font-weight:${t.highlight ? '700' : '400'};">${t.name}</span>
-            ${t.tag ? `<span style="font-family:'Courier New',monospace;font-size:14px;
-              color:#28c840;margin-left:8px;font-weight:700;">${t.tag}</span>` : ''}
-          </div>`).join("")}
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:6px;overflow:hidden;">
+          ${stepItems.map((b, ii) => `
+          <div style="display:flex;align-items:flex-start;gap:12px;overflow:hidden;">
+            <div style="width:30px;height:30px;border-radius:50%;background:${accent};color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ii + 1}</div>
+            ${ii < stepItems.length - 1 ? `<div style="position:absolute;"></div>` : ''}
+            <div style="flex:1;background:#f8f9fa;border-radius:10px;padding:8px 14px;min-height:30px;display:flex;align-items:center;overflow:hidden;">
+              <span style="font-size:17px;color:#222;font-weight:500;word-break:keep-all;overflow:hidden;line-height:1.35;">${esc(b)}</span>
+            </div>
+          </div>`).join('')}
         </div>
-      </div>
+      </div>`;
 
-    </div>`;
+    } else if (isCompare) {
+      // ── 비교 시각화 ──
+      const half = Math.ceil(cmdList.length / 2);
+      const leftItems  = cmdList.slice(0, half);
+      const rightItems = cmdList.slice(half);
+      contentHtml = `
+      <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <div style="font-size:20px;font-weight:700;color:#222;">⚖️ 비교 분석</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">compare</div>
+        </div>
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
+          <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
+            <div style="font-size:14px;color:#ff7b72;font-weight:700;letter-spacing:.08em;flex-shrink:0;">Before</div>
+            ${leftItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;overflow:hidden;line-height:1.4;">· ${esc(b)}</div>`).join('')}
+          </div>
+          <div style="background:linear-gradient(135deg,#0d2a1a,#0a2016);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
+            <div style="font-size:14px;color:#7ee787;font-weight:700;letter-spacing:.08em;flex-shrink:0;">After</div>
+            ${rightItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;overflow:hidden;line-height:1.4;">· ${esc(b)}</div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+
+    } else {
+      // ── 기본: 코드 에디터 (key: value) ──
+      const keyNames = ['auto-plan','auto-review','auto-debug','auto-test','auto-commit','auto-deploy','multi-agent','pdca-mode'];
+      const valColors = ['#a5d6ff','#7ee787','#ffa657','#ff7b72','#d2a8ff','#a5d6ff'];
+      let lineNum = 1;
+      const headerLines = [
+        { type: 'comment', text: '# CLAUDE.md — 바로 붙여넣기 가능한 설정' },
+        { type: 'comment', text: `# Plugin: ${esc(card.headline).slice(0, 20)}` },
+        { type: 'blank' },
+      ];
+      const codeLines = [
+        ...headerLines,
+        ...cmdList.map((cmd, ii) => ({ type: 'setting', key: keyNames[ii] || `feature-${ii+1}`, value: esc(cmd), valColor: valColors[ii % valColors.length] })),
+        { type: 'blank' },
+        { type: 'bool', key: 'hooks-enabled', value: 'true' },
+      ];
+      const renderLine = (line) => {
+        const n = lineNum++;
+        const numHtml = `<span style="color:#4a5568;font-size:16px;font-family:'Courier New',monospace;width:32px;text-align:right;padding-right:16px;flex-shrink:0;user-select:none;">${n}</span>`;
+        if (line.type === 'blank') return `<div style="display:flex;align-items:center;height:26px;">${numHtml}</div>`;
+        if (line.type === 'comment') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#6e7681;font-size:16px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span></div>`;
+        if (line.type === 'bool') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;">: </span><span style="color:#ff7b72;font-size:16px;font-family:'Courier New',monospace;">${line.value}</span></div>`;
+        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:16px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.5;">&quot;${line.value}&quot;</span></div>`;
+      };
+      contentHtml = `
+      <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <div style="font-size:20px;font-weight:700;color:#222;">⌨️ 바로 써보세요</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">CLAUDE.md</div>
+        </div>
+        <div style="flex:1;min-height:0;background:#0d1117;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;">
+          <div style="height:36px;background:#161b22;display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
+            <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+            <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+            <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+            <div style="margin-left:10px;font-size:14px;color:#8b949e;font-family:'Courier New',monospace;">CLAUDE.md</div>
+            <div style="margin-left:auto;width:7px;height:7px;border-radius:50%;background:#28c840;box-shadow:0 0 5px #28c840;"></div>
+          </div>
+          <div style="flex:1;padding:12px 12px 12px 0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:0;">
+            ${codeLines.map(renderLine).join("")}
+          </div>
+        </div>
+      </div>`;
+    }
 
     return `
 <div style="width:1080px;height:1350px;overflow:hidden;position:relative;background:#080814;
@@ -785,6 +811,13 @@ export default function UnifiedPipelineTab() {
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
+  const [igLogs, setIgLogs] = useState([]);
+
+  const addLog = (level, msg, detail = null) => {
+    const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
+    setIgLogs(prev => [...prev.slice(-49), entry]); // 최대 50줄
+    console[level === "error" ? "error" : "log"](`[IG] ${msg}`, detail || "");
+  };
 
   // 로그인 핸들러
   const handleLogin = (s) => {
@@ -1015,24 +1048,29 @@ export default function UnifiedPipelineTab() {
         iframe.onload = async () => {
           try {
             const doc = iframe.contentDocument;
-            // 폰트 로드 대기
+            // 폰트 로드 대기 (fonts.ready + 실제 글리프 로드 확인)
             await doc.fonts.ready;
-            // 렌더링 안정화 대기
-            await new Promise((r) => setTimeout(r, 600));
+            // 한글 폰트 글리프 강제 로드 — 'Noto Sans KR'이 실제로 렌더 가능한 상태인지 확인
+            await Promise.allSettled([
+              doc.fonts.load('700 48px "Noto Sans KR"', "가나다라마바사"),
+              doc.fonts.load('400 24px "Noto Sans KR"', "가나다라마바사"),
+            ]);
+            // 렌더링 안정화 대기 (1.5초로 증가)
+            await new Promise((r) => setTimeout(r, 1500));
 
             const canvas = await html2canvas(doc.documentElement, {
               width: 1080,
               height: 1350,
               windowWidth: 1080,
               windowHeight: 1350,
-              scale: 1,
+              scale: 2,
               useCORS: true,
               allowTaint: false,
               backgroundColor: "#080814",
               logging: false,
               x: 0,
               y: 0,
-              imageTimeout: 10000,
+              imageTimeout: 15000,
             });
 
             const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
@@ -1069,22 +1107,31 @@ export default function UnifiedPipelineTab() {
     setIgPosting(true);
     setIgResult(null);
     setError("");
+    setIgLogs([]);
     setIgCaptureProgress({ step: "", done: 0, total: 0 });
     try {
+      addLog("info", `계정 ID: ${igConfig.accountId}`);
+      addLog("info", `토큰: ${igConfig.accessToken.slice(0, 12)}...${igConfig.accessToken.slice(-4)}`);
+
       // 1. cards[].imageUrl 우선 — AI 이미지 생성한 경우
       let imageList = cards.map((c) => c.imageUrl).filter(Boolean);
+      addLog("info", `AI 이미지: ${imageList.length}장`);
 
       // 2. imageUrl 없으면 브라우저에서 직접 카드 HTML 캡처
       if (imageList.length === 0) {
         if (cardHtmls.length === 0) {
           throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
         }
+        addLog("info", `HTML 카드 캡처 시작: ${cardHtmls.length}장`);
         setIgCaptureProgress({ step: "capture", done: 0, total: cardHtmls.length });
         imageList = await captureCardHtmls(cardHtmls);
+        addLog("info", `캡처 완료: ${imageList.length}장`);
         setIgCaptureProgress({ step: "uploading", done: imageList.length, total: imageList.length });
       }
 
       if (imageList.length === 0) throw new Error("캡처된 이미지가 없습니다.");
+
+      addLog("info", `API 호출: POST /api/instagram-post (이미지 ${imageList.length}장)`);
 
       const res = await fetch("/api/instagram-post", {
         method: "POST",
@@ -1098,7 +1145,17 @@ export default function UnifiedPipelineTab() {
       });
 
       const data = await res.json();
+
+      // 서버 로그 병합
+      if (data.logs?.length) {
+        data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
+      }
+      addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
+
       if (!res.ok) throw new Error(data.error || "게시 실패");
+
+      addLog("info", `게시 성공! mediaId: ${data.mediaId}`);
+      if (data.permalink) addLog("info", `URL: ${data.permalink}`);
 
       setIgResult({
         status: "success",
@@ -1106,6 +1163,7 @@ export default function UnifiedPipelineTab() {
         permalink: data.permalink,
       });
     } catch (e) {
+      addLog("error", `오류: ${e.message}`);
       setError(e.message);
     } finally {
       setIgPosting(false);
@@ -1901,28 +1959,10 @@ export default function UnifiedPipelineTab() {
             </span>
           </div>
 
-          {/* 계정 ID */}
+          {/* 액세스 토큰 — 먼저 입력 */}
           <div>
             <label className="text-xs font-bold text-gray-600 block mb-1.5">
-              비즈니스 계정 ID
-            </label>
-            <input
-              type="text"
-              placeholder="예: 17841400000000000"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
-              value={igConfig.accountId}
-              onChange={(e) => {
-                const next = { ...igConfig, accountId: e.target.value };
-                setIgConfig(next);
-                saveSocial(igKey, session.username, next);
-              }}
-            />
-          </div>
-
-          {/* 액세스 토큰 */}
-          <div>
-            <label className="text-xs font-bold text-gray-600 block mb-1.5">
-              액세스 토큰 (Access Token)
+              ① 액세스 토큰 (Access Token)
             </label>
             <input
               type="password"
@@ -1931,6 +1971,106 @@ export default function UnifiedPipelineTab() {
               value={igConfig.accessToken}
               onChange={(e) => {
                 const next = { ...igConfig, accessToken: e.target.value };
+                setIgConfig(next);
+                saveSocial(igKey, session.username, next);
+              }}
+            />
+          </div>
+
+          {/* 계정 ID — 토큰 입력 후 자동 조회 */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-gray-600">
+                ② 비즈니스 계정 ID
+              </label>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={async () => {
+                    const imgUrls = cards.map((c) => c.imageUrl).filter(Boolean);
+                    if (imgUrls.length === 0 && cardHtmls.length === 0) {
+                      addLog("error", "다운로드할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
+                      return;
+                    }
+                    try {
+                      addLog("info", "이미지 다운로드 준비 중...");
+                      let downloadList = imgUrls;
+                      if (downloadList.length === 0) {
+                        addLog("info", `HTML 캡처 시작: ${cardHtmls.length}장`);
+                        downloadList = await captureCardHtmls(cardHtmls);
+                      }
+                      downloadList.forEach((src, i) => {
+                        const a = document.createElement("a");
+                        a.href = src;
+                        a.download = `card-${String(i + 1).padStart(2, "0")}.jpg`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      });
+                      addLog("info", `✅ ${downloadList.length}장 다운로드 완료`);
+                    } catch (e) {
+                      addLog("error", `다운로드 실패: ${e.message}`);
+                    }
+                  }}
+                  className="text-[10px] font-bold text-emerald-600 hover:text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5"
+                >
+                  📥 이미지 다운로드
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!igConfig.accessToken) {
+                      addLog("error", "토큰을 먼저 입력하세요");
+                      return;
+                    }
+                    try {
+                      addLog("info", "Facebook 페이지 → Instagram 계정 ID 조회 중...");
+                      // Facebook 페이지 목록 조회
+                      const pagesRes = await fetch(
+                        `https://graph.facebook.com/v21.0/me/accounts?access_token=${igConfig.accessToken}`
+                      );
+                      const pagesData = await pagesRes.json();
+                      if (pagesData.error) throw new Error(pagesData.error.message);
+                      if (!pagesData.data?.length) throw new Error("연결된 Facebook 페이지가 없습니다. Facebook 페이지와 Instagram 비즈니스 계정을 연결해주세요.");
+
+                      // 각 페이지에서 Instagram 비즈니스 계정 찾기
+                      let foundId = null, foundUsername = null;
+                      for (const page of pagesData.data) {
+                        const igRes = await fetch(
+                          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${igConfig.accessToken}`
+                        );
+                        const igData = await igRes.json();
+                        if (igData.instagram_business_account?.id) {
+                          foundId = igData.instagram_business_account.id;
+                          // username 조회
+                          const uRes = await fetch(
+                            `https://graph.facebook.com/v21.0/${foundId}?fields=username&access_token=${igConfig.accessToken}`
+                          );
+                          const uData = await uRes.json();
+                          foundUsername = uData.username || foundId;
+                          break;
+                        }
+                      }
+                      if (!foundId) throw new Error("Facebook 페이지에 연결된 Instagram 비즈니스 계정을 찾을 수 없습니다.");
+                      const next = { ...igConfig, accountId: foundId };
+                      setIgConfig(next);
+                      saveSocial(igKey, session.username, next);
+                      addLog("info", `✅ 조회 성공: @${foundUsername} → ${foundId}`);
+                    } catch (e) {
+                      addLog("error", `계정 ID 조회 실패: ${e.message}`);
+                    }
+                  }}
+                  className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
+                >
+                  🔍 토큰으로 자동 조회
+                </button>
+              </div>
+            </div>
+            <input
+              type="text"
+              placeholder="예: 17841400000000000"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
+              value={igConfig.accountId || ""}
+              onChange={(e) => {
+                const next = { ...igConfig, accountId: e.target.value };
                 setIgConfig(next);
                 saveSocial(igKey, session.username, next);
               }}
@@ -2004,6 +2144,43 @@ export default function UnifiedPipelineTab() {
                     게시물 보기
                   </a>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ── 실행 로그 패널 ── */}
+          {igLogs.length > 0 && (
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900">
+                <span className="text-[11px] font-bold text-gray-300 font-mono">실행 로그</span>
+                <button
+                  onClick={() => setIgLogs([])}
+                  className="text-[10px] text-gray-500 hover:text-gray-300"
+                >
+                  지우기
+                </button>
+              </div>
+              <div className="bg-gray-950 p-3 max-h-52 overflow-y-auto space-y-1 font-mono">
+                {igLogs.map((log, i) => (
+                  <div key={i} className="flex gap-2 text-[11px] leading-relaxed">
+                    <span className="text-gray-600 flex-shrink-0">{log.time}</span>
+                    <span className={`flex-shrink-0 font-bold ${
+                      log.level === "error" ? "text-red-400" : "text-emerald-400"
+                    }`}>
+                      {log.level === "error" ? "ERR" : "LOG"}
+                    </span>
+                    <span className={log.level === "error" ? "text-red-300" : "text-gray-200"}>
+                      {log.msg}
+                    </span>
+                    {log.detail && (
+                      <span className="text-gray-500 truncate">
+                        {typeof log.detail === "object"
+                          ? JSON.stringify(log.detail)
+                          : String(log.detail)}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
