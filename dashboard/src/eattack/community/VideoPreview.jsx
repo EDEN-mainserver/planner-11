@@ -1,7 +1,6 @@
 // 9:16 인앱 영상 프리뷰 컴포넌트
 // 커뮤니티 썰 UI 배경 + 자막 한 문장씩 카드 본문에 실시간 렌더링
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
-import html2canvas from "html2canvas";
 
 // ─── 2-3단어 단위 자막 빌더 ─────────────────────────────────────────────────
 const WORDS_PER_CHUNK = 3;
@@ -40,6 +39,21 @@ function isDark(hex) {
   const g = parseInt(c.slice(2,4), 16);
   const b = parseInt(c.slice(4,6), 16);
   return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+}
+
+// 녹화 캔버스용 둥근 사각형 (ctx.roundRect 미지원 브라우저 폴백)
+function drawRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x,     y + r);
+  ctx.arcTo(x,     y,     x + r, y,          r);
+  ctx.closePath();
 }
 
 function CommunityBg({ bgPreset, titleExcerpt, bodyText, siteName, headerColor, bodyBgColor }) {
@@ -462,18 +476,124 @@ export default function VideoPreview({
     URL.revokeObjectURL(a.href);
   }, [captions]);
 
+  // ── 녹화 캔버스 직접 렌더링 (html2canvas 대체 — 위치 정확도 100%) ──
+  const drawPreviewFrame = useCallback((ctx, W, H, sentenceText, gifEl) => {
+    const bodyDark = isDark(bodyBgColor || "#ffffff");
+    const textMain = bodyDark ? "#ffffff" : "#111111";
+    const textSub  = bodyDark ? "#aaaaaa" : "#888888";
+    const dividerC = bodyDark ? "#444444" : "#222222";
+
+    // ── 배경 ──
+    ctx.fillStyle = bodyBgColor || "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+
+    // ── 헤더 (CSS 50px → canvas 100px) ──
+    ctx.fillStyle = headerColor || "#FFD6C1";
+    ctx.fillRect(0, 0, W, 100);
+
+    // 뒤로가기 아이콘
+    ctx.save();
+    ctx.strokeStyle = "#333"; ctx.lineWidth = 5;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(52, 38); ctx.lineTo(38, 54); ctx.lineTo(52, 70);
+    ctx.stroke(); ctx.restore();
+
+    // 메뉴 아이콘 (3 bars)
+    ctx.fillStyle = "#333";
+    for (let i = 0; i < 3; i++) ctx.fillRect(W - 56, 36 + i * 16, 36, 4);
+
+    // 로고 박스 — 사이트명 너비 기반으로 정확히 중앙 정렬
+    const siteText = siteName || "줍줍썰";
+    ctx.font = "bold 26px 'Noto Sans KR', sans-serif";
+    const siteTextW = ctx.measureText(siteText).width;
+    const dotR = 15, innerGap = 10, logoPadX = 28, logoBoxH = 46, logoRad = 16;
+    const logoBoxW = dotR * 2 + innerGap + siteTextW + logoPadX * 2;
+    const logoBoxX = (W - logoBoxW) / 2;
+    const logoBoxY = (100 - logoBoxH) / 2;
+
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.08)"; ctx.shadowBlur = 8; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = "white";
+    drawRoundRect(ctx, logoBoxX, logoBoxY, logoBoxW, logoBoxH, logoRad);
+    ctx.fill();
+    ctx.restore();
+
+    // 로고 점 (검은 원)
+    ctx.fillStyle = "#222";
+    ctx.beginPath();
+    ctx.arc(logoBoxX + logoPadX + dotR, 50, dotR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 사이트명 텍스트
+    ctx.fillStyle = "#000";
+    ctx.font = "bold 26px 'Noto Sans KR', sans-serif";
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(siteText, logoBoxX + logoPadX + dotR * 2 + innerGap, 50);
+
+    // ── 본문 (padding: 14px→28px top, 16px→32px 좌우) ──
+    const bPadX = 32, bPadTop = 128; // 100 + 28
+    const maxW = W - bPadX * 2;
+
+    // 게시글 제목 (15px→30px, lineHeight 1.35, marginBottom 8px→16px)
+    ctx.fillStyle = textMain;
+    ctx.font = "bold 30px 'Noto Sans KR', sans-serif";
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
+
+    const tit = titleExcerpt || "제목 없음";
+    let line1 = "", line2 = "";
+    for (let i = 0; i < tit.length; i++) {
+      if (ctx.measureText(line1 + tit[i]).width <= maxW) { line1 += tit[i]; }
+      else { line2 = tit.slice(i); break; }
+    }
+    if (line2 && ctx.measureText(line2).width > maxW) {
+      while (line2.length > 0 && ctx.measureText(line2 + "…").width > maxW) line2 = line2.slice(0, -1);
+      line2 += "…";
+    }
+    const lineH = 41; // 30px * 1.35 ≈ 40.5
+    ctx.fillText(line1, bPadX, bPadTop);
+    if (line2) ctx.fillText(line2, bPadX, bPadTop + lineH);
+    const titEndY = bPadTop + (line2 ? lineH * 2 : lineH);
+
+    // 메타 (10px→20px)
+    const presetKey = bgPreset?.key ?? "";
+    const views = hashInt(presetKey + "v", 10000, 200000).toLocaleString();
+    const hh = String(hashInt(presetKey + "h", 10, 23)).padStart(2, "0");
+    const mm = String(hashInt(presetKey + "m", 0, 59)).padStart(2, "0");
+    ctx.fillStyle = textSub;
+    ctx.font = "20px 'Noto Sans KR', sans-serif";
+    ctx.textBaseline = "top";
+    ctx.fillText(`ㅇㅇ  |  ${hh}:${mm}  |  조회수 ${views}`, bPadX, titEndY + 16);
+
+    // 구분선 (paddingBottom 10px→20px + border)
+    const divY = titEndY + 16 + 20 + 20;
+    ctx.strokeStyle = dividerC; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(bPadX, divY); ctx.lineTo(W - bPadX, divY); ctx.stroke();
+
+    // ── 동적 자막 (top:148px→296px, padding-top:4px→8px) ──
+    const subTop = 304;
+    if (sentenceText) {
+      ctx.fillStyle = "#111";
+      ctx.font = `bold 26px '${fontFamily || "Noto Sans KR"}', sans-serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "top";
+      ctx.fillText(sentenceText, W / 2, subTop);
+    }
+
+    // GIF (gap 8px→16px, 자막 높이 26px)
+    if (gifEl && gifEl.complete && gifEl.naturalWidth > 0) {
+      const gifW = 320, gifX = (W - 320) / 2;
+      const gifH = Math.min(gifEl.naturalHeight * (gifW / gifEl.naturalWidth), 400);
+      const gifY = subTop + (sentenceText ? 26 + 16 : 0);
+      try { ctx.drawImage(gifEl, gifX, gifY, gifW, gifH); } catch (_) {}
+    }
+  }, [bgPreset, titleExcerpt, siteName, headerColor, bodyBgColor, fontFamily]);
+
   // ── MP4(WebM) 녹화 다운로드 ──
   const handleDownloadMp4 = useCallback(async () => {
     if (recording || !previewDivRef.current) return;
     setRecording(true);
     setRecProgress(0);
 
-    const el = previewDivRef.current;
-    const elW = el.offsetWidth;   // 270
-    const elH = el.offsetHeight;  // 480
-    const SCALE = 2;
-    const W = elW * SCALE;  // 540
-    const H = elH * SCALE;  // 960
+    const W = 540, H = 960;
 
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
@@ -518,6 +638,9 @@ export default function VideoPreview({
       setRecProgress(0);
     };
 
+    // 폰트 로드 완료 대기 (Noto Sans KR 등)
+    await document.fonts.ready;
+
     // 처음부터 재생 시작
     setCurrentMs(0);
     if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
@@ -527,7 +650,8 @@ export default function VideoPreview({
     recorder.start(200);
     const startTs = performance.now();
 
-    const loop = async () => {
+    // 동기 루프 — html2canvas 없이 canvas에 직접 그림 (위치 정확, 빠름)
+    const loop = () => {
       const elapsed = performance.now() - startTs;
       if (elapsed > totalMs + 1000) {
         recorder.stop();
@@ -536,41 +660,20 @@ export default function VideoPreview({
         return;
       }
       setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
-      try {
-        // ── html2canvas: scrollX/Y=0 강제 + 명시적 크기로 위치 오프셋 방지 ──
-        const cap = await html2canvas(el, {
-          scale: SCALE,
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          scrollX: 0,
-          scrollY: 0,
-          x: 0,
-          y: 0,
-          width: elW,
-          height: elH,
-          windowWidth: elW,
-          windowHeight: elH,
-        });
-        ctx.clearRect(0, 0, W, H);
-        ctx.drawImage(cap, 0, 0, W, H);
 
-        // ── GIF 오버레이 (프록시 경유 same-origin Image) ──
-        const gif = currentGifRef.current.el;
-        if (gif && gif.complete && gif.naturalWidth > 0) {
-          const gifW = elW * SCALE * (160 / elW); // 160px → 320px
-          const gifX = (W - gifW) / 2;
-          const gifH = Math.min(gif.naturalHeight * (gifW / gif.naturalWidth), 400);
-          // top:148+4+20+8 = ~180px (preview) → 360px (canvas)
-          try { ctx.drawImage(gif, gifX, 360, gifW, gifH); } catch (_) {}
-        }
-      } catch (err) {
-        console.warn("[rec] frame 오류:", err);
+      // 현재 자막 계산
+      let found = null;
+      for (const s of sentences) {
+        if (elapsed >= s.startMs) found = s;
+        else break;
       }
+      const sentenceText = (found && elapsed <= found.endMs + 500) ? found.text : null;
+
+      drawPreviewFrame(ctx, W, H, sentenceText, currentGifRef.current.el);
       setTimeout(loop, 125);
     };
     loop();
-  }, [recording, totalMs, audioUrl]);
+  }, [recording, totalMs, audioUrl, sentences, drawPreviewFrame]);
 
   return (
     <div className="flex flex-col items-center gap-3 w-full">
