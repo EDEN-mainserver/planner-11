@@ -212,15 +212,17 @@ export default function VideoPreview({
   // audioUrl 바뀌면 webCaptions 초기화
   useEffect(() => { setWebCaptions(null); webWordRef.current = []; }, [audioUrl]);
 
-  // 녹화 중 GIF 오버레이용: gifUrl 변경 시 Image 프리로드
+  // 녹화 중 GIF 오버레이용: gifUrl 변경 시 프록시 경유 로드 (CORS 우회)
   useEffect(() => {
     if (!gifUrl) { currentGifRef.current = { url: null, el: null }; return; }
     if (currentGifRef.current.url === gifUrl) return;
+    let cancelled = false;
+    // /api/gif-proxy 를 통해 same-origin 으로 받아야 canvas.drawImage() 허용됨
     const el = new Image();
-    el.crossOrigin = "anonymous";
-    el.src = gifUrl;
-    el.onload  = () => { currentGifRef.current = { url: gifUrl, el }; };
-    el.onerror = () => { currentGifRef.current = { url: gifUrl, el: null }; };
+    el.src = `/api/gif-proxy?url=${encodeURIComponent(gifUrl)}`;
+    el.onload  = () => { if (!cancelled) currentGifRef.current = { url: gifUrl, el }; };
+    el.onerror = () => { if (!cancelled) currentGifRef.current = { url: gifUrl, el: null }; };
+    return () => { cancelled = true; };
   }, [gifUrl]);
 
   // Web Speech 실시간 자막이 있으면 우선 사용, 없으면 prop captions
@@ -465,42 +467,38 @@ export default function VideoPreview({
     setRecording(true);
     setRecProgress(0);
 
-    // 캔버스 준비 (540×960 = 2× 프리뷰 크기)
-    const W = 540, H = 960;
+    const el = previewDivRef.current;
+    const elW = el.offsetWidth;   // 270
+    const elH = el.offsetHeight;  // 480
+    const SCALE = 2;
+    const W = elW * SCALE;  // 540
+    const H = elH * SCALE;  // 960
+
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
 
     // 비디오 스트림
-    const videoStream = canvas.captureStream(8); // 8fps
+    const videoStream = canvas.captureStream(8);
     const streams = [...videoStream.getVideoTracks()];
 
-    // ── 오디오 스트림: AudioBuffer 방식 (createMediaElementSource 대신) ──
-    // createMediaElementSource 는 같은 element 에 두 번 연결 불가 + 브라우저 호환 문제
-    // → audioUrl 을 직접 fetch → decodeAudioData → BufferSource → MediaStreamDestination
-    let audioCtx = null;
-    let bufferSource = null;
-    if (audioUrl) {
+    // ── 오디오: HTMLMediaElement.captureStream() ──
+    // createMediaElementSource / AudioBuffer 방식보다 단순하고 신뢰성 높음
+    if (audioRef.current) {
       try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        await audioCtx.resume();
-        const resp2 = await fetch(audioUrl);
-        const arrayBuffer = await resp2.arrayBuffer();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        bufferSource = audioCtx.createBufferSource();
-        bufferSource.buffer = audioBuffer;
-        const dest = audioCtx.createMediaStreamDestination();
-        bufferSource.connect(dest);
-        // 스피커 출력은 audioRef.current 재생으로 처리하므로 destination 연결 안 함
-        streams.push(...dest.stream.getAudioTracks());
+        const capFn = audioRef.current.captureStream ?? audioRef.current.mozCaptureStream;
+        if (capFn) {
+          const audioStream = capFn.call(audioRef.current);
+          const tracks = audioStream.getAudioTracks();
+          if (tracks.length > 0) {
+            streams.push(...tracks);
+          }
+        }
       } catch (err) {
-        console.error("[handleDownloadMp4] AudioBuffer 오류:", err);
-        audioCtx = null;
-        bufferSource = null;
+        console.warn("[rec] audio captureStream 실패:", err);
       }
     }
 
-    // MIME 타입 선택
     const mimeType = ["video/mp4", "video/webm;codecs=vp9", "video/webm"]
       .find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
     const ext = mimeType.includes("mp4") ? "mp4" : "webm";
@@ -515,19 +513,16 @@ export default function VideoPreview({
       a.download = `community-video.${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
-      audioCtx?.close();
       setRecording(false);
       setRecProgress(0);
     };
 
-    // html2canvas 미리 로드 (재생 시작 전)
     const { default: html2canvas } = await import("html2canvas");
 
-    // 처음부터 동시 시작 (audioRef + bufferSource 동기화)
+    // 처음부터 재생 시작
     setCurrentMs(0);
     if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
     if (bgmRef.current)   { bgmRef.current.currentTime = 0;   bgmRef.current.play().catch(() => {}); }
-    bufferSource?.start(0); // AudioBuffer 동시 시작 → 녹화 스트림에 오디오 공급
     setPlaying(true);
 
     recorder.start(200);
@@ -539,28 +534,41 @@ export default function VideoPreview({
         recorder.stop();
         setPlaying(false);
         if (audioRef.current) audioRef.current.pause();
-        try { bufferSource?.stop(); } catch (_) {}
         return;
       }
       setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
       try {
-        const cap = await html2canvas(previewDivRef.current, {
-          scale: 2, useCORS: true, allowTaint: true, logging: false,
+        // ── html2canvas: scrollX/Y=0 강제 + 명시적 크기로 위치 오프셋 방지 ──
+        const cap = await html2canvas(el, {
+          scale: SCALE,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          x: 0,
+          y: 0,
+          width: elW,
+          height: elH,
+          windowWidth: elW,
+          windowHeight: elH,
         });
+        ctx.clearRect(0, 0, W, H);
         ctx.drawImage(cap, 0, 0, W, H);
 
-        // ── GIF 오버레이 ──
-        // html2canvas 는 cross-origin GIF(Klipy CDN) 를 캡처 못함
-        // → currentGifRef 에 미리 로드된 Image 를 수동으로 그려 덮어씌움
+        // ── GIF 오버레이 (프록시 경유 same-origin Image) ──
         const gif = currentGifRef.current.el;
         if (gif && gif.complete && gif.naturalWidth > 0) {
-          const gifW = 320;
-          const gifX = (W - gifW) / 2; // 110px (540 기준 중앙 정렬)
+          const gifW = elW * SCALE * (160 / elW); // 160px → 320px
+          const gifX = (W - gifW) / 2;
           const gifH = Math.min(gif.naturalHeight * (gifW / gif.naturalWidth), 400);
-          ctx.drawImage(gif, gifX, 340, gifW, gifH);
+          // top:148+4+20+8 = ~180px (preview) → 360px (canvas)
+          try { ctx.drawImage(gif, gifX, 360, gifW, gifH); } catch (_) {}
         }
-      } catch (_) {}
-      setTimeout(loop, 125); // ~8fps
+      } catch (err) {
+        console.warn("[rec] frame 오류:", err);
+      }
+      setTimeout(loop, 125);
     };
     loop();
   }, [recording, totalMs, audioUrl]);
