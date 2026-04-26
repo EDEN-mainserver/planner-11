@@ -1,6 +1,7 @@
 // 9:16 인앱 영상 프리뷰 컴포넌트
 // 커뮤니티 썰 UI 배경 + 자막 한 문장씩 카드 본문에 실시간 렌더링
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+import html2canvas from "html2canvas";
 
 // ─── 2-3단어 단위 자막 빌더 ─────────────────────────────────────────────────
 const WORDS_PER_CHUNK = 3;
@@ -516,8 +517,6 @@ export default function VideoPreview({
       setRecording(false);
       setRecProgress(0);
     };
-
-    const { default: html2canvas } = await import("html2canvas");
 
     // 처음부터 재생 시작
     setCurrentMs(0);
