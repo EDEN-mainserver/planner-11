@@ -16,6 +16,18 @@ function loadBrand() {
   catch { return { name: "", target: "", tone: "" }; }
 }
 function saveBrand(data) { localStorage.setItem(BRAND_KEY, JSON.stringify(data)); }
+function loadThreadTemplate() {
+  try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
+  catch { return null; }
+}
+function saveThreadTemplate(data, keyword = "") {
+  localStorage.setItem(THREAD_TEMPLATE_KEY, JSON.stringify({
+    savedAt: new Date().toISOString(),
+    keyword,
+    data,
+  }));
+}
+function deleteThreadTemplate() { localStorage.removeItem(THREAD_TEMPLATE_KEY); }
 
 // ── JSON 파싱 헬퍼 ──
 function parseJSON(text) {
@@ -176,7 +188,10 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   const [ideasMap, setIdeasMap]         = useState({});
   const [imageMap, setImageMap]         = useState({}); // { [postUrl]: { loading, urls, error } }
   const [filterMin, setFilterMin]       = useState(0);
-  const [templateMap, setTemplateMap]   = useState(null);
+  const [templateMap, setTemplateMap]   = useState(() => {
+    const saved = loadThreadTemplate();
+    return saved?.data ? { loading: false, data: saved.data, error: null, savedAt: saved.savedAt } : null;
+  });
 
   // 키워드 입력 변경 시 키워드별 개수 자동 동기화 (중복 제거)
   const parsedKeywords = [...new Set(keyword.split(',').map(k => k.trim()).filter(Boolean))];
@@ -380,6 +395,12 @@ ${JSON.stringify(postsForPrompt, null, 2)}
 JSON 형식으로만 반환:
 {
   "summary": "조회수 상위 글에서 반복되는 구조 패턴 한 줄 요약",
+  "focus_analysis": {
+    "flow": "상위 글들이 공통적으로 사용하는 전개 흐름",
+    "hook_copywriting": "첫 문장 카피라이팅의 반복 공식",
+    "tone": "말투/화자의 태도와 거리감",
+    "cta": "댓글/공유/저장/클릭을 유도하는 방식"
+  },
   "winning_patterns": [
     {
       "pattern": "반복되는 성공 구조명",
@@ -405,25 +426,35 @@ JSON 형식으로만 반환:
   "recommended_master_template": {
     "name": "가장 재사용성이 높은 마스터 템플릿 이름",
     "steps": ["1단계", "2단계", "3단계", "4단계"],
-    "example_hook": "실제로 쓸 수 있는 첫 문장 예시"
+    "example_hook": "실제로 쓸 수 있는 첫 문장 예시",
+    "tone_rule": "이 템플릿을 쓸 때 유지해야 하는 말투 규칙",
+    "cta_rule": "이 템플릿을 쓸 때 가장 잘 맞는 CTA 규칙"
   }
 }`
         }],
-        "당신은 조회수 기반 소셜 콘텐츠 구조 분석가입니다. 텍스트의 주제보다 문장 구조, 후킹 순서, 전개 방식, CTA 패턴을 우선 분석하고 JSON만 반환하세요."
+        "당신은 조회수 기반 소셜 콘텐츠 구조 분석가입니다. 텍스트 주제보다 흐름, 첫 문장 카피라이팅, 말투, CTA 패턴을 우선 분석하고 JSON만 반환하세요."
       );
 
       const data = parseJSON(res);
       if (!data) throw new Error("템플릿 분석 파싱 실패");
-      localStorage.setItem(THREAD_TEMPLATE_KEY, JSON.stringify({
-        savedAt: new Date().toISOString(),
-        keyword: keywordFilter || keyword || "",
-        data,
-      }));
-      setTemplateMap({ loading: false, data, error: null });
+      saveThreadTemplate(data, keywordFilter || keyword || "");
+      setTemplateMap({ loading: false, data, error: null, savedAt: new Date().toISOString() });
     } catch (e) {
       setTemplateMap({ loading: false, data: null, error: e.message || "템플릿 역설계 실패" });
     }
-  }, [posts, keywordFilter]);
+  }, [posts, keywordFilter, keyword]);
+
+  const handleSaveTemplate = useCallback(() => {
+    if (!templateMap?.data) return;
+    const savedAt = new Date().toISOString();
+    saveThreadTemplate(templateMap.data, keywordFilter || keyword || "");
+    setTemplateMap(prev => ({ ...prev, savedAt }));
+  }, [templateMap?.data, keywordFilter, keyword]);
+
+  const handleDeleteTemplate = useCallback(() => {
+    deleteThreadTemplate();
+    setTemplateMap(null);
+  }, []);
 
   // ── 정렬 + 필터 ──
   const SORT_OPTIONS = [
@@ -564,13 +595,49 @@ JSON 형식으로만 반환:
                   <p className="text-xs font-bold text-amber-800">조회수 기반 템플릿 역설계</p>
                   <p className="text-sm font-semibold text-gray-900 mt-1">{templateMap.data.summary}</p>
                 </div>
-                <button
-                  onClick={handleReverseTemplates}
-                  className="flex-shrink-0 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-white border border-amber-200 rounded-lg hover:bg-amber-50"
-                >
-                  재분석
-                </button>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={handleSaveTemplate}
+                    className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50"
+                  >
+                    저장
+                  </button>
+                  <button
+                    onClick={handleReverseTemplates}
+                    className="px-3 py-1.5 text-xs font-semibold text-amber-700 bg-white border border-amber-200 rounded-lg hover:bg-amber-50"
+                  >
+                    재분석
+                  </button>
+                  <button
+                    onClick={handleDeleteTemplate}
+                    className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50"
+                  >
+                    삭제
+                  </button>
+                </div>
               </div>
+
+              {templateMap.savedAt && (
+                <p className="text-[10px] text-amber-600">
+                  저장됨: {new Date(templateMap.savedAt).toLocaleString("ko-KR")}
+                </p>
+              )}
+
+              {templateMap.data.focus_analysis && (
+                <div className="grid md:grid-cols-4 gap-2">
+                  {[
+                    { label: "흐름", value: templateMap.data.focus_analysis.flow },
+                    { label: "첫 문장", value: templateMap.data.focus_analysis.hook_copywriting },
+                    { label: "말투", value: templateMap.data.focus_analysis.tone },
+                    { label: "CTA", value: templateMap.data.focus_analysis.cta },
+                  ].map(item => (
+                    <div key={item.label} className="bg-white rounded-lg border border-amber-100 p-3">
+                      <p className="text-[10px] font-bold text-amber-700 mb-1">{item.label}</p>
+                      <p className="text-xs text-gray-600 leading-relaxed">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {templateMap.data.recommended_master_template && (
                 <div className="bg-white rounded-lg border border-amber-100 p-3">
@@ -589,6 +656,20 @@ JSON 형식으로만 반환:
                     <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
                       첫 문장 예시: {templateMap.data.recommended_master_template.example_hook}
                     </p>
+                  )}
+                  {(templateMap.data.recommended_master_template.tone_rule || templateMap.data.recommended_master_template.cta_rule) && (
+                    <div className="mt-2 grid md:grid-cols-2 gap-2">
+                      {templateMap.data.recommended_master_template.tone_rule && (
+                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                          말투: {templateMap.data.recommended_master_template.tone_rule}
+                        </p>
+                      )}
+                      {templateMap.data.recommended_master_template.cta_rule && (
+                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                          CTA: {templateMap.data.recommended_master_template.cta_rule}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

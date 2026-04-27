@@ -45,6 +45,27 @@ const CONVERSATION_FORMATS = [
     prompt: "짧고 실용적인 체크리스트 말투. 결론 선제시 → 3~5개 포인트 → 바로 적용 CTA 흐름.",
   },
 ];
+const TONE_OPTIONS = [
+  { key: "template", label: "템플릿 말투", prompt: "분석된 템플릿의 원래 말투를 최대한 유지" },
+  { key: "direct", label: "직설적", prompt: "짧고 단정적인 문장, 군더더기 없는 확신형 말투" },
+  { key: "warm", label: "따뜻한 공감", prompt: "독자의 상황을 먼저 받아주고 부담 없이 권하는 말투" },
+  { key: "bold", label: "도발적", prompt: "익숙한 믿음을 살짝 뒤집고 강한 주장으로 끌고 가는 말투" },
+  { key: "casual", label: "캐주얼", prompt: "친근하고 가벼운 대화체, 과한 전문용어를 줄인 말투" },
+];
+const FLOW_OPTIONS = [
+  { key: "template", label: "템플릿 흐름", prompt: "저장된 템플릿의 흐름을 우선 적용" },
+  { key: "problem", label: "문제→해결", prompt: "문제 제기 → 공감 → 해결책 → 바로 할 행동 순서" },
+  { key: "value", label: "가치 선제시", prompt: "첫 줄에서 얻을 이득 제시 → 왜 필요한지 → 구성/근거 → CTA 순서" },
+  { key: "story", label: "상황→깨달음", prompt: "짧은 상황 묘사 → 시행착오 → 깨달음 → 독자 적용 순서" },
+  { key: "contrarian", label: "반전 주장", prompt: "통념 제시 → 반박 → 새로운 관점 → 확인/댓글 CTA 순서" },
+];
+const CTA_OPTIONS = [
+  { key: "template", label: "템플릿 CTA", prompt: "저장된 템플릿의 CTA 방식을 우선 적용" },
+  { key: "comment", label: "댓글 유도", prompt: "댓글로 키워드나 의견을 남기게 하는 낮은 허들 CTA" },
+  { key: "save", label: "저장 유도", prompt: "나중에 다시 보도록 저장을 유도하는 실용형 CTA" },
+  { key: "dm", label: "DM 유도", prompt: "자료/체크리스트를 받기 위한 DM 또는 키워드 요청 CTA" },
+  { key: "soft", label: "부드러운 권유", prompt: "강요 없이 오늘 바로 한 가지를 해보게 하는 CTA" },
+];
 
 function loadThreadTemplate() {
   try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
@@ -70,6 +91,9 @@ export default function ThreadsTab() {
   const [generating, setGenerating] = useState(false);
   const [templating, setTemplating] = useState(false);
   const [templateFormat, setTemplateFormat] = useState("expert");
+  const [templateTone, setTemplateTone] = useState("template");
+  const [templateFlow, setTemplateFlow] = useState("template");
+  const [templateCta, setTemplateCta] = useState("template");
   const [fetchingId, setFetchingId] = useState(false);
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -152,6 +176,9 @@ export default function ThreadsTab() {
     const savedTemplate = loadThreadTemplate();
     const template = savedTemplate?.data;
     const format = CONVERSATION_FORMATS.find(f => f.key === templateFormat) || CONVERSATION_FORMATS[0];
+    const tone = TONE_OPTIONS.find(o => o.key === templateTone) || TONE_OPTIONS[0];
+    const flow = FLOW_OPTIONS.find(o => o.key === templateFlow) || FLOW_OPTIONS[0];
+    const cta = CTA_OPTIONS.find(o => o.key === templateCta) || CTA_OPTIONS[0];
     const source = text.trim() || aiTopic.trim();
 
     if (!template) {
@@ -184,6 +211,9 @@ ${JSON.stringify(template, null, 2)}
 - 분석된 템플릿의 흐름을 실제 글 구조에 반영
 - 대화 포맷: ${format.label}
 - 말투/흐름 지시: ${format.prompt}
+- 세부 말투: ${tone.label} — ${tone.prompt}
+- 세부 흐름: ${flow.label} — ${flow.prompt}
+- CTA 방식: ${cta.label} — ${cta.prompt}
 - 첫 문장은 강한 카피라이팅으로 재작성
 - 말투는 자연스럽고 자신감 있게, 과장 광고처럼 보이지 않게
 - 중간 전개는 공감 → 해결책/관점 → 증거/이유 순서
@@ -194,7 +224,7 @@ ${JSON.stringify(template, null, 2)}
 - 마크다운 없이 게시글 본문만 반환`,
           },
         ],
-        `당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 선택된 대화 포맷(${format.label})을 우선 반영하고, 템플릿의 흐름, 말투, 첫 문장, CTA를 반영해 게시 가능한 본문만 작성하세요.`
+        `당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 선택된 대화 포맷(${format.label}), 말투(${tone.label}), 흐름(${flow.label}), CTA(${cta.label})를 우선 반영하고 게시 가능한 본문만 작성하세요.`
       );
       setText(result.slice(0, TH_MAX_CHARS));
       addLog("info", "템플릿 기반 재구성 완료");
@@ -353,6 +383,36 @@ ${JSON.stringify(template, null, 2)}
           >
             {CONVERSATION_FORMATS.map(format => (
               <option key={format.key} value={format.key}>{format.label}</option>
+            ))}
+          </select>
+          <select
+            value={templateTone}
+            onChange={e => setTemplateTone(e.target.value)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-100"
+            title="재구성할 말투"
+          >
+            {TONE_OPTIONS.map(option => (
+              <option key={option.key} value={option.key}>말투: {option.label}</option>
+            ))}
+          </select>
+          <select
+            value={templateFlow}
+            onChange={e => setTemplateFlow(e.target.value)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-100"
+            title="재구성할 글 흐름"
+          >
+            {FLOW_OPTIONS.map(option => (
+              <option key={option.key} value={option.key}>흐름: {option.label}</option>
+            ))}
+          </select>
+          <select
+            value={templateCta}
+            onChange={e => setTemplateCta(e.target.value)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-100"
+            title="재구성할 CTA 방식"
+          >
+            {CTA_OPTIONS.map(option => (
+              <option key={option.key} value={option.key}>CTA: {option.label}</option>
             ))}
           </select>
           <button
