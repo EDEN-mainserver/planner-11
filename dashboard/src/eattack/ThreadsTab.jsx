@@ -18,6 +18,33 @@ function saveSocial(keyFn, username, data) {
 
 const TH_MAX_CHARS = 500;
 const THREAD_TEMPLATE_KEY = "eattack_threads_view_template";
+const CONVERSATION_FORMATS = [
+  {
+    key: "expert",
+    label: "전문가 설명",
+    prompt: "차분한 전문가가 쉽게 풀어주는 말투. 주장 → 이유 → 적용 팁 → 낮은 허들 CTA 흐름.",
+  },
+  {
+    key: "friend",
+    label: "친구 조언",
+    prompt: "친한 친구가 옆에서 알려주는 말투. 공감 → 솔직한 경험 → 바로 해볼 행동 → 부드러운 CTA 흐름.",
+  },
+  {
+    key: "story",
+    label: "경험담",
+    prompt: "개인 경험을 들려주는 말투. 상황 묘사 → 깨달음 → 바뀐 관점 → 독자에게 넘기는 CTA 흐름.",
+  },
+  {
+    key: "question",
+    label: "질문 유도",
+    prompt: "독자에게 질문을 던지며 대화를 여는 말투. 문제 질문 → 선택지/오해 제시 → 관점 제안 → 댓글 CTA 흐름.",
+  },
+  {
+    key: "checklist",
+    label: "체크리스트",
+    prompt: "짧고 실용적인 체크리스트 말투. 결론 선제시 → 3~5개 포인트 → 바로 적용 CTA 흐름.",
+  },
+];
 
 function loadThreadTemplate() {
   try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
@@ -42,6 +69,7 @@ export default function ThreadsTab() {
   const [posting, setPosting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [templating, setTemplating] = useState(false);
+  const [templateFormat, setTemplateFormat] = useState("expert");
   const [fetchingId, setFetchingId] = useState(false);
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -123,6 +151,7 @@ export default function ThreadsTab() {
   const handleTemplateRewrite = async () => {
     const savedTemplate = loadThreadTemplate();
     const template = savedTemplate?.data;
+    const format = CONVERSATION_FORMATS.find(f => f.key === templateFormat) || CONVERSATION_FORMATS[0];
     const source = text.trim() || aiTopic.trim();
 
     if (!template) {
@@ -153,6 +182,8 @@ ${JSON.stringify(template, null, 2)}
 
 요구사항:
 - 분석된 템플릿의 흐름을 실제 글 구조에 반영
+- 대화 포맷: ${format.label}
+- 말투/흐름 지시: ${format.prompt}
 - 첫 문장은 강한 카피라이팅으로 재작성
 - 말투는 자연스럽고 자신감 있게, 과장 광고처럼 보이지 않게
 - 중간 전개는 공감 → 해결책/관점 → 증거/이유 순서
@@ -163,7 +194,7 @@ ${JSON.stringify(template, null, 2)}
 - 마크다운 없이 게시글 본문만 반환`,
           },
         ],
-        "당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 템플릿의 흐름, 말투, 첫 문장, CTA를 반영해 게시 가능한 본문만 작성하세요."
+        `당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 선택된 대화 포맷(${format.label})을 우선 반영하고, 템플릿의 흐름, 말투, 첫 문장, CTA를 반영해 게시 가능한 본문만 작성하세요.`
       );
       setText(result.slice(0, TH_MAX_CHARS));
       addLog("info", "템플릿 기반 재구성 완료");
@@ -289,7 +320,7 @@ ${JSON.stringify(template, null, 2)}
         </div>
 
         {/* AI 생성 */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <input
             type="text"
             value={aiTopic}
@@ -314,6 +345,16 @@ ${JSON.stringify(template, null, 2)}
             </svg>
             인기글에서 가져오기
           </button>
+          <select
+            value={templateFormat}
+            onChange={e => setTemplateFormat(e.target.value)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-100"
+            title="템플릿 재구성에 적용할 대화 말투와 흐름"
+          >
+            {CONVERSATION_FORMATS.map(format => (
+              <option key={format.key} value={format.key}>{format.label}</option>
+            ))}
+          </select>
           <button
             onClick={handleTemplateRewrite}
             disabled={templating || (!aiTopic.trim() && !text.trim())}
