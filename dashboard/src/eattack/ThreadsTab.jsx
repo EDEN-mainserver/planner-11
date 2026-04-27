@@ -17,6 +17,12 @@ function saveSocial(keyFn, username, data) {
 }
 
 const TH_MAX_CHARS = 500;
+const THREAD_TEMPLATE_KEY = "eattack_threads_view_template";
+
+function loadThreadTemplate() {
+  try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
+  catch { return null; }
+}
 
 export default function ThreadsTab() {
   const [session] = useState(() => getSession());
@@ -35,6 +41,7 @@ export default function ThreadsTab() {
   // 상태
   const [posting, setPosting] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [templating, setTemplating] = useState(false);
   const [fetchingId, setFetchingId] = useState(false);
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -110,6 +117,60 @@ export default function ThreadsTab() {
       addLog("error", `AI 생성 실패: ${e.message}`);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleTemplateRewrite = async () => {
+    const savedTemplate = loadThreadTemplate();
+    const template = savedTemplate?.data;
+    const source = text.trim() || aiTopic.trim();
+
+    if (!template) {
+      addLog("error", "먼저 인기글 수집 화면에서 조회수 템플릿 역설계를 실행하세요");
+      return;
+    }
+    if (!source) {
+      addLog("error", "재구성할 주제나 초안을 입력하세요");
+      return;
+    }
+
+    setTemplating(true);
+    addLog("info", "조회수 템플릿 기반 재구성 중...");
+
+    try {
+      const result = await callGemini(
+        [
+          {
+            role: "user",
+            content:
+`다음 주제/초안을 Threads 게시글로 재구성해주세요.
+
+주제 또는 초안:
+${source}
+
+조회수 기반 분석 템플릿:
+${JSON.stringify(template, null, 2)}
+
+요구사항:
+- 분석된 템플릿의 흐름을 실제 글 구조에 반영
+- 첫 문장은 강한 카피라이팅으로 재작성
+- 말투는 자연스럽고 자신감 있게, 과장 광고처럼 보이지 않게
+- 중간 전개는 공감 → 해결책/관점 → 증거/이유 순서
+- 마지막에는 낮은 허들의 CTA 포함
+- 최대 500자 이내
+- 줄바꿈을 활용해 Threads에서 읽기 쉽게 구성
+- 해시태그는 필요할 때만 1~3개
+- 마크다운 없이 게시글 본문만 반환`,
+          },
+        ],
+        "당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 템플릿의 흐름, 말투, 첫 문장, CTA를 반영해 게시 가능한 본문만 작성하세요."
+      );
+      setText(result.slice(0, TH_MAX_CHARS));
+      addLog("info", "템플릿 기반 재구성 완료");
+    } catch (e) {
+      addLog("error", `템플릿 재구성 실패: ${e.message}`);
+    } finally {
+      setTemplating(false);
     }
   };
 
@@ -252,6 +313,25 @@ export default function ThreadsTab() {
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
             인기글에서 가져오기
+          </button>
+          <button
+            onClick={handleTemplateRewrite}
+            disabled={templating || (!aiTopic.trim() && !text.trim())}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+            title="조회수 템플릿 역설계 결과를 적용해 말투, 첫 문장, CTA까지 재구성합니다"
+          >
+            {templating ? (
+              <svg className="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5V4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5Z"/>
+                <path d="M8 7h8M8 11h8M8 15h5"/>
+              </svg>
+            )}
+            {templating ? "재구성 중..." : "템플릿으로 재구성"}
           </button>
         </div>
 

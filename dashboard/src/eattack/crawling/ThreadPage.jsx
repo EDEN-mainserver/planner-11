@@ -10,6 +10,7 @@ import { callGemini } from "../../utils/gemini";
 
 // ── 브랜드 프로필 ──
 const BRAND_KEY = "eattack_brand_profile";
+const THREAD_TEMPLATE_KEY = "eattack_threads_view_template";
 function loadBrand() {
   try { return JSON.parse(localStorage.getItem(BRAND_KEY)) || { name: "", target: "", tone: "" }; }
   catch { return { name: "", target: "", tone: "" }; }
@@ -413,6 +414,11 @@ JSON 형식으로만 반환:
 
       const data = parseJSON(res);
       if (!data) throw new Error("템플릿 분석 파싱 실패");
+      localStorage.setItem(THREAD_TEMPLATE_KEY, JSON.stringify({
+        savedAt: new Date().toISOString(),
+        keyword: keywordFilter || keyword || "",
+        data,
+      }));
       setTemplateMap({ loading: false, data, error: null });
     } catch (e) {
       setTemplateMap({ loading: false, data: null, error: e.message || "템플릿 역설계 실패" });
