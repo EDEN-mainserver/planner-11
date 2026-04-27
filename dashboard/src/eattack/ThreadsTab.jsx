@@ -241,6 +241,19 @@ export default function ThreadsTab() {
   const [bulkResult, setBulkResult] = useState(null); // { success, fail }
   const [scheduleView, setScheduleView] = useState("pending"); // "pending" | "all"
 
+  // 풀 자동화 설정
+  const [showAutoPanel, setShowAutoPanel] = useState(false);
+  const [autoEnabled, setAutoEnabled] = useState(false);
+  const [autoKeywords, setAutoKeywords] = useState("AI,클로드코드,ChatGPT");
+  const [autoPostTime, setAutoPostTime] = useState("09:00");
+  const [autoFormat, setAutoFormat] = useState("expert");
+  const [autoTone, setAutoTone] = useState("template");
+  const [autoFlow, setAutoFlow] = useState("template");
+  const [autoCta, setAutoCta] = useState("comment");
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(false);
+  const [autoLastUpdated, setAutoLastUpdated] = useState(null);
+
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
     setLogs(prev => [...prev.slice(-49), entry]);
@@ -514,6 +527,88 @@ ${JSON.stringify(template, null, 2)}
     const interval = setInterval(load, 60000);
     return () => clearInterval(interval);
   }, [username]);
+
+  // 풀 자동화 설정 로드
+  useEffect(() => {
+    if (!username || username === "__guest") return;
+    setAutoLoading(true);
+    fetch(`/api/threads-auto-config?username=${encodeURIComponent(username)}`)
+      .then(r => r.json())
+      .then(data => {
+        const cfg = data?.config;
+        if (!cfg) return;
+        setAutoEnabled(cfg.enabled ?? false);
+        setAutoKeywords((cfg.keywords || []).join(","));
+        setAutoPostTime(cfg.postTime || "09:00");
+        setAutoFormat(cfg.format || "expert");
+        setAutoTone(cfg.tone || "template");
+        setAutoFlow(cfg.flow || "template");
+        setAutoCta(cfg.cta || "comment");
+        setAutoLastUpdated(cfg.updatedAt || null);
+      })
+      .catch(() => {})
+      .finally(() => setAutoLoading(false));
+  }, [username]);
+
+  // 자동화 설정 저장
+  const handleSaveAutoConfig = async () => {
+    if (!userId.trim() || !accessToken.trim()) {
+      addLog("error", "인증 설정에서 액세스 토큰과 사용자 ID를 먼저 저장하세요");
+      return;
+    }
+    const keywords = autoKeywords.split(",").map(k => k.trim()).filter(Boolean);
+    if (!keywords.length) {
+      addLog("error", "키워드를 하나 이상 입력하세요");
+      return;
+    }
+    setAutoSaving(true);
+    try {
+      const res = await fetch("/api/threads-auto-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          config: {
+            enabled: autoEnabled,
+            keywords,
+            postTime: autoPostTime,
+            format: autoFormat,
+            tone: autoTone,
+            flow: autoFlow,
+            cta: autoCta,
+            userId: userId.trim(),
+            accessToken: accessToken.trim(),
+          },
+        }),
+      });
+      if (!res.ok) throw new Error("저장 실패");
+      setAutoLastUpdated(new Date().toISOString());
+      addLog("info", `풀 자동화 설정 저장 완료 (${autoEnabled ? "활성" : "비활성"})`);
+    } catch (e) {
+      addLog("error", `자동화 설정 저장 실패: ${e.message}`);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  // 자동화 즉시 실행 (테스트)
+  const handleRunAutoNow = async () => {
+    addLog("info", "자동화 즉시 실행 중...");
+    try {
+      const res = await fetch("/api/threads-auto-research");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "실행 실패");
+      addLog("info", `실행 완료: ${data.ran}개 계정 처리`);
+      data.results?.forEach(r => {
+        if (r.status === "ok" && !r.skipped) addLog("info", `✓ @${r.username}: ${r.textPreview}...`);
+        else if (r.skipped) addLog("info", `@${r.username}: 오늘 예약 이미 존재 — 스킵`);
+        else addLog("error", `✗ @${r.username}: ${r.error}`);
+      });
+      fetchSchedules(username).then(setScheduledPosts).catch(() => {});
+    } catch (e) {
+      addLog("error", `자동화 실행 실패: ${e.message}`);
+    }
+  };
 
   // 예약 등록
   const handleSchedule = async () => {
@@ -975,6 +1070,146 @@ ${JSON.stringify(template, null, 2)}
             </div>
           )}
         </div>
+      </div>
+
+      {/* 풀 자동화 설정 */}
+      <div className="space-y-2">
+        <button
+          onClick={() => setShowAutoPanel(v => !v)}
+          className={`w-full py-2.5 text-xs font-bold rounded-xl border transition-all flex items-center justify-center gap-1.5
+            ${showAutoPanel
+              ? "border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
+              : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"}`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+          </svg>
+          풀 자동화 설정 (매일 리서치 → 생성 → 예약)
+          {autoEnabled && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-violet-600 text-white text-[10px] font-bold">ON</span>}
+        </button>
+
+        {showAutoPanel && (
+          <div className="p-4 bg-violet-50 border border-violet-200 rounded-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-violet-800">풀 자동화 파이프라인</p>
+              <div className="flex items-center gap-2">
+                {autoLastUpdated && (
+                  <span className="text-[10px] text-violet-400">
+                    {new Date(autoLastUpdated).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} 저장됨
+                  </span>
+                )}
+                <div
+                  onClick={() => setAutoEnabled(v => !v)}
+                  className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer ${autoEnabled ? "bg-violet-600" : "bg-gray-300"}`}
+                >
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                </div>
+                <span className="text-[11px] font-semibold text-violet-700">{autoEnabled ? "활성" : "비활성"}</span>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-violet-600 bg-violet-100 rounded-lg px-3 py-2 leading-relaxed">
+              매일 KST 06:00 · 네이버 블로그에서 키워드 검색 → Gemini 주제 선정 + 글 생성 → 지정 시간 예약 자동 등록
+            </div>
+
+            {/* 키워드 */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-violet-700">리서치 키워드 (쉼표로 구분)</label>
+              <input
+                type="text"
+                value={autoKeywords}
+                onChange={e => setAutoKeywords(e.target.value)}
+                placeholder="AI,클로드코드,ChatGPT,생성형AI"
+                className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+              />
+              <p className="text-[10px] text-violet-400">각 키워드로 네이버 블로그 5개씩 검색, 최신 AI 이슈를 자동 수집합니다</p>
+            </div>
+
+            {/* 게시 시간 */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-violet-700">매일 자동 게시 시간 (KST)</label>
+              <input
+                type="time"
+                value={autoPostTime}
+                onChange={e => setAutoPostTime(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+              />
+            </div>
+
+            {/* 글 스타일 */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-violet-700">포맷</label>
+                <select
+                  value={autoFormat}
+                  onChange={e => setAutoFormat(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                >
+                  {CONVERSATION_FORMATS.map(f => (
+                    <option key={f.key} value={f.key}>{f.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-violet-700">말투</label>
+                <select
+                  value={autoTone}
+                  onChange={e => setAutoTone(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                >
+                  {TONE_OPTIONS.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-violet-700">흐름</label>
+                <select
+                  value={autoFlow}
+                  onChange={e => setAutoFlow(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                >
+                  {FLOW_OPTIONS.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-violet-700">CTA</label>
+                <select
+                  value={autoCta}
+                  onChange={e => setAutoCta(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                >
+                  {CTA_OPTIONS.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {autoLoading && (
+              <p className="text-[11px] text-violet-400 text-center">설정 불러오는 중...</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveAutoConfig}
+                disabled={autoSaving}
+                className="flex-1 py-2.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl transition-all"
+              >
+                {autoSaving ? "저장 중..." : "설정 저장"}
+              </button>
+              <button
+                onClick={handleRunAutoNow}
+                className="px-4 py-2.5 text-xs font-bold text-violet-700 bg-white border border-violet-300 hover:bg-violet-50 rounded-xl transition-all whitespace-nowrap"
+                title="지금 즉시 실행 (테스트용 — 실제 크론은 매일 KST 06:00에 자동 실행)"
+              >
+                지금 실행
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 예약 목록 */}
