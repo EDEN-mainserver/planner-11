@@ -240,10 +240,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "text, voiceId는 필수입니다." });
   }
 
-  // ── 1차: ElevenLabs with-timestamps (정확한 단어 타임스탬프 포함) ────────────
-  try {
+  // ── ElevenLabs TTS 시도 헬퍼 (voiceId 바꿔 재시도 지원) ─────────────────────
+  async function tryElevenLabs(vId) {
+    // with-timestamps 시도
     const elevenRes = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${vId}/with-timestamps`,
       {
         method: "POST",
         headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
@@ -258,47 +259,59 @@ export default async function handler(req, res) {
     if (elevenRes.ok) {
       const data     = await elevenRes.json();
       const captions = parseWordTimings(data.alignment ?? {});
-      return res.status(200).json({
-        audioBase64: data.audio_base64,
-        captions,
-        provider: "elevenlabs",
-      });
+      return { audioBase64: data.audio_base64, captions, provider: "elevenlabs" };
     }
 
-    const errBody = await elevenRes.json().catch(() => ({}));
-    console.log("[TTS] ElevenLabs with-timestamps 오류:", JSON.stringify({ httpStatus: elevenRes.status, body: errBody }));
-
+    const errBody  = await elevenRes.json().catch(() => ({}));
     const { status: apiStatus, message: apiMsg } = parseElevenLabsError(errBody);
-    const isCredit = isCreditError(elevenRes.status, apiStatus, apiMsg);
+    console.log("[TTS] ElevenLabs with-timestamps 오류:", JSON.stringify({ httpStatus: elevenRes.status, apiStatus, apiMsg }));
 
-    // 크레딧 에러가 아니면 → 일반 TTS로 재시도 (플랜 제한 등)
-    if (!isCredit) {
-      console.log("[TTS] with-timestamps 미지원 → 일반 TTS 재시도");
-      const plainRes = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-        {
-          method: "POST",
-          headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text,
-            model_id:       "eleven_multilingual_v2",
-            voice_settings: voiceSettings ?? { stability: 0.5, similarity_boost: 0.75 },
-          }),
-        }
-      );
-      if (plainRes.ok) {
-        const audioBuffer = await plainRes.arrayBuffer();
-        const audioBase64 = Buffer.from(audioBuffer).toString("base64");
-        return res.status(200).json({
-          audioBase64,
-          mimeType: "audio/mpeg",
-          captions: null, // 타임스탬프 없음 → 글자수 비례 분배
-          provider: "elevenlabs-plain",
-        });
+    // 크레딧/플랜 에러는 바로 null 반환 (상위에서 폴백 처리)
+    if (isCreditError(elevenRes.status, apiStatus, apiMsg)) return null;
+
+    // 라이브러리 보이스 제한(402) → null 반환해 폴백 처리
+    if (elevenRes.status === 402) return null;
+
+    // 기타 에러 → 일반 TTS 재시도
+    console.log("[TTS] with-timestamps 미지원 → 일반 TTS 재시도");
+    const plainRes = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${vId}`,
+      {
+        method: "POST",
+        headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          model_id:       "eleven_multilingual_v2",
+          voice_settings: voiceSettings ?? { stability: 0.5, similarity_boost: 0.75 },
+        }),
       }
-      const plainErr = await plainRes.json().catch(() => ({}));
-      console.log("[TTS] ElevenLabs 일반 TTS도 실패:", JSON.stringify(plainErr));
+    );
+    if (plainRes.ok) {
+      const audioBuffer = await plainRes.arrayBuffer();
+      return {
+        audioBase64: Buffer.from(audioBuffer).toString("base64"),
+        mimeType: "audio/mpeg",
+        captions: null,
+        provider: "elevenlabs-plain",
+      };
     }
+    console.log("[TTS] ElevenLabs 일반 TTS도 실패:", plainRes.status);
+    return null;
+  }
+
+  // ── 1차: ElevenLabs (요청 voiceId → 실패 시 기본 보이스로 재시도) ─────────────
+  // 라이브러리 보이스는 유료 플랜 전용 → 402 받으면 기본 보이스(Brian)로 자동 재시도
+  const FALLBACK_VOICE_ID = "nPczCjzI2devNBz1zQrb"; // Brian — 모든 플랜에서 사용 가능
+  try {
+    let result = await tryElevenLabs(voiceId);
+
+    // 요청 voiceId 실패 + 원인이 라이브러리 보이스 제한일 수 있으면 기본 보이스로 재시도
+    if (!result && voiceId !== FALLBACK_VOICE_ID) {
+      console.log("[TTS] 요청 voiceId 실패 → 기본 보이스(Brian)로 재시도");
+      result = await tryElevenLabs(FALLBACK_VOICE_ID);
+    }
+
+    if (result) return res.status(200).json(result);
 
     console.log("[TTS] ElevenLabs 실패 → 다음 폴백 시도");
   } catch (e) {
