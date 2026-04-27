@@ -1,6 +1,6 @@
 // Threads 자동 게시 탭
 // 텍스트(+선택적 이미지) → Threads Graph API → 게시
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { callGemini } from "../utils/gemini";
 import LoginModal, { getSession } from "./LoginModal";
 import TopicPicker from "./TopicPicker";
@@ -75,6 +75,16 @@ const DEFAULT_TEMPLATE_OPTIONS = {
   flow: FLOW_OPTIONS,
   cta: CTA_OPTIONS,
 };
+
+// ── 예약 스케줄 키/로드/저장 ──
+const scheduleKey = (u) => `eden_threads_schedule_${u}_v1`;
+function loadSchedules(username) {
+  try { return JSON.parse(localStorage.getItem(scheduleKey(username))) || []; }
+  catch { return []; }
+}
+function saveSchedules(username, list) {
+  localStorage.setItem(scheduleKey(username), JSON.stringify(list));
+}
 
 function loadThreadTemplate() {
   try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
@@ -195,6 +205,11 @@ export default function ThreadsTab() {
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
   const [showTopicPicker, setShowTopicPicker] = useState(false);
+
+  // 예약 게시
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [scheduledPosts, setScheduledPosts] = useState(() => loadSchedules(username));
 
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
@@ -461,6 +476,102 @@ ${JSON.stringify(template, null, 2)}
     }
   };
 
+  // 예약 등록
+  const handleSchedule = () => {
+    if (!accessToken.trim() || !userId.trim()) {
+      addLog("error", "액세스 토큰과 사용자 ID를 입력하세요");
+      return;
+    }
+    if (!text.trim()) {
+      addLog("error", "게시할 텍스트를 입력하세요");
+      return;
+    }
+    if (!scheduledAt) {
+      addLog("error", "예약 시간을 선택하세요");
+      return;
+    }
+    if (new Date(scheduledAt) <= new Date()) {
+      addLog("error", "예약 시간은 현재보다 미래여야 합니다");
+      return;
+    }
+    const newPost = {
+      id: Date.now().toString(),
+      text: text.trim(),
+      userId: userId.trim(),
+      accessToken: accessToken.trim(),
+      scheduledAt,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [...scheduledPosts, newPost];
+    setScheduledPosts(updated);
+    saveSchedules(username, updated);
+    addLog("info", `예약 완료: ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
+    setScheduleEnabled(false);
+    setScheduledAt("");
+  };
+
+  // 예약 취소
+  const cancelSchedule = (id) => {
+    const updated = scheduledPosts.filter(p => p.id !== id);
+    setScheduledPosts(updated);
+    saveSchedules(username, updated);
+    addLog("info", "예약 취소됨");
+  };
+
+  // 완료/실패 항목 지우기
+  const clearDoneSchedules = () => {
+    const updated = scheduledPosts.filter(p => p.status === "pending");
+    setScheduledPosts(updated);
+    saveSchedules(username, updated);
+  };
+
+  // 30초마다 예약 포스팅 체크
+  useEffect(() => {
+    const check = async () => {
+      const posts = loadSchedules(username);
+      const now = new Date();
+      const due = posts.filter(p => p.status === "pending" && new Date(p.scheduledAt) <= now);
+      if (due.length === 0) return;
+
+      for (const post of due) {
+        addLog("info", `[예약] 게시 시작: ${post.text.slice(0, 20)}...`);
+        try {
+          const res = await fetch("/api/threads-post", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: post.userId,
+              accessToken: post.accessToken,
+              text: post.text,
+              images: [],
+            }),
+          });
+          const data = await res.json();
+          if (data.logs?.length) {
+            data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
+          }
+          const newStatus = res.ok ? "posted" : "failed";
+          addLog(res.ok ? "info" : "error", res.ok ? `[예약] 게시 성공!` : `[예약] 게시 실패: ${data.error}`);
+          const fresh = loadSchedules(username);
+          const next = fresh.map(p => p.id === post.id ? { ...p, status: newStatus } : p);
+          saveSchedules(username, next);
+          setScheduledPosts(next);
+        } catch (e) {
+          addLog("error", `[예약] 오류: ${e.message}`);
+          const fresh = loadSchedules(username);
+          const next = fresh.map(p => p.id === post.id ? { ...p, status: "failed" } : p);
+          saveSchedules(username, next);
+          setScheduledPosts(next);
+        }
+      }
+    };
+
+    const interval = setInterval(check, 30000);
+    check();
+    return () => clearInterval(interval);
+  }, [username]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const charLeft = TH_MAX_CHARS - text.length;
 
   return (
@@ -726,6 +837,86 @@ ${JSON.stringify(template, null, 2)}
       >
         {posting ? "게시 중..." : "Threads에 게시하기"}
       </button>
+
+      {/* 예약 게시 */}
+      <div className="space-y-2">
+        <button
+          onClick={() => setScheduleEnabled(v => !v)}
+          className={`w-full py-2.5 text-xs font-bold rounded-xl border transition-all flex items-center justify-center gap-1.5
+            ${scheduleEnabled
+              ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+              : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"}`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          {scheduleEnabled ? "예약 취소" : "예약 게시"}
+        </button>
+
+        {scheduleEnabled && (
+          <div className="flex gap-2 items-center p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="flex-1 space-y-1">
+              <label className="text-[11px] font-bold text-amber-800">예약 날짜/시간</label>
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                onChange={e => setScheduledAt(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-xs border border-amber-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
+              />
+            </div>
+            <button
+              onClick={handleSchedule}
+              disabled={!scheduledAt || !text.trim()}
+              className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 rounded-xl transition-all whitespace-nowrap self-end"
+            >
+              예약하기
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 예약 목록 */}
+      {scheduledPosts.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-gray-600">예약된 게시물 ({scheduledPosts.filter(p => p.status === "pending").length}개 대기)</p>
+            {scheduledPosts.some(p => p.status !== "pending") && (
+              <button
+                onClick={clearDoneSchedules}
+                className="text-[11px] text-gray-400 hover:text-gray-600"
+              >
+                완료 항목 지우기
+              </button>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            {scheduledPosts.map(p => (
+              <div key={p.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border
+                ${p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                <div className={`w-2 h-2 rounded-full flex-shrink-0
+                  ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
+                <span className="text-gray-500 flex-shrink-0 font-mono">
+                  {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                </span>
+                <span className="flex-1 text-gray-700 truncate">{p.text.slice(0, 25)}{p.text.length > 25 ? "..." : ""}</span>
+                <span className={`flex-shrink-0 font-semibold
+                  ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
+                  {p.status === "pending" ? "대기중" : p.status === "posted" ? "게시됨" : "실패"}
+                </span>
+                {p.status === "pending" && (
+                  <button
+                    onClick={() => cancelSchedule(p.id)}
+                    className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 결과 */}
       {result && (
