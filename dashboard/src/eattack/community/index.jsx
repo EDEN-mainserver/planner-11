@@ -145,10 +145,11 @@ export default function CommunityTab({ nasState, onGoToNas }) {
 
     } catch (e) {
       // TTS 전체 실패 → 브라우저 Web Speech API로 재생 (audioUrl=null)
+      console.error("[TTS] 오류:", e.message);
       const fallback = generateCaptionsFromText(script);
       captions = fallback.captions;
       totalMs  = fallback.totalMs;
-      setTtsInfo("API TTS 크레딧 소진 → 브라우저 내장 음성으로 대체됩니다. (재생 버튼 클릭 시 자동 실행)");
+      setTtsError(`TTS 오류: ${e.message}`);
     }
 
     setGenerated({
