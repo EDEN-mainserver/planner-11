@@ -35,23 +35,29 @@ export default async function handler(req, res) {
     `));
   }
 
-  const appId     = process.env.IG_APP_ID;
-  const appSecret = process.env.IG_APP_SECRET;
+  const appId =
+    process.env.IG_APP_ID ||
+    process.env.FACEBOOK_APP_ID ||
+    process.env.INSTAGRAM_CLIENT_ID;
+  const appSecret =
+    process.env.IG_APP_SECRET ||
+    process.env.FACEBOOK_APP_SECRET ||
+    process.env.INSTAGRAM_CLIENT_SECRET;
 
   // code 없이 직접 접근 — 인증 시작 화면
   if (!code) {
-    if (!appId) {
+    if (!appId || !appSecret) {
       return res.status(200).send(page("Instagram 연동", `
         <div class="icon">📷</div>
         <h2>Instagram 계정 연결</h2>
         <div class="warn">
-          ⚠️ IG_APP_ID 환경변수가 설정되지 않았습니다.<br>
+          ⚠️ Instagram OAuth 환경변수가 설정되지 않았습니다.<br>
           Vercel 프로젝트 설정 → Environment Variables에 추가해주세요.
         </div>
         <div class="info">
           <b>필요한 환경변수</b><br>
-          IG_APP_ID = Meta 앱 ID<br>
-          IG_APP_SECRET = Meta 앱 시크릿
+          IG_APP_ID / FACEBOOK_APP_ID / INSTAGRAM_CLIENT_ID = Meta 앱 ID<br>
+          IG_APP_SECRET / FACEBOOK_APP_SECRET / INSTAGRAM_CLIENT_SECRET = Meta 앱 시크릿
         </div>
       `));
     }
@@ -83,7 +89,7 @@ export default async function handler(req, res) {
     return res.status(200).send(page("인증 코드 수신", `
       <div class="icon ok">✓</div>
       <h2>인증 코드 수신 완료</h2>
-      <div class="warn">⚠️ IG_APP_ID / IG_APP_SECRET 환경변수가 없어 자동 교환 불가</div>
+      <div class="warn">⚠️ Instagram OAuth 환경변수가 없어 자동 교환 불가</div>
       <label>Authorization Code</label>
       <div class="token-box" id="code">${code}</div>
       <button onclick="navigator.clipboard.writeText('${code}');this.textContent='복사됨!';setTimeout(()=>this.textContent='코드 복사',2000)" class="btn copy">코드 복사</button>
