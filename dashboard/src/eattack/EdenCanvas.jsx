@@ -1040,7 +1040,15 @@ function ShapeButton({ item, onAdd }) {
 
 // ── 썸네일 경량 렌더러 ──
 function ThumbElement({ el, scale }) {
+  const videoRef = useRef(null);
   const s = { position:"absolute", left:el.x*scale, top:el.y*scale, width:el.w*scale, height:el.h*scale, opacity:el.opacity??1, pointerEvents:"none" };
+
+  useEffect(() => {
+    if (el.type === "video" && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [el.type, el.src]);
+
   if (el.type==="rect") {
     const tShape  = el.shape && SHAPE_CLIP[el.shape] ? {clipPath:SHAPE_CLIP[el.shape],borderRadius:0} : {borderRadius:el.borderRadius*scale};
     const tDashed = el.dashed ? {background:`repeating-linear-gradient(90deg,${el.fill} 0 6px,transparent 6px 10px)`} : {background:el.fill};
@@ -1048,7 +1056,21 @@ function ThumbElement({ el, scale }) {
     return <div style={{...s,...tDashed,...tShape,...tStroke}}/>;
   }
   if (el.type==="image") return <img src={el.src} alt="" draggable={false} style={{...s,objectFit:"cover"}}/>;
-  if (el.type==="video") return <video src={el.src} style={{...s,objectFit:"cover"}} muted playsInline draggable={false}/>;
+  if (el.type==="video") {
+    return (
+      <video
+        ref={videoRef}
+        src={el.src}
+        style={{...s,objectFit:"cover"}}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        draggable={false}
+      />
+    );
+  }
   if (el.type==="text")  return (
     <div style={{...s, fontSize:el.fontSize*scale, color:el.color, fontWeight:el.fontWeight,
       fontStyle:el.fontStyle||"normal", textDecoration:el.textDecoration||"none",

@@ -213,6 +213,7 @@ export default function VideoPreview({
   const recGifDomRef   = useRef(null); // DOM에 붙인 hidden img — GIF 애니메이션 유지용
   const gifPreviewRef  = useRef(null); // 프리뷰 img ref (녹화 시 drawImage 소스)
   const isRecordingRef = useRef(false); // 녹화 중 여부 — setGifUrl(null) 차단용
+  const recGifFramesRef = useRef(null); // omggif 디코딩된 GIF 프레임 배열 { frames, totalDuration }
   const [playing, setPlaying]         = useState(false);
   const [currentMs, setCurrentMs]     = useState(0);
   const [webCaptions, setWebCaptions] = useState(null);
