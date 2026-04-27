@@ -12,9 +12,19 @@ async function uploadToImgbb(b64Pure, apiKey) {
     method: "POST",
     body: params,
   });
-  const data = await res.json();
-  if (!data.success) {
-    throw new Error(`imgbb 업로드 실패: ${JSON.stringify(data.error || data)}`);
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text();
+  let data = null;
+  if (contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+  if (!res.ok || !data?.success) {
+    const detail = data?.error || text.slice(0, 240).replace(/\s+/g, " ");
+    throw new Error(`imgbb 업로드 실패 [${res.status}]: ${detail}`);
   }
   return data.data.url;
 }
@@ -27,7 +37,12 @@ async function uploadBase64ToBlob(base64DataUrl, filename) {
 
   // imgbb 우선 사용
   if (process.env.IMGBB_API_KEY) {
-    return { url: await uploadToImgbb(b64Pure, process.env.IMGBB_API_KEY), blobUrl: null };
+    try {
+      return { url: await uploadToImgbb(b64Pure, process.env.IMGBB_API_KEY), blobUrl: null };
+    } catch (err) {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) throw err;
+      console.warn(`[TH-API] imgbb 실패, Blob 폴백: ${err.message}`);
+    }
   }
 
   // Vercel Blob 폴백
