@@ -4,7 +4,8 @@
 // POST /api/youtube?_fn=blob-token   — Vercel Blob 클라이언트 업로드 토큰 발급
 // POST /api/youtube?_fn=blob-upload  — Vercel Blob URL에서 YouTube로 업로드 (서버-to-서버)
 
-import { generateClientTokenFromReadWriteToken, del as blobDel } from "@vercel/blob/client";
+import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
+import { del as blobDel } from "@vercel/blob";
 
 export const config = { maxDuration: 120 };
 
