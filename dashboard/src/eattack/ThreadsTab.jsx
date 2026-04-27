@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { callGemini } from "../utils/gemini";
 import LoginModal, { getSession } from "./LoginModal";
+import TopicPicker from "./TopicPicker";
 
 // ── 소셜 설정 키/로드/저장 ──
 const threadsKey = (u) => `eden_threads_${u}_v1`;
@@ -37,6 +38,7 @@ export default function ThreadsTab() {
   const [fetchingId, setFetchingId] = useState(false);
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
+  const [showTopicPicker, setShowTopicPicker] = useState(false);
 
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
@@ -242,7 +244,26 @@ export default function ThreadsTab() {
           >
             {generating ? "생성 중..." : "AI로 생성"}
           </button>
+          <button
+            onClick={() => setShowTopicPicker(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-violet-200 text-violet-600 bg-violet-50 hover:bg-violet-100 transition-all whitespace-nowrap"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            인기글에서 가져오기
+          </button>
         </div>
+
+        {showTopicPicker && (
+          <TopicPicker
+            onSelect={v => {
+              setAiTopic(typeof v === "string" ? v : v.text || v.title || "");
+              setShowTopicPicker(false);
+            }}
+            onClose={() => setShowTopicPicker(false)}
+          />
+        )}
 
         <textarea
           value={text}
