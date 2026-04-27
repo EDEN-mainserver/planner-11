@@ -215,6 +215,7 @@ export default function VideoPreview({
   const [webCaptions, setWebCaptions] = useState(null);
   const [recording, setRecording]     = useState(false);
   const [recProgress, setRecProgress] = useState(0);
+  const [converting, setConverting]   = useState(false); // ffmpeg 변환 중
   const [gifUrl, setGifUrl]           = useState(null);  // gifUrl을 useEffect보다 먼저 선언 (TDZ 방지)
 
   // 언마운트 시 Web Speech 정리
@@ -646,18 +647,15 @@ export default function VideoPreview({
       recAudioCtx?.close(); recAudioCtx = null;
     }
 
-    // MP4 우선 → 미지원 시 WebM 폴백 (Chrome 130+는 video/mp4 지원)
+    // WebM으로 녹화 → ffmpeg.wasm으로 H.264+AAC MP4 변환
+    // (브라우저 MediaRecorder는 Opus 오디오만 지원, AAC는 ffmpeg 변환 필요)
     const CANDIDATES = [
-      "video/mp4",                         // Chrome 130+ 기본 MP4 (H.264+AAC)
-      "video/mp4;codecs=avc1,mp4a.40.2",  // 명시적 H.264+AAC
-      "video/mp4;codecs=avc1",             // H.264 only (오디오 자동 선택)
       "video/webm;codecs=vp9,opus",
       "video/webm;codecs=vp8,opus",
       "video/webm",
     ];
     const mimeType = CANDIDATES.find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
-    const ext = mimeType.startsWith("video/mp4") ? "mp4" : "webm";
-    console.log("[rec] 선택된 mimeType:", mimeType, "→", ext);
+    console.log("[rec] 선택된 mimeType:", mimeType);
 
     const chunks = [];
     const recorder = new MediaRecorder(new MediaStream(streams), {
@@ -666,19 +664,57 @@ export default function VideoPreview({
       audioBitsPerSecond: 128_000,
     });
     recorder.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
-    recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `community-video.${ext}`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+    recorder.onstop = async () => {
       // 녹화 전용 오디오 정리
       if (recTtsAudio) { recTtsAudio.pause(); recTtsAudio.src = ""; }
       if (recBgmAudio) { recBgmAudio.pause(); recBgmAudio.src = ""; }
       recAudioCtx?.close();
       setRecording(false);
       setRecProgress(0);
+
+      const webmBlob = new Blob(chunks, { type: mimeType });
+
+      // ffmpeg.wasm으로 WebM/Opus → MP4/H.264+AAC 변환
+      setConverting(true);
+      try {
+        const { FFmpeg } = await import("@ffmpeg/ffmpeg");
+        const { fetchFile, toBlobURL } = await import("@ffmpeg/util");
+
+        const ffmpeg = new FFmpeg();
+        // single-thread core (SharedArrayBuffer 불필요)
+        const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm";
+        await ffmpeg.load({
+          coreURL:  await toBlobURL(`${baseURL}/ffmpeg-core.js`,   "text/javascript"),
+          wasmURL:  await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+        });
+
+        await ffmpeg.writeFile("input.webm", await fetchFile(webmBlob));
+        await ffmpeg.exec([
+          "-i", "input.webm",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+          "-c:a", "aac", "-b:a", "128k",
+          "-movflags", "+faststart",
+          "output.mp4",
+        ]);
+        const data = await ffmpeg.readFile("output.mp4");
+        const mp4Blob = new Blob([data.buffer], { type: "video/mp4" });
+
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(mp4Blob);
+        a.download = "community-video.mp4";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (ffmpegErr) {
+        console.warn("[rec] ffmpeg 변환 실패, webm으로 폴백:", ffmpegErr);
+        // 폴백: 원본 webm 그대로 다운로드
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(webmBlob);
+        a.download = "community-video.webm";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } finally {
+        setConverting(false);
+      }
     };
 
     // 폰트 로드 완료 대기 (Noto Sans KR 등)
@@ -819,7 +855,7 @@ export default function VideoPreview({
         {/* MP4 녹화 */}
         <button
           onClick={handleDownloadMp4}
-          disabled={recording}
+          disabled={recording || converting}
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-70"
         >
           {recording ? (
@@ -829,6 +865,14 @@ export default function VideoPreview({
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
               </svg>
               녹화 중... {recProgress}%
+            </>
+          ) : converting ? (
+            <>
+              <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              MP4 변환 중...
             </>
           ) : (
             <>
