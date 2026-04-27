@@ -15,6 +15,8 @@
     { "source": "/api/gif-proxy",      "destination": "/api/media?_fn=gif-proxy" },
     { "source": "/api/html-screenshot", "destination": "/api/media?_fn=screenshot" },
     { "source": "/api/crawl-url",      "destination": "/api/media?_fn=crawl" },
+    { "source": "/auth",               "destination": "/api/threads-auth" },
+    { "source": "/auth/",              "destination": "/api/threads-auth" },
     { "source": "/((?!api/).*)",       "destination": "/index.html" }
   ],
   "functions": {
@@ -25,7 +27,8 @@
     "api/full-auto.js":    { "maxDuration": 300, "memory": 1024 },
     "api/full-auto-cron.js": { "maxDuration": 300, "memory": 1024 },
     "api/social-post.js":  { "maxDuration": 120, "memory": 1024 },
-    "api/media.js":        { "maxDuration": 120, "memory": 1024 }
+    "api/media.js":        { "maxDuration": 120, "memory": 1024 },
+    "api/threads-auth.js": { "maxDuration": 30,  "memory": 512  }
   },
   "crons": [
     {
