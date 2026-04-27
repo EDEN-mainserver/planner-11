@@ -19,6 +19,7 @@ function saveSocial(keyFn, username, data) {
 const TH_MAX_CHARS = 500;
 const THREAD_TEMPLATE_KEY = "eattack_threads_view_template";
 const TEMPLATE_OPTIONS_KEY = "eattack_threads_template_options";
+const templateSelectionKey = (u) => `eattack_threads_template_selection_${u}_v1`;
 const CONVERSATION_FORMATS = [
   {
     key: "expert",
@@ -103,6 +104,16 @@ function loadTemplateOptions() {
 function saveTemplateOptions(data) {
   localStorage.setItem(TEMPLATE_OPTIONS_KEY, JSON.stringify(data));
 }
+function loadTemplateSelection(username) {
+  try {
+    return JSON.parse(localStorage.getItem(templateSelectionKey(username))) || {};
+  } catch {
+    return {};
+  }
+}
+function saveTemplateSelection(username, data) {
+  localStorage.setItem(templateSelectionKey(username), JSON.stringify(data));
+}
 function cleanThreadDraft(raw) {
   if (!raw) return "";
   let text = raw
@@ -145,10 +156,12 @@ function cleanThreadDraft(raw) {
 
 export default function ThreadsTab() {
   const [session] = useState(() => getSession());
+  const username = session?.username || "__guest";
+  const [savedTemplateSelection] = useState(() => loadTemplateSelection(username));
 
   // 설정
   const [config, setConfig] = useState(
-    () => loadSocial(threadsKey, getSession()?.username || "__guest")
+    () => loadSocial(threadsKey, username)
   );
   const [accessToken, setAccessToken] = useState(config.accessToken || "");
   const [userId, setUserId] = useState(config.userId || "");
@@ -161,10 +174,10 @@ export default function ThreadsTab() {
   const [posting, setPosting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [templating, setTemplating] = useState(false);
-  const [templateFormat, setTemplateFormat] = useState("expert");
-  const [templateTone, setTemplateTone] = useState("template");
-  const [templateFlow, setTemplateFlow] = useState("template");
-  const [templateCta, setTemplateCta] = useState("template");
+  const [templateFormat, setTemplateFormat] = useState(savedTemplateSelection.format || "expert");
+  const [templateTone, setTemplateTone] = useState(savedTemplateSelection.tone || "template");
+  const [templateFlow, setTemplateFlow] = useState(savedTemplateSelection.flow || "template");
+  const [templateCta, setTemplateCta] = useState(savedTemplateSelection.cta || "template");
   const [templateOptions, setTemplateOptions] = useState(loadTemplateOptions);
   const [showOptionEditor, setShowOptionEditor] = useState(false);
   const [fetchingId, setFetchingId] = useState(false);
@@ -211,6 +224,16 @@ export default function ThreadsTab() {
   const handleSaveTemplateOptions = () => {
     saveTemplateOptions(templateOptions);
     addLog("info", "템플릿 재구성 옵션 저장됨");
+  };
+
+  const handleSaveTemplateSelection = () => {
+    saveTemplateSelection(username, {
+      format: templateFormat,
+      tone: templateTone,
+      flow: templateFlow,
+      cta: templateCta,
+    });
+    addLog("info", "계정별 템플릿 선택 옵션 저장됨");
   };
 
   if (!session) {
@@ -585,6 +608,18 @@ ${JSON.stringify(template, null, 2)}
               </svg>
             )}
             {templating ? "재구성 중..." : "템플릿으로 재구성"}
+          </button>
+          <button
+            onClick={handleSaveTemplateSelection}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-all whitespace-nowrap"
+            title="현재 선택한 대화 포맷, 말투, 흐름, CTA를 이 계정의 기본 브랜딩 옵션으로 저장합니다"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/>
+              <path d="M17 21v-8H7v8"/>
+              <path d="M7 3v5h8"/>
+            </svg>
+            옵션 저장
           </button>
         </div>
 
