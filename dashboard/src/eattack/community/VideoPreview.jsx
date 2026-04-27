@@ -210,6 +210,7 @@ export default function VideoPreview({
   const webWordRef     = useRef([]);
   const previewDivRef  = useRef(null);  // 녹화용 div ref
   const currentGifRef  = useRef({ url: null, el: null }); // 녹화 중 GIF 오버레이용
+  const recGifDomRef   = useRef(null); // DOM에 붙인 hidden img — GIF 애니메이션 유지용
   const [playing, setPlaying]         = useState(false);
   const [currentMs, setCurrentMs]     = useState(0);
   const [webCaptions, setWebCaptions] = useState(null);
@@ -720,17 +721,17 @@ export default function VideoPreview({
     // 폰트 로드 완료 대기 (Noto Sans KR 등)
     await document.fonts.ready;
 
-    // ── 녹화 전용 GIF — React 상태(currentGifRef)와 완전 분리 ──
-    // setCurrentMs(0) → currentSentence=null → setGifUrl(null) → currentGifRef.current=null
-    // 체인이 recording 시작 직후 ref를 지우므로, 독립 객체 recGifEl 사용
-    const recGifEl = { current: null }; // React ref가 아닌 순수 로컬 객체
-    const recGifCache = {};
+    // ── 녹화 전용 GIF — DOM에 붙인 hidden img 사용 ──
+    // new Image()는 DOM 밖이라 GIF 애니메이션이 멈춤 → 첫 프레임만 캡처됨
+    // recGifDomRef.current (DOM <img>) 에 src를 바꾸면 브라우저가 애니메이션을 돌려줌
+    const recGifCache = {}; // query → proxyUrl 캐시
     let recGifLoading = null;
+    const domImg = recGifDomRef.current; // JSX hidden img
 
     function fetchRecGif(query) {
-      if (!query || recGifLoading === query) return;
+      if (!query || !domImg || recGifLoading === query) return;
       if (recGifCache[query]) {
-        recGifEl.current = recGifCache[query];
+        domImg.src = recGifCache[query];
         return;
       }
       recGifLoading = query;
@@ -738,18 +739,18 @@ export default function VideoPreview({
         .then(r => r.json())
         .then(d => {
           if (!d?.url) { recGifLoading = null; return; }
-          const el = new Image();
-          el.src = `/api/gif-proxy?url=${encodeURIComponent(d.url)}`;
-          el.onload  = () => { recGifCache[query] = el; recGifEl.current = el; recGifLoading = null; };
-          el.onerror = () => { recGifLoading = null; };
+          const proxyUrl = `/api/gif-proxy?url=${encodeURIComponent(d.url)}`;
+          recGifCache[query] = proxyUrl;
+          domImg.src = proxyUrl;
+          recGifLoading = null;
         })
         .catch(() => { recGifLoading = null; });
     }
 
-    // 첫 GIF 미리 로드: 최대 1.5초 폴링 대기
-    if (gifQuery) {
+    // 첫 GIF 미리 로드: 최대 2초 폴링 대기 (domImg.complete + naturalWidth)
+    if (gifQuery && domImg) {
       fetchRecGif(gifQuery);
-      for (let i = 0; i < 15 && !recGifEl.current; i++) {
+      for (let i = 0; i < 20 && !(domImg.complete && domImg.naturalWidth > 0); i++) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
@@ -790,7 +791,7 @@ export default function VideoPreview({
         if (sentenceText) fetchRecGif(sentenceText);
       }
 
-      drawPreviewFrame(ctx, W, H, sentenceText, recGifEl.current);
+      drawPreviewFrame(ctx, W, H, sentenceText, domImg);
       setTimeout(loop, 125);
     };
     loop();
@@ -798,6 +799,8 @@ export default function VideoPreview({
 
   return (
     <div className="flex flex-col items-center gap-3 w-full">
+      {/* 녹화 전용 hidden img — DOM에 있어야 GIF 애니메이션이 동작함 (display:none은 멈춤) */}
+      <img ref={recGifDomRef} alt="" style={{ position: "fixed", top: 0, left: "-9999px", width: 1, height: 1, pointerEvents: "none" }} />
       {/* 9:16 캔버스 */}
       <div ref={previewDivRef} className="relative overflow-hidden rounded-2xl shadow-2xl"
         style={{ width: 270, height: 480, background: "#ffffff", flexShrink: 0 }}>
