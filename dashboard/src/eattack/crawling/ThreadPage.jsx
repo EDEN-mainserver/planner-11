@@ -175,7 +175,7 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   const [ideasMap, setIdeasMap]         = useState({});
   const [imageMap, setImageMap]         = useState({}); // { [postUrl]: { loading, urls, error } }
   const [filterMin, setFilterMin]       = useState(0);
-  const [templateMap, setTemplateMap]   = useState({});
+  const [templateMap, setTemplateMap]   = useState(null);
 
   // 키워드 입력 변경 시 키워드별 개수 자동 동기화 (중복 제거)
   const parsedKeywords = [...new Set(keyword.split(',').map(k => k.trim()).filter(Boolean))];
@@ -342,6 +342,83 @@ JSON 배열 형식으로만 반환:
     }
   }, [posts, analysisMap]);
 
+  // ── 5. 조회수 기반 구조 템플릿 역설계 ──
+  const handleReverseTemplates = useCallback(async () => {
+    const sourcePosts = posts
+      .filter(p => keywordFilter === null || p.keyword === keywordFilter)
+      .filter(p => (p.views || 0) > 0 || (p.likes || 0) > 0 || (p.comments || 0) > 0)
+      .sort((a, b) => (b.views || 0) - (a.views || 0))
+      .slice(0, 12);
+
+    if (sourcePosts.length === 0) {
+      setTemplateMap({ loading: false, data: null, error: "분석할 수집 글이 없습니다." });
+      return;
+    }
+
+    setTemplateMap({ loading: true, data: null, error: null });
+
+    try {
+      const postsForPrompt = sourcePosts.map((post, idx) => ({
+        rank_by_views: idx + 1,
+        author: post.author,
+        views: Number(post.views || 0),
+        likes: Number(post.likes || 0),
+        comments: Number(post.comments || 0),
+        reposts: Number(post.shares || post.reposts || 0),
+        content: post.content,
+      }));
+
+      const res = await callGemini(
+        [{ role: "user", content:
+`다음 Threads 인기글들을 조회수 순으로 분석해, 각 글의 구조를 템플릿으로 역설계해주세요.
+조회수가 높은 글일수록 더 강한 패턴으로 가중치를 두되, 좋아요/댓글/리포스트도 보조 지표로 반영하세요.
+
+게시물 데이터:
+${JSON.stringify(postsForPrompt, null, 2)}
+
+JSON 형식으로만 반환:
+{
+  "summary": "조회수 상위 글에서 반복되는 구조 패턴 한 줄 요약",
+  "winning_patterns": [
+    {
+      "pattern": "반복되는 성공 구조명",
+      "why_it_works": "조회수 관점에서 작동하는 이유",
+      "use_when": "어떤 주제/상황에서 쓰면 좋은지"
+    }
+  ],
+  "post_templates": [
+    {
+      "rank_by_views": 1,
+      "views": 12345,
+      "structure_name": "템플릿 이름",
+      "template": [
+        "1단계: 첫 문장/후킹 구조",
+        "2단계: 문제 제기 또는 공감 장치",
+        "3단계: 전개 방식",
+        "4단계: 결론/CTA"
+      ],
+      "copy_formula": "빈칸 채우기 형태의 재사용 공식",
+      "best_for": "이 템플릿에 맞는 콘텐츠 주제"
+    }
+  ],
+  "recommended_master_template": {
+    "name": "가장 재사용성이 높은 마스터 템플릿 이름",
+    "steps": ["1단계", "2단계", "3단계", "4단계"],
+    "example_hook": "실제로 쓸 수 있는 첫 문장 예시"
+  }
+}`
+        }],
+        "당신은 조회수 기반 소셜 콘텐츠 구조 분석가입니다. 텍스트의 주제보다 문장 구조, 후킹 순서, 전개 방식, CTA 패턴을 우선 분석하고 JSON만 반환하세요."
+      );
+
+      const data = parseJSON(res);
+      if (!data) throw new Error("템플릿 분석 파싱 실패");
+      setTemplateMap({ loading: false, data, error: null });
+    } catch (e) {
+      setTemplateMap({ loading: false, data: null, error: e.message || "템플릿 역설계 실패" });
+    }
+  }, [posts, keywordFilter]);
+
   // ── 정렬 + 필터 ──
   const SORT_OPTIONS = [
     { key: "rank",     label: "순서" },
@@ -432,7 +509,112 @@ JSON 배열 형식으로만 반환:
           </svg>
           {hasBrand ? `브랜드: ${brand.name || "설정됨"}` : "브랜드 설정"}
         </button>
+
+        <button
+          onClick={handleReverseTemplates}
+          disabled={posts.length === 0 || templateMap?.loading}
+          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            templateMap?.data
+              ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+              : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
+          }`}
+          title="조회수 상위 글의 문장 구조와 전개 방식을 템플릿으로 역설계합니다"
+        >
+          {templateMap?.loading ? (
+            <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 3v18h18"/>
+              <path d="m7 14 3-3 3 2 5-7"/>
+              <path d="M17 6h1v1"/>
+            </svg>
+          )}
+          {templateMap?.loading ? "역설계 중..." : "조회수 템플릿 역설계"}
+        </button>
       </div>
+
+      {/* ── 조회수 기반 템플릿 역설계 결과 ── */}
+      {(templateMap?.data || templateMap?.error) && (
+        <div className={`rounded-xl border p-4 shadow-sm ${
+          templateMap.error ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"
+        }`}>
+          {templateMap.error ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-medium text-red-600">{templateMap.error}</p>
+              <button
+                onClick={handleReverseTemplates}
+                className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50"
+              >
+                재시도
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-amber-800">조회수 기반 템플릿 역설계</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-1">{templateMap.data.summary}</p>
+                </div>
+                <button
+                  onClick={handleReverseTemplates}
+                  className="flex-shrink-0 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-white border border-amber-200 rounded-lg hover:bg-amber-50"
+                >
+                  재분석
+                </button>
+              </div>
+
+              {templateMap.data.recommended_master_template && (
+                <div className="bg-white rounded-lg border border-amber-100 p-3">
+                  <p className="text-xs font-bold text-gray-800 mb-2">
+                    {templateMap.data.recommended_master_template.name}
+                  </p>
+                  <div className="grid md:grid-cols-2 gap-2">
+                    {templateMap.data.recommended_master_template.steps?.map((step, i) => (
+                      <div key={i} className="flex gap-2 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="font-bold text-amber-600">{i + 1}</span>
+                        <span>{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {templateMap.data.recommended_master_template.example_hook && (
+                    <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                      첫 문장 예시: {templateMap.data.recommended_master_template.example_hook}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {templateMap.data.post_templates?.length > 0 && (
+                <div className="grid lg:grid-cols-2 gap-2">
+                  {templateMap.data.post_templates.slice(0, 4).map((tpl, i) => (
+                    <div key={i} className="bg-white rounded-lg border border-amber-100 p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <p className="text-xs font-bold text-gray-800">{tpl.structure_name}</p>
+                        <span className="text-[10px] font-semibold text-gray-400">
+                          #{tpl.rank_by_views} · 조회 {Number(tpl.views || 0).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {tpl.template?.map((step, j) => (
+                          <p key={j} className="text-xs text-gray-600 leading-relaxed">{step}</p>
+                        ))}
+                      </div>
+                      {tpl.copy_formula && (
+                        <p className="mt-2 text-xs text-purple-700 bg-purple-50 rounded-lg px-3 py-2">
+                          {tpl.copy_formula}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── 확장 프로그램 수신 안내 ── */}
       {fromExtension && posts.length > 0 && (
