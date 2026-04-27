@@ -675,6 +675,7 @@ export default function VideoPreview({
       if (recBgmAudio) { recBgmAudio.pause(); recBgmAudio.src = ""; }
       recAudioCtx?.close();
       isRecordingRef.current = false; // gifUrl null 차단 해제
+      if (typeof rafId !== "undefined") cancelAnimationFrame(rafId);
       setRecording(false);
       setRecProgress(0);
 
@@ -772,9 +773,14 @@ export default function VideoPreview({
     if (recBgmAudio) { recBgmAudio.currentTime = 0; recBgmAudio.play().catch(() => {}); }
     setPlaying(true);
 
-    // 동기 루프 — canvas에 직접 그림
-    let lastRecSentence = gifQuery ?? null; // 첫 자막 변경 감지용
-    const loop = () => {
+    // requestAnimationFrame 루프 — Compositor와 동기화해야 GIF 현재 프레임을 읽을 수 있음
+    // setTimeout은 Main Thread에서만 실행되어 Compositor의 GIF 프레임 커밋을 못 읽음
+    const FRAME_MS = 125; // 8fps
+    let lastDrawTime = 0;
+    let lastRecSentence = gifQuery ?? null;
+    let rafId = null;
+
+    const loop = (rafTime) => {
       const elapsed = performance.now() - startTs;
       if (elapsed > totalMs + 1000) {
         recorder.stop();
@@ -783,26 +789,32 @@ export default function VideoPreview({
         if (recBgmAudio) { recBgmAudio.pause(); recBgmAudio.currentTime = 0; }
         return;
       }
-      setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
 
-      // 현재 자막 계산
-      let found = null;
-      for (const s of sentences) {
-        if (elapsed >= s.startMs) found = s;
-        else break;
+      // 8fps 제한 — rAF는 60fps로 호출되므로 간격 체크
+      if (rafTime - lastDrawTime >= FRAME_MS) {
+        lastDrawTime = rafTime;
+        setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
+
+        // 현재 자막 계산
+        let found = null;
+        for (const s of sentences) {
+          if (elapsed >= s.startMs) found = s;
+          else break;
+        }
+        const sentenceText = (found && elapsed <= found.endMs + 500) ? found.text : null;
+
+        // 자막 바뀌면 GIF 교체
+        if (sentenceText !== lastRecSentence) {
+          lastRecSentence = sentenceText;
+          if (sentenceText) fetchRecGif(sentenceText);
+        }
+
+        drawPreviewFrame(ctx, W, H, sentenceText, previewImg);
       }
-      const sentenceText = (found && elapsed <= found.endMs + 500) ? found.text : null;
 
-      // 자막이 바뀌면 새 GIF 로드 (이전 GIF 유지하며 교체)
-      if (sentenceText !== lastRecSentence) {
-        lastRecSentence = sentenceText;
-        if (sentenceText) fetchRecGif(sentenceText);
-      }
-
-      drawPreviewFrame(ctx, W, H, sentenceText, previewImg);
-      setTimeout(loop, 125);
+      rafId = requestAnimationFrame(loop);
     };
-    loop();
+    rafId = requestAnimationFrame(loop);
   }, [recording, totalMs, audioUrl, bgmFile, sentences, drawPreviewFrame, gifQuery]);
 
   return (
