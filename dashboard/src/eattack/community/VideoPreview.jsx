@@ -283,6 +283,55 @@ async function analyzeGifMotion(gifUrl) {
   }
 }
 
+async function decodeGifFrames(gifUrl) {
+  const [{ GifReader }, resp] = await Promise.all([
+    import("omggif"),
+    fetch(`/api/gif-proxy?url=${encodeURIComponent(gifUrl)}`),
+  ]);
+  if (!resp.ok) throw new Error(`GIF load failed: ${resp.status}`);
+
+  const reader = new GifReader(new Uint8Array(await resp.arrayBuffer()));
+  const frames = [];
+  let startMs = 0;
+
+  // GIF 프레임 누적 버퍼 — 이전 프레임 상태를 유지해야 disposal method가 정상 작동
+  const accumBuffer = new Uint8ClampedArray(reader.width * reader.height * 4);
+
+  for (let i = 0; i < reader.numFrames(); i++) {
+    // 누적 버퍼에 현재 프레임 디코드
+    reader.decodeAndBlitFrameRGBA(i, accumBuffer);
+
+    // 누적 버퍼의 복사본을 캔버스에 렌더링
+    const rgba = new Uint8ClampedArray(accumBuffer);
+    const canvas = document.createElement("canvas");
+    canvas.width = reader.width;
+    canvas.height = reader.height;
+    const imageData = new ImageData(rgba, reader.width, reader.height);
+    canvas.getContext("2d").putImageData(imageData, 0, 0);
+
+    const durationMs = Math.max(20, (reader.frameInfo(i)?.delay ?? 1) * 10);
+    frames.push({ canvas, startMs, durationMs });
+    startMs += durationMs;
+  }
+
+  return {
+    width: reader.width,
+    height: reader.height,
+    totalDurationMs: Math.max(startMs, 20),
+    frames,
+  };
+}
+
+function pickGifFrameAtTime(decodedGif, elapsedMs) {
+  if (!decodedGif?.frames?.length) return null;
+  const loopMs = elapsedMs % decodedGif.totalDurationMs;
+  for (let i = decodedGif.frames.length - 1; i >= 0; i--) {
+    const frame = decodedGif.frames[i];
+    if (loopMs >= frame.startMs) return frame.canvas;
+  }
+  return decodedGif.frames[0].canvas;
+}
+
 export default function VideoPreview({
   bgPreset,
   title,
@@ -708,9 +757,11 @@ export default function VideoPreview({
     }
 
     // GIF (gap 8px→16px, 자막 높이 26px)
-    if (gifEl && gifEl.complete && gifEl.naturalWidth > 0) {
+    const gifWidth = gifEl?.naturalWidth ?? gifEl?.videoWidth ?? gifEl?.width ?? 0;
+    const gifHeight = gifEl?.naturalHeight ?? gifEl?.videoHeight ?? gifEl?.height ?? 0;
+    if (gifEl && gifWidth > 0 && gifHeight > 0) {
       const gifW = 320, gifX = (W - 320) / 2;
-      const gifH = Math.min(gifEl.naturalHeight * (gifW / gifEl.naturalWidth), 400);
+      const gifH = Math.min(gifHeight * (gifW / gifWidth), 400);
       const gifY = subTop + (sentenceText ? 26 + 16 : 0);
       try { ctx.drawImage(gifEl, gifX, gifY, gifW, gifH); } catch (_) {}
     }
@@ -851,37 +902,39 @@ export default function VideoPreview({
     // 화면에 보이는 gifPreviewRef.current (프리뷰 img)를 drawImage 소스로 사용
     // → 뷰포트 안, 실제 visible → Chrome이 GIF 애니메이션을 정상 실행
     // → proxy 경유 same-origin 로드 → canvas taint 없음
-    const recGifCache = {}; // query → proxyUrl
+    const recGifCache = {}; // query -> decoded gif frames
     let recGifLoading = null;
-    const previewImg = gifPreviewRef.current; // 화면에 보이는 프리뷰 img
+    recGifFramesRef.current = null;
 
-    function fetchRecGif(query) {
-      if (!query || !previewImg || recGifLoading === query) return;
+    async function fetchRecGif(query) {
+      if (!query || recGifLoading === query) return;
       if (recGifCache[query]) {
-        previewImg.src = recGifCache[query];
+        recGifFramesRef.current = recGifCache[query];
         return;
       }
       recGifLoading = query;
-      fetch(`/api/klipy?q=${encodeURIComponent(query)}`)
-        .then(r => r.json())
-        .then(d => {
-          if (!d?.url) { recGifLoading = null; return; }
-          const proxyUrl = `/api/gif-proxy?url=${encodeURIComponent(d.url)}`;
-          recGifCache[query] = proxyUrl;
-          if (previewImg) previewImg.src = proxyUrl;
+      try {
+        const d = await fetch(`/api/klipy?q=${encodeURIComponent(query)}`).then(r => r.json());
+        const candidateUrl = d?.url;
+        if (candidateUrl) {
+          // 녹화 중에는 GIF 모션 분석을 건너뛰고 무조건 디코드
+          // (모션이 적은 GIF도 프레임을 가져가되, 천천히 재생되는 애니메이션으로 표시)
+          const decodedGif = await decodeGifFrames(candidateUrl);
+          recGifCache[query] = decodedGif;
+          recGifFramesRef.current = decodedGif;
           recGifLoading = null;
-        })
-        .catch(() => { recGifLoading = null; });
+          return;
+        }
+      } catch (err) {
+        console.warn("[rec] GIF decode failed:", err);
+      } finally {
+        recGifLoading = null;
+      }
     }
 
-    // 첫 GIF 미리 로드: 프리뷰 img가 이미 로드됐으면 즉시 진행, 없으면 최대 2초 대기
-    if (gifQuery && previewImg) {
-      if (!(previewImg.complete && previewImg.naturalWidth > 0)) {
-        fetchRecGif(gifQuery);
-        for (let i = 0; i < 20 && !(previewImg.complete && previewImg.naturalWidth > 0); i++) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
+    // 첫 GIF 디코드 준비
+    if (gifQuery) {
+      await fetchRecGif(gifQuery);
     }
 
     // recorder 먼저 시작 → 오디오 재생 시작 (타이밍 보장)
@@ -929,7 +982,8 @@ export default function VideoPreview({
           if (sentenceText) fetchRecGif(sentenceText);
         }
 
-        drawPreviewFrame(ctx, W, H, sentenceText, previewImg);
+        const recGifFrame = pickGifFrameAtTime(recGifFramesRef.current, elapsed);
+        drawPreviewFrame(ctx, W, H, sentenceText, recGifFrame);
       }
 
       rafId = requestAnimationFrame(loop);
