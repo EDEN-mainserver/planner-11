@@ -240,7 +240,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "text, voiceId는 필수입니다." });
   }
 
-  // ── 1차: ElevenLabs (정확한 단어 타임스탬프 포함) ───────────────────────────
+  // ── 1차: ElevenLabs with-timestamps (정확한 단어 타임스탬프 포함) ────────────
   try {
     const elevenRes = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
@@ -266,14 +266,41 @@ export default async function handler(req, res) {
     }
 
     const errBody = await elevenRes.json().catch(() => ({}));
-    console.log("[TTS] ElevenLabs 오류:", JSON.stringify({ httpStatus: elevenRes.status, body: errBody }));
+    console.log("[TTS] ElevenLabs with-timestamps 오류:", JSON.stringify({ httpStatus: elevenRes.status, body: errBody }));
 
     const { status: apiStatus, message: apiMsg } = parseElevenLabsError(errBody);
-    if (!isCreditError(elevenRes.status, apiStatus, apiMsg)) {
-      return res.status(elevenRes.status).json({ error: apiMsg || `ElevenLabs 오류 (${elevenRes.status})` });
+    const isCredit = isCreditError(elevenRes.status, apiStatus, apiMsg);
+
+    // 크레딧 에러가 아니면 → 일반 TTS로 재시도 (플랜 제한 등)
+    if (!isCredit) {
+      console.log("[TTS] with-timestamps 미지원 → 일반 TTS 재시도");
+      const plainRes = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+        {
+          method: "POST",
+          headers: { "xi-api-key": elevenKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text,
+            model_id:       "eleven_multilingual_v2",
+            voice_settings: voiceSettings ?? { stability: 0.5, similarity_boost: 0.75 },
+          }),
+        }
+      );
+      if (plainRes.ok) {
+        const audioBuffer = await plainRes.arrayBuffer();
+        const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+        return res.status(200).json({
+          audioBase64,
+          mimeType: "audio/mpeg",
+          captions: null, // 타임스탬프 없음 → 글자수 비례 분배
+          provider: "elevenlabs-plain",
+        });
+      }
+      const plainErr = await plainRes.json().catch(() => ({}));
+      console.log("[TTS] ElevenLabs 일반 TTS도 실패:", JSON.stringify(plainErr));
     }
 
-    console.log("[TTS] 크레딧 소진 → OpenAI TTS + Whisper 파이프라인 시작");
+    console.log("[TTS] ElevenLabs 실패 → 다음 폴백 시도");
   } catch (e) {
     console.log("[TTS] ElevenLabs 네트워크 오류:", e.message);
   }
