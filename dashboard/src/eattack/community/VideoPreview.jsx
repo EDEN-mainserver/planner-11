@@ -955,7 +955,7 @@ export default function VideoPreview({
 
     const loop = (rafTime) => {
       const elapsed = performance.now() - startTs;
-      if (elapsed > totalMs + 1000) {
+      if (elapsed > totalMs + 300) {
         recorder.stop();
         setPlaying(false);
         if (recTtsAudio) { recTtsAudio.pause(); recTtsAudio.currentTime = 0; }
