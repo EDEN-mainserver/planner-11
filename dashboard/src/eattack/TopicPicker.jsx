@@ -322,6 +322,7 @@ function ThreadsTab({ onSelect }) {
   const [error, setError] = useState("");
   const [cache, setCache] = useState(cached);
   const [selectedPost, setSelectedPost] = useState(null);
+  const [sortBy, setSortBy] = useState("default");
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -371,6 +372,12 @@ function ThreadsTab({ onSelect }) {
     localStorage.removeItem(LS_THREADS);
   }
 
+  const sortedPosts = (() => {
+    if (sortBy === "likes_desc") return [...posts].sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
+    if (sortBy === "likes_asc")  return [...posts].sort((a, b) => (a.likes ?? 0) - (b.likes ?? 0));
+    return posts;
+  })();
+
   return (
     <div className="flex flex-col gap-3 h-full">
       <div className="flex items-center gap-2 flex-wrap">
@@ -389,6 +396,17 @@ function ThreadsTab({ onSelect }) {
           {crawling ? "수집 중..." : "수집"}
         </button>
         <CacheBadge cache={cache} onClear={handleClear} />
+        {posts.length > 0 && (
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+            className="px-2.5 py-1.5 text-[11px] font-semibold border border-purple-200 text-purple-700 bg-white rounded-lg outline-none focus:ring-2 focus:ring-purple-100 cursor-pointer"
+          >
+            <option value="default">수집순</option>
+            <option value="likes_desc">❤️ 많은순</option>
+            <option value="likes_asc">❤️ 적은순</option>
+          </select>
+        )}
       </div>
 
       {error && <p className="text-xs text-red-500 px-1">{error}</p>}
@@ -406,7 +424,7 @@ function ThreadsTab({ onSelect }) {
         />
       ) : (
         <PostList
-          posts={posts}
+          posts={sortedPosts}
           onPreview={setSelectedPost}
           accentClass="purple"
           emptyMsg={<>키워드 입력 후 수집을 누르세요<br/><span className="text-[10px] text-gray-300 mt-1 block">Eden Crawl 확장 프로그램 필요</span></>}
