@@ -29,12 +29,18 @@
     "api/threads-post.js": { "maxDuration": 120, "memory": 1024 },
     "api/instagram-post.js": { "maxDuration": 120, "memory": 1024 },
     "api/naver-datalab.js": { "maxDuration": 60,  "memory": 1024 },
-    "api/html-screenshot.js": { "maxDuration": 120, "memory": 1024 }
+    "api/html-screenshot.js": { "maxDuration": 120, "memory": 1024 },
+    "api/schedule.js": { "maxDuration": 30, "memory": 512 },
+    "api/threads-scheduler.js": { "maxDuration": 90, "memory": 512 }
   },
   "crons": [
     {
       "path": "/api/full-auto-cron",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/threads-scheduler",
+      "schedule": "* * * * *"
     }
   ]
 }

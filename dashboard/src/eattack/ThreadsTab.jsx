@@ -76,14 +76,39 @@ const DEFAULT_TEMPLATE_OPTIONS = {
   cta: CTA_OPTIONS,
 };
 
-// ── 예약 스케줄 키/로드/저장 ──
-const scheduleKey = (u) => `eden_threads_schedule_${u}_v1`;
-function loadSchedules(username) {
-  try { return JSON.parse(localStorage.getItem(scheduleKey(username))) || []; }
-  catch { return []; }
+// ── 예약 스케줄 서버 API ──
+async function fetchSchedules(username) {
+  const res = await fetch(`/api/schedule?username=${encodeURIComponent(username)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.schedules || [];
 }
-function saveSchedules(username, list) {
-  localStorage.setItem(scheduleKey(username), JSON.stringify(list));
+
+async function addSchedule(username, schedule) {
+  const res = await fetch("/api/schedule", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, schedule }),
+  });
+  return res.ok;
+}
+
+async function removeSchedule(username, id) {
+  const res = await fetch("/api/schedule", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, id }),
+  });
+  return res.ok;
+}
+
+async function clearDoneSchedulesServer(username) {
+  const res = await fetch("/api/schedule", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+  return res.ok;
 }
 
 function loadThreadTemplate() {
@@ -209,7 +234,8 @@ export default function ThreadsTab() {
   // 예약 게시
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
-  const [scheduledPosts, setScheduledPosts] = useState(() => loadSchedules(username));
+  const [scheduledPosts, setScheduledPosts] = useState([]);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
@@ -476,8 +502,17 @@ ${JSON.stringify(template, null, 2)}
     }
   };
 
+  // 서버에서 예약 목록 로드 (마운트 시 + 60초마다 갱신)
+  useEffect(() => {
+    const load = () =>
+      fetchSchedules(username).then(setScheduledPosts).catch(() => {});
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, [username]);
+
   // 예약 등록
-  const handleSchedule = () => {
+  const handleSchedule = async () => {
     if (!accessToken.trim() || !userId.trim()) {
       addLog("error", "액세스 토큰과 사용자 ID를 입력하세요");
       return;
@@ -494,6 +529,7 @@ ${JSON.stringify(template, null, 2)}
       addLog("error", "예약 시간은 현재보다 미래여야 합니다");
       return;
     }
+    setScheduleSaving(true);
     const newPost = {
       id: Date.now().toString(),
       text: text.trim(),
@@ -503,74 +539,29 @@ ${JSON.stringify(template, null, 2)}
       status: "pending",
       createdAt: new Date().toISOString(),
     };
-    const updated = [...scheduledPosts, newPost];
-    setScheduledPosts(updated);
-    saveSchedules(username, updated);
+    const ok = await addSchedule(username, newPost);
+    setScheduleSaving(false);
+    if (!ok) { addLog("error", "예약 저장 실패"); return; }
+    setScheduledPosts((prev) => [...prev, newPost]);
     addLog("info", `예약 완료: ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
     setScheduleEnabled(false);
     setScheduledAt("");
   };
 
   // 예약 취소
-  const cancelSchedule = (id) => {
-    const updated = scheduledPosts.filter(p => p.id !== id);
-    setScheduledPosts(updated);
-    saveSchedules(username, updated);
-    addLog("info", "예약 취소됨");
+  const cancelSchedule = async (id) => {
+    const ok = await removeSchedule(username, id);
+    if (ok) {
+      setScheduledPosts((prev) => prev.filter((p) => p.id !== id));
+      addLog("info", "예약 취소됨");
+    }
   };
 
-  // 완료/실패 항목 지우기
-  const clearDoneSchedules = () => {
-    const updated = scheduledPosts.filter(p => p.status === "pending");
-    setScheduledPosts(updated);
-    saveSchedules(username, updated);
+  // 완료/실패 항목 서버에서 삭제
+  const clearDoneSchedules = async () => {
+    const ok = await clearDoneSchedulesServer(username);
+    if (ok) setScheduledPosts((prev) => prev.filter((p) => p.status === "pending"));
   };
-
-  // 30초마다 예약 포스팅 체크
-  useEffect(() => {
-    const check = async () => {
-      const posts = loadSchedules(username);
-      const now = new Date();
-      const due = posts.filter(p => p.status === "pending" && new Date(p.scheduledAt) <= now);
-      if (due.length === 0) return;
-
-      for (const post of due) {
-        addLog("info", `[예약] 게시 시작: ${post.text.slice(0, 20)}...`);
-        try {
-          const res = await fetch("/api/threads-post", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: post.userId,
-              accessToken: post.accessToken,
-              text: post.text,
-              images: [],
-            }),
-          });
-          const data = await res.json();
-          if (data.logs?.length) {
-            data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
-          }
-          const newStatus = res.ok ? "posted" : "failed";
-          addLog(res.ok ? "info" : "error", res.ok ? `[예약] 게시 성공!` : `[예약] 게시 실패: ${data.error}`);
-          const fresh = loadSchedules(username);
-          const next = fresh.map(p => p.id === post.id ? { ...p, status: newStatus } : p);
-          saveSchedules(username, next);
-          setScheduledPosts(next);
-        } catch (e) {
-          addLog("error", `[예약] 오류: ${e.message}`);
-          const fresh = loadSchedules(username);
-          const next = fresh.map(p => p.id === post.id ? { ...p, status: "failed" } : p);
-          saveSchedules(username, next);
-          setScheduledPosts(next);
-        }
-      }
-    };
-
-    const interval = setInterval(check, 30000);
-    check();
-    return () => clearInterval(interval);
-  }, [username]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const charLeft = TH_MAX_CHARS - text.length;
 
@@ -867,10 +858,10 @@ ${JSON.stringify(template, null, 2)}
             </div>
             <button
               onClick={handleSchedule}
-              disabled={!scheduledAt || !text.trim()}
+              disabled={!scheduledAt || !text.trim() || scheduleSaving}
               className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 rounded-xl transition-all whitespace-nowrap self-end"
             >
-              예약하기
+              {scheduleSaving ? "저장 중..." : "예약하기"}
             </button>
           </div>
         )}
