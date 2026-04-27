@@ -218,6 +218,71 @@ function openVideoVerificationWindow(blob, filename) {
   popup.addEventListener("beforeunload", () => URL.revokeObjectURL(objectUrl), { once: true });
 }
 
+async function analyzeGifMotion(gifUrl) {
+  try {
+    const [{ GifReader }, resp] = await Promise.all([
+      import("omggif"),
+      fetch(`/api/gif-proxy?url=${encodeURIComponent(gifUrl)}`),
+    ]);
+    if (!resp.ok) return false;
+
+    const reader = new GifReader(new Uint8Array(await resp.arrayBuffer()));
+    const frameCount = reader.numFrames();
+    if (frameCount < 3) return false;
+
+    let totalDurationMs = 0;
+    for (let i = 0; i < frameCount; i++) {
+      totalDurationMs += Math.max(20, (reader.frameInfo(i)?.delay ?? 1) * 10);
+    }
+    if (totalDurationMs < 400) return false;
+
+    const sampleCount = Math.min(frameCount, 8);
+    const frameIndexes = [];
+    for (let i = 0; i < sampleCount; i++) {
+      frameIndexes.push(Math.min(frameCount - 1, Math.round((i * (frameCount - 1)) / Math.max(1, sampleCount - 1))));
+    }
+
+    const rgba = new Uint8Array(reader.width * reader.height * 4);
+    const decodedFrames = [];
+    for (const frameIndex of frameIndexes) {
+      rgba.fill(0);
+      reader.decodeAndBlitFrameRGBA(frameIndex, rgba);
+      decodedFrames.push(new Uint8Array(rgba));
+    }
+
+    const pixelCount = reader.width * reader.height;
+    const pixelStep = Math.max(1, Math.floor(pixelCount / Math.min(pixelCount, 2500)));
+    const ratios = [];
+
+    for (let i = 1; i < decodedFrames.length; i++) {
+      const prev = decodedFrames[i - 1];
+      const next = decodedFrames[i];
+      let changed = 0;
+      let sampled = 0;
+
+      for (let px = 0; px < pixelCount; px += pixelStep) {
+        const idx = px * 4;
+        const diff =
+          Math.abs(prev[idx] - next[idx]) +
+          Math.abs(prev[idx + 1] - next[idx + 1]) +
+          Math.abs(prev[idx + 2] - next[idx + 2]) +
+          Math.abs(prev[idx + 3] - next[idx + 3]);
+        if (diff > 36) changed++;
+        sampled++;
+      }
+
+      ratios.push(sampled ? changed / sampled : 0);
+    }
+
+    const maxRatio = Math.max(...ratios);
+    const avgRatio = ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length;
+    return maxRatio >= 0.018 || avgRatio >= 0.01;
+  } catch (err) {
+    console.warn("[gif-motion] analyze failed:", err);
+    return true;
+  }
+}
+
 export default function VideoPreview({
   bgPreset,
   title,
@@ -361,6 +426,7 @@ export default function VideoPreview({
 
   // Klipy GIF — 캐시로 즉시 표시, 새 GIF 로드 완료 후 교체
   const gifCacheRef = useRef({});
+  const gifMotionCacheRef = useRef({});
 
   const fetchAndSetGif = useCallback((q, keepPrevious = false) => {
     if (!q) return;
@@ -374,11 +440,32 @@ export default function VideoPreview({
     let cancelled = false;
     fetch(`/api/klipy?q=${encodeURIComponent(q)}`)
       .then(r => r.json())
-      .then(d => {
-        if (!cancelled && d?.url) {
-          gifCacheRef.current[q] = d.url;
-          setGifUrl(d.url);
+      .then(async (d) => {
+        const candidateUrls = Array.isArray(d?.urls) && d.urls.length ? d.urls : (d?.url ? [d.url] : []);
+        if (cancelled || !candidateUrls.length) return;
+
+        let selectedUrl = null;
+        for (const candidateUrl of candidateUrls) {
+          let isAnimatedEnough = gifMotionCacheRef.current[candidateUrl];
+          if (isAnimatedEnough === undefined) {
+            isAnimatedEnough = await analyzeGifMotion(candidateUrl);
+            gifMotionCacheRef.current[candidateUrl] = isAnimatedEnough;
+          }
+          if (cancelled) return;
+          if (isAnimatedEnough) {
+            selectedUrl = candidateUrl;
+            break;
+          }
         }
+
+        if (!selectedUrl) {
+          console.warn("[gif-motion] skipped all low-motion gifs for query:", q);
+          if (!keepPrevious) setGifUrl(null);
+          return;
+        }
+
+        gifCacheRef.current[q] = selectedUrl;
+        setGifUrl(selectedUrl);
       })
       .catch(() => {});
     return () => { cancelled = true; };

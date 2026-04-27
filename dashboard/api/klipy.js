@@ -5,7 +5,7 @@
  * 1) Claude API로 한국어 → 영어 검색 키워드 변환
  * 2) Klipy GIF Search API 호출
  *
- * Response: { url: string, width: number, height: number, keyword: string }
+ * Response: { url: string, urls?: string[], width: number, height: number, keyword: string }
  */
 
 export const config = { maxDuration: 15 };
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
 
   try {
     const klipyRes = await fetch(
-      `https://api.klipy.com/api/v1/${klipyKey}/gifs/search?q=${encodeURIComponent(keyword)}&per_page=1`,
+      `https://api.klipy.com/api/v1/${klipyKey}/gifs/search?q=${encodeURIComponent(keyword)}&per_page=8`,
       { headers: { "Accept": "application/json" } }
     );
 
@@ -64,26 +64,34 @@ export default async function handler(req, res) {
 
     // 응답 구조: { result: true, data: { data: [ { file: { sm, md, hd } } ] } }
     const list = data?.data?.data ?? data?.data ?? [];
-    const item = Array.isArray(list) ? list[0] : null;
+    const items = Array.isArray(list) ? list : [];
+    const item = items[0] ?? null;
 
     if (!item) {
       return res.status(200).json({ url: null, keyword });
     }
 
     // file.sm.gif.url → md.gif.url → hd.gif.url 순으로 시도 (sm이 가장 가벼움)
+    const urls = items.map((entry) => {
+      const f = entry?.file ?? {};
+      return (
+        f?.sm?.gif?.url ||
+        f?.md?.gif?.url ||
+        f?.hd?.gif?.url ||
+        f?.sm?.webp?.url ||
+        f?.md?.webp?.url ||
+        null
+      );
+    }).filter(Boolean);
+
     const f = item?.file ?? {};
-    const url =
-      f?.sm?.gif?.url ||
-      f?.md?.gif?.url ||
-      f?.hd?.gif?.url ||
-      f?.sm?.webp?.url ||
-      f?.md?.webp?.url ||
-      null;
+    const url = urls[0] ?? null;
 
     const smGif = f?.sm?.gif ?? f?.md?.gif ?? {};
     res.setHeader("Cache-Control", "s-maxage=60");
     res.status(200).json({
       url,
+      urls,
       keyword,
       width:  smGif?.width  ?? null,
       height: smGif?.height ?? null,
