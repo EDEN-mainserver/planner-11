@@ -720,6 +720,11 @@ export default function VideoPreview({
     // 폰트 로드 완료 대기 (Noto Sans KR 등)
     await document.fonts.ready;
 
+    // 첫 GIF가 로드될 시간 확보 (currentGifRef가 null이면 첫 프레임에 GIF 없음)
+    if (gifQuery && !currentGifRef.current.el) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
     // recorder 먼저 시작 → 오디오 재생 시작 (타이밍 보장)
     setCurrentMs(0);
     recorder.start(200);
@@ -740,6 +745,7 @@ export default function VideoPreview({
         return;
       }
       setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
+      setCurrentMs(Math.round(elapsed)); // currentSentence 갱신 → gifUrl → currentGifRef 업데이트
 
       // 현재 자막 계산
       let found = null;
@@ -753,7 +759,7 @@ export default function VideoPreview({
       setTimeout(loop, 125);
     };
     loop();
-  }, [recording, totalMs, audioUrl, bgmFile, sentences, drawPreviewFrame]);
+  }, [recording, totalMs, audioUrl, bgmFile, sentences, drawPreviewFrame, gifQuery]);
 
   return (
     <div className="flex flex-col items-center gap-3 w-full">
