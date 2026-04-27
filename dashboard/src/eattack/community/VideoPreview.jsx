@@ -641,16 +641,18 @@ export default function VideoPreview({
       recAudioCtx?.close(); recAudioCtx = null;
     }
 
-    // MP4(H.264+AAC) 우선 → 안 되면 WebM 폴백
-    // Chrome 130+ / Edge는 MP4 지원 → Windows 기본 플레이어에서도 재생 가능
-    const mimeType = [
-      "video/mp4;codecs=avc1,mp4a.40.2", // H.264 + AAC (가장 호환성 높음)
-      "video/mp4",                         // MP4 일반 (Chrome 130+)
+    // MP4 우선 → 미지원 시 WebM 폴백 (Chrome 130+는 video/mp4 지원)
+    const CANDIDATES = [
+      "video/mp4",                         // Chrome 130+ 기본 MP4 (H.264+AAC)
+      "video/mp4;codecs=avc1,mp4a.40.2",  // 명시적 H.264+AAC
+      "video/mp4;codecs=avc1",             // H.264 only (오디오 자동 선택)
       "video/webm;codecs=vp9,opus",
       "video/webm;codecs=vp8,opus",
       "video/webm",
-    ].find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
+    ];
+    const mimeType = CANDIDATES.find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
     const ext = mimeType.startsWith("video/mp4") ? "mp4" : "webm";
+    console.log("[rec] 선택된 mimeType:", mimeType, "→", ext);
 
     const chunks = [];
     const recorder = new MediaRecorder(new MediaStream(streams), {
