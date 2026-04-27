@@ -18,6 +18,7 @@ function saveSocial(keyFn, username, data) {
 
 const TH_MAX_CHARS = 500;
 const THREAD_TEMPLATE_KEY = "eattack_threads_view_template";
+const TEMPLATE_OPTIONS_KEY = "eattack_threads_template_options";
 const CONVERSATION_FORMATS = [
   {
     key: "expert",
@@ -66,10 +67,32 @@ const CTA_OPTIONS = [
   { key: "dm", label: "DM 유도", prompt: "자료/체크리스트를 받기 위한 DM 또는 키워드 요청 CTA" },
   { key: "soft", label: "부드러운 권유", prompt: "강요 없이 오늘 바로 한 가지를 해보게 하는 CTA" },
 ];
+const DEFAULT_TEMPLATE_OPTIONS = {
+  format: CONVERSATION_FORMATS,
+  tone: TONE_OPTIONS,
+  flow: FLOW_OPTIONS,
+  cta: CTA_OPTIONS,
+};
 
 function loadThreadTemplate() {
   try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
   catch { return null; }
+}
+function loadTemplateOptions() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TEMPLATE_OPTIONS_KEY)) || {};
+    return {
+      format: saved.format?.length ? saved.format : CONVERSATION_FORMATS,
+      tone: saved.tone?.length ? saved.tone : TONE_OPTIONS,
+      flow: saved.flow?.length ? saved.flow : FLOW_OPTIONS,
+      cta: saved.cta?.length ? saved.cta : CTA_OPTIONS,
+    };
+  } catch {
+    return DEFAULT_TEMPLATE_OPTIONS;
+  }
+}
+function saveTemplateOptions(data) {
+  localStorage.setItem(TEMPLATE_OPTIONS_KEY, JSON.stringify(data));
 }
 
 export default function ThreadsTab() {
@@ -94,6 +117,8 @@ export default function ThreadsTab() {
   const [templateTone, setTemplateTone] = useState("template");
   const [templateFlow, setTemplateFlow] = useState("template");
   const [templateCta, setTemplateCta] = useState("template");
+  const [templateOptions, setTemplateOptions] = useState(loadTemplateOptions);
+  const [showOptionEditor, setShowOptionEditor] = useState(false);
   const [fetchingId, setFetchingId] = useState(false);
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -102,6 +127,42 @@ export default function ThreadsTab() {
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
     setLogs(prev => [...prev.slice(-49), entry]);
+  };
+
+  const updateTemplateOption = (group, key, field, value) => {
+    setTemplateOptions(prev => ({
+      ...prev,
+      [group]: prev[group].map(option => (
+        option.key === key ? { ...option, [field]: value } : option
+      )),
+    }));
+  };
+
+  const addTemplateOption = (group) => {
+    const key = `custom_${group}_${Date.now()}`;
+    setTemplateOptions(prev => ({
+      ...prev,
+      [group]: [
+        ...prev[group],
+        { key, label: "새 옵션", prompt: "이 옵션이 적용할 말투와 흐름을 입력하세요." },
+      ],
+    }));
+  };
+
+  const deleteTemplateOption = (group, key) => {
+    setTemplateOptions(prev => {
+      if (prev[group].length <= 1) return prev;
+      return { ...prev, [group]: prev[group].filter(option => option.key !== key) };
+    });
+    if (group === "format" && templateFormat === key) setTemplateFormat(templateOptions.format.find(o => o.key !== key)?.key || "expert");
+    if (group === "tone" && templateTone === key) setTemplateTone(templateOptions.tone.find(o => o.key !== key)?.key || "template");
+    if (group === "flow" && templateFlow === key) setTemplateFlow(templateOptions.flow.find(o => o.key !== key)?.key || "template");
+    if (group === "cta" && templateCta === key) setTemplateCta(templateOptions.cta.find(o => o.key !== key)?.key || "template");
+  };
+
+  const handleSaveTemplateOptions = () => {
+    saveTemplateOptions(templateOptions);
+    addLog("info", "템플릿 재구성 옵션 저장됨");
   };
 
   if (!session) {
@@ -175,10 +236,10 @@ export default function ThreadsTab() {
   const handleTemplateRewrite = async () => {
     const savedTemplate = loadThreadTemplate();
     const template = savedTemplate?.data;
-    const format = CONVERSATION_FORMATS.find(f => f.key === templateFormat) || CONVERSATION_FORMATS[0];
-    const tone = TONE_OPTIONS.find(o => o.key === templateTone) || TONE_OPTIONS[0];
-    const flow = FLOW_OPTIONS.find(o => o.key === templateFlow) || FLOW_OPTIONS[0];
-    const cta = CTA_OPTIONS.find(o => o.key === templateCta) || CTA_OPTIONS[0];
+    const format = templateOptions.format.find(f => f.key === templateFormat) || templateOptions.format[0];
+    const tone = templateOptions.tone.find(o => o.key === templateTone) || templateOptions.tone[0];
+    const flow = templateOptions.flow.find(o => o.key === templateFlow) || templateOptions.flow[0];
+    const cta = templateOptions.cta.find(o => o.key === templateCta) || templateOptions.cta[0];
     const source = text.trim() || aiTopic.trim();
 
     if (!template) {
@@ -381,7 +442,7 @@ ${JSON.stringify(template, null, 2)}
             className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-100"
             title="템플릿 재구성에 적용할 대화 말투와 흐름"
           >
-            {CONVERSATION_FORMATS.map(format => (
+            {templateOptions.format.map(format => (
               <option key={format.key} value={format.key}>{format.label}</option>
             ))}
           </select>
@@ -391,7 +452,7 @@ ${JSON.stringify(template, null, 2)}
             className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-100"
             title="재구성할 말투"
           >
-            {TONE_OPTIONS.map(option => (
+            {templateOptions.tone.map(option => (
               <option key={option.key} value={option.key}>말투: {option.label}</option>
             ))}
           </select>
@@ -401,7 +462,7 @@ ${JSON.stringify(template, null, 2)}
             className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-100"
             title="재구성할 글 흐름"
           >
-            {FLOW_OPTIONS.map(option => (
+            {templateOptions.flow.map(option => (
               <option key={option.key} value={option.key}>흐름: {option.label}</option>
             ))}
           </select>
@@ -411,10 +472,16 @@ ${JSON.stringify(template, null, 2)}
             className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 transition-all focus:outline-none focus:ring-2 focus:ring-amber-100"
             title="재구성할 CTA 방식"
           >
-            {CTA_OPTIONS.map(option => (
+            {templateOptions.cta.map(option => (
               <option key={option.key} value={option.key}>CTA: {option.label}</option>
             ))}
           </select>
+          <button
+            onClick={() => setShowOptionEditor(v => !v)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 transition-all whitespace-nowrap"
+          >
+            옵션 편집
+          </button>
           <button
             onClick={handleTemplateRewrite}
             disabled={templating || (!aiTopic.trim() && !text.trim())}
@@ -435,6 +502,70 @@ ${JSON.stringify(template, null, 2)}
             {templating ? "재구성 중..." : "템플릿으로 재구성"}
           </button>
         </div>
+
+        {showOptionEditor && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-amber-800">템플릿 재구성 옵션 편집</p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setTemplateOptions(loadTemplateOptions())}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+                >
+                  되돌리기
+                </button>
+                <button
+                  onClick={handleSaveTemplateOptions}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-emerald-700 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50"
+                >
+                  저장
+                </button>
+              </div>
+            </div>
+            {[
+              { key: "format", title: "대화 포맷" },
+              { key: "tone", title: "말투" },
+              { key: "flow", title: "흐름" },
+              { key: "cta", title: "CTA" },
+            ].map(group => (
+              <div key={group.key} className="bg-white border border-amber-100 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-gray-700">{group.title}</p>
+                  <button
+                    onClick={() => addTemplateOption(group.key)}
+                    className="px-2 py-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100"
+                  >
+                    추가
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {templateOptions[group.key].map(option => (
+                    <div key={option.key} className="grid grid-cols-[120px_1fr_auto] gap-2 items-start">
+                      <input
+                        value={option.label}
+                        onChange={e => updateTemplateOption(group.key, option.key, "label", e.target.value)}
+                        className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-100"
+                      />
+                      <textarea
+                        value={option.prompt}
+                        onChange={e => updateTemplateOption(group.key, option.key, "prompt", e.target.value)}
+                        rows={2}
+                        className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-amber-100"
+                      />
+                      <button
+                        onClick={() => deleteTemplateOption(group.key, option.key)}
+                        disabled={templateOptions[group.key].length <= 1}
+                        className="px-2 py-1.5 text-[10px] font-semibold text-red-500 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 disabled:opacity-40"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {showTopicPicker && (
           <TopicPicker
