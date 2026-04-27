@@ -114,6 +114,15 @@ function loadTemplateSelection(username) {
 function saveTemplateSelection(username, data) {
   localStorage.setItem(templateSelectionKey(username), JSON.stringify(data));
 }
+function resolveSavedSelection(options, selection = {}) {
+  const hasOption = (group, key) => options[group]?.some(option => option.key === key);
+  return {
+    format: hasOption("format", selection.format) ? selection.format : "expert",
+    tone: hasOption("tone", selection.tone) ? selection.tone : "template",
+    flow: hasOption("flow", selection.flow) ? selection.flow : "template",
+    cta: hasOption("cta", selection.cta) ? selection.cta : "template",
+  };
+}
 function cleanThreadDraft(raw) {
   if (!raw) return "";
   let text = raw
@@ -157,7 +166,10 @@ function cleanThreadDraft(raw) {
 export default function ThreadsTab() {
   const [session] = useState(() => getSession());
   const username = session?.username || "__guest";
-  const [savedTemplateSelection] = useState(() => loadTemplateSelection(username));
+  const [templateOptions, setTemplateOptions] = useState(loadTemplateOptions);
+  const [savedTemplateSelection] = useState(() => (
+    resolveSavedSelection(loadTemplateOptions(), loadTemplateSelection(username))
+  ));
 
   // 설정
   const [config, setConfig] = useState(
@@ -178,7 +190,6 @@ export default function ThreadsTab() {
   const [templateTone, setTemplateTone] = useState(savedTemplateSelection.tone || "template");
   const [templateFlow, setTemplateFlow] = useState(savedTemplateSelection.flow || "template");
   const [templateCta, setTemplateCta] = useState(savedTemplateSelection.cta || "template");
-  const [templateOptions, setTemplateOptions] = useState(loadTemplateOptions);
   const [showOptionEditor, setShowOptionEditor] = useState(false);
   const [fetchingId, setFetchingId] = useState(false);
   const [result, setResult] = useState(null);
@@ -227,6 +238,7 @@ export default function ThreadsTab() {
   };
 
   const handleSaveTemplateSelection = () => {
+    saveTemplateOptions(templateOptions);
     saveTemplateSelection(username, {
       format: templateFormat,
       tone: templateTone,
