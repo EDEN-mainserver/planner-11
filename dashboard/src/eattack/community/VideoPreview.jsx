@@ -717,18 +717,26 @@ export default function VideoPreview({
     try {
       const accessToken = await getValidYtToken();
 
-      // 1) 브라우저 → Vercel Blob 직접 업로드 (handleUploadUrl 패턴)
-      setYtProgress(10);
+      // 1) 서버에서 Vercel Blob 클라이언트 토큰 발급
+      setYtProgress(5);
       const pathname = `yt-upload-${Date.now()}.mp4`;
-      const { upload } = await import("@vercel/blob/client");
-      const blobResult = await upload(pathname, mp4Blob, {
-        access: "public",
-        handleUploadUrl: "/api/youtube?_fn=blob-token",
-        onUploadProgress: ({ percentage }) => {
-          // Blob 업로드: 10~70%
-          setYtProgress(10 + Math.round(percentage * 0.6));
-        },
+      const tokenRes = await fetch("/api/youtube?_fn=blob-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pathname }),
       });
+      const tokenData = await tokenRes.json();
+      if (!tokenRes.ok) throw new Error(tokenData.error || "Blob 토큰 발급 실패");
+      const { clientToken } = tokenData;
+
+      // 2) 브라우저 → Vercel Blob 직접 업로드 (clientToken 직접 사용)
+      setYtProgress(10);
+      const { put: blobPut } = await import("@vercel/blob/client");
+      const blobResult = await blobPut(pathname, mp4Blob, {
+        access: "public",
+        token: clientToken,
+      });
+      setYtProgress(70);
       const blobUrl = blobResult.url;
 
       // 2) 서버 → YouTube 업로드 (서버-to-서버, CORS 없음)

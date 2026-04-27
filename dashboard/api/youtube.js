@@ -4,7 +4,7 @@
 // POST /api/youtube?_fn=blob-token   — Vercel Blob 클라이언트 업로드 토큰 발급
 // POST /api/youtube?_fn=blob-upload  — Vercel Blob URL에서 YouTube로 업로드 (서버-to-서버)
 
-import { handleUpload, del as blobDel } from "@vercel/blob/client";
+import { generateClientTokenFromReadWriteToken, del as blobDel } from "@vercel/blob/client";
 
 export const config = { maxDuration: 120 };
 
@@ -93,25 +93,25 @@ export default async function handler(req, res) {
     return res.status(200).json({ uploadUrl });
   }
 
-  // ── 3) Vercel Blob 클라이언트 업로드 토큰 발급 (handleUpload 표준 패턴) ──────
+  // ── 3) Vercel Blob 클라이언트 업로드 토큰 발급 ──────────────────────────────
   if (fn === "blob-token") {
     if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
-    try {
-      const host   = req.headers.host || "planforge-eden-planner.vercel.app";
-      const proto  = host.includes("localhost") ? "http" : "https";
-      const reqUrl = `${proto}://${host}/api/youtube?_fn=blob-token`;
+    const { pathname } = req.body ?? {};
+    if (!pathname) return res.status(400).json({ error: "pathname 필수" });
 
-      const jsonResponse = await handleUpload({
-        body:    req.body,
-        request: { url: reqUrl, method: req.method, headers: req.headers },
-        onBeforeGenerateToken: async (_pathname) => ({
-          allowedContentTypes:   ["video/mp4"],
-          maximumSizeInBytes:    500 * 1024 * 1024, // 500 MB
-        }),
-        onUploadCompleted: async () => {}, // 서버 콜백 불필요
+    const readWriteToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!readWriteToken) return res.status(500).json({ error: "BLOB_READ_WRITE_TOKEN 미설정" });
+
+    try {
+      const clientToken = await generateClientTokenFromReadWriteToken({
+        token:                readWriteToken,
+        pathname,
+        allowedContentTypes:  ["video/mp4", "video/webm", "application/octet-stream"],
+        maximumSizeInBytes:   500 * 1024 * 1024, // 500MB
+        addRandomSuffix:      false,
       });
-      return res.status(200).json(jsonResponse);
+      return res.status(200).json({ clientToken });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
