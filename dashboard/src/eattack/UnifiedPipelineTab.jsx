@@ -811,6 +811,7 @@ export default function UnifiedPipelineTab() {
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
+  const [igDirectUrls, setIgDirectUrls] = useState("");
   const [igLogs, setIgLogs] = useState([]);
 
   const addLog = (level, msg, detail = null) => {
@@ -1160,6 +1161,72 @@ export default function UnifiedPipelineTab() {
       setIgResult({
         status: "success",
         message: `게시 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
+        permalink: data.permalink,
+      });
+    } catch (e) {
+      addLog("error", `오류: ${e.message}`);
+      setError(e.message);
+    } finally {
+      setIgPosting(false);
+      setIgCaptureProgress({ step: "", done: 0, total: 0 });
+    }
+  };
+
+  const fillDirectUrlsFromCards = () => {
+    const urls = cards
+      .map((c) => c.imageUrl)
+      .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url));
+    setIgDirectUrls(urls.join("\n"));
+    addLog("info", `공개 URL ${urls.length}개를 채웠습니다`);
+  };
+
+  const postDirectInstagramUrls = async () => {
+    if (!igConfig.accountId || !igConfig.accessToken) {
+      setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
+      return;
+    }
+    const urls = igDirectUrls
+      .split(/\n+/)
+      .map((u) => u.trim())
+      .filter(Boolean);
+
+    if (urls.length === 0) {
+      setError("공개 이미지 URL을 한 줄에 하나씩 입력해주세요");
+      return;
+    }
+
+    if (urls.length > 10) {
+      setError("인스타그램 캐러셀은 최대 10장까지 업로드할 수 있습니다");
+      return;
+    }
+
+    setIgPosting(true);
+    setIgResult(null);
+    setError("");
+    setIgLogs([]);
+    setIgCaptureProgress({ step: "uploading", done: 0, total: urls.length });
+
+    try {
+      addLog("info", `공개 URL 업로드 시작: ${urls.length}개`);
+      const res = await fetch("/api/instagram-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: igConfig.accountId,
+          accessToken: igConfig.accessToken,
+          images: urls,
+          caption: postCaption || topic,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.logs?.length) data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
+      addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
+      if (!res.ok) throw new Error(data.error || "게시 실패");
+
+      setIgResult({
+        status: "success",
+        message: `공개 URL 업로드 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
         permalink: data.permalink,
       });
     } catch (e) {
@@ -2089,6 +2156,40 @@ export default function UnifiedPipelineTab() {
               value={postCaption}
               onChange={(e) => setPostCaption(e.target.value)}
             />
+          </div>
+
+          <div className="space-y-2 bg-white border border-violet-100 rounded-xl p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold text-gray-700">공개 URL 업로드</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">공개로 접근 가능한 이미지 URL만 넣으면 바로 캐러셀 게시가 가능합니다.</p>
+              </div>
+              <button
+                type="button"
+                onClick={fillDirectUrlsFromCards}
+                className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
+              >
+                현재 카드 URL 채우기
+              </button>
+            </div>
+            <textarea
+              rows={4}
+              placeholder={"https://example.com/1.jpg\nhttps://example.com/2.jpg\nhttps://example.com/3.jpg"}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white resize-none leading-relaxed font-mono"
+              value={igDirectUrls}
+              onChange={(e) => setIgDirectUrls(e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={postDirectInstagramUrls}
+                disabled={igPosting || !igConfig.accountId || !igConfig.accessToken}
+                className="px-3 py-2 bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold rounded-lg transition-all"
+              >
+                공개 URL로 업로드
+              </button>
+              <span className="text-[11px] text-gray-500">이미지 URL만 지원, 최대 10장</span>
+            </div>
           </div>
 
           <p className="text-[11px] text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
