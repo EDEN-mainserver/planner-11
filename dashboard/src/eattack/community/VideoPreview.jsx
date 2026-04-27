@@ -749,7 +749,7 @@ export default function VideoPreview({
           accessToken,
           title:         title?.trim() || script?.trim().slice(0, 100) || "커뮤니티 숏츠",
           description:   script?.trim().slice(0, 500) || "",
-          privacyStatus: "private",
+          privacyStatus: "public",
         }),
       });
       const uploadData = await uploadRes.json();
@@ -1311,7 +1311,7 @@ export default function VideoPreview({
                   <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5a3 3 0 0 0-2.1 2.1C.1 8.1.1 12 .1 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8z"/>
                   <polygon fill="white" points="9.6,15.6 15.8,12 9.6,8.4"/>
                 </svg>
-                {!ytToken ? "채널 연동 후 업로드 가능" : !lastMp4BlobRef.current ? "영상 녹화 후 업로드 가능" : "YouTube에 업로드 (비공개)"}
+                {!ytToken ? "채널 연동 후 업로드 가능" : !lastMp4BlobRef.current ? "영상 녹화 후 업로드 가능" : "YouTube에 업로드 (공개)"}
               </>
             )}
           </button>
