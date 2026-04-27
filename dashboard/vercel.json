@@ -47,7 +47,7 @@
   "crons": [
     {
       "path": "/api/full-auto-cron",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
