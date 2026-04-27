@@ -175,6 +175,7 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   const [ideasMap, setIdeasMap]         = useState({});
   const [imageMap, setImageMap]         = useState({}); // { [postUrl]: { loading, urls, error } }
   const [filterMin, setFilterMin]       = useState(0);
+  const [templateMap, setTemplateMap]   = useState({});
 
   // 키워드 입력 변경 시 키워드별 개수 자동 동기화 (중복 제거)
   const parsedKeywords = [...new Set(keyword.split(',').map(k => k.trim()).filter(Boolean))];
