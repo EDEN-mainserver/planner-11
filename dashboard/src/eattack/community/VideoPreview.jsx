@@ -663,7 +663,7 @@ export default function VideoPreview({
 
   // ── YouTube: OAuth 팝업 열기 ──
   const handleYouTubeConnect = useCallback(() => {
-    const w = window.open("/api/youtube-auth", "yt-auth", "width=520,height=680,noopener");
+    const w = window.open("/api/youtube-auth", "yt-auth", "width=520,height=680");
     if (!w) { alert("팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요."); return; }
 
     const onMsg = (e) => {
