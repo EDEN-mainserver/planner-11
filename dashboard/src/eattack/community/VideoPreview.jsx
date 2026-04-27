@@ -705,7 +705,7 @@ export default function VideoPreview({
     return d.accessToken;
   }, []);
 
-  // ── YouTube: MP4 업로드 ──
+  // ── YouTube: MP4 업로드 (Vercel Blob 경유 — CORS 우회) ──
   const handleYouTubeUpload = useCallback(async () => {
     const mp4Blob = lastMp4BlobRef.current;
     if (!mp4Blob) { alert("먼저 영상을 녹화/다운로드하세요."); return; }
@@ -717,44 +717,38 @@ export default function VideoPreview({
     try {
       const accessToken = await getValidYtToken();
 
-      // 1) 서버에서 업로드 세션 URL 받기 (CORS Location 헤더 우회)
-      const initRes = await fetch("/api/youtube?_fn=init-upload", {
+      // 1) 브라우저 → Vercel Blob 직접 업로드 (handleUploadUrl 패턴)
+      setYtProgress(10);
+      const pathname = `yt-upload-${Date.now()}.mp4`;
+      const { upload } = await import("@vercel/blob/client");
+      const blobResult = await upload(pathname, mp4Blob, {
+        access: "public",
+        handleUploadUrl: "/api/youtube?_fn=blob-token",
+        onUploadProgress: ({ percentage }) => {
+          // Blob 업로드: 10~70%
+          setYtProgress(10 + Math.round(percentage * 0.6));
+        },
+      });
+      const blobUrl = blobResult.url;
+
+      // 2) 서버 → YouTube 업로드 (서버-to-서버, CORS 없음)
+      setYtProgress(72);
+      const uploadRes = await fetch("/api/youtube?_fn=blob-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          blobUrl,
           accessToken,
           title:         title?.trim() || script?.trim().slice(0, 100) || "커뮤니티 숏츠",
           description:   script?.trim().slice(0, 500) || "",
           privacyStatus: "private",
-          fileSize:      mp4Blob.size,
         }),
       });
-      const initData = await initRes.json();
-      if (!initRes.ok) throw new Error(initData.error || "업로드 세션 초기화 실패");
-
-      const { uploadUrl } = initData;
-
-      // 2) 브라우저에서 YouTube에 직접 업로드 (fetch 사용)
-      setYtProgress(10);
-      const putRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "video/mp4",
-          "Authorization": `Bearer ${accessToken}`,
-        },
-        body: mp4Blob,
-      });
-
-      if (!putRes.ok) {
-        const errText = await putRes.text().catch(() => "");
-        throw new Error(`YouTube 업로드 실패 (${putRes.status}): ${errText.slice(0, 200)}`);
-      }
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error || "YouTube 업로드 실패");
 
       setYtProgress(100);
-      const putData = await putRes.json().catch(() => ({}));
-      const videoId = putData.id || "unknown";
-
-      setYtResult({ videoId });
+      setYtResult({ videoId: uploadData.videoId });
     } catch (err) {
       alert(`YouTube 업로드 실패: ${err.message}`);
     } finally {
