@@ -236,6 +236,10 @@ export default function ThreadsTab() {
   const [scheduledAt, setScheduledAt] = useState("");
   const [scheduledPosts, setScheduledPosts] = useState([]);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [bulkImporting, setBulkImporting] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null); // { success, fail }
+  const [scheduleView, setScheduleView] = useState("pending"); // "pending" | "all"
 
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
@@ -563,6 +567,71 @@ ${JSON.stringify(template, null, 2)}
     if (ok) setScheduledPosts((prev) => prev.filter((p) => p.status === "pending"));
   };
 
+  // CSV 일괄 업로드
+  // CSV 형식: datetime,text  (헤더 포함)
+  // datetime: YYYY-MM-DD HH:MM 또는 YYYY-MM-DDTHH:MM
+  const handleBulkImport = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!accessToken.trim() || !userId.trim()) {
+      addLog("error", "액세스 토큰과 사용자 ID를 먼저 입력·저장하세요");
+      return;
+    }
+
+    const raw = await file.text();
+    const lines = raw.split(/\r?\n/).filter((l) => l.trim());
+    // 첫 줄이 헤더면 제거
+    const dataLines = lines[0].toLowerCase().includes("datetime") ? lines.slice(1) : lines;
+
+    const parsed = [];
+    const errors = [];
+    for (let i = 0; i < dataLines.length; i++) {
+      const line = dataLines[i].trim();
+      if (!line) continue;
+      // datetime 컬럼은 콤마 이전, text는 나머지 (텍스트 안에 콤마 허용)
+      const commaIdx = line.indexOf(",");
+      if (commaIdx === -1) { errors.push(`줄 ${i + 2}: 콤마 없음`); continue; }
+      const dtRaw = line.slice(0, commaIdx).trim().replace(" ", "T");
+      const textRaw = line.slice(commaIdx + 1).trim().replace(/^"|"$/g, "").replace(/""/g, '"');
+      const dt = new Date(dtRaw);
+      if (isNaN(dt.getTime())) { errors.push(`줄 ${i + 2}: 날짜 형식 오류 (${dtRaw})`); continue; }
+      if (!textRaw) { errors.push(`줄 ${i + 2}: 텍스트 없음`); continue; }
+      parsed.push({
+        id: `${Date.now()}_${i}`,
+        text: textRaw.slice(0, 500),
+        userId: userId.trim(),
+        accessToken: accessToken.trim(),
+        scheduledAt: dtRaw,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    if (!parsed.length) {
+      addLog("error", `파싱된 항목 없음. 오류: ${errors.slice(0, 3).join(" / ")}`);
+      setBulkResult({ success: 0, fail: errors.length, errors: errors.slice(0, 5) });
+      return;
+    }
+
+    setBulkImporting(true);
+    addLog("info", `CSV 파싱 완료: ${parsed.length}개 업로드 중...`);
+
+    // 서버에 10개씩 묶어서 순차 저장 (rate limit 방지)
+    let success = 0;
+    let fail = errors.length;
+    for (const post of parsed) {
+      const ok = await addSchedule(username, post);
+      if (ok) { success++; setScheduledPosts((prev) => [...prev, post]); }
+      else fail++;
+    }
+
+    setBulkImporting(false);
+    setBulkResult({ success, fail });
+    addLog("info", `일괄 예약 완료: 성공 ${success}개, 실패 ${fail}개`);
+    if (errors.length) addLog("error", `파싱 오류: ${errors.slice(0, 3).join(" / ")}`);
+  };
+
   const charLeft = TH_MAX_CHARS - text.length;
 
   return (
@@ -865,42 +934,97 @@ ${JSON.stringify(template, null, 2)}
             </button>
           </div>
         )}
+
+        {/* CSV 일괄 업로드 */}
+        <div className="space-y-2">
+          <button
+            onClick={() => { setShowBulkImport(v => !v); setBulkResult(null); }}
+            className="w-full py-2.5 text-xs font-bold rounded-xl border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 transition-all flex items-center justify-center gap-1.5"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            CSV 일괄 업로드 (1년치 예약)
+          </button>
+
+          {showBulkImport && (
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2.5">
+              <div>
+                <p className="text-[11px] font-bold text-gray-700 mb-1">CSV 형식</p>
+                <pre className="text-[10px] text-gray-500 bg-white border border-gray-200 rounded-lg p-2 leading-relaxed font-mono">{`datetime,text
+2026-05-01 09:00,오늘의 첫 게시글입니다.
+2026-05-01 18:00,"콤마가 있는 텍스트도 따옴표로 처리됩니다."
+2026-05-02 09:00,두 번째 날 아침 게시글`}</pre>
+                <p className="text-[10px] text-gray-400 mt-1">datetime 형식: YYYY-MM-DD HH:MM · 500자 초과 시 자동 잘림 · 같은 시간 중복 예약 가능</p>
+              </div>
+              <label className={`flex items-center justify-center gap-2 w-full py-2.5 text-xs font-bold rounded-xl cursor-pointer transition-all
+                ${bulkImporting
+                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : "bg-gray-900 text-white hover:bg-gray-700"}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                {bulkImporting ? "업로드 중..." : "CSV 파일 선택"}
+                <input type="file" accept=".csv,text/csv" className="hidden" disabled={bulkImporting} onChange={handleBulkImport} />
+              </label>
+              {bulkResult && (
+                <div className={`px-3 py-2 rounded-lg text-[11px] font-medium ${bulkResult.fail === 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                  성공 {bulkResult.success}개 예약됨
+                  {bulkResult.fail > 0 && ` · 실패/오류 ${bulkResult.fail}개`}
+                  {bulkResult.errors?.length > 0 && (
+                    <div className="mt-1 text-[10px] text-red-500">{bulkResult.errors.join(" / ")}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 예약 목록 */}
       {scheduledPosts.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-gray-600">예약된 게시물 ({scheduledPosts.filter(p => p.status === "pending").length}개 대기)</p>
-            {scheduledPosts.some(p => p.status !== "pending") && (
-              <button
-                onClick={clearDoneSchedules}
-                className="text-[11px] text-gray-400 hover:text-gray-600"
-              >
-                완료 항목 지우기
-              </button>
-            )}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-bold text-gray-700">
+                예약 현황
+              </p>
+              <span className="text-[11px] text-gray-400">
+                대기 {scheduledPosts.filter(p => p.status === "pending").length} · 완료 {scheduledPosts.filter(p => p.status === "posted").length} · 실패 {scheduledPosts.filter(p => p.status === "failed").length}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px] font-semibold">
+                {["pending", "all"].map((v) => (
+                  <button key={v} onClick={() => setScheduleView(v)}
+                    className={`px-2.5 py-1 transition-colors ${scheduleView === v ? "bg-gray-800 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                    {v === "pending" ? "대기중" : "전체"}
+                  </button>
+                ))}
+              </div>
+              {scheduledPosts.some(p => p.status !== "pending") && (
+                <button onClick={clearDoneSchedules} className="text-[11px] text-gray-400 hover:text-red-500">
+                  완료 삭제
+                </button>
+              )}
+            </div>
           </div>
-          <div className="space-y-1.5">
-            {scheduledPosts.map(p => (
+          <div className="space-y-1 max-h-72 overflow-y-auto pr-0.5">
+            {scheduledPosts
+              .filter(p => scheduleView === "all" || p.status === "pending")
+              .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+              .map(p => (
               <div key={p.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border
                 ${p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
                 <div className={`w-2 h-2 rounded-full flex-shrink-0
                   ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
-                <span className="text-gray-500 flex-shrink-0 font-mono">
+                <span className="text-gray-500 flex-shrink-0 font-mono text-[11px]">
                   {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
                 </span>
-                <span className="flex-1 text-gray-700 truncate">{p.text.slice(0, 25)}{p.text.length > 25 ? "..." : ""}</span>
-                <span className={`flex-shrink-0 font-semibold
+                <span className="flex-1 text-gray-700 truncate">{p.text.slice(0, 30)}{p.text.length > 30 ? "..." : ""}</span>
+                <span className={`flex-shrink-0 font-semibold text-[11px]
                   ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
-                  {p.status === "pending" ? "대기중" : p.status === "posted" ? "게시됨" : "실패"}
+                  {p.status === "pending" ? "대기" : p.status === "posted" ? "완료" : "실패"}
                 </span>
                 {p.status === "pending" && (
-                  <button
-                    onClick={() => cancelSchedule(p.id)}
-                    className="text-gray-400 hover:text-red-500 flex-shrink-0"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  <button onClick={() => cancelSchedule(p.id)} className="text-gray-300 hover:text-red-500 flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 )}
               </div>
