@@ -1325,7 +1325,7 @@ ${JSON.stringify(template, null, 2)}
         </summary>
         <div className="mt-2 p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs text-gray-600 space-y-1.5 leading-relaxed">
           <p><strong>1.</strong> developers.facebook.com/apps → 앱 생성 → Use Case: Threads 선택</p>
-          <p><strong>2.</strong> Redirect URI 설정: <code className="bg-gray-200 px-1 rounded">https://planforge-eden-planner.vercel.app/auth/</code></p>
+          <p><strong>2.</strong> Redirect URI 설정: <code className="bg-gray-200 px-1 rounded">https://planforge-ui.vercel.app/auth/</code></p>
           <p><strong>3.</strong> Authorization URL로 Threads 로그인 → code 획득</p>
           <p><strong>4.</strong> code → 단기 토큰 교환 → 장기 토큰(60일) 교환</p>
           <p><strong>5.</strong> 위 토큰 입력 → "자동 조회" 클릭 → 완료</p>

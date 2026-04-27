@@ -6,14 +6,14 @@
 //   IG_APP_SECRET — Meta 앱 시크릿
 //
 // 사용 흐름:
-//   1. https://planforge-eden-planner.vercel.app/auth/instagram/ 접속
+//   1. https://planforge-ui.vercel.app/auth/instagram/ 접속
 //   2. "Instagram 계정 연결하기" 클릭 → Meta 로그인/승인
 //   3. 이 핸들러로 ?code=XXX 도착 → 장기 토큰 + IG 계정 ID 자동 조회
 //   4. 에덴 대시보드 → 통합 파이프라인 → Instagram 설정에 붙여넣기
 
 const FB_API       = "https://graph.facebook.com/v21.0";
 const FB_TOKEN_URL = `${FB_API}/oauth/access_token`;
-const REDIRECT_URI = "https://planforge-eden-planner.vercel.app/auth/instagram/";
+const REDIRECT_URI = "https://planforge-ui.vercel.app/auth/instagram/";
 
 const SCOPES = [
   "instagram_basic",
