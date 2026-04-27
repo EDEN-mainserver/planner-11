@@ -641,12 +641,16 @@ export default function VideoPreview({
       recAudioCtx?.close(); recAudioCtx = null;
     }
 
-    // 오디오 코덱 명시 (opus 포함) — 미포함 시 audio track이 무시될 수 있음
+    // MP4(H.264+AAC) 우선 → 안 되면 WebM 폴백
+    // Chrome 130+ / Edge는 MP4 지원 → Windows 기본 플레이어에서도 재생 가능
     const mimeType = [
+      "video/mp4;codecs=avc1,mp4a.40.2", // H.264 + AAC (가장 호환성 높음)
+      "video/mp4",                         // MP4 일반 (Chrome 130+)
       "video/webm;codecs=vp9,opus",
       "video/webm;codecs=vp8,opus",
       "video/webm",
     ].find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
+    const ext = mimeType.startsWith("video/mp4") ? "mp4" : "webm";
 
     const chunks = [];
     const recorder = new MediaRecorder(new MediaStream(streams), {
@@ -659,7 +663,7 @@ export default function VideoPreview({
       const blob = new Blob(chunks, { type: mimeType });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "community-video.webm";
+      a.download = `community-video.${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
       // AudioContext 닫기 → audio 엘리먼트가 기본 출력으로 복귀
@@ -822,7 +826,7 @@ export default function VideoPreview({
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
               </svg>
-              영상 다운로드 (.webm)
+              영상 다운로드
             </>
           )}
         </button>
