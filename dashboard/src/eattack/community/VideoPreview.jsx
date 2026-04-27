@@ -720,40 +720,37 @@ export default function VideoPreview({
     // 폰트 로드 완료 대기 (Noto Sans KR 등)
     await document.fonts.ready;
 
-    // ── 녹화 전용 GIF 로더 (React 상태 우회 — setCurrentMs/gifUrl 체인 사용 안 함) ──
-    // currentGifRef.current.el 을 직접 교체: 이전 GIF 유지하다 새 것 로드되면 교체
-    const recGifCache = {};  // 녹화 중 GIF 캐시 (쿼리 → Image 엘리먼트)
-    let recGifLoading = null; // 현재 로드 중인 쿼리 (중복 요청 방지)
+    // ── 녹화 전용 GIF — React 상태(currentGifRef)와 완전 분리 ──
+    // setCurrentMs(0) → currentSentence=null → setGifUrl(null) → currentGifRef.current=null
+    // 체인이 recording 시작 직후 ref를 지우므로, 독립 객체 recGifEl 사용
+    const recGifEl = { current: null }; // React ref가 아닌 순수 로컬 객체
+    const recGifCache = {};
+    let recGifLoading = null;
 
     function fetchRecGif(query) {
       if (!query || recGifLoading === query) return;
       if (recGifCache[query]) {
-        currentGifRef.current = { url: query, el: recGifCache[query] };
+        recGifEl.current = recGifCache[query];
         return;
       }
       recGifLoading = query;
       fetch(`/api/klipy?q=${encodeURIComponent(query)}`)
         .then(r => r.json())
         .then(d => {
-          if (!d?.url) return;
+          if (!d?.url) { recGifLoading = null; return; }
           const el = new Image();
           el.src = `/api/gif-proxy?url=${encodeURIComponent(d.url)}`;
-          el.onload = () => {
-            recGifCache[query] = el;
-            if (recGifLoading === query) {
-              currentGifRef.current = { url: d.url, el };
-              recGifLoading = null;
-            }
-          };
+          el.onload  = () => { recGifCache[query] = el; recGifEl.current = el; recGifLoading = null; };
+          el.onerror = () => { recGifLoading = null; };
         })
         .catch(() => { recGifLoading = null; });
     }
 
-    // 첫 GIF 미리 로드 (녹화 시작 전)
+    // 첫 GIF 미리 로드: 최대 1.5초 폴링 대기
     if (gifQuery) {
       fetchRecGif(gifQuery);
-      if (!currentGifRef.current.el) {
-        await new Promise(resolve => setTimeout(resolve, 600));
+      for (let i = 0; i < 15 && !recGifEl.current; i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 
@@ -767,7 +764,7 @@ export default function VideoPreview({
     setPlaying(true);
 
     // 동기 루프 — canvas에 직접 그림
-    let lastRecSentence = null;
+    let lastRecSentence = gifQuery ?? null; // 첫 자막 변경 감지용
     const loop = () => {
       const elapsed = performance.now() - startTs;
       if (elapsed > totalMs + 1000) {
@@ -787,13 +784,13 @@ export default function VideoPreview({
       }
       const sentenceText = (found && elapsed <= found.endMs + 500) ? found.text : null;
 
-      // 자막이 바뀌면 GIF 교체 요청 (이전 GIF 유지하며 새 것 로드)
+      // 자막이 바뀌면 새 GIF 로드 (이전 GIF 유지하며 교체)
       if (sentenceText !== lastRecSentence) {
         lastRecSentence = sentenceText;
         if (sentenceText) fetchRecGif(sentenceText);
       }
 
-      drawPreviewFrame(ctx, W, H, sentenceText, currentGifRef.current.el);
+      drawPreviewFrame(ctx, W, H, sentenceText, recGifEl.current);
       setTimeout(loop, 125);
     };
     loop();
