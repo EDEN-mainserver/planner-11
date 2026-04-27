@@ -188,6 +188,36 @@ function buildSRT(captions) {
   return chunks.map((c, i) => `${i + 1}\n${fmt(c.startMs)} --> ${fmt(c.endMs)}\n${c.text.trim()}`).join("\n\n");
 }
 
+function openVideoVerificationWindow(blob, filename) {
+  const objectUrl = URL.createObjectURL(blob);
+  const popup = window.open("", "_blank");
+  if (!popup) return;
+
+  popup.document.write(`<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${filename}</title>
+  <style>
+    html, body { margin: 0; background: #0f1115; color: #e5e7eb; font-family: system-ui, sans-serif; height: 100%; }
+    body { display: grid; place-items: center; }
+    .wrap { width: min(92vw, 420px); display: grid; gap: 12px; }
+    video { width: 100%; max-height: 86vh; border-radius: 14px; background: #000; box-shadow: 0 16px 40px rgba(0,0,0,0.35); }
+    p { margin: 0; text-align: center; font-size: 13px; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <video src="${objectUrl}" controls autoplay loop playsinline></video>
+    <p>다운로드된 파일 재생 확인: ${filename}</p>
+  </div>
+</body>
+</html>`);
+  popup.document.close();
+  popup.addEventListener("beforeunload", () => URL.revokeObjectURL(objectUrl), { once: true });
+}
+
 export default function VideoPreview({
   bgPreset,
   title,
@@ -712,6 +742,7 @@ export default function VideoPreview({
         a.download = "community-video.mp4";
         a.click();
         URL.revokeObjectURL(a.href);
+        openVideoVerificationWindow(mp4Blob, a.download);
       } catch (ffmpegErr) {
         console.warn("[rec] ffmpeg 변환 실패, webm으로 폴백:", ffmpegErr);
         // 폴백: 원본 webm 그대로 다운로드
@@ -720,6 +751,7 @@ export default function VideoPreview({
         a.download = "community-video.webm";
         a.click();
         URL.revokeObjectURL(a.href);
+        openVideoVerificationWindow(webmBlob, a.download);
       } finally {
         setConverting(false);
       }
