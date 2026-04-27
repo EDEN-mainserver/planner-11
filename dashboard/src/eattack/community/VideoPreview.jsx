@@ -609,38 +609,30 @@ export default function VideoPreview({
     const videoStream = canvas.captureStream(8);
     const streams = [...videoStream.getVideoTracks()];
 
-    // ── 오디오: AudioBuffer 방식 (TTS + BGM 모두 녹화에 포함) ──
-    // captureStream()은 브라우저마다 불안정 → fetch로 직접 디코딩
-    let recAudioCtx = null, ttsSource = null, bgmRecSource = null;
+    // ── 오디오: createMediaElementSource 방식 ──
+    // 이미 로드된 audio 엘리먼트를 AudioContext에 직접 연결 → fetch/decode 불필요
+    let recAudioCtx = null;
     try {
       recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
       await recAudioCtx.resume();
       const recDest = recAudioCtx.createMediaStreamDestination();
 
-      // TTS 음성
-      if (audioUrl) {
-        const resp = await fetch(audioUrl);
-        const ab   = await resp.arrayBuffer();
-        const buf  = await recAudioCtx.decodeAudioData(ab);
-        ttsSource  = recAudioCtx.createBufferSource();
-        ttsSource.buffer = buf;
-        ttsSource.connect(recDest);
+      // TTS: 기존 Audio 엘리먼트를 녹화 목적지에 연결
+      if (audioRef.current) {
+        try {
+          const ttsSrc = recAudioCtx.createMediaElementSource(audioRef.current);
+          ttsSrc.connect(recDest);
+          ttsSrc.connect(recAudioCtx.destination); // 스피커 출력도 유지
+        } catch (e) { console.warn("[rec] TTS 소스 연결 실패:", e); }
       }
 
-      // BGM (볼륨 30%, 루프)
-      if (bgmFile) {
+      // BGM: 기존 BGM 엘리먼트를 녹화 목적지에 연결
+      if (bgmRef.current) {
         try {
-          const resp   = await fetch(encodeURI(bgmFile));
-          const ab     = await resp.arrayBuffer();
-          const buf    = await recAudioCtx.decodeAudioData(ab);
-          bgmRecSource = recAudioCtx.createBufferSource();
-          bgmRecSource.buffer = buf;
-          bgmRecSource.loop   = true;
-          const gain = recAudioCtx.createGain();
-          gain.gain.value = 0.3;
-          bgmRecSource.connect(gain);
-          gain.connect(recDest);
-        } catch (e) { console.warn("[rec] BGM AudioBuffer 실패:", e); }
+          const bgmSrc = recAudioCtx.createMediaElementSource(bgmRef.current);
+          bgmSrc.connect(recDest);
+          bgmSrc.connect(recAudioCtx.destination); // 스피커 출력도 유지
+        } catch (e) { console.warn("[rec] BGM 소스 연결 실패:", e); }
       }
 
       streams.push(...recDest.stream.getAudioTracks());
@@ -649,20 +641,28 @@ export default function VideoPreview({
       recAudioCtx?.close(); recAudioCtx = null;
     }
 
-    const mimeType = ["video/mp4", "video/webm;codecs=vp9", "video/webm"]
-      .find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
-    const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+    // 오디오 코덱 명시 (opus 포함) — 미포함 시 audio track이 무시될 수 있음
+    const mimeType = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+    ].find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
 
     const chunks = [];
-    const recorder = new MediaRecorder(new MediaStream(streams), { mimeType, videoBitsPerSecond: 3_000_000 });
+    const recorder = new MediaRecorder(new MediaStream(streams), {
+      mimeType,
+      videoBitsPerSecond: 3_000_000,
+      audioBitsPerSecond: 128_000,
+    });
     recorder.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
     recorder.onstop = () => {
       const blob = new Blob(chunks, { type: mimeType });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `community-video.${ext}`;
+      a.download = "community-video.webm";
       a.click();
       URL.revokeObjectURL(a.href);
+      // AudioContext 닫기 → audio 엘리먼트가 기본 출력으로 복귀
       recAudioCtx?.close();
       setRecording(false);
       setRecProgress(0);
@@ -671,16 +671,14 @@ export default function VideoPreview({
     // 폰트 로드 완료 대기 (Noto Sans KR 등)
     await document.fonts.ready;
 
-    // 처음부터 재생 시작 — AudioBuffer 소스와 audioRef 동시 시작
+    // recorder 먼저 시작 → 오디오 재생 시작 (타이밍 보장)
     setCurrentMs(0);
-    if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
-    if (bgmRef.current)   { bgmRef.current.currentTime = 0;   bgmRef.current.play().catch(() => {}); }
-    ttsSource?.start(0);     // 녹화 스트림에 TTS 공급
-    bgmRecSource?.start(0);  // 녹화 스트림에 BGM 공급
-    setPlaying(true);
-
     recorder.start(200);
     const startTs = performance.now();
+
+    if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
+    if (bgmRef.current)   { bgmRef.current.currentTime = 0;   bgmRef.current.play().catch(() => {}); }
+    setPlaying(true);
 
     // 동기 루프 — canvas에 직접 그림
     const loop = () => {
@@ -688,12 +686,8 @@ export default function VideoPreview({
       if (elapsed > totalMs + 1000) {
         recorder.stop();
         setPlaying(false);
-        // TTS 오디오: 일시정지 + currentTime 리셋 (다음 재생 시 처음부터 시작)
         if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
-        // BGM: 일시정지 + 리셋
-        if (bgmRef.current) { bgmRef.current.pause(); bgmRef.current.currentTime = 0; }
-        try { ttsSource?.stop(); } catch (_) {}
-        try { bgmRecSource?.stop(); } catch (_) {}
+        if (bgmRef.current)   { bgmRef.current.pause();   bgmRef.current.currentTime = 0; }
         return;
       }
       setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
@@ -828,7 +822,7 @@ export default function VideoPreview({
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>
               </svg>
-              MP4 다운로드
+              영상 다운로드 (.webm)
             </>
           )}
         </button>
