@@ -358,6 +358,7 @@ export default function VideoPreview({
   const gifPreviewRef  = useRef(null); // 프리뷰 img ref (녹화 시 drawImage 소스)
   const isRecordingRef = useRef(false); // 녹화 중 여부 — setGifUrl(null) 차단용
   const recGifFramesRef = useRef(null); // omggif 디코딩된 GIF 프레임 배열 { frames, totalDuration }
+  const lastMp4BlobRef  = useRef(null); // 마지막 녹화된 MP4 Blob (YouTube 업로드용)
   const [playing, setPlaying]         = useState(false);
   const [currentMs, setCurrentMs]     = useState(0);
   const [webCaptions, setWebCaptions] = useState(null);
@@ -365,6 +366,12 @@ export default function VideoPreview({
   const [recProgress, setRecProgress] = useState(0);
   const [converting, setConverting]   = useState(false); // ffmpeg 변환 중
   const [gifUrl, setGifUrl]           = useState(null);  // gifUrl을 useEffect보다 먼저 선언 (TDZ 방지)
+  // ── YouTube 업로드 상태 ──
+  const [ytToken,     setYtToken]     = useState(() => localStorage.getItem("yt_access_token") || "");
+  const [ytChannel,   setYtChannel]   = useState(() => localStorage.getItem("yt_channel") || "");
+  const [ytUploading, setYtUploading] = useState(false);
+  const [ytProgress,  setYtProgress]  = useState(0);
+  const [ytResult,    setYtResult]    = useState(null); // { videoId } | null
 
   // 언마운트 시 Web Speech 정리
   useEffect(() => {
@@ -654,6 +661,109 @@ export default function VideoPreview({
     URL.revokeObjectURL(a.href);
   }, [captions]);
 
+  // ── YouTube: OAuth 팝업 열기 ──
+  const handleYouTubeConnect = useCallback(() => {
+    const w = window.open("/api/youtube-auth", "yt-auth", "width=520,height=680,noopener");
+    if (!w) { alert("팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요."); return; }
+
+    const onMsg = (e) => {
+      if (e.data?.type !== "youtube-auth") return;
+      window.removeEventListener("message", onMsg);
+      const { accessToken, refreshToken, expiresIn, channelTitle } = e.data;
+      localStorage.setItem("yt_access_token",  accessToken);
+      localStorage.setItem("yt_refresh_token",  refreshToken);
+      localStorage.setItem("yt_expires_at",     String(Date.now() + (expiresIn ?? 3600) * 1000));
+      if (channelTitle) localStorage.setItem("yt_channel", channelTitle);
+      setYtToken(accessToken);
+      setYtChannel(channelTitle || "");
+    };
+    window.addEventListener("message", onMsg);
+  }, []);
+
+  // ── YouTube: 액세스 토큰 유효 여부 확인 + 필요 시 리프레시 ──
+  const getValidYtToken = useCallback(async () => {
+    const expiresAt  = Number(localStorage.getItem("yt_expires_at") ?? 0);
+    const accessToken = localStorage.getItem("yt_access_token") ?? "";
+    const refreshToken = localStorage.getItem("yt_refresh_token") ?? "";
+
+    // 만료까지 5분 이상 남았으면 그대로 사용
+    if (accessToken && Date.now() < expiresAt - 5 * 60 * 1000) return accessToken;
+
+    // 리프레시
+    if (!refreshToken) throw new Error("YouTube 재인증이 필요합니다");
+    const r = await fetch("/api/youtube?_fn=refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "토큰 리프레시 실패");
+
+    localStorage.setItem("yt_access_token", d.accessToken);
+    localStorage.setItem("yt_expires_at",   String(Date.now() + (d.expiresIn ?? 3600) * 1000));
+    setYtToken(d.accessToken);
+    return d.accessToken;
+  }, []);
+
+  // ── YouTube: MP4 업로드 ──
+  const handleYouTubeUpload = useCallback(async () => {
+    const mp4Blob = lastMp4BlobRef.current;
+    if (!mp4Blob) { alert("먼저 영상을 녹화/다운로드하세요."); return; }
+
+    setYtUploading(true);
+    setYtProgress(0);
+    setYtResult(null);
+
+    try {
+      const accessToken = await getValidYtToken();
+
+      // 1) 서버에서 업로드 세션 URL 받기 (CORS Location 헤더 우회)
+      const initRes = await fetch("/api/youtube?_fn=init-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken,
+          title:         title?.trim() || script?.trim().slice(0, 100) || "커뮤니티 숏츠",
+          description:   script?.trim().slice(0, 500) || "",
+          privacyStatus: "private",
+          fileSize:      mp4Blob.size,
+        }),
+      });
+      const initData = await initRes.json();
+      if (!initRes.ok) throw new Error(initData.error || "업로드 세션 초기화 실패");
+
+      const { uploadUrl } = initData;
+
+      // 2) 브라우저에서 직접 YouTube에 파일 업로드 (용량 제한 없음)
+      const videoId = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", "video/mp4");
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setYtProgress(Math.round((e.loaded / e.total) * 100));
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data.id);
+          } else {
+            reject(new Error(`업로드 실패 (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("네트워크 오류"));
+        xhr.send(mp4Blob);
+      });
+
+      setYtResult({ videoId });
+    } catch (err) {
+      alert(`YouTube 업로드 실패: ${err.message}`);
+    } finally {
+      setYtUploading(false);
+    }
+  }, [getValidYtToken, title, script]);
+
   // ── 녹화 캔버스 직접 렌더링 (html2canvas 대체 — 위치 정확도 100%) ──
   const drawPreviewFrame = useCallback((ctx, W, H, sentenceText, gifEl) => {
     const bodyDark = isDark(bodyBgColor || "#ffffff");
@@ -874,6 +984,8 @@ export default function VideoPreview({
         ]);
         const data = await ffmpeg.readFile("output.mp4");
         const mp4Blob = new Blob([data.buffer], { type: "video/mp4" });
+
+        lastMp4BlobRef.current = mp4Blob; // YouTube 업로드를 위해 저장
 
         const a = document.createElement("a");
         a.href = URL.createObjectURL(mp4Blob);
@@ -1149,6 +1261,73 @@ export default function VideoPreview({
         {recording && (
           <p className="text-[10px] text-gray-400 text-center">영상이 처음부터 재생되며 녹화됩니다. 완료 시 자동 다운로드됩니다.</p>
         )}
+
+        {/* ── YouTube 업로드 영역 ── */}
+        <div className="border-t border-gray-100 pt-2 mt-1">
+          {/* 연동 상태 표시 + 연동/해제 버튼 */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              {/* YouTube 아이콘 */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#FF0000">
+                <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5a3 3 0 0 0-2.1 2.1C.1 8.1.1 12 .1 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8z"/>
+                <polygon fill="white" points="9.6,15.6 15.8,12 9.6,8.4"/>
+              </svg>
+              <span className="text-[11px] font-medium text-gray-700">
+                {ytChannel ? `${ytChannel}` : "YouTube 미연동"}
+              </span>
+            </div>
+            <button
+              onClick={ytToken ? () => {
+                localStorage.removeItem("yt_access_token");
+                localStorage.removeItem("yt_refresh_token");
+                localStorage.removeItem("yt_expires_at");
+                localStorage.removeItem("yt_channel");
+                setYtToken(""); setYtChannel(""); setYtResult(null);
+              } : handleYouTubeConnect}
+              className="text-[10px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+            >
+              {ytToken ? "연동 해제" : "채널 연동"}
+            </button>
+          </div>
+
+          {/* 업로드 버튼 */}
+          <button
+            onClick={handleYouTubeUpload}
+            disabled={!ytToken || !lastMp4BlobRef.current || ytUploading || recording || converting}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+            style={{ background: ytToken && lastMp4BlobRef.current ? "#FF0000" : "#e5e7eb", color: ytToken && lastMp4BlobRef.current ? "white" : "#9ca3af" }}
+          >
+            {ytUploading ? (
+              <>
+                <svg className="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                YouTube 업로드 중... {ytProgress}%
+              </>
+            ) : (
+              <>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5a3 3 0 0 0-2.1 2.1C.1 8.1.1 12 .1 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8z"/>
+                  <polygon fill="white" points="9.6,15.6 15.8,12 9.6,8.4"/>
+                </svg>
+                {!ytToken ? "채널 연동 후 업로드 가능" : !lastMp4BlobRef.current ? "영상 녹화 후 업로드 가능" : "YouTube에 업로드 (비공개)"}
+              </>
+            )}
+          </button>
+
+          {/* 업로드 완료 링크 */}
+          {ytResult?.videoId && (
+            <a
+              href={`https://studio.youtube.com/video/${ytResult.videoId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-1 mt-2 text-[11px] text-green-600 font-medium hover:underline"
+            >
+              ✓ 업로드 완료 — YouTube Studio에서 확인
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );

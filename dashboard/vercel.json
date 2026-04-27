@@ -13,6 +13,8 @@
     { "source": "/api/crawl-url",      "destination": "/api/media?_fn=crawl" },
     { "source": "/auth/instagram",      "destination": "/api/instagram-auth" },
     { "source": "/auth/instagram/",    "destination": "/api/instagram-auth" },
+    { "source": "/api/youtube-refresh",   "destination": "/api/youtube?_fn=refresh" },
+    { "source": "/api/youtube-init",      "destination": "/api/youtube?_fn=init-upload" },
     { "source": "/auth",               "destination": "/api/threads-auth" },
     { "source": "/auth/",              "destination": "/api/threads-auth" },
     { "source": "/((?!api/).*)",       "destination": "/index.html" }
@@ -28,6 +30,8 @@
     "api/media.js":        { "maxDuration": 120, "memory": 1024 },
     "api/threads-auth.js":    { "maxDuration": 30,  "memory": 512  },
     "api/instagram-auth.js":  { "maxDuration": 30,  "memory": 512  },
+    "api/youtube-auth.js":    { "maxDuration": 30,  "memory": 512  },
+    "api/youtube.js":         { "maxDuration": 30,  "memory": 512  },
     "api/threads-crawl.js": { "maxDuration": 60,  "memory": 1024 },
     "api/threads-post.js": { "maxDuration": 120, "memory": 1024 },
     "api/instagram-post.js": { "maxDuration": 120, "memory": 1024 },
