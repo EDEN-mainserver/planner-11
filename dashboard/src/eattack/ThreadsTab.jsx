@@ -63,6 +63,7 @@ const FLOW_OPTIONS = [
 const CTA_OPTIONS = [
   { key: "template", label: "템플릿 CTA", prompt: "저장된 템플릿의 CTA 방식을 우선 적용" },
   { key: "comment", label: "댓글 유도", prompt: "댓글로 키워드나 의견을 남기게 하는 낮은 허들 CTA" },
+  { key: "follow", label: "팔로우 유도", prompt: "비슷한 실전 팁을 계속 보고 싶으면 팔로우하도록 자연스럽게 유도하는 CTA" },
   { key: "save", label: "저장 유도", prompt: "나중에 다시 보도록 저장을 유도하는 실용형 CTA" },
   { key: "dm", label: "DM 유도", prompt: "자료/체크리스트를 받기 위한 DM 또는 키워드 요청 CTA" },
   { key: "soft", label: "부드러운 권유", prompt: "강요 없이 오늘 바로 한 가지를 해보게 하는 CTA" },
@@ -81,11 +82,19 @@ function loadThreadTemplate() {
 function loadTemplateOptions() {
   try {
     const saved = JSON.parse(localStorage.getItem(TEMPLATE_OPTIONS_KEY)) || {};
+    const mergeOptions = (base, custom) => {
+      const list = Array.isArray(custom) && custom.length ? custom : [];
+      const map = new Map(base.map(option => [option.key, option]));
+      list.forEach(option => {
+        if (option?.key) map.set(option.key, option);
+      });
+      return Array.from(map.values());
+    };
     return {
-      format: saved.format?.length ? saved.format : CONVERSATION_FORMATS,
-      tone: saved.tone?.length ? saved.tone : TONE_OPTIONS,
-      flow: saved.flow?.length ? saved.flow : FLOW_OPTIONS,
-      cta: saved.cta?.length ? saved.cta : CTA_OPTIONS,
+      format: mergeOptions(CONVERSATION_FORMATS, saved.format),
+      tone: mergeOptions(TONE_OPTIONS, saved.tone),
+      flow: mergeOptions(FLOW_OPTIONS, saved.flow),
+      cta: mergeOptions(CTA_OPTIONS, saved.cta),
     };
   } catch {
     return DEFAULT_TEMPLATE_OPTIONS;
@@ -280,6 +289,35 @@ export default function ThreadsTab() {
     const flow = templateOptions.flow.find(o => o.key === templateFlow) || templateOptions.flow[0];
     const cta = templateOptions.cta.find(o => o.key === templateCta) || templateOptions.cta[0];
     const source = text.trim() || aiTopic.trim();
+    const formatRules = {
+      expert: "전문가처럼 근거를 짧게 붙이되, 설명문이 아니라 게시글 말투로 쓴다.",
+      friend: "친구가 옆에서 알려주듯이 반말/존댓말을 섞지 말고 부드러운 대화체로 쓴다. 과한 권위 표현을 줄인다.",
+      story: "내가 겪은 짧은 상황에서 시작해 깨달음으로 넘어간다.",
+      question: "첫 문장 또는 둘째 문장에 독자가 답하고 싶어지는 질문을 넣는다.",
+      checklist: "본문 중간을 3~5개의 짧은 항목처럼 읽히게 쓴다.",
+    };
+    const toneRules = {
+      template: "분석 템플릿의 말투를 유지한다.",
+      direct: "짧고 단정적인 문장으로 쓴다.",
+      warm: "독자를 먼저 이해해주는 표현을 넣는다.",
+      bold: "익숙한 생각을 강하게 뒤집는 문장을 넣는다.",
+      casual: "친구에게 알려주듯 가볍고 쉬운 표현을 쓴다. '마법', '신세계', 과장 광고 표현은 피한다.",
+    };
+    const flowRules = {
+      template: "분석 템플릿의 흐름을 따른다.",
+      problem: "문제 제기 → 공감 → 해결책 → 바로 할 행동 순서로 쓴다.",
+      value: "얻을 이득 → 필요한 이유 → 구성/근거 → CTA 순서로 쓴다.",
+      story: "상황 → 시행착오 → 깨달음 → 독자 적용 순서로 쓴다.",
+      contrarian: "통념/오해 제시 → 반박 → 새로운 관점 → 바로 적용할 방법 → CTA 순서로 쓴다. 첫 문장은 반드시 반전 주장으로 시작한다.",
+    };
+    const ctaRules = {
+      template: "분석 템플릿의 CTA를 따른다.",
+      comment: "마지막 문장에서 댓글을 남기게 한다.",
+      follow: "마지막 문장에서 비슷한 팁을 더 보려면 팔로우하라고 자연스럽게 말한다.",
+      save: "마지막 문장에서 저장을 유도한다.",
+      dm: "마지막 문장에서 DM 또는 키워드 요청을 유도한다.",
+      soft: "마지막 문장에서 부담 없는 실행을 권한다.",
+    };
 
     if (!template) {
       addLog("error", "먼저 인기글 수집 화면에서 조회수 템플릿 역설계를 실행하세요");
@@ -311,16 +349,21 @@ ${JSON.stringify(template, null, 2)}
 - 최종안 1개만 작성
 - 안내문, 설명, 제목, A안/B안, 버전명 금지
 - 바로 게시할 본문만 출력
-- 분석된 템플릿의 흐름을 실제 글 구조에 반영
+- 분석된 템플릿은 참고하되, 아래 선택 옵션을 최우선으로 반영
 - 대화 포맷: ${format.label}
 - 말투/흐름 지시: ${format.prompt}
 - 세부 말투: ${tone.label} — ${tone.prompt}
 - 세부 흐름: ${flow.label} — ${flow.prompt}
 - CTA 방식: ${cta.label} — ${cta.prompt}
-- 첫 문장은 강한 카피라이팅으로 재작성
-- 말투는 자연스럽고 자신감 있게, 과장 광고처럼 보이지 않게
-- 중간 전개는 공감 → 해결책/관점 → 증거/이유 순서
-- 마지막에는 낮은 허들의 CTA 포함
+
+선택 옵션 강제 규칙:
+- 대화 포맷 강제: ${formatRules[format.key] || format.prompt}
+- 말투 강제: ${toneRules[tone.key] || tone.prompt}
+- 흐름 강제: ${flowRules[flow.key] || flow.prompt}
+- CTA 강제: ${ctaRules[cta.key] || cta.prompt}
+- 첫 문장은 선택한 흐름에 맞는 카피라이팅으로 재작성
+- 선택한 흐름과 충돌하는 일반적인 공감/해결책 구조로 되돌아가지 말 것
+- 선택한 CTA와 다른 CTA로 마무리하지 말 것
 - 최대 500자 이내
 - 줄바꿈을 활용해 Threads에서 읽기 쉽게 구성
 - 해시태그는 필요할 때만 1~3개
