@@ -609,30 +609,35 @@ export default function VideoPreview({
     const videoStream = canvas.captureStream(8);
     const streams = [...videoStream.getVideoTracks()];
 
-    // ── 오디오: createMediaElementSource 방식 ──
-    // 이미 로드된 audio 엘리먼트를 AudioContext에 직접 연결 → fetch/decode 불필요
+    // ── 오디오: 녹화 전용 Audio 엘리먼트 새로 생성 ──
+    // createMediaElementSource는 엘리먼트당 1번만 연결 가능 →
+    // 기존 audioRef/bgmRef 재사용 불가, 녹화 전용 새 엘리먼트로 우회
     let recAudioCtx = null;
+    let recTtsAudio = null;
+    let recBgmAudio = null;
     try {
       recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
       await recAudioCtx.resume();
       const recDest = recAudioCtx.createMediaStreamDestination();
 
-      // TTS: 기존 Audio 엘리먼트를 녹화 목적지에 연결
-      if (audioRef.current) {
-        try {
-          const ttsSrc = recAudioCtx.createMediaElementSource(audioRef.current);
-          ttsSrc.connect(recDest);
-          ttsSrc.connect(recAudioCtx.destination); // 스피커 출력도 유지
-        } catch (e) { console.warn("[rec] TTS 소스 연결 실패:", e); }
+      if (audioUrl) {
+        recTtsAudio = new Audio(audioUrl);
+        recTtsAudio.crossOrigin = "anonymous";
+        const ttsSrc = recAudioCtx.createMediaElementSource(recTtsAudio);
+        ttsSrc.connect(recDest);
+        ttsSrc.connect(recAudioCtx.destination);
       }
 
-      // BGM: 기존 BGM 엘리먼트를 녹화 목적지에 연결
-      if (bgmRef.current) {
-        try {
-          const bgmSrc = recAudioCtx.createMediaElementSource(bgmRef.current);
-          bgmSrc.connect(recDest);
-          bgmSrc.connect(recAudioCtx.destination); // 스피커 출력도 유지
-        } catch (e) { console.warn("[rec] BGM 소스 연결 실패:", e); }
+      if (bgmFile) {
+        recBgmAudio = new Audio(encodeURI(bgmFile));
+        recBgmAudio.volume = 0.3;
+        recBgmAudio.crossOrigin = "anonymous";
+        recBgmAudio.addEventListener("timeupdate", () => {
+          if (recBgmAudio.currentTime >= 15) recBgmAudio.currentTime = 0;
+        });
+        const bgmSrc = recAudioCtx.createMediaElementSource(recBgmAudio);
+        bgmSrc.connect(recDest);
+        bgmSrc.connect(recAudioCtx.destination);
       }
 
       streams.push(...recDest.stream.getAudioTracks());
@@ -668,7 +673,9 @@ export default function VideoPreview({
       a.download = `community-video.${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
-      // AudioContext 닫기 → audio 엘리먼트가 기본 출력으로 복귀
+      // 녹화 전용 오디오 정리
+      if (recTtsAudio) { recTtsAudio.pause(); recTtsAudio.src = ""; }
+      if (recBgmAudio) { recBgmAudio.pause(); recBgmAudio.src = ""; }
       recAudioCtx?.close();
       setRecording(false);
       setRecProgress(0);
@@ -682,8 +689,8 @@ export default function VideoPreview({
     recorder.start(200);
     const startTs = performance.now();
 
-    if (audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play().catch(() => {}); }
-    if (bgmRef.current)   { bgmRef.current.currentTime = 0;   bgmRef.current.play().catch(() => {}); }
+    if (recTtsAudio) { recTtsAudio.currentTime = 0; recTtsAudio.play().catch(() => {}); }
+    if (recBgmAudio) { recBgmAudio.currentTime = 0; recBgmAudio.play().catch(() => {}); }
     setPlaying(true);
 
     // 동기 루프 — canvas에 직접 그림
@@ -692,8 +699,8 @@ export default function VideoPreview({
       if (elapsed > totalMs + 1000) {
         recorder.stop();
         setPlaying(false);
-        if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
-        if (bgmRef.current)   { bgmRef.current.pause();   bgmRef.current.currentTime = 0; }
+        if (recTtsAudio) { recTtsAudio.pause(); recTtsAudio.currentTime = 0; }
+        if (recBgmAudio) { recBgmAudio.pause(); recBgmAudio.currentTime = 0; }
         return;
       }
       setRecProgress(Math.min(99, Math.round((elapsed / totalMs) * 100)));
