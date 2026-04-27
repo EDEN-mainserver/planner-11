@@ -734,27 +734,25 @@ export default function VideoPreview({
 
       const { uploadUrl } = initData;
 
-      // 2) 브라우저에서 직접 YouTube에 파일 업로드 (용량 제한 없음)
-      const videoId = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl);
-        xhr.setRequestHeader("Content-Type", "video/mp4");
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setYtProgress(Math.round((e.loaded / e.total) * 100));
-        };
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            const data = JSON.parse(xhr.responseText);
-            resolve(data.id);
-          } else {
-            reject(new Error(`업로드 실패 (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
-          }
-        };
-        xhr.onerror = () => reject(new Error("네트워크 오류"));
-        xhr.send(mp4Blob);
+      // 2) 브라우저에서 YouTube에 직접 업로드 (fetch 사용)
+      setYtProgress(10);
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "video/mp4",
+          "Authorization": `Bearer ${accessToken}`,
+        },
+        body: mp4Blob,
       });
+
+      if (!putRes.ok) {
+        const errText = await putRes.text().catch(() => "");
+        throw new Error(`YouTube 업로드 실패 (${putRes.status}): ${errText.slice(0, 200)}`);
+      }
+
+      setYtProgress(100);
+      const putData = await putRes.json().catch(() => ({}));
+      const videoId = putData.id || "unknown";
 
       setYtResult({ videoId });
     } catch (err) {
