@@ -211,6 +211,7 @@ export default function VideoPreview({
   const previewDivRef  = useRef(null);  // 녹화용 div ref
   const currentGifRef  = useRef({ url: null, el: null }); // 녹화 중 GIF 오버레이용
   const recGifDomRef   = useRef(null); // DOM에 붙인 hidden img — GIF 애니메이션 유지용
+  const gifPreviewRef  = useRef(null); // 프리뷰 img ref (녹화 시 drawImage 소스)
   const [playing, setPlaying]         = useState(false);
   const [currentMs, setCurrentMs]     = useState(0);
   const [webCaptions, setWebCaptions] = useState(null);
@@ -721,17 +722,18 @@ export default function VideoPreview({
     // 폰트 로드 완료 대기 (Noto Sans KR 등)
     await document.fonts.ready;
 
-    // ── 녹화 전용 GIF — DOM에 붙인 hidden img 사용 ──
-    // new Image()는 DOM 밖이라 GIF 애니메이션이 멈춤 → 첫 프레임만 캡처됨
-    // recGifDomRef.current (DOM <img>) 에 src를 바꾸면 브라우저가 애니메이션을 돌려줌
-    const recGifCache = {}; // query → proxyUrl 캐시
+    // ── 녹화 전용 GIF ──
+    // 화면에 보이는 gifPreviewRef.current (프리뷰 img)를 drawImage 소스로 사용
+    // → 뷰포트 안, 실제 visible → Chrome이 GIF 애니메이션을 정상 실행
+    // → proxy 경유 same-origin 로드 → canvas taint 없음
+    const recGifCache = {}; // query → proxyUrl
     let recGifLoading = null;
-    const domImg = recGifDomRef.current; // JSX hidden img
+    const previewImg = gifPreviewRef.current; // 화면에 보이는 프리뷰 img
 
     function fetchRecGif(query) {
-      if (!query || !domImg || recGifLoading === query) return;
+      if (!query || !previewImg || recGifLoading === query) return;
       if (recGifCache[query]) {
-        domImg.src = recGifCache[query];
+        previewImg.src = recGifCache[query];
         return;
       }
       recGifLoading = query;
@@ -741,17 +743,19 @@ export default function VideoPreview({
           if (!d?.url) { recGifLoading = null; return; }
           const proxyUrl = `/api/gif-proxy?url=${encodeURIComponent(d.url)}`;
           recGifCache[query] = proxyUrl;
-          domImg.src = proxyUrl;
+          if (previewImg) previewImg.src = proxyUrl;
           recGifLoading = null;
         })
         .catch(() => { recGifLoading = null; });
     }
 
-    // 첫 GIF 미리 로드: 최대 2초 폴링 대기 (domImg.complete + naturalWidth)
-    if (gifQuery && domImg) {
-      fetchRecGif(gifQuery);
-      for (let i = 0; i < 20 && !(domImg.complete && domImg.naturalWidth > 0); i++) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+    // 첫 GIF 미리 로드: 프리뷰 img가 이미 로드됐으면 즉시 진행, 없으면 최대 2초 대기
+    if (gifQuery && previewImg) {
+      if (!(previewImg.complete && previewImg.naturalWidth > 0)) {
+        fetchRecGif(gifQuery);
+        for (let i = 0; i < 20 && !(previewImg.complete && previewImg.naturalWidth > 0); i++) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
     }
 
@@ -791,7 +795,7 @@ export default function VideoPreview({
         if (sentenceText) fetchRecGif(sentenceText);
       }
 
-      drawPreviewFrame(ctx, W, H, sentenceText, domImg);
+      drawPreviewFrame(ctx, W, H, sentenceText, previewImg);
       setTimeout(loop, 125);
     };
     loop();
@@ -799,8 +803,6 @@ export default function VideoPreview({
 
   return (
     <div className="flex flex-col items-center gap-3 w-full">
-      {/* 녹화 전용 hidden img — DOM에 있어야 GIF 애니메이션이 동작함 (display:none은 멈춤) */}
-      <img ref={recGifDomRef} alt="" style={{ position: "fixed", top: 0, left: "-9999px", width: 1, height: 1, pointerEvents: "none" }} />
       {/* 9:16 캔버스 */}
       <div ref={previewDivRef} className="relative overflow-hidden rounded-2xl shadow-2xl"
         style={{ width: 270, height: 480, background: "#ffffff", flexShrink: 0 }}>
@@ -831,10 +833,11 @@ export default function VideoPreview({
             </p>
           )}
 
-          {/* Klipy GIF — 하단 바와 겹치지 않게 maxHeight 제한 */}
+          {/* Klipy GIF — proxy 경유 로드(same-origin) → canvas.drawImage 허용 */}
           {gifUrl && (
             <img
-              src={gifUrl}
+              ref={gifPreviewRef}
+              src={`/api/gif-proxy?url=${encodeURIComponent(gifUrl)}`}
               alt="reaction"
               style={{
                 width: 160, borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
