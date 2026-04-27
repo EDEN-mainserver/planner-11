@@ -212,6 +212,7 @@ export default function VideoPreview({
   const currentGifRef  = useRef({ url: null, el: null }); // 녹화 중 GIF 오버레이용
   const recGifDomRef   = useRef(null); // DOM에 붙인 hidden img — GIF 애니메이션 유지용
   const gifPreviewRef  = useRef(null); // 프리뷰 img ref (녹화 시 drawImage 소스)
+  const isRecordingRef = useRef(false); // 녹화 중 여부 — setGifUrl(null) 차단용
   const [playing, setPlaying]         = useState(false);
   const [currentMs, setCurrentMs]     = useState(0);
   const [webCaptions, setWebCaptions] = useState(null);
@@ -359,7 +360,8 @@ export default function VideoPreview({
 
   // 자막 청크 변경 시 GIF 교체 — 이전 GIF 유지하다가 새 것 로드되면 교체
   useEffect(() => {
-    if (!currentSentence) { setGifUrl(null); return; }
+    // 녹화 중에는 gifUrl을 null로 바꾸지 않음 → img 언마운트 방지 → GIF 애니메이션 유지
+    if (!currentSentence) { if (!isRecordingRef.current) setGifUrl(null); return; }
     return fetchAndSetGif(currentSentence, true); // keepPrevious=true
   }, [currentSentence, fetchAndSetGif]);
 
@@ -599,6 +601,7 @@ export default function VideoPreview({
   // ── MP4(WebM) 녹화 다운로드 ──
   const handleDownloadMp4 = useCallback(async () => {
     if (recording || !previewDivRef.current) return;
+    isRecordingRef.current = true; // gifUrl null 차단 시작
     setRecording(true);
     setRecProgress(0);
 
@@ -671,6 +674,7 @@ export default function VideoPreview({
       if (recTtsAudio) { recTtsAudio.pause(); recTtsAudio.src = ""; }
       if (recBgmAudio) { recBgmAudio.pause(); recBgmAudio.src = ""; }
       recAudioCtx?.close();
+      isRecordingRef.current = false; // gifUrl null 차단 해제
       setRecording(false);
       setRecProgress(0);
 
