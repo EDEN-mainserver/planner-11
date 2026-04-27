@@ -13,8 +13,20 @@ export const config = { maxDuration: 120, api: { bodyParser: { sizeLimit: "25mb"
 async function uploadToImgbb(b64Pure, apiKey) {
   const params = new URLSearchParams({ key: apiKey, image: b64Pure });
   const res = await fetch("https://api.imgbb.com/1/upload", { method: "POST", body: params });
-  const data = await res.json();
-  if (!data.success) throw new Error(`imgbb 업로드 실패: ${JSON.stringify(data.error || data)}`);
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text();
+  let data = null;
+  if (contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+  if (!res.ok || !data?.success) {
+    const detail = data?.error || text.slice(0, 240).replace(/\s+/g, " ");
+    throw new Error(`imgbb 업로드 실패 [${res.status}]: ${detail}`);
+  }
   return data.data.url;
 }
 
@@ -29,7 +41,12 @@ async function igUploadHttpUrl(httpUrl, filename) {
   const { default: sharp } = await import("sharp");
   const buffer = await sharp(Buffer.from(await res.arrayBuffer())).jpeg({ quality: 92 }).toBuffer();
   if (process.env.IMGBB_API_KEY) {
-    return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+    try {
+      return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+    } catch (err) {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) throw err;
+      console.warn(`[IG-API] imgbb 실패, Blob 폴백: ${err.message}`);
+    }
   }
   const blob = await put(`ig-temp/${filename.replace(/\.\w+$/, ".jpg")}`, buffer, { access: "public", contentType: "image/jpeg" });
   return { url: blob.url, blobUrl: blob.url };
@@ -41,7 +58,12 @@ async function igUploadBase64(base64DataUrl, filename) {
   const { default: sharp } = await import("sharp");
   const buffer = await sharp(Buffer.from(match[2], "base64")).jpeg({ quality: 92 }).toBuffer();
   if (process.env.IMGBB_API_KEY) {
-    return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+    try {
+      return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+    } catch (err) {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) throw err;
+      console.warn(`[IG-API] imgbb 실패, Blob 폴백: ${err.message}`);
+    }
   }
   const blob = await put(`ig-temp/${filename.replace(/\.\w+$/, ".jpg")}`, buffer, { access: "public", contentType: "image/jpeg" });
   return { url: blob.url, blobUrl: blob.url };

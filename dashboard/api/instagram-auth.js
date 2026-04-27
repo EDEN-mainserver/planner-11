@@ -8,7 +8,7 @@
 // 사용 흐름:
 //   1. https://planforge-ui.vercel.app/auth/instagram/ 접속
 //   2. "Instagram 계정 연결하기" 클릭 → Meta 로그인/승인
-//   3. 이 핸들러로 ?code=XXX 도착 → 장기 토큰 + IG 계정 ID 자동 조회
+//   3. 이 핸들러로 ?code=XXX 도착 → 페이지 토큰 + IG 계정 ID 자동 조회
 //   4. 에덴 대시보드 → 통합 파이프라인 → Instagram 설정에 붙여넣기
 
 const FB_API       = "https://graph.facebook.com/v21.0";
@@ -70,7 +70,8 @@ export default async function handler(req, res) {
       <a href="${authUrl}" class="btn">Instagram 계정 연결하기</a>
       <div class="info">
         <b>연결 후 자동으로 얻는 정보</b><br>
-        • 장기 액세스 토큰 (60일)<br>
+        • 게시용 페이지 토큰 (권장)<br>
+        • 장기 액세스 토큰 (fallback)<br>
         • Instagram 비즈니스 계정 ID<br>
         • 계정 사용자명
       </div>
@@ -151,14 +152,17 @@ export default async function handler(req, res) {
       </div>
     `;
 
+    const displayToken = pageToken || longToken;
+    const tokenLabel = pageToken ? "게시용 페이지 토큰" : "장기 토큰";
+
     return res.status(200).send(page("연결 완료!", `
       <div class="icon ok">✓</div>
       <h2>Instagram 연결 완료!</h2>
       ${igUsername ? `<p class="sub">@${igUsername}${igAccountId ? ` (ID: ${igAccountId})` : ""}</p>` : ""}
-      <p class="sub">장기 토큰 (${expiresDays}일 유효)</p>
+      <p class="sub">${tokenLabel} (${expiresDays}일 유효)</p>
 
-      <label>Access Token</label>
-      <div class="token-box" id="token">${longToken}</div>
+      <label>${tokenLabel}</label>
+      <div class="token-box" id="token">${displayToken}</div>
       <button onclick="navigator.clipboard.writeText(document.getElementById('token').textContent);this.textContent='복사됨!';setTimeout(()=>this.textContent='토큰 복사',2000)" class="btn copy">
         토큰 복사
       </button>
@@ -168,7 +172,7 @@ export default async function handler(req, res) {
       <div class="info" style="margin-top:20px">
         <b>다음 단계</b><br>
         에덴 대시보드 → 통합 파이프라인 → 배포 단계 → Instagram 설정<br>
-        → 액세스 토큰 + 계정 ID 붙여넣기
+        → 위 토큰 + 계정 ID 붙여넣기
       </div>
     `));
 

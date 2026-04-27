@@ -43,6 +43,18 @@ function saveSocial(keyFn, username, data) {
   localStorage.setItem(keyFn(username), JSON.stringify(data));
 }
 
+function normalizeInstagramToken(value) {
+  return String(value || "").replace(/[\s\u200B-\u200D\uFEFF]+/g, "").trim();
+}
+
+function normalizeInstagramConfig(config = {}) {
+  return {
+    ...config,
+    accessToken: normalizeInstagramToken(config.accessToken),
+    accountId: String(config.accountId || "").trim(),
+  };
+}
+
 // ── API 함수 ──
 async function runResearch(topic) {
   let articlesText = "(네이버 검색 결과 없음)";
@@ -803,7 +815,7 @@ export default function UnifiedPipelineTab() {
   const [benchmarkTemplate, setBenchmarkTemplate] = useState(null); // Gemini 추출 HTML 템플릿
 
   // 소셜 설정 (사용자별 로드)
-  const [igConfig, setIgConfig]   = useState(() => loadSocial(igKey,      getSession()?.username || "__guest"));
+  const [igConfig, setIgConfig]   = useState(() => normalizeInstagramConfig(loadSocial(igKey, getSession()?.username || "__guest")));
   const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
   const [igPosting, setIgPosting] = useState(false);
   const [igCaptureProgress, setIgCaptureProgress] = useState({ step: "", done: 0, total: 0 });
@@ -811,6 +823,7 @@ export default function UnifiedPipelineTab() {
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
+  const [igDirectUrls, setIgDirectUrls] = useState("");
   const [igLogs, setIgLogs] = useState([]);
 
   const addLog = (level, msg, detail = null) => {
@@ -822,7 +835,7 @@ export default function UnifiedPipelineTab() {
   // 로그인 핸들러
   const handleLogin = (s) => {
     setSession(s);
-    setIgConfig(loadSocial(igKey,      s.username));
+    setIgConfig(normalizeInstagramConfig(loadSocial(igKey, s.username)));
     setThConfig(loadSocial(threadsKey, s.username));
   };
 
@@ -1100,7 +1113,10 @@ export default function UnifiedPipelineTab() {
   };
 
   const postToInstagram = async () => {
-    if (!igConfig.accountId || !igConfig.accessToken) {
+    const accountId = String(igConfig.accountId || "").trim();
+    const accessToken = normalizeInstagramToken(igConfig.accessToken);
+
+    if (!accountId || !accessToken) {
       setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
       return;
     }
@@ -1110,8 +1126,8 @@ export default function UnifiedPipelineTab() {
     setIgLogs([]);
     setIgCaptureProgress({ step: "", done: 0, total: 0 });
     try {
-      addLog("info", `계정 ID: ${igConfig.accountId}`);
-      addLog("info", `토큰: ${igConfig.accessToken.slice(0, 12)}...${igConfig.accessToken.slice(-4)}`);
+      addLog("info", `계정 ID: ${accountId}`);
+      addLog("info", `토큰: ${accessToken.slice(0, 12)}...${accessToken.slice(-4)}`);
 
       // 1. cards[].imageUrl 우선 — AI 이미지 생성한 경우
       let imageList = cards.map((c) => c.imageUrl).filter(Boolean);
@@ -1137,8 +1153,8 @@ export default function UnifiedPipelineTab() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          accountId: igConfig.accountId,
-          accessToken: igConfig.accessToken,
+          accountId,
+          accessToken,
           images: imageList,
           caption: postCaption || topic,
         }),
@@ -1160,6 +1176,75 @@ export default function UnifiedPipelineTab() {
       setIgResult({
         status: "success",
         message: `게시 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
+        permalink: data.permalink,
+      });
+    } catch (e) {
+      addLog("error", `오류: ${e.message}`);
+      setError(e.message);
+    } finally {
+      setIgPosting(false);
+      setIgCaptureProgress({ step: "", done: 0, total: 0 });
+    }
+  };
+
+  const fillDirectUrlsFromCards = () => {
+    const urls = cards
+      .map((c) => c.imageUrl)
+      .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url));
+    setIgDirectUrls(urls.join("\n"));
+    addLog("info", `공개 URL ${urls.length}개를 채웠습니다`);
+  };
+
+  const postDirectInstagramUrls = async () => {
+    const accountId = String(igConfig.accountId || "").trim();
+    const accessToken = normalizeInstagramToken(igConfig.accessToken);
+
+    if (!accountId || !accessToken) {
+      setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
+      return;
+    }
+    const urls = igDirectUrls
+      .split(/\n+/)
+      .map((u) => u.trim())
+      .filter(Boolean);
+
+    if (urls.length === 0) {
+      setError("공개 이미지 URL을 한 줄에 하나씩 입력해주세요");
+      return;
+    }
+
+    if (urls.length > 10) {
+      setError("인스타그램 캐러셀은 최대 10장까지 업로드할 수 있습니다");
+      return;
+    }
+
+    setIgPosting(true);
+    setIgResult(null);
+    setError("");
+    setIgLogs([]);
+    setIgCaptureProgress({ step: "uploading", done: 0, total: urls.length });
+
+    try {
+      addLog("info", `공개 URL 업로드 시작: ${urls.length}개`);
+      const res = await fetch("/api/instagram-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId,
+          accessToken,
+          images: urls,
+          caption: postCaption || topic,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.logs?.length) data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
+      addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
+      if (!res.ok) throw new Error(data.error || "게시 실패");
+
+      setIgResult({
+        status: "success",
+        message: `공개 URL 업로드 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
         permalink: data.permalink,
       });
     } catch (e) {
@@ -1970,7 +2055,7 @@ export default function UnifiedPipelineTab() {
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
               value={igConfig.accessToken}
               onChange={(e) => {
-                const next = { ...igConfig, accessToken: e.target.value };
+                const next = { ...igConfig, accessToken: normalizeInstagramToken(e.target.value) };
                 setIgConfig(next);
                 saveSocial(igKey, session.username, next);
               }}
@@ -2017,7 +2102,8 @@ export default function UnifiedPipelineTab() {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!igConfig.accessToken) {
+                    const accessToken = normalizeInstagramToken(igConfig.accessToken);
+                    if (!accessToken) {
                       addLog("error", "토큰을 먼저 입력하세요");
                       return;
                     }
@@ -2025,7 +2111,7 @@ export default function UnifiedPipelineTab() {
                       addLog("info", "Facebook 페이지 → Instagram 계정 ID 조회 중...");
                       // Facebook 페이지 목록 조회
                       const pagesRes = await fetch(
-                        `https://graph.facebook.com/v21.0/me/accounts?access_token=${igConfig.accessToken}`
+                        `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}`
                       );
                       const pagesData = await pagesRes.json();
                       if (pagesData.error) throw new Error(pagesData.error.message);
@@ -2035,14 +2121,14 @@ export default function UnifiedPipelineTab() {
                       let foundId = null, foundUsername = null;
                       for (const page of pagesData.data) {
                         const igRes = await fetch(
-                          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${igConfig.accessToken}`
+                          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${accessToken}`
                         );
                         const igData = await igRes.json();
                         if (igData.instagram_business_account?.id) {
                           foundId = igData.instagram_business_account.id;
                           // username 조회
                           const uRes = await fetch(
-                            `https://graph.facebook.com/v21.0/${foundId}?fields=username&access_token=${igConfig.accessToken}`
+                            `https://graph.facebook.com/v21.0/${foundId}?fields=username&access_token=${accessToken}`
                           );
                           const uData = await uRes.json();
                           foundUsername = uData.username || foundId;
@@ -2050,7 +2136,7 @@ export default function UnifiedPipelineTab() {
                         }
                       }
                       if (!foundId) throw new Error("Facebook 페이지에 연결된 Instagram 비즈니스 계정을 찾을 수 없습니다.");
-                      const next = { ...igConfig, accountId: foundId };
+                      const next = { ...igConfig, accountId: foundId, accessToken };
                       setIgConfig(next);
                       saveSocial(igKey, session.username, next);
                       addLog("info", `✅ 조회 성공: @${foundUsername} → ${foundId}`);
@@ -2070,7 +2156,7 @@ export default function UnifiedPipelineTab() {
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
               value={igConfig.accountId || ""}
               onChange={(e) => {
-                const next = { ...igConfig, accountId: e.target.value };
+                const next = { ...igConfig, accountId: e.target.value.trim() };
                 setIgConfig(next);
                 saveSocial(igKey, session.username, next);
               }}
@@ -2089,6 +2175,40 @@ export default function UnifiedPipelineTab() {
               value={postCaption}
               onChange={(e) => setPostCaption(e.target.value)}
             />
+          </div>
+
+          <div className="space-y-2 bg-white border border-violet-100 rounded-xl p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold text-gray-700">공개 URL 업로드</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">공개로 접근 가능한 이미지 URL만 넣으면 바로 캐러셀 게시가 가능합니다.</p>
+              </div>
+              <button
+                type="button"
+                onClick={fillDirectUrlsFromCards}
+                className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
+              >
+                현재 카드 URL 채우기
+              </button>
+            </div>
+            <textarea
+              rows={4}
+              placeholder={"https://example.com/1.jpg\nhttps://example.com/2.jpg\nhttps://example.com/3.jpg"}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white resize-none leading-relaxed font-mono"
+              value={igDirectUrls}
+              onChange={(e) => setIgDirectUrls(e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={postDirectInstagramUrls}
+                disabled={igPosting || !igConfig.accountId || !igConfig.accessToken}
+                className="px-3 py-2 bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold rounded-lg transition-all"
+              >
+                공개 URL로 업로드
+              </button>
+              <span className="text-[11px] text-gray-500">이미지 URL만 지원, 최대 10장</span>
+            </div>
           </div>
 
           <p className="text-[11px] text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">

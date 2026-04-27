@@ -9,6 +9,28 @@ function getGeminiModel() {
   return getModel('gemini') || 'gemini-2.5-pro';
 }
 
+function getGeminiModels() {
+  const selected = getGeminiModel();
+  return [...new Set([
+    selected,
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash-lite',
+  ])];
+}
+
+function isTransientGeminiError(status, message) {
+  const text = String(message || '').toLowerCase();
+  return (
+    status === 429 ||
+    status === 503 ||
+    text.includes('high demand') ||
+    text.includes('please try again later') ||
+    text.includes('resource exhausted') ||
+    text.includes('quota')
+  );
+}
+
 // 브라우저 사이드 이미지 → base64 변환 (CORS 허용 이미지에만 동작)
 async function fetchImageB64Client(url) {
   try {
@@ -31,8 +53,6 @@ export async function callGemini(history, systemPrompt) {
   const GEMINI_KEY = getGeminiKey();
   // API 키가 있으면 직접 Google API 호출
   if (GEMINI_KEY) {
-    const model = getGeminiModel();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
     const contents = await Promise.all(history.map(async m => {
       const parts = [{ text: m.content }];
       // 인라인 이미지 (업로드 base64)
@@ -58,21 +78,33 @@ export async function callGemini(history, systemPrompt) {
         parts,
       };
     }));
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
-      }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.error?.message || `API 오류 ${resp.status}`);
+
+    for (const model of getGeminiModels()) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents,
+          generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      }
+
+      const err = await resp.json().catch(() => ({}));
+      const message = err.error?.message || `API 오류 ${resp.status}`;
+      if (!isTransientGeminiError(resp.status, message)) {
+        break;
+      }
     }
-    const data = await resp.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    throw new Error(
+      'Gemini 모델이 일시적으로 혼잡합니다. 잠시 후 다시 시도하거나 Gemini 2.5 Flash로 바꿔보세요.'
+    );
   }
 
   // 프로덕션(Vercel): 서버 함수 경유 (키 노출 없음)

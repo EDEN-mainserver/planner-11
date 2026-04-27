@@ -13,6 +13,10 @@ export const config = { api: { bodyParser: { sizeLimit: "25mb" } } };
 
 const IG_API = "https://graph.facebook.com/v21.0";
 
+function normalizeToken(value) {
+  return String(value || "").replace(/[\s\u200B-\u200D\uFEFF]+/g, "").trim();
+}
+
 // imgbb 업로드 — Instagram이 확실히 접근 가능한 i.ibb.co URL 반환
 async function uploadToImgbb(b64Pure, apiKey) {
   const params = new URLSearchParams({ key: apiKey, image: b64Pure });
@@ -20,9 +24,19 @@ async function uploadToImgbb(b64Pure, apiKey) {
     method: "POST",
     body: params,
   });
-  const data = await res.json();
-  if (!data.success) {
-    throw new Error(`imgbb 업로드 실패: ${JSON.stringify(data.error || data)}`);
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text();
+  let data = null;
+  if (contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+  if (!res.ok || !data?.success) {
+    const detail = data?.error || text.slice(0, 240).replace(/\s+/g, " ");
+    throw new Error(`imgbb 업로드 실패 [${res.status}]: ${detail}`);
   }
   return data.data.url; // https://i.ibb.co/xxxxx/image.jpg
 }
@@ -36,7 +50,12 @@ async function uploadHttpUrl(httpUrl, filename) {
   const buffer = await sharp(Buffer.from(arrayBuffer)).jpeg({ quality: 92 }).toBuffer();
 
   if (process.env.IMGBB_API_KEY) {
-    return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+    try {
+      return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+    } catch (err) {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) throw err;
+      console.warn(`[IG-API] imgbb 실패, Blob 폴백: ${err.message}`);
+    }
   }
   const jpegFilename = filename.replace(/\.\w+$/, ".jpg");
   const blob = await put(`ig-temp/${jpegFilename}`, buffer, { access: "public", contentType: "image/jpeg" });
@@ -55,7 +74,12 @@ async function uploadBase64(base64DataUrl, filename) {
   buffer = await sharp(buffer).jpeg({ quality: 92 }).toBuffer();
 
   if (process.env.IMGBB_API_KEY) {
-    return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+    try {
+      return { url: await uploadToImgbb(buffer.toString("base64"), process.env.IMGBB_API_KEY), blobUrl: null };
+    } catch (err) {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) throw err;
+      console.warn(`[IG-API] imgbb 실패, Blob 폴백: ${err.message}`);
+    }
   }
   const jpegFilename = filename.replace(/\.\w+$/, ".jpg");
   const blob = await put(`ig-temp/${jpegFilename}`, buffer, { access: "public", contentType: "image/jpeg" });
@@ -66,9 +90,10 @@ async function uploadBase64(base64DataUrl, filename) {
 // 캐러셀 아이템: is_carousel_item=true만, media_type 없음
 // 단일 이미지: media_type=IMAGE 명시
 async function createMediaContainer(accountId, accessToken, imageUrl, caption, isCarouselItem) {
+  const token = normalizeToken(accessToken);
   const params = new URLSearchParams({
     image_url: imageUrl,
-    access_token: accessToken,
+    access_token: token,
   });
   if (isCarouselItem) {
     params.set("media_type", "IMAGE");
@@ -93,11 +118,12 @@ async function createMediaContainer(accountId, accessToken, imageUrl, caption, i
 
 // 캐러셀 컨테이너 생성
 async function createCarouselContainer(accountId, accessToken, childrenIds, caption) {
+  const token = normalizeToken(accessToken);
   const params = new URLSearchParams({
     media_type: "CAROUSEL",
     children: childrenIds.join(","),
     caption: caption || "",
-    access_token: accessToken,
+    access_token: token,
   });
 
   const res = await fetch(`${IG_API}/${accountId}/media`, {
@@ -113,9 +139,10 @@ async function createCarouselContainer(accountId, accessToken, childrenIds, capt
 
 // 게시 (publish)
 async function publishMedia(accountId, accessToken, creationId) {
+  const token = normalizeToken(accessToken);
   const params = new URLSearchParams({
     creation_id: creationId,
-    access_token: accessToken,
+    access_token: token,
   });
 
   const res = await fetch(`${IG_API}/${accountId}/media_publish`, {
@@ -133,7 +160,7 @@ async function publishMedia(accountId, accessToken, creationId) {
 async function getPermalink(mediaId, accessToken) {
   try {
     const res = await fetch(
-      `${IG_API}/${mediaId}?fields=permalink&access_token=${accessToken}`
+      `${IG_API}/${mediaId}?fields=permalink&access_token=${normalizeToken(accessToken)}`
     );
     const data = await res.json();
     return data.permalink || null;
@@ -159,8 +186,10 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   const { accountId, accessToken, images, caption } = req.body || {};
+  const normalizedAccountId = String(accountId || "").trim();
+  const normalizedAccessToken = normalizeToken(accessToken);
 
-  if (!accountId || !accessToken) {
+  if (!normalizedAccountId || !normalizedAccessToken) {
     return res.status(400).json({ error: "accountId와 accessToken이 필요합니다" });
   }
   if (!images || images.length === 0) {
@@ -172,7 +201,7 @@ export default async function handler(req, res) {
   const log = (msg, data) => { logs.push({ msg, data }); slog(msg, data); };
 
   try {
-    log("요청 수신", { accountId, imageCount: images.length, captionLen: (caption||"").length });
+    log("요청 수신", { accountId: normalizedAccountId, imageCount: images.length, captionLen: (caption||"").length });
 
     // 1. 이미지 업로드 → Instagram 접근 가능한 공개 URL 획득
     // imgbb API key 있으면 imgbb 사용, 없으면 Vercel Blob + 프록시 폴백
@@ -204,10 +233,10 @@ export default async function handler(req, res) {
     if (uploadedUrls.length === 1) {
       log("단일 이미지 게시 시작", uploadedUrls[0].slice(0, 60));
       const containerId = await createMediaContainer(
-        accountId, accessToken, uploadedUrls[0], caption || "", false
+        normalizedAccountId, normalizedAccessToken, uploadedUrls[0], caption || "", false
       );
       log("미디어 컨테이너 생성", { containerId });
-      publishedId = await publishMedia(accountId, accessToken, containerId);
+      publishedId = await publishMedia(normalizedAccountId, normalizedAccessToken, containerId);
       log("게시 완료", { publishedId });
     } else {
       log(`캐러셀 게시 시작 (${uploadedUrls.length}장)`);
@@ -215,20 +244,20 @@ export default async function handler(req, res) {
       const childIds = await Promise.all(
         limited.map((url, i) => {
           log(`캐러셀 아이템 ${i+1} 컨테이너 생성`);
-          return createMediaContainer(accountId, accessToken, url, "", true);
+          return createMediaContainer(normalizedAccountId, normalizedAccessToken, url, "", true);
         })
       );
       log("캐러셀 컨테이너 생성", { childIds });
       const carouselId = await createCarouselContainer(
-        accountId, accessToken, childIds, caption || ""
+        normalizedAccountId, normalizedAccessToken, childIds, caption || ""
       );
       log("캐러셀 컨테이너 완성", { carouselId });
-      publishedId = await publishMedia(accountId, accessToken, carouselId);
+      publishedId = await publishMedia(normalizedAccountId, normalizedAccessToken, carouselId);
       log("캐러셀 게시 완료", { publishedId });
     }
 
     // 3. permalink 조회
-    const permalink = await getPermalink(publishedId, accessToken);
+    const permalink = await getPermalink(publishedId, normalizedAccessToken);
     log("Permalink", permalink);
 
     // 4. 임시 Blob 파일 정리 (백그라운드)
@@ -238,10 +267,13 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, mediaId: publishedId, permalink, logs });
   } catch (err) {
-    log("오류 발생", { message: err.message, stack: err.stack?.split("\n")[0] });
+    const safeMessage = err.message.includes("Cannot parse access token")
+      ? "Instagram 액세스 토큰 형식이 올바르지 않습니다. 게시용 페이지 토큰을 다시 복사해 저장해주세요."
+      : err.message;
+    log("오류 발생", { message: safeMessage, stack: err.stack?.split("\n")[0] });
     if (blobUrls.length > 0) {
       Promise.allSettled(blobUrls.map((url) => del(url))).catch(() => {});
     }
-    return res.status(500).json({ error: err.message, logs });
+    return res.status(500).json({ error: safeMessage, logs });
   }
 }
