@@ -94,6 +94,45 @@ function loadTemplateOptions() {
 function saveTemplateOptions(data) {
   localStorage.setItem(TEMPLATE_OPTIONS_KEY, JSON.stringify(data));
 }
+function cleanThreadDraft(raw) {
+  if (!raw) return "";
+  let text = raw
+    .replace(/\r/g, "")
+    .replace(/```[\s\S]*?```/g, m => m.replace(/```[a-z]*\n?/gi, "").replace(/```/g, ""))
+    .trim();
+
+  const lines = text.split("\n");
+  const cleaned = [];
+  let started = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (started && cleaned[cleaned.length - 1] !== "") cleaned.push("");
+      continue;
+    }
+    if (/^(네|좋아요|물론|알겠습니다)[,!\s]/.test(trimmed)) continue;
+    if (/^[-–—]{3,}$/.test(trimmed)) continue;
+    if (/^#{1,6}\s*/.test(trimmed)) continue;
+    if (/^[ABC]\s*안\s*(\(|:|：)/i.test(trimmed)) {
+      if (started) break;
+      continue;
+    }
+    if (/^\d+\s*[).]\s*(안|버전)/.test(trimmed)) {
+      if (started) break;
+      continue;
+    }
+    if (/^(선택|원하시면|마음에 드는|아래는|다음은)/.test(trimmed)) continue;
+    started = true;
+    cleaned.push(line.replace(/^[-*]\s+/, "").trimEnd());
+  }
+
+  return cleaned
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, TH_MAX_CHARS);
+}
 
 export default function ThreadsTab() {
   const [session] = useState(() => getSession());
@@ -219,12 +258,12 @@ export default function ThreadsTab() {
         [
           {
             role: "user",
-            content: `주제: "${aiTopic}"\n\nThreads(인스타그램의 텍스트 SNS)에 올릴 게시글을 작성해줘.\n\n규칙:\n- 최대 500자 이내\n- 줄바꿈을 활용한 읽기 쉬운 구조\n- 한 줄에 10~25자\n- 해시태그 2~4개 (마지막에)\n- 자연스럽고 공감 가는 톤\n- 마크다운, 따옴표 없이 순수 텍스트만`,
+            content: `주제: "${aiTopic}"\n\nThreads(인스타그램의 텍스트 SNS)에 올릴 게시글 최종안 1개만 작성해줘.\n\n규칙:\n- 안내문, 설명, 제목, A안/B안, 버전명 금지\n- 바로 게시할 본문만 출력\n- 최대 500자 이내\n- 줄바꿈을 활용한 읽기 쉬운 구조\n- 한 줄에 10~25자\n- 해시태그 2~4개 (마지막에)\n- 자연스럽고 공감 가는 톤\n- 마크다운, 따옴표 없이 순수 텍스트만`,
           },
         ],
-        "SNS 콘텐츠 전문가. Threads에 최적화된 공감형 게시글을 작성합니다."
+        "SNS 콘텐츠 전문가. 설명 없이 Threads에 바로 게시할 최종 본문 1개만 작성합니다."
       );
-      setText(result.slice(0, TH_MAX_CHARS));
+      setText(cleanThreadDraft(result));
       addLog("info", "AI 글 생성 완료");
     } catch (e) {
       addLog("error", `AI 생성 실패: ${e.message}`);
@@ -269,6 +308,9 @@ ${source}
 ${JSON.stringify(template, null, 2)}
 
 요구사항:
+- 최종안 1개만 작성
+- 안내문, 설명, 제목, A안/B안, 버전명 금지
+- 바로 게시할 본문만 출력
 - 분석된 템플릿의 흐름을 실제 글 구조에 반영
 - 대화 포맷: ${format.label}
 - 말투/흐름 지시: ${format.prompt}
@@ -285,9 +327,9 @@ ${JSON.stringify(template, null, 2)}
 - 마크다운 없이 게시글 본문만 반환`,
           },
         ],
-        `당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 선택된 대화 포맷(${format.label}), 말투(${tone.label}), 흐름(${flow.label}), CTA(${cta.label})를 우선 반영하고 게시 가능한 본문만 작성하세요.`
+        `당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 설명 없이 최종 게시 본문 1개만 작성하세요. 선택된 대화 포맷(${format.label}), 말투(${tone.label}), 흐름(${flow.label}), CTA(${cta.label})를 우선 반영하세요.`
       );
-      setText(result.slice(0, TH_MAX_CHARS));
+      setText(cleanThreadDraft(result));
       addLog("info", "템플릿 기반 재구성 완료");
     } catch (e) {
       addLog("error", `템플릿 재구성 실패: ${e.message}`);
