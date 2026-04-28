@@ -253,6 +253,8 @@ function SocialTab() {
   const [igSaved, setIgSaved] = useState(false);
   const [thSaved, setThSaved] = useState(false);
   const [faSaved, setFaSaved] = useState(false);
+  const [thFetching, setThFetching] = useState(false);
+  const [logs, setLogs] = useState([]);
 
   // 사용자 변경 시 해당 사용자의 API 설정 로드
   const handleUserChange = (username) => {
@@ -337,22 +339,46 @@ function SocialTab() {
     }
   };
 
+  const addLog = (type, msg) =>
+    setLogs(prev => [{ type, msg, time: new Date() }, ...prev].slice(0, 80));
+
+  const fetchThUserId = async () => {
+    if (!th.accessToken?.trim()) { addLog("error", "액세스 토큰을 먼저 입력하세요"); return; }
+    setThFetching(true);
+    try {
+      const res = await fetch(
+        `https://graph.threads.net/v1.0/me?fields=id,username&access_token=${th.accessToken.trim()}`
+      );
+      const data = await res.json();
+      if (!res.ok || !data.id) throw new Error(data.error?.message || "조회 실패");
+      setTh(p => ({ ...p, userId: data.id }));
+      addLog("info", `Threads @${data.username} → ID: ${data.id} 조회 완료`);
+    } catch (e) {
+      addLog("error", `Threads ID 조회 실패: ${e.message}`);
+    } finally {
+      setThFetching(false);
+    }
+  };
+
   const saveIg = () => {
     saveSocial(igKey, selectedUser, ig);
     setIgSaved(true);
     setTimeout(() => setIgSaved(false), 2000);
+    addLog("info", `Instagram 설정 저장됨 (${selectedUser})`);
   };
 
   const saveTh = () => {
     saveSocial(threadsKey, selectedUser, th);
     setThSaved(true);
     setTimeout(() => setThSaved(false), 2000);
+    addLog("info", `Threads 설정 저장됨 (${selectedUser})`);
   };
 
   const saveFa = () => {
     saveFullAutoSettings(selectedUser, fa);
     setFaSaved(true);
     setTimeout(() => setFaSaved(false), 2000);
+    addLog("info", `풀가동화 템플릿 저장됨 (${selectedUser})`);
   };
 
   const currentUser = users.find((u) => u.username === selectedUser);
@@ -549,13 +575,25 @@ function SocialTab() {
               )}
             </div>
             <div className="p-5 space-y-3">
-              <Field
-                label="Threads 사용자 ID"
-                value={th.userId || ""}
-                onChange={(v) => setTh((p) => ({ ...p, userId: v }))}
-                placeholder="예: 1234567890"
-                mono
-              />
+              <div>
+                <label className="text-xs font-bold text-gray-600 block mb-1">Threads 사용자 ID</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={th.userId || ""}
+                    onChange={(e) => setTh((p) => ({ ...p, userId: e.target.value }))}
+                    placeholder="예: 1234567890"
+                    className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white transition-colors font-mono"
+                  />
+                  <button
+                    onClick={fetchThUserId}
+                    disabled={thFetching || !th.accessToken?.trim()}
+                    className="px-3 py-2 text-xs font-bold border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-all whitespace-nowrap"
+                  >
+                    {thFetching ? "조회 중..." : "ID 조회"}
+                  </button>
+                </div>
+              </div>
               <Field
                 label="액세스 토큰 (Threads Access Token)"
                 type="password"
@@ -612,11 +650,76 @@ function SocialTab() {
                 placeholder="에덴 에이전트"
               />
               <Field
-                label="톤앤매너"
+                label="톤앤매너 (자유 입력)"
                 value={fa.tone || ""}
                 onChange={(v) => setFa((p) => ({ ...p, tone: v }))}
                 placeholder="친근하고 전문적인"
               />
+
+              {/* Threads 자동화 템플릿 */}
+              <div className="pt-1 border-t border-gray-100">
+                <p className="text-[11px] font-bold text-gray-500 mb-2">Threads 자동화 템플릿</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-500 block mb-1">포맷</label>
+                    <select
+                      value={fa.format || "expert"}
+                      onChange={(e) => setFa(p => ({ ...p, format: e.target.value }))}
+                      className="w-full px-2.5 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white"
+                    >
+                      <option value="expert">전문가 설명</option>
+                      <option value="friend">친구 조언</option>
+                      <option value="story">경험담</option>
+                      <option value="question">질문 유도</option>
+                      <option value="checklist">체크리스트</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-500 block mb-1">말투</label>
+                    <select
+                      value={fa.threadsTone || "template"}
+                      onChange={(e) => setFa(p => ({ ...p, threadsTone: e.target.value }))}
+                      className="w-full px-2.5 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white"
+                    >
+                      <option value="template">템플릿 말투</option>
+                      <option value="direct">직설적</option>
+                      <option value="warm">따뜻한 공감</option>
+                      <option value="bold">도발적</option>
+                      <option value="casual">캐주얼</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-500 block mb-1">흐름</label>
+                    <select
+                      value={fa.flow || "template"}
+                      onChange={(e) => setFa(p => ({ ...p, flow: e.target.value }))}
+                      className="w-full px-2.5 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white"
+                    >
+                      <option value="template">템플릿 흐름</option>
+                      <option value="problem">문제→해결</option>
+                      <option value="value">가치 선제시</option>
+                      <option value="story">상황→깨달음</option>
+                      <option value="contrarian">반전 주장</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-500 block mb-1">CTA</label>
+                    <select
+                      value={fa.cta || "template"}
+                      onChange={(e) => setFa(p => ({ ...p, cta: e.target.value }))}
+                      className="w-full px-2.5 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white"
+                    >
+                      <option value="template">템플릿 CTA</option>
+                      <option value="comment">댓글 유도</option>
+                      <option value="follow">팔로우 유도</option>
+                      <option value="save">저장 유도</option>
+                      <option value="dm">DM 유도</option>
+                      <option value="soft">부드러운 권유</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="text-xs font-bold text-gray-600 block mb-1">슬라이드 수 (1–10)</label>
                 <input
@@ -651,6 +754,34 @@ function SocialTab() {
                   {faSaved ? "✓ 저장됨" : "저장"}
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* ── 소셜 로그 패널 ── */}
+          <div className="bg-gray-950 rounded-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
+              <p className="text-xs font-bold text-gray-400">소셜 계정 로그 · {currentUser?.displayName}</p>
+              {logs.length > 0 && (
+                <button
+                  onClick={() => setLogs([])}
+                  className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+                >
+                  지우기
+                </button>
+              )}
+            </div>
+            <div className="p-3 min-h-[48px] max-h-52 overflow-y-auto space-y-1 font-mono">
+              {logs.length === 0 ? (
+                <p className="text-[11px] text-gray-600 py-1">저장·조회 시 여기에 로그가 표시됩니다.</p>
+              ) : logs.map((l, i) => (
+                <div key={i} className="flex gap-2 text-[11px] leading-relaxed">
+                  <span className="text-gray-600 flex-shrink-0">{l.time.toLocaleTimeString("ko-KR")}</span>
+                  <span className={`flex-shrink-0 font-bold ${l.type === "error" ? "text-red-400" : "text-emerald-400"}`}>
+                    {l.type === "error" ? "ERR" : "LOG"}
+                  </span>
+                  <span className={l.type === "error" ? "text-red-300" : "text-gray-200"}>{l.msg}</span>
+                </div>
+              ))}
             </div>
           </div>
 
