@@ -8,6 +8,7 @@ import { list, put, del } from "@vercel/blob";
 
 const PREFIX_AUTO   = "threads-auto";
 const PREFIX_SCHED  = "threads-schedule";
+const PREFIX_TEMPLATE = "threads-template";
 
 // ── Blob 읽기/쓰기 유틸 ──
 async function readBlob(prefix, username) {
@@ -27,6 +28,17 @@ async function writeBlob(prefix, username, data) {
     contentType: "application/json",
     addRandomSuffix: false,
   });
+}
+
+async function readLatestThreadTemplate() {
+  try {
+    const { blobs } = await list({ prefix: `${PREFIX_TEMPLATE}/latest.json` });
+    if (!blobs.length) return null;
+    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── 네이버 검색 ──
@@ -132,30 +144,68 @@ async function runForAccount(username, config, env) {
   const logs = [];
   const log = (msg) => { logs.push(msg); console.log(`[auto-research:${username}] ${msg}`); };
 
-  // 1. 키워드별 검색
-  log(`키워드 검색 시작: ${config.keywords.join(", ")}`);
-  const allArticles = [];
-  for (const kw of config.keywords) {
-    const results = await searchNaver(kw, env);
-    allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
-  }
-  if (!allArticles.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
-  log(`검색 결과: ${allArticles.length}건`);
-  allArticles.slice(0, 8).forEach((a, i) =>
-    log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`)
-  );
+  const threadTemplate = await readLatestThreadTemplate();
+  const sourceMode = config.sourceMode || "random";
+  const preferredSource = sourceMode === "random"
+    ? (threadTemplate?.data ? (Math.random() < 0.5 ? "threads" : "naver") : "naver")
+    : sourceMode;
+  const sourceChoice = preferredSource === "threads" && !threadTemplate?.data ? "naver" : preferredSource;
+  log(`주제 소스 선택: ${sourceChoice}${sourceMode !== sourceChoice ? ` (설정: ${sourceMode})` : ""}`);
 
-  // 2. 오늘의 주제 선정 + 글 생성 (Gemini 1회 호출로 합산)
-  const articlesText = allArticles.slice(0, 10).map((a, i) =>
-    `[${i + 1}] 키워드: ${a.keyword} | 제목: ${a.title} | 요약: ${a.description}`
-  ).join("\n");
+  let prompt;
+  let sourceLabel;
+  let sourceSummary = "";
 
-  const formatRule = FORMAT_RULES[config.format] || FORMAT_RULES.expert;
-  const toneRule   = TONE_RULES[config.tone]     || TONE_RULES.template;
-  const flowRule   = FLOW_RULES[config.flow]      || FLOW_RULES.template;
-  const ctaRule    = CTA_RULES[config.cta]        || CTA_RULES.comment;
+  if (sourceChoice === "threads" && threadTemplate?.data) {
+    const posts = Array.isArray(threadTemplate.posts) ? threadTemplate.posts : [];
+    const topPosts = posts
+      .filter((p) => (p.views || 0) > 0 || (p.likes || 0) > 0 || (p.comments || 0) > 0)
+      .sort((a, b) => (b.views || 0) - (a.views || 0))
+      .slice(0, 8);
+    const templateData = threadTemplate.data;
+    sourceLabel = "Threads 인기글 역설계";
+    sourceSummary = topPosts.length
+      ? topPosts.map((p, i) => `[${i + 1}] @${p.author || "unknown"} | 조회 ${Number(p.views || 0).toLocaleString()} | 좋아요 ${Number(p.likes || 0).toLocaleString()} | 댓글 ${Number(p.comments || 0).toLocaleString()} | ${p.content}`).join("\n")
+      : JSON.stringify(templateData, null, 2);
+    prompt =
+`너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
+아래는 최근 Threads 인기글을 조회수 기반으로 역설계한 결과와 포스트 요약이야.
+이 구조를 참고해서 오늘 반응이 좋을 주제 1개를 고르고, Threads 게시글 최종안 1개를 작성해줘.
 
-  const prompt =
+[Threads 역설계 템플릿]
+${JSON.stringify(templateData, null, 2)}
+
+[Threads 포스트 요약]
+${sourceSummary}
+
+[작성 규칙]
+- 포맷: ${FORMAT_RULES[config.format] || FORMAT_RULES.expert}
+- 말투: ${TONE_RULES[config.tone] || TONE_RULES.template}
+- 흐름: ${FLOW_RULES[config.flow] || FLOW_RULES.template}
+- CTA: ${CTA_RULES[config.cta] || CTA_RULES.comment}
+- 최대 500자 이내
+- 줄바꿈 활용, 한 줄 10~25자
+- 해시태그 2~4개 (마지막에)
+- 안내문, 제목, 설명 없이 게시글 본문만 출력
+- 마크다운 없이 순수 텍스트만`;
+  } else {
+    sourceLabel = "네이버 블로그";
+    log(`키워드 검색 시작: ${config.keywords.join(", ")}`);
+    const allArticles = [];
+    for (const kw of config.keywords) {
+      const results = await searchNaver(kw, env);
+      allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
+    }
+    if (!allArticles.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
+    log(`검색 결과: ${allArticles.length}건`);
+    allArticles.slice(0, 8).forEach((a, i) =>
+      log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`)
+    );
+
+    const articlesText = allArticles.slice(0, 10).map((a, i) =>
+      `[${i + 1}] 키워드: ${a.keyword} | 제목: ${a.title} | 요약: ${a.description}`
+    ).join("\n");
+    prompt =
 `너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
 아래 최신 AI 관련 기사/포스트 목록에서 오늘 가장 반응이 좋을 주제 1개를 선택해,
 Threads 게시글 최종안 1개를 바로 작성해줘.
@@ -164,17 +214,18 @@ Threads 게시글 최종안 1개를 바로 작성해줘.
 ${articlesText}
 
 [작성 규칙]
-- 포맷: ${formatRule}
-- 말투: ${toneRule}
-- 흐름: ${flowRule}
-- CTA: ${ctaRule}
+- 포맷: ${FORMAT_RULES[config.format] || FORMAT_RULES.expert}
+- 말투: ${TONE_RULES[config.tone] || TONE_RULES.template}
+- 흐름: ${FLOW_RULES[config.flow] || FLOW_RULES.template}
+- CTA: ${CTA_RULES[config.cta] || CTA_RULES.comment}
 - 최대 500자 이내
 - 줄바꿈 활용, 한 줄 10~25자
 - 해시태그 2~4개 (마지막에)
 - 안내문, 제목, 설명 없이 게시글 본문만 출력
 - 마크다운 없이 순수 텍스트만`;
+  }
 
-  log("Gemini 글 생성 중...");
+  log(`Gemini 글 생성 중... (${sourceLabel})`);
   const raw = await callGemini(prompt, env);
 
   // 3. 텍스트 정리 (cleanThreadDraft 서버 버전)

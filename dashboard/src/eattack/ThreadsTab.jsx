@@ -250,11 +250,24 @@ export default function ThreadsTab() {
   const [autoTone, setAutoTone] = useState("template");
   const [autoFlow, setAutoFlow] = useState("template");
   const [autoCta, setAutoCta] = useState("comment");
+  const [autoSourceMode, setAutoSourceMode] = useState("random");
   const [autoSaving, setAutoSaving] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoLastUpdated, setAutoLastUpdated] = useState(null);
   const [autoRunResult, setAutoRunResult] = useState(null); // { logs, text, scheduledAt, skipped, skipReason, error }
+
+  useEffect(() => {
+    if (loadThreadTemplate()) return;
+    fetch("/api/threads-template")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.data) {
+          localStorage.setItem(THREAD_TEMPLATE_KEY, JSON.stringify(data.data));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
@@ -546,6 +559,7 @@ ${JSON.stringify(template, null, 2)}
         setAutoTone(cfg.tone || "template");
         setAutoFlow(cfg.flow || "template");
         setAutoCta(cfg.cta || "comment");
+        setAutoSourceMode(cfg.sourceMode || "random");
         setAutoLastUpdated(cfg.updatedAt || null);
       })
       .catch(() => {})
@@ -578,6 +592,7 @@ ${JSON.stringify(template, null, 2)}
             tone: autoTone,
             flow: autoFlow,
             cta: autoCta,
+            sourceMode: autoSourceMode,
             userId: userId.trim(),
             accessToken: accessToken.trim(),
           },
@@ -624,6 +639,7 @@ ${JSON.stringify(template, null, 2)}
             tone: autoTone,
             flow: autoFlow,
             cta: autoCta,
+            sourceMode: autoSourceMode,
             userId: userId.trim(),
             accessToken: accessToken.trim(),
           },
@@ -1178,7 +1194,7 @@ ${JSON.stringify(template, null, 2)}
             </div>
 
             <div className="text-[11px] text-violet-600 bg-violet-100 rounded-lg px-3 py-2 leading-relaxed">
-              매일 KST 06:00 · 네이버 블로그에서 키워드 검색 → Gemini 주제 선정 + 글 생성 → 지정 시간 예약 자동 등록
+              매일 KST 06:00 · 네이버/Threads 소스를 섞어 키워드 기반 주제 선정 → Gemini 글 생성 → 지정 시간 예약 자동 등록
             </div>
 
             {/* 키워드 */}
@@ -1203,6 +1219,19 @@ ${JSON.stringify(template, null, 2)}
                 onChange={e => setAutoPostTime(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-violet-700">주제 소스</label>
+              <select
+                value={autoSourceMode}
+                onChange={e => setAutoSourceMode(e.target.value)}
+                className="w-full px-2.5 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+              >
+                <option value="random">랜덤 혼합 (추천)</option>
+                <option value="naver">네이버 블로그</option>
+                <option value="threads">Threads 인기글</option>
+              </select>
             </div>
 
             {/* 글 스타일 */}

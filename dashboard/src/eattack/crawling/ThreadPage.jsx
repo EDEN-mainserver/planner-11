@@ -11,6 +11,7 @@ import { callGemini } from "../../utils/gemini";
 // ── 브랜드 프로필 ──
 const BRAND_KEY = "eattack_brand_profile";
 const THREAD_TEMPLATE_KEY = "eattack_threads_view_template";
+const THREAD_TEMPLATE_SYNC_API = "/api/threads-template";
 function loadBrand() {
   try { return JSON.parse(localStorage.getItem(BRAND_KEY)) || { name: "", target: "", tone: "" }; }
   catch { return { name: "", target: "", tone: "" }; }
@@ -28,6 +29,30 @@ function saveThreadTemplate(data, keyword = "") {
   }));
 }
 function deleteThreadTemplate() { localStorage.removeItem(THREAD_TEMPLATE_KEY); }
+function summarizePosts(posts = []) {
+  return posts.slice(0, 20).map((post) => ({
+    author: post.author || "",
+    keyword: post.keyword || "",
+    views: Number(post.views || 0),
+    likes: Number(post.likes || 0),
+    comments: Number(post.comments || 0),
+    reposts: Number(post.shares || post.reposts || 0),
+    content: post.content || "",
+    postUrl: post.postUrl || "",
+    time: post.time || "",
+  }));
+}
+async function syncThreadTemplateToServer(payload) {
+  try {
+    await fetch(THREAD_TEMPLATE_SYNC_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // 서버 동기화 실패는 로컬 저장을 막지 않는다.
+  }
+}
 
 // ── JSON 파싱 헬퍼 ──
 function parseJSON(text) {
@@ -437,7 +462,15 @@ JSON 형식으로만 반환:
 
       const data = parseJSON(res);
       if (!data) throw new Error("템플릿 분석 파싱 실패");
-      saveThreadTemplate(data, keywordFilter || keyword || "");
+      const keywordKey = keywordFilter || keyword || "";
+      const snapshot = {
+        savedAt: new Date().toISOString(),
+        keyword: keywordKey,
+        data,
+        posts: summarizePosts(sourcePosts),
+      };
+      saveThreadTemplate(data, keywordKey);
+      syncThreadTemplateToServer(snapshot);
       setTemplateMap({ loading: false, data, error: null, savedAt: new Date().toISOString() });
     } catch (e) {
       setTemplateMap({ loading: false, data: null, error: e.message || "템플릿 역설계 실패" });
@@ -447,12 +480,21 @@ JSON 형식으로만 반환:
   const handleSaveTemplate = useCallback(() => {
     if (!templateMap?.data) return;
     const savedAt = new Date().toISOString();
-    saveThreadTemplate(templateMap.data, keywordFilter || keyword || "");
+    const keywordKey = keywordFilter || keyword || "";
+    const snapshot = {
+      savedAt,
+      keyword: keywordKey,
+      data: templateMap.data,
+      posts: summarizePosts(posts.filter(p => keywordFilter === null || p.keyword === keywordFilter)),
+    };
+    saveThreadTemplate(templateMap.data, keywordKey);
+    syncThreadTemplateToServer(snapshot);
     setTemplateMap(prev => ({ ...prev, savedAt }));
-  }, [templateMap?.data, keywordFilter, keyword]);
+  }, [templateMap?.data, keywordFilter, keyword, posts]);
 
   const handleDeleteTemplate = useCallback(() => {
     deleteThreadTemplate();
+    syncThreadTemplateToServer({ deleted: true });
     setTemplateMap(null);
   }, []);
 
