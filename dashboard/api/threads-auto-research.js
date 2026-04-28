@@ -83,6 +83,61 @@ async function callGemini(prompt, env) {
   throw new Error("Gemini 모든 모델 실패");
 }
 
+function parseJSONBlock(text) {
+  const match = String(text || "").match(/```json\s*([\s\S]*?)```/) || String(text || "").match(/(\{[\s\S]*\})/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1] || match[0]);
+  } catch {
+    return null;
+  }
+}
+
+async function reviewThreadText(text, context, env) {
+  const prompt =
+`너는 Threads 게시글의 최종 검수 편집자야.
+아래 본문을 검토해서, 끊김/미완성/중복/설명문/불필요한 안내문이 있으면 바로 고쳐서 최종 게시글로 바꿔줘.
+
+[검토 대상]
+${text}
+
+[작성 맥락]
+- 소스: ${context.sourceLabel}
+- 포맷: ${context.formatRule}
+- 말투: ${context.toneRule}
+- 흐름: ${context.flowRule}
+- CTA: ${context.ctaRule}
+
+[검토 기준]
+- 본문이 중간에서 끊기면 안 됨
+- 마지막이 불완전한 조각처럼 끝나면 안 됨
+- 최소 220자 이상, 최대 500자 이내
+- 한 문단 또는 2~5줄 구조로 읽히게 정리
+- 마지막 줄은 완결된 문장이나 자연스러운 CTA로 끝낼 것
+- 해시태그가 있다면 1~4개만 자연스럽게 유지
+- 원문이 괜찮으면 내용은 유지하고 표현만 다듬어도 됨
+- 부족하면 더 자연스럽고 완결된 본문으로 재작성
+- 설명 없이 JSON만 반환
+
+반환 형식:
+{
+  "approved": true,
+  "issues": ["없음"],
+  "revised_text": "최종 게시글"
+}`;
+
+  const raw = await callGemini(prompt, env);
+  const data = parseJSONBlock(raw);
+  if (!data) return { approved: false, issues: ["검수 파싱 실패"], revisedText: text };
+
+  const revisedText = String(data.revised_text || text || "").trim().slice(0, 500);
+  return {
+    approved: Boolean(data.approved),
+    issues: Array.isArray(data.issues) ? data.issues : [],
+    revisedText,
+  };
+}
+
 // ── 예약 시간 계산 (KST 기준) ──
 // postTime: "HH:MM" (KST)
 // 크론이 UTC 21:00 (KST 익일 06:00)에 실행되므로 KST 날짜 = UTC날짜 + 1일
@@ -183,9 +238,11 @@ ${sourceSummary}
 - 말투: ${TONE_RULES[config.tone] || TONE_RULES.template}
 - 흐름: ${FLOW_RULES[config.flow] || FLOW_RULES.template}
 - CTA: ${CTA_RULES[config.cta] || CTA_RULES.comment}
+- 최소 220자 이상, 최대 500자 이내
 - 최대 500자 이내
 - 줄바꿈 활용, 한 줄 10~25자
 - 해시태그 2~4개 (마지막에)
+- 마지막 문장은 완결된 문장이나 자연스러운 CTA로 닫을 것
 - 안내문, 제목, 설명 없이 게시글 본문만 출력
 - 마크다운 없이 순수 텍스트만`;
   } else {
@@ -218,9 +275,11 @@ ${articlesText}
 - 말투: ${TONE_RULES[config.tone] || TONE_RULES.template}
 - 흐름: ${FLOW_RULES[config.flow] || FLOW_RULES.template}
 - CTA: ${CTA_RULES[config.cta] || CTA_RULES.comment}
+- 최소 220자 이상, 최대 500자 이내
 - 최대 500자 이내
 - 줄바꿈 활용, 한 줄 10~25자
 - 해시태그 2~4개 (마지막에)
+- 마지막 문장은 완결된 문장이나 자연스러운 CTA로 닫을 것
 - 안내문, 제목, 설명 없이 게시글 본문만 출력
 - 마크다운 없이 순수 텍스트만`;
   }
@@ -241,6 +300,53 @@ ${articlesText}
 
   if (!text) throw new Error("생성된 텍스트 없음");
   log(`글 생성 완료 (${text.length}자)`);
+
+  const review = await reviewThreadText(text, {
+    sourceLabel,
+    formatRule: FORMAT_RULES[config.format] || FORMAT_RULES.expert,
+    toneRule: TONE_RULES[config.tone] || TONE_RULES.template,
+    flowRule: FLOW_RULES[config.flow] || FLOW_RULES.template,
+    ctaRule: CTA_RULES[config.cta] || CTA_RULES.comment,
+  }, env);
+
+  if (!review.approved || (review.revisedText && review.revisedText !== text)) {
+    log(`AI 검토 반영: ${review.issues?.join(", ") || "수정"}`);
+    text = review.revisedText || text;
+  } else {
+    log("AI 검토 통과");
+  }
+
+  text = text
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 500);
+
+  if (text.length < 220) {
+    log(`AI 검토 후 본문이 짧음 (${text.length}자) — 보강 생성`);
+    const repairRaw = await callGemini(
+      `아래 Threads 본문을 220~500자 범위의 완결된 게시글로 다시 써줘.
+중간에 끊기면 안 되고, 마지막 문장과 CTA가 자연스럽게 닫혀야 해.
+설명 없이 최종 본문만 출력.
+
+[원문]
+${text}
+`,
+      env
+    );
+    const repaired = repairRaw
+      .replace(/\r/g, "")
+      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```[a-z]*\n?/gi, "").replace(/```/g, ""))
+      .trim()
+      .replace(/^(네|좋아요|물론|알겠습니다)[,!\s].*/m, "")
+      .replace(/^#{1,6}\s*.*/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, 500);
+    if (repaired.length >= text.length) {
+      text = repaired;
+      log(`보강 생성 완료 (${text.length}자)`);
+    }
+  }
 
   // 4. 예약 등록 (중복 방지 — pending 자동 예약이 하나라도 있으면 스킵)
   const schedules = (await readBlob(PREFIX_SCHED, username)) || [];
