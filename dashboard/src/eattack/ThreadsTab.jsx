@@ -1780,17 +1780,6 @@ ${JSON.stringify(template, null, 2)}
         </div>
       )}
 
-      <AutoMonitorDock
-        monitor={autoMonitor}
-        history={autoHistory}
-        loading={autoMonitorLoading}
-        canceling={autoCanceling}
-        autoRunning={autoRunning}
-        onRefresh={() => loadAutoMonitor()}
-        onCancel={handleCancelAutoRun}
-        onSelectRun={(runId) => loadAutoMonitor(runId)}
-      />
-
       {/* 토큰 발급 안내 */}
       <details className="group">
         <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 select-none">

@@ -6,6 +6,7 @@ import ImagePage from "./ImagePage";
 import VideoPage from "./VideoPage";
 import IbossPage from "./IbossPage";
 import FullAutoPage from "./FullAutoPage";
+import AutoMonitorDock from "./AutoMonitorDock";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -304,6 +305,7 @@ export default function EAttackPage() {
           </>
         )}
       </div>
+      <AutoMonitorDock />
     </div>
   );
 }
