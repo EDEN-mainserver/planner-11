@@ -188,11 +188,13 @@ ${articlesText}
   if (!text) throw new Error("생성된 텍스트 없음");
   log(`글 생성 완료 (${text.length}자)`);
 
-  // 4. 예약 등록 (중복 방지)
+  // 4. 예약 등록 (중복 방지 — pending 자동 예약이 하나라도 있으면 스킵)
   const schedules = (await readBlob(PREFIX_SCHED, username)) || [];
-  if (alreadyScheduledToday(schedules, config.postTime)) {
-    log("오늘 자동 예약이 이미 존재함 — 스킵");
-    return { skipped: true, logs };
+  const pendingAuto = schedules.find(s => s.auto === true && s.status === "pending");
+  if (pendingAuto) {
+    const pendingTime = new Date(pendingAuto.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+    log(`대기 중인 자동 예약 있음 (${pendingTime}) — 스킵`);
+    return { skipped: true, skipReason: `기존 예약 대기 중: ${pendingTime}`, logs };
   }
 
   const scheduledAt = calcScheduledAt(config.postTime);
@@ -204,13 +206,14 @@ ${articlesText}
     scheduledAt,
     status:      "pending",
     createdAt:   new Date().toISOString(),
-    auto:        true, // 자동 생성 플래그
+    auto:        true,
   };
   schedules.push(newPost);
   await writeBlob(PREFIX_SCHED, username, schedules);
   log(`예약 완료: ${scheduledAt} (KST ${config.postTime})`);
+  log(`본문 (${text.length}자): ${text}`);
 
-  return { scheduledAt, textPreview: text.slice(0, 60), logs };
+  return { scheduledAt, text, logs };
 }
 
 export const config = { maxDuration: 120, memory: 512 };

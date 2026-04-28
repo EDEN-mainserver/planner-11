@@ -600,9 +600,18 @@ ${JSON.stringify(template, null, 2)}
       if (!res.ok) throw new Error(data.error || "실행 실패");
       addLog("info", `실행 완료: ${data.ran}개 계정 처리`);
       data.results?.forEach(r => {
-        if (r.status === "ok" && !r.skipped) addLog("info", `✓ @${r.username}: ${r.textPreview}...`);
-        else if (r.skipped) addLog("info", `@${r.username}: 오늘 예약 이미 존재 — 스킵`);
-        else addLog("error", `✗ @${r.username}: ${r.error}`);
+        // 파이프라인 상세 로그 전체 출력
+        r.logs?.forEach(l => addLog("info", `  ↳ ${l}`));
+
+        if (r.status === "ok" && !r.skipped) {
+          const kst = new Date(r.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+          addLog("info", `✓ @${r.username} 예약 완료 — ${kst}`);
+          addLog("info", `📝 본문 전체 (${r.text?.length ?? 0}자):\n${r.text}`);
+        } else if (r.skipped) {
+          addLog("info", `⏭ @${r.username}: ${r.skipReason || "예약 이미 존재"} — 스킵`);
+        } else {
+          addLog("error", `✗ @${r.username}: ${r.error}`);
+        }
       });
       fetchSchedules(username).then(setScheduledPosts).catch(() => {});
     } catch (e) {
