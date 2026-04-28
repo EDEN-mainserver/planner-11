@@ -9,6 +9,7 @@ import { list, put, del } from "@vercel/blob";
 const PREFIX_AUTO   = "threads-auto";
 const PREFIX_SCHED  = "threads-schedule";
 const PREFIX_TEMPLATE = "threads-template";
+const PREFIX_MONITOR = "threads-auto-monitor";
 
 // ── Blob 읽기/쓰기 유틸 ──
 async function readBlob(prefix, username) {
@@ -28,6 +29,71 @@ async function writeBlob(prefix, username, data) {
     contentType: "application/json",
     addRandomSuffix: false,
   });
+}
+
+function monitorPath(username, runId) {
+  return `${PREFIX_MONITOR}/${username}/${runId}.json`;
+}
+
+async function listMonitorRuns(username) {
+  const { blobs } = await list({ prefix: `${PREFIX_MONITOR}/${username}/` });
+  return blobs.sort((a, b) => new Date(b.uploadedAt || b.pathname) - new Date(a.uploadedAt || a.pathname));
+}
+
+async function readMonitorRun(username, runId) {
+  try {
+    const { blobs } = await list({ prefix: monitorPath(username, runId) });
+    if (!blobs.length) return null;
+    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeMonitorRun(username, runId, data) {
+  await put(monitorPath(username, runId), JSON.stringify(data), {
+    access: "public",
+    contentType: "application/json",
+    addRandomSuffix: false,
+  });
+}
+
+async function appendMonitorLog(username, runId, entry) {
+  const current = (await readMonitorRun(username, runId)) || {
+    username,
+    runId,
+    status: "running",
+    phase: "starting",
+    logs: [],
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  current.logs = [...(current.logs || []), entry].slice(-120);
+  current.updatedAt = new Date().toISOString();
+  if (!current.startedAt) current.startedAt = current.updatedAt;
+  await writeMonitorRun(username, runId, current);
+}
+
+async function updateMonitorRun(username, runId, patch) {
+  const current = (await readMonitorRun(username, runId)) || {
+    username,
+    runId,
+    logs: [],
+    startedAt: new Date().toISOString(),
+  };
+  const next = {
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  await writeMonitorRun(username, runId, next);
+  return next;
+}
+
+async function isRunCanceled(username, runId) {
+  const run = await readMonitorRun(username, runId);
+  return Boolean(run?.control?.canceled);
 }
 
 async function readLatestThreadTemplate() {
@@ -195,34 +261,64 @@ const CTA_RULES = {
 };
 
 // ── 단일 계정 자동화 실행 ──
-async function runForAccount(username, config, env) {
+async function runForAccount(username, config, env, runId) {
   const logs = [];
-  const log = (msg) => { logs.push(msg); console.log(`[auto-research:${username}] ${msg}`); };
+  const log = async (msg, detail = null, phase = null) => {
+    logs.push(msg);
+    console.log(`[auto-research:${username}] ${msg}`);
+    await appendMonitorLog(username, runId, {
+      time: new Date().toISOString(),
+      msg,
+      detail,
+      phase: phase || undefined,
+    });
+  };
 
-  const threadTemplate = await readLatestThreadTemplate();
-  const sourceMode = config.sourceMode || "random";
-  const preferredSource = sourceMode === "random"
-    ? (threadTemplate?.data ? (Math.random() < 0.5 ? "threads" : "naver") : "naver")
-    : sourceMode;
-  const sourceChoice = preferredSource === "threads" && !threadTemplate?.data ? "naver" : preferredSource;
-  log(`주제 소스 선택: ${sourceChoice}${sourceMode !== sourceChoice ? ` (설정: ${sourceMode})` : ""}`);
+  const guardCancel = async () => {
+    if (await isRunCanceled(username, runId)) {
+      await updateMonitorRun(username, runId, {
+        status: "canceled",
+        phase: "canceled",
+        error: "사용자가 취소했습니다",
+      });
+      throw new Error("사용자가 취소했습니다");
+    }
+  };
 
-  let prompt;
-  let sourceLabel;
-  let sourceSummary = "";
+  await updateMonitorRun(username, runId, {
+    username,
+    runId,
+    status: "running",
+    phase: "starting",
+    logs: [],
+    startedAt: new Date().toISOString(),
+  });
 
-  if (sourceChoice === "threads" && threadTemplate?.data) {
-    const posts = Array.isArray(threadTemplate.posts) ? threadTemplate.posts : [];
-    const topPosts = posts
-      .filter((p) => (p.views || 0) > 0 || (p.likes || 0) > 0 || (p.comments || 0) > 0)
-      .sort((a, b) => (b.views || 0) - (a.views || 0))
-      .slice(0, 8);
-    const templateData = threadTemplate.data;
-    sourceLabel = "Threads 인기글 역설계";
-    sourceSummary = topPosts.length
-      ? topPosts.map((p, i) => `[${i + 1}] @${p.author || "unknown"} | 조회 ${Number(p.views || 0).toLocaleString()} | 좋아요 ${Number(p.likes || 0).toLocaleString()} | 댓글 ${Number(p.comments || 0).toLocaleString()} | ${p.content}`).join("\n")
-      : JSON.stringify(templateData, null, 2);
-    prompt =
+  try {
+    const threadTemplate = await readLatestThreadTemplate();
+    const sourceMode = config.sourceMode || "random";
+    const preferredSource = sourceMode === "random"
+      ? (threadTemplate?.data ? (Math.random() < 0.5 ? "threads" : "naver") : "naver")
+      : sourceMode;
+    const sourceChoice = preferredSource === "threads" && !threadTemplate?.data ? "naver" : preferredSource;
+    await log(`주제 소스 선택: ${sourceChoice}${sourceMode !== sourceChoice ? ` (설정: ${sourceMode})` : ""}`, null, "selecting");
+
+    let prompt;
+    let sourceLabel;
+    let sourceSummary = "";
+
+    if (sourceChoice === "threads" && threadTemplate?.data) {
+      const posts = Array.isArray(threadTemplate.posts) ? threadTemplate.posts : [];
+      const topPosts = posts
+        .filter((p) => (p.views || 0) > 0 || (p.likes || 0) > 0 || (p.comments || 0) > 0)
+        .sort((a, b) => (b.views || 0) - (a.views || 0))
+        .slice(0, 8);
+      const templateData = threadTemplate.data;
+      sourceLabel = "Threads 인기글 역설계";
+      sourceSummary = topPosts.length
+        ? topPosts.map((p, i) => `[${i + 1}] @${p.author || "unknown"} | 조회 ${Number(p.views || 0).toLocaleString()} | 좋아요 ${Number(p.likes || 0).toLocaleString()} | 댓글 ${Number(p.comments || 0).toLocaleString()} | ${p.content}`).join("\n")
+        : JSON.stringify(templateData, null, 2);
+      prompt =
 `너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
 아래는 최근 Threads 인기글을 조회수 기반으로 역설계한 결과와 포스트 요약이야.
 이 구조를 참고해서 오늘 반응이 좋을 주제 1개를 고르고, Threads 게시글 최종안 1개를 작성해줘.
@@ -245,24 +341,25 @@ ${sourceSummary}
 - 마지막 문장은 완결된 문장이나 자연스러운 CTA로 닫을 것
 - 안내문, 제목, 설명 없이 게시글 본문만 출력
 - 마크다운 없이 순수 텍스트만`;
-  } else {
-    sourceLabel = "네이버 블로그";
-    log(`키워드 검색 시작: ${config.keywords.join(", ")}`);
-    const allArticles = [];
-    for (const kw of config.keywords) {
-      const results = await searchNaver(kw, env);
-      allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
-    }
-    if (!allArticles.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
-    log(`검색 결과: ${allArticles.length}건`);
-    allArticles.slice(0, 8).forEach((a, i) =>
-      log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`)
-    );
+    } else {
+      sourceLabel = "네이버 블로그";
+      await log(`키워드 검색 시작: ${config.keywords.join(", ")}`, null, "searching");
+      const allArticles = [];
+      for (const kw of config.keywords) {
+        await guardCancel();
+        const results = await searchNaver(kw, env);
+        allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
+      }
+      if (!allArticles.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
+      await log(`검색 결과: ${allArticles.length}건`, { count: allArticles.length }, "searching");
+      for (const [i, a] of allArticles.slice(0, 8).entries()) {
+        await log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`);
+      }
 
-    const articlesText = allArticles.slice(0, 10).map((a, i) =>
-      `[${i + 1}] 키워드: ${a.keyword} | 제목: ${a.title} | 요약: ${a.description}`
-    ).join("\n");
-    prompt =
+      const articlesText = allArticles.slice(0, 10).map((a, i) =>
+        `[${i + 1}] 키워드: ${a.keyword} | 제목: ${a.title} | 요약: ${a.description}`
+      ).join("\n");
+      prompt =
 `너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
 아래 최신 AI 관련 기사/포스트 목록에서 오늘 가장 반응이 좋을 주제 1개를 선택해,
 Threads 게시글 최종안 1개를 바로 작성해줘.
@@ -282,58 +379,14 @@ ${articlesText}
 - 마지막 문장은 완결된 문장이나 자연스러운 CTA로 닫을 것
 - 안내문, 제목, 설명 없이 게시글 본문만 출력
 - 마크다운 없이 순수 텍스트만`;
-  }
+    }
 
-  log(`Gemini 글 생성 중... (${sourceLabel})`);
-  const raw = await callGemini(prompt, env);
+    await guardCancel();
+    await log(`Gemini 글 생성 중... (${sourceLabel})`, null, "generating");
+    const raw = await callGemini(prompt, env);
 
-  // 3. 텍스트 정리 (cleanThreadDraft 서버 버전)
-  let text = raw
-    .replace(/\r/g, "")
-    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```[a-z]*\n?/gi, "").replace(/```/g, ""))
-    .trim()
-    .replace(/^(네|좋아요|물론|알겠습니다)[,!\s].*/m, "")
-    .replace(/^#{1,6}\s*.*/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, 500);
-
-  if (!text) throw new Error("생성된 텍스트 없음");
-  log(`글 생성 완료 (${text.length}자)`);
-
-  const review = await reviewThreadText(text, {
-    sourceLabel,
-    formatRule: FORMAT_RULES[config.format] || FORMAT_RULES.expert,
-    toneRule: TONE_RULES[config.tone] || TONE_RULES.template,
-    flowRule: FLOW_RULES[config.flow] || FLOW_RULES.template,
-    ctaRule: CTA_RULES[config.cta] || CTA_RULES.comment,
-  }, env);
-
-  if (!review.approved || (review.revisedText && review.revisedText !== text)) {
-    log(`AI 검토 반영: ${review.issues?.join(", ") || "수정"}`);
-    text = review.revisedText || text;
-  } else {
-    log("AI 검토 통과");
-  }
-
-  text = text
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, 500);
-
-  if (text.length < 220) {
-    log(`AI 검토 후 본문이 짧음 (${text.length}자) — 보강 생성`);
-    const repairRaw = await callGemini(
-      `아래 Threads 본문을 220~500자 범위의 완결된 게시글로 다시 써줘.
-중간에 끊기면 안 되고, 마지막 문장과 CTA가 자연스럽게 닫혀야 해.
-설명 없이 최종 본문만 출력.
-
-[원문]
-${text}
-`,
-      env
-    );
-    const repaired = repairRaw
+    // 3. 텍스트 정리 (cleanThreadDraft 서버 버전)
+    let text = raw
       .replace(/\r/g, "")
       .replace(/```[\s\S]*?```/g, (m) => m.replace(/```[a-z]*\n?/gi, "").replace(/```/g, ""))
       .trim()
@@ -342,46 +395,122 @@ ${text}
       .replace(/\n{3,}/g, "\n\n")
       .trim()
       .slice(0, 500);
-    if (repaired.length >= text.length) {
-      text = repaired;
-      log(`보강 생성 완료 (${text.length}자)`);
+
+    if (!text) throw new Error("생성된 텍스트 없음");
+    await log(`글 생성 완료 (${text.length}자)`, { length: text.length }, "generating");
+
+    await guardCancel();
+    const review = await reviewThreadText(text, {
+      sourceLabel,
+      formatRule: FORMAT_RULES[config.format] || FORMAT_RULES.expert,
+      toneRule: TONE_RULES[config.tone] || TONE_RULES.template,
+      flowRule: FLOW_RULES[config.flow] || FLOW_RULES.template,
+      ctaRule: CTA_RULES[config.cta] || CTA_RULES.comment,
+    }, env);
+
+    if (!review.approved || (review.revisedText && review.revisedText !== text)) {
+      await log(`AI 검토 반영: ${review.issues?.join(", ") || "수정"}`, review.issues, "reviewing");
+      text = review.revisedText || text;
+    } else {
+      await log("AI 검토 통과", null, "reviewing");
     }
+
+    text = text
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, 500);
+
+    if (text.length < 220) {
+      await log(`AI 검토 후 본문이 짧음 (${text.length}자) — 보강 생성`, { length: text.length }, "reviewing");
+      const repairRaw = await callGemini(
+        `아래 Threads 본문을 220~500자 범위의 완결된 게시글로 다시 써줘.
+중간에 끊기면 안 되고, 마지막 문장과 CTA가 자연스럽게 닫혀야 해.
+설명 없이 최종 본문만 출력.
+
+[원문]
+${text}
+`,
+        env
+      );
+      const repaired = repairRaw
+        .replace(/\r/g, "")
+        .replace(/```[\s\S]*?```/g, (m) => m.replace(/```[a-z]*\n?/gi, "").replace(/```/g, ""))
+        .trim()
+        .replace(/^(네|좋아요|물론|알겠습니다)[,!\s].*/m, "")
+        .replace(/^#{1,6}\s*.*/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+        .slice(0, 500);
+      if (repaired.length >= text.length) {
+        text = repaired;
+        await log(`보강 생성 완료 (${text.length}자)`, { length: text.length }, "reviewing");
+      }
+    }
+
+    await guardCancel();
+    // 4. 예약 등록 (중복 방지 — pending 자동 예약이 하나라도 있으면 스킵)
+    const schedules = (await readBlob(PREFIX_SCHED, username)) || [];
+    const pendingAuto = schedules.find(s => s.auto === true && s.status === "pending");
+    if (pendingAuto) {
+      const pendingTime = new Date(pendingAuto.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+      await log(`대기 중인 자동 예약 있음 (${pendingTime}) — 스킵`, null, "scheduling");
+      await updateMonitorRun(username, runId, {
+        status: "skipped",
+        phase: "done",
+        skipReason: `기존 예약 대기 중: ${pendingTime}`,
+        text,
+        sourceLabel,
+      });
+      return { skipped: true, skipReason: `기존 예약 대기 중: ${pendingTime}`, logs };
+    }
+
+    const scheduledAt = calcScheduledAt(config.postTime);
+    const newPost = {
+      id:          `auto_${Date.now()}`,
+      text,
+      userId:      config.userId,
+      accessToken: config.accessToken,
+      scheduledAt,
+      status:      "pending",
+      createdAt:   new Date().toISOString(),
+      auto:        true,
+    };
+    schedules.push(newPost);
+    await writeBlob(PREFIX_SCHED, username, schedules);
+    await log(`예약 완료: ${scheduledAt} (KST ${config.postTime})`, { scheduledAt }, "scheduling");
+    await log(`본문 길이: ${text.length}자`, { length: text.length }, "scheduling");
+    await updateMonitorRun(username, runId, {
+      status: "completed",
+      phase: "done",
+      scheduledAt,
+      text,
+      sourceLabel,
+      summary: `예약 완료 (${text.length}자)`,
+    });
+
+    return { scheduledAt, text, logs };
+  } catch (error) {
+    const current = await readMonitorRun(username, runId);
+    if (current?.status !== "canceled") {
+      await updateMonitorRun(username, runId, {
+        status: "failed",
+        phase: "done",
+        error: error.message,
+      });
+    }
+    throw error;
   }
-
-  // 4. 예약 등록 (중복 방지 — pending 자동 예약이 하나라도 있으면 스킵)
-  const schedules = (await readBlob(PREFIX_SCHED, username)) || [];
-  const pendingAuto = schedules.find(s => s.auto === true && s.status === "pending");
-  if (pendingAuto) {
-    const pendingTime = new Date(pendingAuto.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-    log(`대기 중인 자동 예약 있음 (${pendingTime}) — 스킵`);
-    return { skipped: true, skipReason: `기존 예약 대기 중: ${pendingTime}`, logs };
-  }
-
-  const scheduledAt = calcScheduledAt(config.postTime);
-  const newPost = {
-    id:          `auto_${Date.now()}`,
-    text,
-    userId:      config.userId,
-    accessToken: config.accessToken,
-    scheduledAt,
-    status:      "pending",
-    createdAt:   new Date().toISOString(),
-    auto:        true,
-  };
-  schedules.push(newPost);
-  await writeBlob(PREFIX_SCHED, username, schedules);
-  log(`예약 완료: ${scheduledAt} (KST ${config.postTime})`);
-  log(`본문 길이: ${text.length}자`);
-
-  return { scheduledAt, text, logs };
 }
 
 export const config = { maxDuration: 120, memory: 512 };
 
 export default async function handler(req, res) {
+  const manualUsername = req.query?.username || req.body?.username || null;
+  const manualRunId = req.query?.runId || req.body?.runId || null;
+
   // CRON_SECRET 검증
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
+  if (cronSecret && !manualUsername) {
     const auth = req.headers["authorization"] || "";
     if (auth !== `Bearer ${cronSecret}`) return res.status(401).json({ error: "Unauthorized" });
   }
@@ -391,6 +520,20 @@ export default async function handler(req, res) {
   const results = [];
 
   try {
+    if (manualUsername) {
+      const cfg = await readBlob(PREFIX_AUTO, manualUsername);
+      if (!cfg) return res.status(404).json({ error: "설정을 찾을 수 없습니다" });
+      const runId = manualRunId || `manual_${Date.now()}`;
+      const result = await runForAccount(manualUsername, cfg, env, runId);
+      return res.status(200).json({
+        ok: true,
+        mode: "manual",
+        username: manualUsername,
+        runId,
+        result,
+      });
+    }
+
     // 모든 사용자의 자동화 설정 파일 조회
     const { blobs } = await list({ prefix: `${PREFIX_AUTO}/` });
     console.log(`[auto-research] 설정 파일 ${blobs.length}개 발견`);
@@ -408,7 +551,8 @@ export default async function handler(req, res) {
       if (!cfg.userId || !cfg.accessToken) { console.log(`[auto-research:${username}] 계정 정보 없음 — 스킵`); continue; }
 
       try {
-        const result = await runForAccount(username, cfg, env);
+        const runId = `cron_${Date.now()}_${username}`;
+        const result = await runForAccount(username, cfg, env, runId);
         results.push({ username, status: "ok", ...result });
       } catch (e) {
         console.error(`[auto-research:${username}] 실패:`, e.message);
