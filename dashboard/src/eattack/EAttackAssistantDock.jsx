@@ -44,7 +44,11 @@ function parseAssistantPayload(raw) {
   return { reply: text, choices: [] };
 }
 
-export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
+export default function EAttackAssistantDock({
+  scopeLabel = "E-Attack",
+  currentDepth = "root",
+  onNavigate,
+}) {
   const [session, setSession] = useState(() => getSession());
   const username = session?.username || "__guest";
   const [open, setOpen] = useState(false);
@@ -82,6 +86,22 @@ export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
   }, [username]);
 
   const quickPrompts = useMemo(() => makeQuickPrompts(scopeLabel), [scopeLabel]);
+  const featureShortcuts = useMemo(() => {
+    const rootItems = [
+      { key: "text", label: "글", depth: "text" },
+      { key: "image", label: "이미지", depth: "image" },
+      { key: "video", label: "영상", depth: "video" },
+      { key: "crawling", label: "크롤링", depth: "crawling" },
+      { key: "fullAuto", label: "풀가동화", depth: "fullAuto" },
+    ];
+    const textItems = [
+      { key: "blog", label: "블로그", depth: "funnelblog" },
+      { key: "iboss", label: "아이보스", depth: "iboss" },
+    ];
+    if (currentDepth === "text") return textItems;
+    if (["blog", "funnelblog", "iboss"].includes(currentDepth)) return rootItems;
+    return rootItems;
+  }, [currentDepth]);
 
   const systemPrompt = useMemo(() => `
 당신은 E-Attack 전용 AI 어시스턴트입니다.
@@ -90,6 +110,7 @@ export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
 - 검수, 재작성, 요약, 다음 액션 제안, 대안 비교를 한다.
 - 답변은 짧고 명확하게, 바로 실행 가능한 형태로 쓴다.
 - 항상 선택 가능한 후속 버튼 3개를 제안한다.
+- 현재 E-Attack 기능을 전환할 수 있으면 기능 바로가기를 제안한다.
 
 현재 범위: ${scopeLabel}
 
@@ -104,6 +125,7 @@ export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
 - choices는 중복되지 않는 짧은 행동형 문장으로 3개까지.
 - 검수 요청이면 문제점, 수정안, 다음 행동을 분리해서 제시한다.
 - 사용자가 코드/문구를 붙여넣으면 바로 수정해서 내놓는다.
+- 현재 화면에서 전환 가능한 기능이 있으면 choices에 그 기능명을 넣는다.
 `, [scopeLabel]);
 
   const sendPrompt = async (prompt) => {
@@ -158,6 +180,10 @@ export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
   const clearChat = () => {
     setMessages([]);
     localStorage.removeItem(HISTORY_KEY(username));
+  };
+
+  const handleNavigate = (depth) => {
+    if (typeof onNavigate === "function") onNavigate(depth);
   };
 
   if (!session || username === "__guest") return null;
@@ -227,6 +253,21 @@ export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
         </div>
 
         <div className="p-3 space-y-3 max-h-[calc(100vh-6rem)] overflow-y-auto">
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-violet-700 uppercase tracking-wide">기능 바로가기</p>
+            <div className="flex flex-wrap gap-1.5">
+              {featureShortcuts.map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => handleNavigate(item.depth)}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-violet-200 text-violet-700 bg-white hover:bg-violet-50 transition-all"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <p className="text-[10px] font-bold text-violet-700 uppercase tracking-wide">빠른 요청</p>
             <div className="flex flex-wrap gap-1.5">

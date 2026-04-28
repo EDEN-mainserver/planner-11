@@ -186,9 +186,10 @@ export default function EAttackPage() {
     }
   };
 
-  // 크롤링 대시보드
+  let pageContent = null;
+
   if (depth === "crawling") {
-    return (
+    pageContent = (
       <CrawlingPage
         onBack={() => setDepth("root")}
         onRecompose={(post, content) => {
@@ -197,48 +198,27 @@ export default function EAttackPage() {
         }}
       />
     );
-  }
-
-  // 아이보스 대시보드
-  if (depth === "iboss") {
-    return (
+  } else if (depth === "iboss") {
+    pageContent = (
       <IbossPage
         onBack={() => { setReferencePost(null); setDepth("text"); }}
         referencePost={referencePost}
         onClearReference={() => setReferencePost(null)}
       />
     );
-  }
-
-  // 퍼널 블로그 생성
-  if (depth === "funnelblog") {
-    return <FunnelBlogPage onBack={() => setDepth("text")} />;
-  }
-
-  // 블로그 대시보드 (레거시 — 직접 접근 시)
-  if (depth === "blog") {
-    return <BlogPage onBack={() => setDepth("text")} />;
-  }
-
-  // 이미지 대시보드
-  if (depth === "image") {
-    return <ImagePage onBack={() => setDepth("root")} />;
-  }
-
-  // 영상 대시보드
-  if (depth === "video") {
-    return <VideoPage onBack={() => setDepth("root")} />;
-  }
-
-  // 풀가동화 콘텐츠 대시보드
-  if (depth === "fullAuto") {
-    return <FullAutoPage onBack={() => setDepth("root")} />;
-  }
-
-  return (
-    <div className="flex-1 overflow-y-auto bg-gray-50">
+  } else if (depth === "funnelblog") {
+    pageContent = <FunnelBlogPage onBack={() => setDepth("text")} />;
+  } else if (depth === "blog") {
+    pageContent = <BlogPage onBack={() => setDepth("text")} />;
+  } else if (depth === "image") {
+    pageContent = <ImagePage onBack={() => setDepth("root")} />;
+  } else if (depth === "video") {
+    pageContent = <VideoPage onBack={() => setDepth("root")} />;
+  } else if (depth === "fullAuto") {
+    pageContent = <FullAutoPage onBack={() => setDepth("root")} />;
+  } else {
+    pageContent = (
       <div className="max-w-4xl mx-auto px-6 sm:px-10 py-8 sm:py-12">
-
         {/* 헤더 배너 */}
         <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-6 sm:p-8 mb-8 sm:mb-10 text-white">
           <div className="flex items-center justify-between">
@@ -270,7 +250,6 @@ export default function EAttackPage() {
           </div>
         )}
 
-        {/* ════ 루트: 글 / 이미지 / 영상 ════ */}
         {depth === "root" && (
           <>
             <h3 className="text-lg font-bold text-gray-800 mb-1">콘텐츠 유형 선택</h3>
@@ -287,7 +266,6 @@ export default function EAttackPage() {
           </>
         )}
 
-        {/* ════ 글 하위: 블로그 / 아이보스 ════ */}
         {depth === "text" && (
           <>
             <div className="flex items-center gap-3 mb-6">
@@ -316,7 +294,17 @@ export default function EAttackPage() {
           </>
         )}
       </div>
-      <EAttackAssistantDock scopeLabel={`E-Attack · ${depthLabelMap[depth] || depth}`} />
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-gray-50">
+      {pageContent}
+      <EAttackAssistantDock
+        scopeLabel={`E-Attack · ${depthLabelMap[depth] || depth}`}
+        currentDepth={depth}
+        onNavigate={setDepth}
+      />
     </div>
   );
 }
