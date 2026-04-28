@@ -251,8 +251,10 @@ export default function ThreadsTab() {
   const [autoFlow, setAutoFlow] = useState("template");
   const [autoCta, setAutoCta] = useState("comment");
   const [autoSaving, setAutoSaving] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoLastUpdated, setAutoLastUpdated] = useState(null);
+  const [autoRunResult, setAutoRunResult] = useState(null); // { logs, text, scheduledAt, skipped, skipReason, error }
 
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };

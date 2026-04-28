@@ -6,8 +6,10 @@ import EAttackPage from "../eattack/EAttackPage";
 import MoneyPage from "../eattack/MoneyPage";
 import GrowthDBPage from "../eattack/GrowthDBPage";
 import AdminPage from "./AdminPage";
+import { getSession, clearSession } from "../eattack/LoginModal";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
+  const [session] = useState(() => getSession());
   const [idea, setIdea] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
