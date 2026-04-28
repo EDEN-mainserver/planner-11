@@ -236,7 +236,7 @@ export function StepSubtitle({
             자막 없음
           </div>
           <p className="text-sm text-muted-foreground">
-            자막 없이 진행하면 AI 분석과 추천 구간 선택을 건너뛰고, 원본 영상 기준 수동 편집용 드래프트를 바로 생성합니다.
+            자막 없이 진행하면 영상 길이를 기준으로 후보 구간을 생성한 뒤, 직접 선택해서 드래프트를 만들 수 있습니다.
           </p>
           <Button
             variant="secondary"

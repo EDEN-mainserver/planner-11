@@ -1,5 +1,6 @@
 "use client";
 
+import { type ChangeEvent, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,17 @@ export function StepVideoInput({
   onInputTypeChange,
   onNext,
 }: Props) {
+  const localFileRef = useRef<HTMLInputElement | null>(null);
+  const [localFileName, setLocalFileName] = useState("");
+
+  const handleLocalFilePick = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setLocalFileName(file.name);
+    onVideoInputChange(file.name);
+  };
+
   return (
     <div className="space-y-6 mt-4">
       <Card>
@@ -64,26 +76,51 @@ export function StepVideoInput({
           </div>
 
           {/* 입력 필드 */}
-          <div className="space-y-2">
-            <Label htmlFor="video-input">
-              {inputType === "local" ? "영상 파일 경로" : "YouTube URL"}
-            </Label>
-            <Input
-              id="video-input"
-              placeholder={
-                inputType === "local"
-                  ? "/Users/you/Videos/my_video.mp4"
-                  : "https://www.youtube.com/watch?v=..."
-              }
-              value={videoInput}
-              onChange={(e) => onVideoInputChange(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              {inputType === "local"
-                ? "MP4, MOV 등 영상 파일의 전체 경로를 입력하거나 드래그하세요"
-                : "YouTube 영상 URL을 붙여넣으세요 (Shorts 포함)"}
-            </p>
-          </div>
+          {inputType === "local" && (
+            <div className="space-y-2">
+              <Label>영상 파일 불러오기</Label>
+              <input
+                ref={localFileRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={handleLocalFilePick}
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => localFileRef.current?.click()}
+                >
+                  불러오기
+                </Button>
+                <Input
+                  value={localFileName || videoInput || ""}
+                  placeholder="데스크탑에서 영상을 선택하세요"
+                  readOnly
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                브라우저에서는 실제 절대경로 대신 선택된 파일명만 표시됩니다
+              </p>
+            </div>
+          )}
+
+          {inputType === "youtube" && (
+            <div className="space-y-2">
+              <Label htmlFor="video-input">YouTube URL</Label>
+              <Input
+                id="video-input"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={videoInput}
+                onChange={(e) => onVideoInputChange(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                YouTube 영상 URL을 붙여넣으세요
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
