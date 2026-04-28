@@ -2,7 +2,7 @@
 // - 사용자 관리 (추가/수정/삭제)
 // - 소셜 계정 API 연동 (인스타그램 · 스레드 per user)
 // - AI API 키 관리 (Gemini, Claude, OpenAI 등)
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 import { USERS as SEED_USERS } from "../config/users";
@@ -1180,11 +1180,149 @@ function CoupangTab() {
 }
 
 // ═══════════════════════════════════════════
+// 탭: 구글 회원 DB
+// ═══════════════════════════════════════════
+function MembersTab() {
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+  const [actionId, setActionId] = useState(null);
+
+  const fetchMembers = () => {
+    setLoading(true);
+    setError(null);
+    fetch("/api/users-db")
+      .then(r => r.json())
+      .then(d => { setMembers(d.users || []); setLoading(false); })
+      .catch(e => { setError(e.message); setLoading(false); });
+  };
+
+  useEffect(() => { fetchMembers(); }, []);
+
+  const setRole = async (userId, role) => {
+    setActionId(userId);
+    await fetch("/api/users-db", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "setRole", userId, role }),
+    });
+    await fetchMembers();
+    setActionId(null);
+  };
+
+  const deleteMember = async (userId) => {
+    if (!confirm("이 회원을 삭제할까요?")) return;
+    setActionId(userId);
+    await fetch("/api/users-db", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", userId }),
+    });
+    await fetchMembers();
+    setActionId(null);
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20 text-gray-400 text-sm">불러오는 중...</div>
+  );
+  if (error) return (
+    <div className="py-10 text-center text-red-500 text-sm">{error}</div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-gray-800">Google 회원 DB</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Google 로그인으로 가입된 사용자 · 총 {members.length}명</p>
+        </div>
+        <button
+          onClick={fetchMembers}
+          className="px-3 py-1.5 text-xs font-semibold border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-all"
+        >
+          새로고침
+        </button>
+      </div>
+
+      {members.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
+          <span className="text-3xl mb-3">👤</span>
+          <p className="text-sm text-gray-500 font-medium">아직 Google로 가입한 회원이 없습니다</p>
+          <p className="text-xs text-gray-400 mt-1">로그인 모달에서 "Google로 계속하기"를 통해 가입됩니다</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                {["", "이름 / 이메일", "가입일", "최근 로그인", "역할", ""].map((h, i) => (
+                  <th key={i} className="text-left px-4 py-3 text-xs font-semibold text-gray-500">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {members.map(m => (
+                <tr key={m.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 w-10">
+                    {m.picture
+                      ? <img src={m.picture} alt="" className="w-8 h-8 rounded-full object-cover" />
+                      : <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">
+                          {m.displayName?.charAt(0) || "?"}
+                        </div>
+                    }
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-gray-800 text-sm">{m.displayName}</p>
+                    <p className="text-xs text-gray-400">{m.email}</p>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                    {new Date(m.createdAt).toLocaleDateString("ko-KR")}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                    {m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleDateString("ko-KR") : "-"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={m.role || "user"}
+                      disabled={actionId === m.id}
+                      onChange={e => setRole(m.id, e.target.value)}
+                      className="px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white"
+                    >
+                      <option value="user">일반</option>
+                      <option value="member">멤버</option>
+                      <option value="admin">관리자</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => deleteMember(m.id)}
+                      disabled={actionId === m.id}
+                      className="px-2.5 py-1 text-[11px] font-semibold border border-gray-200 text-red-400 rounded-lg hover:border-red-200 hover:bg-red-50 disabled:opacity-40 transition-all"
+                    >
+                      삭제
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-[11px] text-gray-400">
+        Google OAuth 2.0 인증을 통해 가입된 회원입니다. 역할은 저장 즉시 반영됩니다.
+      </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 // 메인 AdminPage
 // ═══════════════════════════════════════════
 const ADMIN_TABS = [
   { key: "users",   label: "사용자 관리" },
   { key: "social",  label: "소셜 계정 연동" },
+  { key: "members", label: "👥 회원 DB" },
   { key: "stats",   label: "프로젝트 통계" },
   { key: "coupang", label: "🛒 쿠팡 API" },
   { key: "aikeys",  label: "🤖 AI API 키" },
@@ -1233,6 +1371,7 @@ export default function AdminPage({ projects = [], trash = [], onLoad }) {
         {/* 탭 콘텐츠 */}
         {activeTab === "users"   && <UsersTab />}
         {activeTab === "social"  && <SocialTab />}
+        {activeTab === "members" && <MembersTab />}
         {activeTab === "coupang" && <CoupangTab />}
         {activeTab === "aikeys"  && <AiApiTab />}
 

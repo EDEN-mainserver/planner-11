@@ -42,7 +42,9 @@
     "api/schedule.js": { "maxDuration": 30, "memory": 512 },
     "api/threads-scheduler.js": { "maxDuration": 90, "memory": 512 },
     "api/threads-auto-config.js": { "maxDuration": 15, "memory": 256 },
-    "api/threads-auto-research.js": { "maxDuration": 120, "memory": 512 }
+    "api/threads-auto-research.js": { "maxDuration": 120, "memory": 512 },
+    "api/auth-google.js":  { "maxDuration": 30, "memory": 512 },
+    "api/users-db.js":     { "maxDuration": 15, "memory": 256 }
   },
   "crons": [
     {
