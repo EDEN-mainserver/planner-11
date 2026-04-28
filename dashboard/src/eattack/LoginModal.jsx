@@ -3,6 +3,21 @@
 import { useState } from "react";
 import { USERS } from "../config/users";
 
+// Google OAuth URL 생성
+function buildGoogleAuthUrl() {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  if (!clientId) return null;
+  const params = new URLSearchParams({
+    client_id:     clientId,
+    redirect_uri:  `${window.location.origin}/api/auth-google`,
+    response_type: "code",
+    scope:         "email profile",
+    access_type:   "offline",
+    prompt:        "select_account",
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
 const SESSION_KEY = "eden_auth_v1";
 
 export function getSession() {
@@ -22,6 +37,7 @@ export default function LoginModal({ onLogin }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const googleUrl = buildGoogleAuthUrl();
 
   const handleSubmit = (e) => {
     e.preventDefault();
