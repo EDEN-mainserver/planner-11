@@ -41,6 +41,7 @@ export default function LoginModal({ onLogin }) {
 
     const session = { username: user.username, displayName: user.displayName };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    window.dispatchEvent(new CustomEvent("eden-session-change", { detail: session }));
     onLogin(session);
     setLoading(false);
   };

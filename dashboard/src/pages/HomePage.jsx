@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { callGemini } from "../utils/gemini";
 import { relativeTime } from "../utils/storage";
 import { IconArrowUp } from "../components/Icons";
@@ -9,7 +9,12 @@ import AdminPage from "./AdminPage";
 import { getSession, clearSession } from "../eattack/LoginModal";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
-  const [session] = useState(() => getSession());
+  const [session, setSession] = useState(() => getSession());
+  useEffect(() => {
+    const handleSessionChange = (e) => setSession(e.detail || getSession());
+    window.addEventListener("eden-session-change", handleSessionChange);
+    return () => window.removeEventListener("eden-session-change", handleSessionChange);
+  }, []);
   const [idea, setIdea] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
