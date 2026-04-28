@@ -220,6 +220,215 @@ function cleanThreadDraft(raw) {
     .slice(0, TH_MAX_CHARS);
 }
 
+function AutoMonitorDock({
+  monitor,
+  history,
+  loading,
+  canceling,
+  autoRunning,
+  onRefresh,
+  onCancel,
+  onSelectRun,
+}) {
+  const status = monitor?.status || "idle";
+  const statusLabel = status === "running"
+    ? "검수 중"
+    : status === "canceling"
+      ? "취소 요청"
+      : status === "completed"
+        ? "완료"
+        : status === "skipped"
+          ? "스킵"
+          : status === "failed"
+            ? "실패"
+            : "대기";
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,380px)]">
+      <div className="rounded-2xl border border-violet-200 bg-white/95 backdrop-blur shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-3 py-3 border-b border-violet-100 bg-violet-50/80">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shadow-sm flex-shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="7" width="18" height="11" rx="2" />
+                <path d="M12 3v4" />
+                <path d="M9 11h.01" />
+                <path d="M15 11h.01" />
+                <path d="M8 18h8" />
+                <path d="M6 7l-2-2" />
+                <path d="M18 7l2-2" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-violet-800 truncate">AI 검수 패널</p>
+              <p className="text-[10px] text-gray-500 truncate">
+                {monitor?.phase ? `단계: ${monitor.phase}` : "실행 로그와 히스토리를 표시합니다"}
+              </p>
+            </div>
+          </div>
+          <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border whitespace-nowrap ${
+            status === "running"
+              ? "bg-violet-50 text-violet-700 border-violet-200"
+              : status === "canceling"
+                ? "bg-amber-50 text-amber-700 border-amber-200"
+                : status === "completed"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : status === "skipped"
+                    ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                    : status === "failed"
+                      ? "bg-red-50 text-red-700 border-red-200"
+                      : "bg-gray-50 text-gray-500 border-gray-200"
+          }`}>
+            {statusLabel}
+          </span>
+        </div>
+
+        <div className="p-3 space-y-3 max-h-[calc(100vh-6rem)] overflow-y-auto">
+          <div className="flex gap-2">
+            <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold shrink-0">
+              {status === "running" || status === "canceling" ? "AI" : "P"}
+            </div>
+            <div className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm flex-1 min-w-0">
+              <span className="text-xs text-gray-400 truncate">
+                {status === "running" ? "생각 중" : status === "canceling" ? "취소 처리 중" : "기록 대기"}
+              </span>
+              {(status === "running" || status === "canceling") && (
+                <>
+                  <div className="w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce ml-0.5" style={{ animationDelay: "0ms" }} />
+                  <div className="w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce ml-0.5" style={{ animationDelay: "150ms" }} />
+                  <div className="w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce ml-0.5" style={{ animationDelay: "300ms" }} />
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {loading && (
+              <div className="text-[11px] text-gray-400">검수 상태 불러오는 중...</div>
+            )}
+            {!monitor?.logs?.length && !loading && (
+              <div className="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                실행 로그가 여기에 하나씩 쌓입니다.
+              </div>
+            )}
+            {monitor?.logs?.slice(-12).map((entry, idx) => {
+              const time = entry?.time ? new Date(entry.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+              const level = entry?.phase || entry?.level || "log";
+              return (
+                <div key={`${entry?.time || idx}-${idx}`} className="flex gap-2 items-start rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
+                    level === "generating" || level === "reviewing"
+                      ? "bg-violet-400"
+                      : level === "searching"
+                        ? "bg-blue-400"
+                        : level === "scheduling"
+                          ? "bg-emerald-400"
+                          : level === "failed"
+                            ? "bg-red-400"
+                            : "bg-amber-400"
+                  }`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                      <span className="font-mono">{time || "now"}</span>
+                      <span className="font-semibold uppercase">{level}</span>
+                    </div>
+                    <p className="text-xs text-gray-700 leading-relaxed">{entry?.msg || ""}</p>
+                    {entry?.detail && (
+                      <p className="text-[10px] text-gray-400 font-mono mt-0.5 break-all">
+                        {typeof entry.detail === "object" ? JSON.stringify(entry.detail) : String(entry.detail)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {monitor?.text && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold text-gray-700">최종 본문 ({monitor.text.length}자)</p>
+                {monitor?.scheduledAt && (
+                  <span className="text-[10px] text-gray-400">
+                    {new Date(monitor.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+              </div>
+              <pre className="whitespace-pre-wrap text-gray-800 bg-white border border-gray-200 rounded-lg p-2 leading-relaxed text-[11px] max-h-40 overflow-y-auto">{monitor.text}</pre>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onRefresh}
+              className="px-3 py-2 text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100"
+            >
+              새로고침
+            </button>
+            <button
+              onClick={onCancel}
+              disabled={canceling || !(status === "running" || status === "canceling" || autoRunning)}
+              className="px-3 py-2 text-[11px] font-bold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40"
+            >
+              {canceling ? "취소 중..." : "취소"}
+            </button>
+          </div>
+
+          <div className="pt-1 border-t border-gray-100">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <p className="text-xs font-bold text-violet-800">최근 실행 히스토리</p>
+              <span className="text-[10px] text-gray-400">{history.length}건</span>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {history.length === 0 ? (
+                <div className="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                  저장된 실행 기록이 없습니다.
+                </div>
+              ) : history.slice(0, 6).map((run) => (
+                <button
+                  key={run.runId}
+                  onClick={() => onSelectRun(run.runId)}
+                  className="w-full text-left flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50 hover:bg-violet-50 hover:border-violet-200 transition-all"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-mono text-gray-500">
+                      {run.startedAt ? new Date(run.startedAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : run.runId}
+                    </p>
+                    <p className="text-xs text-gray-700 truncate">
+                      {run.summary || run.error || run.skipReason || run.phase || "실행 기록"}
+                    </p>
+                  </div>
+                  <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full border ${
+                    run.status === "running"
+                      ? "bg-violet-50 text-violet-700 border-violet-200"
+                      : run.status === "completed"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : run.status === "skipped"
+                          ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                          : run.status === "failed"
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : "bg-gray-50 text-gray-500 border-gray-200"
+                  }`}>
+                    {run.status === "running"
+                      ? "진행"
+                      : run.status === "completed"
+                        ? "완료"
+                        : run.status === "skipped"
+                          ? "스킵"
+                          : run.status === "failed"
+                            ? "실패"
+                            : "대기"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ThreadsTab() {
   const [session] = useState(() => getSession());
   const username = session?.username || "__guest";
@@ -1434,207 +1643,27 @@ ${JSON.stringify(template, null, 2)}
               <p className="text-[11px] text-violet-400 text-center">설정 불러오는 중...</p>
             )}
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSaveAutoConfig}
-                    disabled={autoSaving || autoRunning}
-                    className="flex-1 py-2.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl transition-all"
-                  >
-                    {autoSaving ? "저장 중..." : "설정 저장"}
-                  </button>
-                  <button
-                    onClick={handleRunAutoNow}
-                    disabled={autoRunning || autoSaving}
-                    className="px-4 py-2.5 text-xs font-bold text-violet-700 bg-white border border-violet-300 hover:bg-violet-50 disabled:opacity-40 rounded-xl transition-all whitespace-nowrap"
-                    title="현재 설정을 저장하고 즉시 실행 (실제 크론은 매일 KST 06:00 자동 실행)"
-                  >
-                    {autoRunning ? "실행 중..." : "지금 실행"}
-                  </button>
-                </div>
-
-                <div className="text-[11px] text-violet-500 bg-white border border-violet-100 rounded-xl px-3 py-2 leading-relaxed">
-                  자동화 실행은 왼쪽 설정을 기준으로 서버에서 계속 돌고, 오른쪽 패널에서 단계별 진행 상태를 확인할 수 있습니다.
-                </div>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveAutoConfig}
+                  disabled={autoSaving || autoRunning}
+                  className="flex-1 py-2.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl transition-all"
+                >
+                  {autoSaving ? "저장 중..." : "설정 저장"}
+                </button>
+                <button
+                  onClick={handleRunAutoNow}
+                  disabled={autoRunning || autoSaving}
+                  className="px-4 py-2.5 text-xs font-bold text-violet-700 bg-white border border-violet-300 hover:bg-violet-50 disabled:opacity-40 rounded-xl transition-all whitespace-nowrap"
+                  title="현재 설정을 저장하고 즉시 실행 (실제 크론은 매일 KST 06:00 자동 실행)"
+                >
+                  {autoRunning ? "실행 중..." : "지금 실행"}
+                </button>
               </div>
 
-              <div className="space-y-3">
-                <div className="bg-white border border-violet-100 rounded-2xl p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold text-violet-800">AI 검수 패널</p>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        {autoMonitor ? `단계: ${autoMonitor.phase || "starting"}` : "아직 실행 기록이 없습니다"}
-                      </p>
-                    </div>
-                    <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${
-                      autoMonitor?.status === "running"
-                        ? "bg-violet-50 text-violet-700 border-violet-200"
-                        : autoMonitor?.status === "canceling"
-                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                          : autoMonitor?.status === "completed"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : autoMonitor?.status === "skipped"
-                              ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                              : autoMonitor?.status === "failed"
-                                ? "bg-red-50 text-red-700 border-red-200"
-                                : "bg-gray-50 text-gray-500 border-gray-200"
-                    }`}>
-                      {autoMonitor?.status === "running"
-                        ? "검수 중"
-                        : autoMonitor?.status === "canceling"
-                          ? "취소 요청"
-                          : autoMonitor?.status === "completed"
-                            ? "완료"
-                            : autoMonitor?.status === "skipped"
-                              ? "스킵"
-                              : autoMonitor?.status === "failed"
-                                ? "실패"
-                                : "대기"}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex gap-2">
-                    <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold shrink-0">
-                      {autoMonitor?.status === "running" || autoMonitor?.status === "canceling" ? "AI" : "P"}
-                    </div>
-                    <div className="flex items-center gap-1 px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm flex-1">
-                      <span className="text-xs text-gray-400">
-                        {autoMonitor?.status === "running" ? "생각 중" : autoMonitor?.status === "canceling" ? "취소 처리 중" : "기록 대기"}
-                      </span>
-                      {(autoMonitor?.status === "running" || autoMonitor?.status === "canceling") && (
-                        <>
-                          <div className="w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce ml-0.5" style={{ animationDelay: "0ms" }} />
-                          <div className="w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce ml-0.5" style={{ animationDelay: "150ms" }} />
-                          <div className="w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce ml-0.5" style={{ animationDelay: "300ms" }} />
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 space-y-2 max-h-64 overflow-y-auto pr-1">
-                    {autoMonitorLoading && (
-                      <div className="text-[11px] text-gray-400">검수 상태 불러오는 중...</div>
-                    )}
-                    {!autoMonitor?.logs?.length && !autoMonitorLoading && (
-                      <div className="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                        실행 로그가 여기에 하나씩 쌓입니다.
-                      </div>
-                    )}
-                    {autoMonitor?.logs?.slice(-20).map((entry, idx) => {
-                      const time = entry?.time ? new Date(entry.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
-                      const level = entry?.phase || entry?.level || "log";
-                      return (
-                        <div key={`${entry?.time || idx}-${idx}`} className="flex gap-2 items-start rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
-                          <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                            level === "generating" || level === "reviewing"
-                              ? "bg-violet-400"
-                              : level === "searching"
-                                ? "bg-blue-400"
-                                : level === "scheduling"
-                                  ? "bg-emerald-400"
-                                  : level === "failed"
-                                    ? "bg-red-400"
-                                    : "bg-amber-400"
-                          }`} />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                              <span className="font-mono">{time || "now"}</span>
-                              <span className="font-semibold uppercase">{level}</span>
-                            </div>
-                            <p className="text-xs text-gray-700 leading-relaxed">{entry?.msg || ""}</p>
-                            {entry?.detail && (
-                              <p className="text-[10px] text-gray-400 font-mono mt-0.5 break-all">
-                                {typeof entry.detail === "object" ? JSON.stringify(entry.detail) : String(entry.detail)}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {autoMonitor?.text && (
-                    <div className="mt-4 space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] font-bold text-gray-700">최종 본문 ({autoMonitor.text.length}자)</p>
-                        {autoMonitor?.scheduledAt && (
-                          <span className="text-[10px] text-gray-400">
-                            {new Date(autoMonitor.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        )}
-                      </div>
-                      <pre className="whitespace-pre-wrap text-gray-800 bg-white border border-gray-200 rounded-lg p-2 leading-relaxed text-[11px] max-h-40 overflow-y-auto">{autoMonitor.text}</pre>
-                    </div>
-                  )}
-
-                  <div className="mt-4 flex items-center gap-2">
-                    <button
-                      onClick={() => loadAutoMonitor()}
-                      className="px-3 py-2 text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100"
-                    >
-                      새로고침
-                    </button>
-                    <button
-                      onClick={handleCancelAutoRun}
-                      disabled={autoCanceling || !(autoMonitor?.status === "running" || autoMonitor?.status === "canceling")}
-                      className="px-3 py-2 text-[11px] font-bold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-40"
-                    >
-                      {autoCanceling ? "취소 중..." : "취소"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-white border border-violet-100 rounded-2xl p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <p className="text-xs font-bold text-violet-800">최근 실행 히스토리</p>
-                    <span className="text-[10px] text-gray-400">{autoHistory.length}건</span>
-                  </div>
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    {autoHistory.length === 0 ? (
-                      <div className="text-[11px] text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                        저장된 실행 기록이 없습니다.
-                      </div>
-                    ) : autoHistory.slice(0, 6).map((run) => (
-                      <button
-                        key={run.runId}
-                        onClick={() => loadAutoMonitor(run.runId)}
-                        className="w-full text-left flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50 hover:bg-violet-50 hover:border-violet-200 transition-all"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-mono text-gray-500">
-                            {run.startedAt ? new Date(run.startedAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : run.runId}
-                          </p>
-                          <p className="text-xs text-gray-700 truncate">
-                            {run.summary || run.error || run.skipReason || run.phase || "실행 기록"}
-                          </p>
-                        </div>
-                        <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full border ${
-                          run.status === "running"
-                            ? "bg-violet-50 text-violet-700 border-violet-200"
-                            : run.status === "completed"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : run.status === "skipped"
-                                ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                : run.status === "failed"
-                                  ? "bg-red-50 text-red-700 border-red-200"
-                                  : "bg-gray-50 text-gray-500 border-gray-200"
-                        }`}>
-                          {run.status === "running"
-                            ? "진행"
-                            : run.status === "completed"
-                              ? "완료"
-                              : run.status === "skipped"
-                                ? "스킵"
-                                : run.status === "failed"
-                                  ? "실패"
-                                  : "대기"}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              <div className="text-[11px] text-violet-500 bg-white border border-violet-100 rounded-xl px-3 py-2 leading-relaxed">
+                자동화는 오른쪽 하단의 로봇 패널에서 계속 추적됩니다. 창을 넘겨도 상태와 히스토리가 유지됩니다.
               </div>
             </div>
 
@@ -1750,6 +1779,17 @@ ${JSON.stringify(template, null, 2)}
           </div>
         </div>
       )}
+
+      <AutoMonitorDock
+        monitor={autoMonitor}
+        history={autoHistory}
+        loading={autoMonitorLoading}
+        canceling={autoCanceling}
+        autoRunning={autoRunning}
+        onRefresh={() => loadAutoMonitor()}
+        onCancel={handleCancelAutoRun}
+        onSelectRun={(runId) => loadAutoMonitor(runId)}
+      />
 
       {/* 토큰 발급 안내 */}
       <details className="group">
