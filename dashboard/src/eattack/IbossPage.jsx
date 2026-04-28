@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import IbossNewPost from "./IbossNewPost";
 import IbossEditor from "./IbossEditor";
 import ExtensionInstallModal from "./ExtensionInstallModal";
-import { emitEAttackContext } from "./eattackContext";
+import { emitEAttackContext, onEAttackCommand } from "./eattackContext";
 
 const STORAGE_KEY = "eattack_iboss_posts";
 
@@ -341,9 +341,19 @@ export default function IbossPage({ onBack, referencePost = null, onClearReferen
       status: activeFilter,
       summary: referencePost
         ? `레퍼런스 글이 연결된 새 글 작성 상태입니다. 뷰 ${view}, 필터 ${activeFilter}, 저장 글 ${posts.length}개.`
-        : `아이보스 ${activeTab} 탭, 뷰 ${view}, 필터 ${activeFilter}, 저장 글 ${posts.length}개.`,
+      : `아이보스 ${activeTab} 탭, 뷰 ${view}, 필터 ${activeFilter}, 저장 글 ${posts.length}개.`,
     });
   }, [activeTab, activeFilter, view, posts.length, referencePost]);
+
+  useEffect(() => onEAttackCommand((command) => {
+    if (command?.targetPage !== "IbossPage" || command?.action !== "setTab") return;
+    if (TABS.some((tab) => tab.key === command.tab)) {
+      setActiveTab(command.tab);
+      if (command.tab === "articles") {
+        setView(referencePost ? "new" : "list");
+      }
+    }
+  }), [referencePost]);
 
   if (view === "new") {
     return (

@@ -9,7 +9,7 @@ import UnifiedPipelineTab from "./UnifiedPipelineTab";
 import ProposalTab from "./ProposalTab";
 import DetailPageTab from "./DetailPageTab";
 import ThreadsTab from "./ThreadsTab";
-import { emitEAttackContext } from "./eattackContext";
+import { emitEAttackContext, onEAttackCommand } from "./eattackContext";
 
 // ── 탭 정의 ──
 const IMAGE_TABS = [
@@ -79,6 +79,13 @@ export default function ImagePage({ onBack }) {
         : "이미지 콘텐츠 페이지",
     });
   }, [activeTab, currentTab]);
+
+  useEffect(() => onEAttackCommand((command) => {
+    if (command?.targetPage !== "ImagePage" || command?.action !== "setTab") return;
+    if (IMAGE_TABS.some((tab) => tab.key === command.tab)) {
+      setActiveTab(command.tab);
+    }
+  }), []);
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50">

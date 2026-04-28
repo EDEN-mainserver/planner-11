@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { callGemini } from "../utils/gemini";
 import { getSession } from "../utils/authSession";
-import { summarizeText } from "./eattackContext";
+import { emitEAttackCommand, summarizeText } from "./eattackContext";
 
 const HISTORY_KEY = (u) => `eattack_ai_assistant_history_${u}_v1`;
 const INPUT_KEY = (u) => `eattack_ai_assistant_input_${u}_v1`;
@@ -98,20 +98,49 @@ export default function EAttackAssistantDock({
   const quickPrompts = useMemo(() => makeQuickPrompts(scopeLabel), [scopeLabel]);
   const featureShortcuts = useMemo(() => {
     const rootItems = [
-      { key: "text", label: "글", depth: "text" },
-      { key: "image", label: "이미지", depth: "image" },
-      { key: "video", label: "영상", depth: "video" },
-      { key: "crawling", label: "크롤링", depth: "crawling" },
-      { key: "fullAuto", label: "풀가동화", depth: "fullAuto" },
+      { key: "text", label: "글", depth: "text", icon: "✍️" },
+      { key: "image", label: "이미지", depth: "image", icon: "🖼️" },
+      { key: "video", label: "영상", depth: "video", icon: "🎬" },
+      { key: "crawling", label: "크롤링", depth: "crawling", icon: "🕸️" },
+      { key: "fullAuto", label: "풀가동화", depth: "fullAuto", icon: "⚡" },
     ];
     const textItems = [
-      { key: "blog", label: "블로그", depth: "funnelblog" },
-      { key: "iboss", label: "아이보스", depth: "iboss" },
+      { key: "blog", label: "블로그", depth: "funnelblog", icon: "📝" },
+      { key: "iboss", label: "아이보스", depth: "iboss", icon: "💬" },
     ];
+    const imageTabs = [
+      { key: "image-unified", label: "통합 파이프라인", page: "ImagePage", tab: "unified", icon: "⟳" },
+      { key: "image-detail", label: "상세페이지", page: "ImagePage", tab: "detail", icon: "📄" },
+      { key: "image-proposal", label: "제안서", page: "ImagePage", tab: "proposal", icon: "📎" },
+      { key: "image-threads", label: "Threads", page: "ImagePage", tab: "threads", icon: "🧵" },
+    ];
+    const blogTabs = [
+      { key: "blog-articles", label: "제작", page: "BlogPage", tab: "articles", icon: "📝" },
+      { key: "blog-styles", label: "스타일", page: "BlogPage", tab: "styles", icon: "🎨" },
+    ];
+    const ibossTabs = [
+      { key: "iboss-articles", label: "제작", page: "IbossPage", tab: "articles", icon: "🧰" },
+      { key: "iboss-trends", label: "인기글", page: "IbossPage", tab: "trends", icon: "📊" },
+    ];
+    const fullAutoTabs = [
+      { key: "fa-accounts", label: "계정", page: "FullAutoPage", tab: "accounts", icon: "👥" },
+      { key: "fa-history", label: "이력", page: "FullAutoPage", tab: "history", icon: "🕘" },
+    ];
+    const videoTabs = [
+      { key: "video-nas", label: "NAS", page: "VideoPage", tab: "nas", icon: "💾" },
+      { key: "video-edit", label: "편집", page: "VideoPage", tab: "edit", icon: "🎞️" },
+      { key: "video-community", label: "커뮤니티", page: "VideoPage", tab: "community", icon: "🌐" },
+      { key: "video-shorts", label: "숏폼", page: "VideoPage", tab: "shorts", icon: "⚙️" },
+    ];
+    if (contextSnapshot?.page === "ImagePage") return imageTabs;
+    if (contextSnapshot?.page === "BlogPage") return blogTabs;
+    if (contextSnapshot?.page === "IbossPage") return ibossTabs;
+    if (contextSnapshot?.page === "FullAutoPage") return fullAutoTabs;
+    if (contextSnapshot?.page === "VideoPage") return videoTabs;
     if (currentDepth === "text") return textItems;
     if (["blog", "funnelblog", "iboss"].includes(currentDepth)) return rootItems;
     return rootItems;
-  }, [currentDepth]);
+  }, [currentDepth, contextSnapshot?.page]);
 
   const currentContextText = useMemo(() => {
     if (!contextSnapshot) return `${scopeLabel} / ${currentDepth}`;
@@ -211,6 +240,14 @@ export default function EAttackAssistantDock({
     if (typeof onNavigate === "function") onNavigate(depth);
   };
 
+  const handleShortcut = (item) => {
+    if (item.page) {
+      emitEAttackCommand({ targetPage: item.page, action: "setTab", tab: item.tab });
+      return;
+    }
+    handleNavigate(item.depth);
+  };
+
   if (!session || username === "__guest") return null;
 
   if (!open) {
@@ -285,9 +322,10 @@ export default function EAttackAssistantDock({
               {featureShortcuts.map((item) => (
                 <button
                   key={item.key}
-                  onClick={() => handleNavigate(item.depth)}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-violet-200 text-violet-700 bg-white hover:bg-violet-50 transition-all"
+                  onClick={() => handleShortcut(item)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-violet-200 text-violet-700 bg-white hover:bg-violet-50 transition-all"
                 >
+                  <span className="text-[10px]">{item.icon}</span>
                   {item.label}
                 </button>
               ))}

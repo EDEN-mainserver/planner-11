@@ -2,7 +2,7 @@
 // 관리자 설정 계정을 선택 → 파이프라인 실행 + 이력 조회
 
 import { useState, useEffect, useCallback } from "react";
-import { emitEAttackContext } from "./eattackContext";
+import { emitEAttackContext, onEAttackCommand } from "./eattackContext";
 
 const RUN_API = "/api/full-auto-run";
 const HISTORY_API = "/api/full-auto-config";
@@ -121,6 +121,13 @@ export default function FullAutoPage({ onBack }) {
       summary: `현재 ${tab === "accounts" ? "계정 선택" : "실행 이력"} 탭입니다. 계정 ${accounts.length}개, 최근 이력 ${history.length}건.`,
     });
   }, [tab, running, accounts.length, history.length]);
+
+  useEffect(() => onEAttackCommand((command) => {
+    if (command?.targetPage !== "FullAutoPage" || command?.action !== "setTab") return;
+    if (TABS.some((item) => item.key === command.tab)) {
+      setTab(command.tab);
+    }
+  }), []);
 
   // 관리자 계정 로드 (localStorage)
   const refreshAccounts = useCallback(() => {

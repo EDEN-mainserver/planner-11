@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { emitEAttackContext } from "./eattackContext";
+import { emitEAttackContext, onEAttackCommand } from "./eattackContext";
 import BlogNewPost from "./BlogNewPost";
 import BlogEditor from "./BlogEditor";
 import { callGemini } from "../utils/gemini";
@@ -411,6 +411,13 @@ export default function BlogPage({ onBack }) {
       summary: `블로그 탭 ${activeTab}, 목록 필터 ${activeFilter}, 현재 뷰 ${view}, 저장된 글 ${posts.length}개.`,
     });
   }, [activeTab, activeFilter, view, posts.length]);
+
+  useEffect(() => onEAttackCommand((command) => {
+    if (command?.targetPage !== "BlogPage" || command?.action !== "setTab") return;
+    if (TABS.some((tab) => tab.key === command.tab)) {
+      setActiveTab(command.tab);
+    }
+  }), []);
 
   // ─── 화면 분기 ───
   if (view === "new") {
