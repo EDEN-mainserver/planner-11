@@ -6,7 +6,7 @@ import ImagePage from "./ImagePage";
 import VideoPage from "./VideoPage";
 import IbossPage from "./IbossPage";
 import FullAutoPage from "./FullAutoPage";
-import AutoMonitorDock from "./AutoMonitorDock";
+import EAttackAssistantDock from "./EAttackAssistantDock";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -150,6 +150,17 @@ export default function EAttackPage() {
   const [depth, setDepth] = useState("root");
   // 크롤링 페이지에서 선택한 레퍼런스 포스트
   const [referencePost, setReferencePost] = useState(null);
+  const depthLabelMap = {
+    root: "E-Attack 홈",
+    text: "글",
+    blog: "블로그",
+    funnelblog: "퍼널 블로그",
+    crawling: "크롤링",
+    image: "이미지",
+    video: "영상",
+    fullAuto: "풀가동화",
+    iboss: "아이보스",
+  };
 
   // 콘텐츠 타입 클릭
   const handleTypeClick = (type) => {
@@ -305,7 +316,7 @@ export default function EAttackPage() {
           </>
         )}
       </div>
-      <AutoMonitorDock />
+      <EAttackAssistantDock scopeLabel={`E-Attack · ${depthLabelMap[depth] || depth}`} />
     </div>
   );
 }
