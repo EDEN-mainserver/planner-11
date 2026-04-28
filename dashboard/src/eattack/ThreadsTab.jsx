@@ -396,7 +396,10 @@ export default function ThreadsTab() {
     const tone = templateOptions.tone.find(o => o.key === templateTone) || templateOptions.tone[0];
     const flow = templateOptions.flow.find(o => o.key === templateFlow) || templateOptions.flow[0];
     const cta = templateOptions.cta.find(o => o.key === templateCta) || templateOptions.cta[0];
-    const source = text.trim() || aiTopic.trim();
+    const topicSource = aiTopic.trim();
+    const draftSource = text.trim();
+    const source = topicSource || draftSource;
+    const sourceKind = topicSource ? "topic" : "draft";
     const formatRules = {
       expert: "전문가처럼 근거를 짧게 붙이되, 설명문이 아니라 게시글 말투로 쓴다.",
       friend: "친구가 옆에서 알려주듯이 반말/존댓말을 섞지 말고 부드러운 대화체로 쓴다. 과한 권위 표현을 줄인다.",
@@ -447,7 +450,8 @@ export default function ThreadsTab() {
             content:
 `다음 주제/초안을 Threads 게시글로 재구성해주세요.
 
-주제 또는 초안:
+입력 소스 유형: ${sourceKind === "topic" ? "주제" : "초안"}
+입력 소스:
 ${source}
 
 조회수 기반 분석 템플릿:
@@ -458,6 +462,8 @@ ${JSON.stringify(template, null, 2)}
 - 안내문, 설명, 제목, A안/B안, 버전명 금지
 - 바로 게시할 본문만 출력
 - 분석된 템플릿은 참고하되, 아래 선택 옵션을 최우선으로 반영
+- 이미 있던 이전 결과 문장은 그대로 남기지 말고 완전히 새 글로 재구성
+- 입력 소스가 주제인 경우, 기존 초안 문장보다 주제에 맞는 새 문장을 우선 생성
 - 대화 포맷: ${format.label}
 - 말투/흐름 지시: ${format.prompt}
 - 세부 말투: ${tone.label} — ${tone.prompt}
@@ -478,7 +484,7 @@ ${JSON.stringify(template, null, 2)}
 - 마크다운 없이 게시글 본문만 반환`,
           },
         ],
-        `당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 설명 없이 최종 게시 본문 1개만 작성하세요. 선택된 대화 포맷(${format.label}), 말투(${tone.label}), 흐름(${flow.label}), CTA(${cta.label})를 우선 반영하세요.`
+        `당신은 조회수 높은 Threads 글의 구조를 새 주제에 적용하는 카피라이터입니다. 설명 없이 최종 게시 본문 1개만 작성하세요. 선택된 대화 포맷(${format.label}), 말투(${tone.label}), 흐름(${flow.label}), CTA(${cta.label})를 우선 반영하세요. 이전 결과를 이어붙이지 말고 완전히 새 본문으로 작성하세요.`
       );
       setText(cleanThreadDraft(result));
       addLog("info", "템플릿 기반 재구성 완료");
@@ -709,7 +715,8 @@ ${JSON.stringify(template, null, 2)}
       addLog("error", "예약 시간을 선택하세요");
       return;
     }
-    if (new Date(scheduledAt) <= new Date()) {
+    const scheduledAtISO = new Date(scheduledAt).toISOString();
+    if (new Date(scheduledAtISO) <= new Date()) {
       addLog("error", "예약 시간은 현재보다 미래여야 합니다");
       return;
     }
@@ -719,7 +726,7 @@ ${JSON.stringify(template, null, 2)}
       text: text.trim(),
       userId: userId.trim(),
       accessToken: accessToken.trim(),
-      scheduledAt,
+      scheduledAt: scheduledAtISO,
       status: "pending",
       createdAt: new Date().toISOString(),
     };
@@ -727,7 +734,7 @@ ${JSON.stringify(template, null, 2)}
     setScheduleSaving(false);
     if (!ok) { addLog("error", "예약 저장 실패"); return; }
     setScheduledPosts((prev) => [...prev, newPost]);
-    addLog("info", `예약 완료: ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
+    addLog("info", `예약 완료: ${new Date(scheduledAtISO).toLocaleString("ko-KR")}`);
     setScheduleEnabled(false);
     setScheduledAt("");
   };
@@ -782,7 +789,7 @@ ${JSON.stringify(template, null, 2)}
         text: textRaw.slice(0, 500),
         userId: userId.trim(),
         accessToken: accessToken.trim(),
-        scheduledAt: dtRaw,
+        scheduledAt: dt.toISOString(),
         status: "pending",
         createdAt: new Date().toISOString(),
       });

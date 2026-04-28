@@ -8,6 +8,15 @@ import { put, list, del } from "@vercel/blob";
 
 const PREFIX = "threads-schedule";
 
+function normalizeScheduledAt(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)) return new Date(raw).toISOString();
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) return parsed.toISOString();
+  return raw;
+}
+
 async function readSchedules(username) {
   try {
     const { blobs } = await list({ prefix: `${PREFIX}/${username}.json` });
@@ -54,7 +63,7 @@ export default async function handler(req, res) {
     const { username, schedule } = req.body || {};
     if (!username || !schedule) return res.status(400).json({ error: "username, schedule 필요" });
     const schedules = await readSchedules(username);
-    schedules.push(schedule);
+    schedules.push({ ...schedule, scheduledAt: normalizeScheduledAt(schedule.scheduledAt) });
     await writeSchedules(username, schedules);
     return res.status(200).json({ ok: true });
   }

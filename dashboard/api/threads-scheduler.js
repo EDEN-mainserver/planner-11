@@ -10,6 +10,21 @@ import { list, put, del } from "@vercel/blob";
 const TH_API = "https://graph.threads.net/v1.0";
 const PREFIX = "threads-schedule";
 
+function normalizeScheduledAt(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)) {
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(raw)) {
+    const kst = new Date(`${raw.replace(" ", "T")}+09:00`);
+    return isNaN(kst.getTime()) ? null : kst;
+  }
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export const config = { maxDuration: 90, memory: 512 };
 
 // Blob에서 스케줄 파일 읽기
@@ -104,7 +119,10 @@ export default async function handler(req, res) {
 
       // 현재 시각 이전인 pending 항목 추출
       const due = schedules.filter(
-        (s) => s.status === "pending" && new Date(s.scheduledAt) <= now
+        (s) => {
+          const scheduled = normalizeScheduledAt(s.scheduledAt);
+          return s.status === "pending" && scheduled && scheduled <= now;
+        }
       );
       if (!due.length) continue;
 
