@@ -2,8 +2,10 @@
 // 텍스트(+선택적 이미지) → Threads Graph API → 게시
 import { useState, useEffect, useRef } from "react";
 import { callGemini } from "../utils/gemini";
-import LoginModal, { getSession } from "./LoginModal";
+import LoginModal from "./LoginModal";
+import { getSession } from "../utils/authSession";
 import TopicPicker from "./TopicPicker";
+import { emitEAttackContext, summarizeText } from "./eattackContext";
 
 // ── 소셜 설정 키/로드/저장 ──
 const threadsKey = (u) => `eden_threads_${u}_v1`;
@@ -493,6 +495,26 @@ export default function ThreadsTab() {
   const [autoMonitorLoading, setAutoMonitorLoading] = useState(false);
   const [autoCanceling, setAutoCanceling] = useState(false);
   const autoPollRef = useRef(null);
+
+  useEffect(() => {
+    emitEAttackContext({
+      page: "ThreadsTab",
+      section: "이미지 > Threads",
+      tab: "threads",
+      step: autoEnabled ? "auto" : scheduleEnabled ? "schedule" : showAutoPanel ? "auto-panel" : "post",
+      mode: templateFormat,
+      status: autoRunning ? "자동화 실행 중" : posting ? "게시 중" : scheduleEnabled ? "예약" : "대기",
+      summary: [
+        `주제 ${summarizeText(aiTopic || text || "미입력", 80)}`,
+        `말투 ${templateTone}`,
+        `흐름 ${templateFlow}`,
+        `CTA ${templateCta}`,
+        `자동화 ${autoEnabled ? "활성" : "비활성"}`,
+        `예약 ${scheduleEnabled ? "켜짐" : "꺼짐"}`,
+        autoSourceMode ? `소스 ${autoSourceMode}` : "",
+      ].filter(Boolean).join(" · "),
+    });
+  }, [aiTopic, text, templateTone, templateFlow, templateCta, autoEnabled, scheduleEnabled, autoSourceMode, autoRunning, posting, showAutoPanel, templateFormat]);
 
   useEffect(() => {
     if (loadThreadTemplate()) return;

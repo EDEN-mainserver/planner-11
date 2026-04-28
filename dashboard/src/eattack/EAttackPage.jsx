@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import BlogPage from "./BlogPage";
 import FunnelBlogPage from "./FunnelBlogPage";
 import CrawlingPage from "./crawling/CrawlingPage";
@@ -7,6 +7,7 @@ import VideoPage from "./VideoPage";
 import IbossPage from "./IbossPage";
 import FullAutoPage from "./FullAutoPage";
 import EAttackAssistantDock from "./EAttackAssistantDock";
+import { emitEAttackContext } from "./eattackContext";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -185,6 +186,23 @@ export default function EAttackPage() {
       setDepth("iboss");
     }
   };
+
+  useEffect(() => {
+    const rootCards = CONTENT_TYPES.map((item) => item.label).join(", ");
+    const textCards = TEXT_CHANNELS.map((item) => item.label).join(", ");
+    emitEAttackContext({
+      page: "E-Attack",
+      section: depthLabelMap[depth] || depth,
+      tab: depth,
+      status: depth === "root" ? "루트 선택" : "세부 기능 탐색",
+      summary:
+        depth === "root"
+          ? `현재 E-Attack 홈. 선택 가능한 카드: ${rootCards}.`
+          : depth === "text"
+            ? `글 하위 기능 선택 화면. 가능한 항목: ${textCards}.`
+            : `현재 기능: ${depthLabelMap[depth] || depth}.`,
+    });
+  }, [depth]);
 
   let pageContent = null;
 

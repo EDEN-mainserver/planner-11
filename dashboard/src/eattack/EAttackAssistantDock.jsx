@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { callGemini } from "../utils/gemini";
 import { getSession } from "../utils/authSession";
+import { summarizeText } from "./eattackContext";
 
 const HISTORY_KEY = (u) => `eattack_ai_assistant_history_${u}_v1`;
 const INPUT_KEY = (u) => `eattack_ai_assistant_input_${u}_v1`;
@@ -62,6 +63,7 @@ export default function EAttackAssistantDock({
   });
   const [sending, setSending] = useState(false);
   const [activeQuick, setActiveQuick] = useState(null);
+  const [contextSnapshot, setContextSnapshot] = useState(null);
 
   useEffect(() => {
     const handleSessionChange = () => setSession(getSession());
@@ -85,6 +87,14 @@ export default function EAttackAssistantDock({
     setInput(localStorage.getItem(INPUT_KEY(username)) || "");
   }, [username]);
 
+  useEffect(() => {
+    const handleContext = (event) => {
+      setContextSnapshot(event?.detail || null);
+    };
+    window.addEventListener("eattack-context", handleContext);
+    return () => window.removeEventListener("eattack-context", handleContext);
+  }, []);
+
   const quickPrompts = useMemo(() => makeQuickPrompts(scopeLabel), [scopeLabel]);
   const featureShortcuts = useMemo(() => {
     const rootItems = [
@@ -103,6 +113,20 @@ export default function EAttackAssistantDock({
     return rootItems;
   }, [currentDepth]);
 
+  const currentContextText = useMemo(() => {
+    if (!contextSnapshot) return `${scopeLabel} / ${currentDepth}`;
+    const parts = [
+      contextSnapshot.page ? `페이지: ${contextSnapshot.page}` : "",
+      contextSnapshot.section ? `섹션: ${contextSnapshot.section}` : "",
+      contextSnapshot.tab ? `탭: ${contextSnapshot.tab}` : "",
+      contextSnapshot.step ? `단계: ${contextSnapshot.step}` : "",
+      contextSnapshot.mode ? `모드: ${contextSnapshot.mode}` : "",
+      contextSnapshot.status ? `상태: ${contextSnapshot.status}` : "",
+      contextSnapshot.summary ? `요약: ${summarizeText(contextSnapshot.summary, 180)}` : "",
+    ].filter(Boolean);
+    return parts.join(" · ") || `${scopeLabel} / ${currentDepth}`;
+  }, [contextSnapshot, scopeLabel, currentDepth]);
+
   const systemPrompt = useMemo(() => `
 당신은 E-Attack 전용 AI 어시스턴트입니다.
 역할:
@@ -113,6 +137,7 @@ export default function EAttackAssistantDock({
 - 현재 E-Attack 기능을 전환할 수 있으면 기능 바로가기를 제안한다.
 
 현재 범위: ${scopeLabel}
+현재 화면 컨텍스트: ${currentContextText}
 
 반환 형식:
 {
@@ -126,7 +151,7 @@ export default function EAttackAssistantDock({
 - 검수 요청이면 문제점, 수정안, 다음 행동을 분리해서 제시한다.
 - 사용자가 코드/문구를 붙여넣으면 바로 수정해서 내놓는다.
 - 현재 화면에서 전환 가능한 기능이 있으면 choices에 그 기능명을 넣는다.
-`, [scopeLabel]);
+`, [scopeLabel, currentContextText]);
 
   const sendPrompt = async (prompt) => {
     const content = String(prompt || "").trim();
@@ -229,6 +254,7 @@ export default function EAttackAssistantDock({
             <div className="min-w-0">
               <p className="text-xs font-bold text-violet-800 truncate">E-Attack AI</p>
               <p className="text-[10px] text-gray-500 truncate">{scopeLabel}</p>
+              <p className="text-[10px] text-gray-400 truncate">{currentContextText}</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">

@@ -2,6 +2,7 @@
 // 관리자 설정 계정을 선택 → 파이프라인 실행 + 이력 조회
 
 import { useState, useEffect, useCallback } from "react";
+import { emitEAttackContext } from "./eattackContext";
 
 const RUN_API = "/api/full-auto-run";
 const HISTORY_API = "/api/full-auto-config";
@@ -110,6 +111,16 @@ export default function FullAutoPage({ onBack }) {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };
+
+  useEffect(() => {
+    emitEAttackContext({
+      page: "FullAutoPage",
+      section: "풀가동화 콘텐츠",
+      tab,
+      status: running ? "실행 중" : "대기",
+      summary: `현재 ${tab === "accounts" ? "계정 선택" : "실행 이력"} 탭입니다. 계정 ${accounts.length}개, 최근 이력 ${history.length}건.`,
+    });
+  }, [tab, running, accounts.length, history.length]);
 
   // 관리자 계정 로드 (localStorage)
   const refreshAccounts = useCallback(() => {

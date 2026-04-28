@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import IbossNewPost from "./IbossNewPost";
 import IbossEditor from "./IbossEditor";
 import ExtensionInstallModal from "./ExtensionInstallModal";
+import { emitEAttackContext } from "./eattackContext";
 
 const STORAGE_KEY = "eattack_iboss_posts";
 
@@ -330,6 +331,19 @@ export default function IbossPage({ onBack, referencePost = null, onClearReferen
     const d = new Date(iso);
     return `${d.getMonth() + 1}.${d.getDate()}`;
   };
+
+  useEffect(() => {
+    emitEAttackContext({
+      page: "IbossPage",
+      section: "아이보스",
+      tab: activeTab,
+      mode: view,
+      status: activeFilter,
+      summary: referencePost
+        ? `레퍼런스 글이 연결된 새 글 작성 상태입니다. 뷰 ${view}, 필터 ${activeFilter}, 저장 글 ${posts.length}개.`
+        : `아이보스 ${activeTab} 탭, 뷰 ${view}, 필터 ${activeFilter}, 저장 글 ${posts.length}개.`,
+    });
+  }, [activeTab, activeFilter, view, posts.length, referencePost]);
 
   if (view === "new") {
     return (

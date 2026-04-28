@@ -4,11 +4,12 @@
  * - 상세페이지 만들기 탭
  * - 제안서 자동화 탭
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import UnifiedPipelineTab from "./UnifiedPipelineTab";
 import ProposalTab from "./ProposalTab";
 import DetailPageTab from "./DetailPageTab";
 import ThreadsTab from "./ThreadsTab";
+import { emitEAttackContext } from "./eattackContext";
 
 // ── 탭 정의 ──
 const IMAGE_TABS = [
@@ -66,6 +67,18 @@ export default function ImagePage({ onBack }) {
   const [activeTab, setActiveTab] = useState("unified");
 
   const currentTab = IMAGE_TABS.find(t => t.key === activeTab);
+
+  useEffect(() => {
+    emitEAttackContext({
+      page: "ImagePage",
+      section: "이미지 콘텐츠",
+      tab: activeTab,
+      status: currentTab?.label || activeTab,
+      summary: currentTab
+        ? `${currentTab.label} 탭이 열려 있습니다. ${currentTab.description}`
+        : "이미지 콘텐츠 페이지",
+    });
+  }, [activeTab, currentTab]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50">

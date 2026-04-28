@@ -8,6 +8,7 @@
  */
 import { useState, useCallback, useEffect } from "react";
 import CommunityTab from "./community/index";
+import { emitEAttackContext } from "./eattackContext";
 import {
   getNasConfig,
   saveNasConfig,
@@ -1027,6 +1028,19 @@ export default function VideoPage({ onBack }) {
   }, []);
 
   const goToNas = () => setActiveTab("nas");
+  const currentTab = VIDEO_TABS.find((tab) => tab.key === activeTab);
+
+  useEffect(() => {
+    emitEAttackContext({
+      page: "VideoPage",
+      section: "영상 콘텐츠",
+      tab: activeTab,
+      status: currentTab?.label || activeTab,
+      summary: currentTab
+        ? `${currentTab.label} 탭이 열려 있습니다. ${currentTab.description}`
+        : "영상 콘텐츠 페이지",
+    });
+  }, [activeTab, currentTab, nasState]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50">

@@ -1,9 +1,11 @@
 // 통합 카드뉴스 파이프라인
 // 크롤링/리서치 → 기획 → 이미지 생성 → 카드 조립 → 배포
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { callGemini, generateImage } from "../utils/gemini";
-import LoginModal, { getSession, clearSession } from "./LoginModal";
+import LoginModal from "./LoginModal";
+import { getSession, clearSession } from "../utils/authSession";
 import TopicPicker from "./TopicPicker";
+import { emitEAttackContext, summarizeText } from "./eattackContext";
 
 // ── 상수 ──
 const BATCH_SIZE = 3;
@@ -825,6 +827,27 @@ export default function UnifiedPipelineTab() {
   const [postCaption, setPostCaption] = useState("");
   const [igDirectUrls, setIgDirectUrls] = useState("");
   const [igLogs, setIgLogs] = useState([]);
+
+  useEffect(() => {
+    emitEAttackContext({
+      page: "UnifiedPipelineTab",
+      section: "이미지 > 통합 파이프라인",
+      tab: "unified",
+      step,
+      mode: useTemplate ? "템플릿" : "AI 이미지",
+      status: running ? "실행 중" : step,
+      summary: [
+        `주제 ${summarizeText(topic || "미입력", 60)}`,
+        `브랜드 ${summarizeText(brandName || "미입력", 40)}`,
+        `톤 ${tone}`,
+        `목적 ${purpose}`,
+        `슬라이드 ${slideCount}장`,
+        `카드 ${cards.length}개`,
+        igPosting ? "IG 게시 중" : "",
+        thPosting ? "Threads 게시 중" : "",
+      ].filter(Boolean).join(" · "),
+    });
+  }, [step, running, useTemplate, topic, brandName, tone, purpose, slideCount, cards.length, igPosting, thPosting]);
 
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };

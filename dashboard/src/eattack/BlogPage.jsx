@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { emitEAttackContext } from "./eattackContext";
 import BlogNewPost from "./BlogNewPost";
 import BlogEditor from "./BlogEditor";
 import { callGemini } from "../utils/gemini";
@@ -399,6 +400,17 @@ export default function BlogPage({ onBack }) {
     const d = new Date(iso);
     return `${d.getMonth() + 1}.${d.getDate()}`;
   };
+
+  useEffect(() => {
+    emitEAttackContext({
+      page: "BlogPage",
+      section: "글",
+      tab: activeTab,
+      mode: view,
+      status: activeFilter,
+      summary: `블로그 탭 ${activeTab}, 목록 필터 ${activeFilter}, 현재 뷰 ${view}, 저장된 글 ${posts.length}개.`,
+    });
+  }, [activeTab, activeFilter, view, posts.length]);
 
   // ─── 화면 분기 ───
   if (view === "new") {
