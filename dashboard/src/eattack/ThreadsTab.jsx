@@ -593,31 +593,89 @@ ${JSON.stringify(template, null, 2)}
     }
   };
 
-  // 자동화 즉시 실행 (테스트)
+  // 자동화 즉시 실행 (테스트) — 현재 UI 설정을 먼저 저장한 뒤 실행
   const handleRunAutoNow = async () => {
-    addLog("info", "자동화 즉시 실행 중...");
+    if (!userId.trim() || !accessToken.trim()) {
+      addLog("error", "인증 설정에서 액세스 토큰과 사용자 ID를 먼저 저장하세요");
+      return;
+    }
+    const keywords = autoKeywords.split(",").map(k => k.trim()).filter(Boolean);
+    if (!keywords.length) {
+      addLog("error", "키워드를 하나 이상 입력하세요");
+      return;
+    }
+
+    setAutoRunning(true);
+    setAutoRunResult(null);
+    addLog("info", "현재 설정 저장 후 자동화 실행 중...");
+
     try {
+      // 1) 현재 UI 설정을 먼저 서버에 저장
+      const saveRes = await fetch("/api/threads-auto-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          config: {
+            enabled: true, // 즉시 실행 시 강제 활성
+            keywords,
+            postTime: autoPostTime,
+            format: autoFormat,
+            tone: autoTone,
+            flow: autoFlow,
+            cta: autoCta,
+            userId: userId.trim(),
+            accessToken: accessToken.trim(),
+          },
+        }),
+      });
+      if (!saveRes.ok) throw new Error("설정 저장 실패");
+      setAutoLastUpdated(new Date().toISOString());
+
+      // 2) 자동화 실행
       const res = await fetch("/api/threads-auto-research");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "실행 실패");
-      addLog("info", `실행 완료: ${data.ran}개 계정 처리`);
-      data.results?.forEach(r => {
-        // 파이프라인 상세 로그 전체 출력
-        r.logs?.forEach(l => addLog("info", `  ↳ ${l}`));
 
-        if (r.status === "ok" && !r.skipped) {
-          const kst = new Date(r.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-          addLog("info", `✓ @${r.username} 예약 완료 — ${kst}`);
-          addLog("info", `📝 본문 전체 (${r.text?.length ?? 0}자):\n${r.text}`);
-        } else if (r.skipped) {
-          addLog("info", `⏭ @${r.username}: ${r.skipReason || "예약 이미 존재"} — 스킵`);
+      addLog("info", `실행 완료: ${data.ran}개 계정 처리`);
+
+      // 현재 유저의 결과 찾기
+      const myResult = data.results?.find(r => r.username === username) || data.results?.[0];
+
+      if (myResult) {
+        myResult.logs?.forEach(l => addLog("info", `  ↳ ${l}`));
+
+        if (myResult.status === "ok" && !myResult.skipped) {
+          const kst = new Date(myResult.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+          addLog("info", `✓ 예약 완료 — ${kst}`);
+          setAutoRunResult({
+            logs: myResult.logs || [],
+            text: myResult.text || "",
+            scheduledAt: myResult.scheduledAt,
+            skipped: false,
+            error: null,
+          });
+        } else if (myResult.skipped) {
+          addLog("info", `⏭ ${myResult.skipReason || "예약 이미 존재"} — 스킵`);
+          setAutoRunResult({
+            logs: myResult.logs || [],
+            text: myResult.text || "",
+            skipped: true,
+            skipReason: myResult.skipReason,
+            error: null,
+          });
         } else {
-          addLog("error", `✗ @${r.username}: ${r.error}`);
+          addLog("error", `✗ ${myResult.error}`);
+          setAutoRunResult({ logs: myResult.logs || [], error: myResult.error });
         }
-      });
+      }
+
       fetchSchedules(username).then(setScheduledPosts).catch(() => {});
     } catch (e) {
       addLog("error", `자동화 실행 실패: ${e.message}`);
+      setAutoRunResult({ logs: [], error: e.message });
+    } finally {
+      setAutoRunning(false);
     }
   };
 
