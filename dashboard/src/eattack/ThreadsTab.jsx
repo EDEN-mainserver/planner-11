@@ -1264,19 +1264,53 @@ ${JSON.stringify(template, null, 2)}
             <div className="flex gap-2">
               <button
                 onClick={handleSaveAutoConfig}
-                disabled={autoSaving}
+                disabled={autoSaving || autoRunning}
                 className="flex-1 py-2.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl transition-all"
               >
                 {autoSaving ? "저장 중..." : "설정 저장"}
               </button>
               <button
                 onClick={handleRunAutoNow}
-                className="px-4 py-2.5 text-xs font-bold text-violet-700 bg-white border border-violet-300 hover:bg-violet-50 rounded-xl transition-all whitespace-nowrap"
-                title="지금 즉시 실행 (테스트용 — 실제 크론은 매일 KST 06:00에 자동 실행)"
+                disabled={autoRunning || autoSaving}
+                className="px-4 py-2.5 text-xs font-bold text-violet-700 bg-white border border-violet-300 hover:bg-violet-50 disabled:opacity-40 rounded-xl transition-all whitespace-nowrap"
+                title="현재 설정을 저장하고 즉시 실행 (실제 크론은 매일 KST 06:00 자동 실행)"
               >
-                지금 실행
+                {autoRunning ? "실행 중..." : "지금 실행"}
               </button>
             </div>
+
+            {/* 마지막 실행 결과 */}
+            {autoRunResult && (
+              <div className={`rounded-xl border p-3 space-y-2 text-[11px] ${autoRunResult.error ? "border-red-200 bg-red-50" : autoRunResult.skipped ? "border-yellow-200 bg-yellow-50" : "border-green-200 bg-green-50"}`}>
+                <p className={`font-bold ${autoRunResult.error ? "text-red-700" : autoRunResult.skipped ? "text-yellow-700" : "text-green-700"}`}>
+                  {autoRunResult.error ? "실행 실패" : autoRunResult.skipped ? "스킵됨 (기존 예약 존재)" : "실행 완료"}
+                </p>
+
+                {/* 단계별 로그 */}
+                {autoRunResult.logs?.length > 0 && (
+                  <div className="space-y-0.5">
+                    {autoRunResult.logs.map((l, i) => (
+                      <p key={i} className="text-gray-600 font-mono leading-relaxed">{l}</p>
+                    ))}
+                  </div>
+                )}
+
+                {/* 생성된 본문 */}
+                {autoRunResult.text && (
+                  <div className="mt-2 space-y-1">
+                    <p className="font-bold text-gray-700">생성된 본문 ({autoRunResult.text.length}자)</p>
+                    <pre className="whitespace-pre-wrap text-gray-800 bg-white border border-gray-200 rounded-lg p-2 leading-relaxed">{autoRunResult.text}</pre>
+                  </div>
+                )}
+
+                {autoRunResult.error && (
+                  <p className="text-red-600">{autoRunResult.error}</p>
+                )}
+                {autoRunResult.skipReason && (
+                  <p className="text-yellow-700">{autoRunResult.skipReason}</p>
+                )}
+              </div>
+            )}
 
             {/* 예약 발행 일정 */}
             <div className="space-y-2">

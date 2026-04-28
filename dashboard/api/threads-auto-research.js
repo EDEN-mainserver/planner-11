@@ -139,8 +139,11 @@ async function runForAccount(username, config, env) {
     const results = await searchNaver(kw, env);
     allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
   }
-  if (!allArticles.length) throw new Error("검색 결과 없음");
+  if (!allArticles.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
   log(`검색 결과: ${allArticles.length}건`);
+  allArticles.slice(0, 8).forEach((a, i) =>
+    log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`)
+  );
 
   // 2. 오늘의 주제 선정 + 글 생성 (Gemini 1회 호출로 합산)
   const articlesText = allArticles.slice(0, 10).map((a, i) =>
