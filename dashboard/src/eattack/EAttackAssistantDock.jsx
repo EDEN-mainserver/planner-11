@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { callGemini } from "../utils/gemini";
-import { getSession } from "./LoginModal";
+import { getSession } from "../utils/authSession";
 
 const HISTORY_KEY = (u) => `eattack_ai_assistant_history_${u}_v1`;
 const INPUT_KEY = (u) => `eattack_ai_assistant_input_${u}_v1`;
@@ -47,6 +47,7 @@ function parseAssistantPayload(raw) {
 export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
   const [session, setSession] = useState(() => getSession());
   const username = session?.username || "__guest";
+  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
     if (!session?.username) return [];
     return loadJson(HISTORY_KEY(session.username), []);
@@ -161,6 +162,28 @@ export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
 
   if (!session || username === "__guest") return null;
 
+  if (!open) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <button
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-2 px-3 py-3 rounded-full bg-violet-600 text-white shadow-2xl hover:bg-violet-700 transition-all"
+          title="E-Attack AI 열기"
+        >
+          <span className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="7" width="18" height="11" rx="2" />
+              <path d="M12 3v4" />
+              <path d="M9 11h.01" />
+              <path d="M15 11h.01" />
+            </svg>
+          </span>
+          <span className="text-sm font-bold pr-1">AI</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,380px)]">
       <div className="rounded-2xl border border-violet-200 bg-white/95 backdrop-blur shadow-2xl overflow-hidden">
@@ -182,13 +205,25 @@ export default function EAttackAssistantDock({ scopeLabel = "E-Attack" }) {
               <p className="text-[10px] text-gray-500 truncate">{scopeLabel}</p>
             </div>
           </div>
-          <button
-            onClick={clearChat}
-            className="text-[10px] font-semibold text-gray-500 hover:text-red-500"
-            title="대화 지우기"
-          >
-            지우기
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={clearChat}
+              className="text-[10px] font-semibold text-gray-500 hover:text-red-500"
+              title="대화 지우기"
+            >
+              지우기
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              className="w-6 h-6 rounded-md text-gray-400 hover:text-violet-700 hover:bg-violet-50 flex items-center justify-center"
+              title="닫기"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18" />
+                <path d="M6 6 18 18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="p-3 space-y-3 max-h-[calc(100vh-6rem)] overflow-y-auto">
