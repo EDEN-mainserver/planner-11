@@ -211,7 +211,7 @@ ${articlesText}
   schedules.push(newPost);
   await writeBlob(PREFIX_SCHED, username, schedules);
   log(`예약 완료: ${scheduledAt} (KST ${config.postTime})`);
-  log(`본문 (${text.length}자): ${text}`);
+  log(`본문 길이: ${text.length}자`);
 
   return { scheduledAt, text, logs };
 }
