@@ -1217,65 +1217,69 @@ ${JSON.stringify(template, null, 2)}
                 지금 실행
               </button>
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* 예약 목록 */}
-      {scheduledPosts.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <p className="text-xs font-bold text-gray-700">
-                예약 현황
-              </p>
-              <span className="text-[11px] text-gray-400">
-                대기 {scheduledPosts.filter(p => p.status === "pending").length} · 완료 {scheduledPosts.filter(p => p.status === "posted").length} · 실패 {scheduledPosts.filter(p => p.status === "failed").length}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-[11px] font-semibold">
-                {["pending", "all"].map((v) => (
-                  <button key={v} onClick={() => setScheduleView(v)}
-                    className={`px-2.5 py-1 transition-colors ${scheduleView === v ? "bg-gray-800 text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
-                    {v === "pending" ? "대기중" : "전체"}
-                  </button>
-                ))}
+            {/* 예약 발행 일정 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-bold text-violet-800">예약 발행 일정</p>
+                  {scheduledPosts.length > 0 && (
+                    <span className="text-[11px] text-violet-400">
+                      대기 {scheduledPosts.filter(p => p.status === "pending").length} · 완료 {scheduledPosts.filter(p => p.status === "posted").length} · 실패 {scheduledPosts.filter(p => p.status === "failed").length}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex rounded-lg border border-violet-200 overflow-hidden text-[11px] font-semibold">
+                    {["pending", "all"].map((v) => (
+                      <button key={v} onClick={() => setScheduleView(v)}
+                        className={`px-2.5 py-1 transition-colors ${scheduleView === v ? "bg-violet-600 text-white" : "bg-white text-violet-500 hover:bg-violet-50"}`}>
+                        {v === "pending" ? "대기중" : "전체"}
+                      </button>
+                    ))}
+                  </div>
+                  {scheduledPosts.some(p => p.status !== "pending") && (
+                    <button onClick={clearDoneSchedules} className="text-[11px] text-violet-300 hover:text-red-500">
+                      완료 삭제
+                    </button>
+                  )}
+                </div>
               </div>
-              {scheduledPosts.some(p => p.status !== "pending") && (
-                <button onClick={clearDoneSchedules} className="text-[11px] text-gray-400 hover:text-red-500">
-                  완료 삭제
-                </button>
+              {scheduledPosts.length === 0 ? (
+                <div className="text-center py-4 text-[11px] text-violet-300 bg-white rounded-xl border border-violet-100">
+                  예약된 콘텐츠가 없습니다
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-60 overflow-y-auto pr-0.5">
+                  {scheduledPosts
+                    .filter(p => scheduleView === "all" || p.status === "pending")
+                    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+                    .map(p => (
+                    <div key={p.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border
+                      ${p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0
+                        ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
+                      <span className="text-gray-500 flex-shrink-0 font-mono text-[11px]">
+                        {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <span className="flex-1 text-gray-700 truncate">{p.text.slice(0, 30)}{p.text.length > 30 ? "..." : ""}</span>
+                      <span className={`flex-shrink-0 font-semibold text-[11px]
+                        ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
+                        {p.status === "pending" ? "대기" : p.status === "posted" ? "완료" : "실패"}
+                      </span>
+                      {p.status === "pending" && (
+                        <button onClick={() => cancelSchedule(p.id)} className="text-gray-300 hover:text-red-500 flex-shrink-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
-          <div className="space-y-1 max-h-72 overflow-y-auto pr-0.5">
-            {scheduledPosts
-              .filter(p => scheduleView === "all" || p.status === "pending")
-              .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
-              .map(p => (
-              <div key={p.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border
-                ${p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                <div className={`w-2 h-2 rounded-full flex-shrink-0
-                  ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
-                <span className="text-gray-500 flex-shrink-0 font-mono text-[11px]">
-                  {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                </span>
-                <span className="flex-1 text-gray-700 truncate">{p.text.slice(0, 30)}{p.text.length > 30 ? "..." : ""}</span>
-                <span className={`flex-shrink-0 font-semibold text-[11px]
-                  ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
-                  {p.status === "pending" ? "대기" : p.status === "posted" ? "완료" : "실패"}
-                </span>
-                {p.status === "pending" && (
-                  <button onClick={() => cancelSchedule(p.id)} className="text-gray-300 hover:text-red-500 flex-shrink-0">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* 결과 */}
       {result && (
