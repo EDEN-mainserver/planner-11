@@ -102,6 +102,9 @@ export default function FullAutoPage({ onBack }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [running, setRunning] = useState(null); // 실행 중인 account.id
   const [toast, setToast] = useState(null);
+  const [expandedAccount, setExpandedAccount] = useState(null); // 예약 일정 펼친 계정 id
+  const [scheduleMap, setScheduleMap] = useState({}); // { [username]: [] }
+  const [scheduleLoading, setScheduleLoading] = useState(null); // 로딩 중인 username
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -140,6 +143,26 @@ export default function FullAutoPage({ onBack }) {
   useEffect(() => {
     if (tab === "history") loadHistory();
   }, [tab, loadHistory]);
+
+  // 예약 일정 토글
+  const toggleSchedules = async (accId) => {
+    if (expandedAccount === accId) {
+      setExpandedAccount(null);
+      return;
+    }
+    setExpandedAccount(accId);
+    if (scheduleMap[accId]) return; // 이미 로드됨
+    setScheduleLoading(accId);
+    try {
+      const res = await fetch(`/api/schedule?username=${encodeURIComponent(accId)}`);
+      const data = res.ok ? await res.json() : {};
+      setScheduleMap(prev => ({ ...prev, [accId]: data.schedules || [] }));
+    } catch {
+      setScheduleMap(prev => ({ ...prev, [accId]: [] }));
+    } finally {
+      setScheduleLoading(null);
+    }
+  };
 
   // 수동 실행
   const handleRun = async (account) => {
@@ -316,6 +339,54 @@ export default function FullAutoPage({ onBack }) {
                             </>
                           )}
                         </button>
+                      )}
+
+                      {/* 예약 발행 일정 토글 */}
+                      <button
+                        onClick={() => toggleSchedules(acc.id)}
+                        className={`mt-2 w-full py-2 text-xs font-semibold rounded-xl border transition-all flex items-center justify-center gap-1.5
+                          ${expandedAccount === acc.id
+                            ? "border-amber-300 bg-amber-50 text-amber-700"
+                            : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"}`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        예약 발행 일정
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${expandedAccount === acc.id ? "rotate-180" : ""}`}>
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </button>
+
+                      {/* 예약 발행 목록 */}
+                      {expandedAccount === acc.id && (
+                        <div className="mt-2 space-y-1.5">
+                          {scheduleLoading === acc.id ? (
+                            <div className="text-center py-3 text-xs text-gray-400">불러오는 중...</div>
+                          ) : !scheduleMap[acc.id] || scheduleMap[acc.id].length === 0 ? (
+                            <div className="text-center py-3 text-xs text-gray-400 bg-gray-50 rounded-xl border border-gray-100">
+                              예약된 콘텐츠가 없습니다
+                            </div>
+                          ) : (
+                            scheduleMap[acc.id]
+                              .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+                              .map(p => (
+                              <div key={p.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border
+                                ${p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                                <div className={`w-2 h-2 rounded-full flex-shrink-0
+                                  ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
+                                <span className="text-gray-500 flex-shrink-0 font-mono text-[11px]">
+                                  {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                                <span className="flex-1 text-gray-700 truncate">{p.text?.slice(0, 28)}{p.text?.length > 28 ? "..." : ""}</span>
+                                <span className={`flex-shrink-0 font-semibold text-[11px]
+                                  ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
+                                  {p.status === "pending" ? "대기" : p.status === "posted" ? "완료" : "실패"}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       )}
                     </div>
                   );
