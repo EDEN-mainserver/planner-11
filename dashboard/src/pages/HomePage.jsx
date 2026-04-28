@@ -120,8 +120,23 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
         </div>
         <div className="mt-auto px-4 py-3 border-t border-gray-100">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold">E</div>
-            <span className="text-sm font-medium text-gray-700">EDEN TEAM</span>
+            <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold flex-shrink-0">
+              {(session?.displayName || "E").charAt(0).toUpperCase()}
+            </div>
+            <span className="text-sm font-medium text-gray-700 flex-1 truncate">
+              {session?.displayName || "EDEN TEAM"}
+            </span>
+            <button
+              onClick={() => { clearSession(); window.location.reload(); }}
+              title="로그아웃"
+              className="w-6 h-6 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </button>
           </div>
         </div>
       </aside>
@@ -298,7 +313,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
         <div className="flex-1 flex flex-col items-center justify-center px-8"
           style={{ background: 'radial-gradient(ellipse at 50% 0%, #ede9fe 0%, #f9fafb 60%)' }}>
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">안녕하세요, EDEN TEAM님!</h1>
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">안녕하세요, {session?.displayName || "EDEN TEAM"}님!</h1>
             <p className="text-xl text-gray-600">어떤 제품을 만들고 싶으신가요?</p>
           </div>
 
