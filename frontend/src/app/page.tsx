@@ -31,6 +31,7 @@ export default function Home() {
   // Step 2
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
   const [subtitleText, setSubtitleText] = useState("");
+  const [noSubtitleMode, setNoSubtitleMode] = useState(false);
 
   // Step 3
   const [clips, setClips] = useState<Clip[]>([]);
@@ -48,6 +49,7 @@ export default function Home() {
     setVideoInput("");
     setSubtitles([]);
     setSubtitleText("");
+    setNoSubtitleMode(false);
     setClips([]);
     setSelectedIndices([]);
     setGeneratedDrafts([]);
@@ -115,8 +117,17 @@ export default function Home() {
             videoInput={videoInput}
             inputType={inputType}
             onSubtitleReady={(subs, text) => {
+              setNoSubtitleMode(false);
               setSubtitles(subs);
               setSubtitleText(text);
+              setStep(2);
+            }}
+            onNoSubtitle={() => {
+              setNoSubtitleMode(true);
+              setSubtitles([]);
+              setSubtitleText("");
+              setClips([]);
+              setSelectedIndices([]);
               setStep(2);
             }}
             onBack={() => setStep(0)}
@@ -127,6 +138,7 @@ export default function Home() {
           <StepAnalysis
             subtitleText={subtitleText}
             totalSubtitles={subtitles.length}
+            noSubtitleMode={noSubtitleMode}
             onAnalyzed={(result) => {
               setClips(result);
               setSelectedIndices(result.map((_: Clip, i: number) => i));

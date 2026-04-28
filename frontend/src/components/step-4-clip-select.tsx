@@ -23,6 +23,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   emotional: "감동",
   controversial: "논쟁",
   informative: "정보",
+  manual: "수동 편집",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -31,6 +32,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   emotional: "bg-pink-500/20 text-pink-400",
   controversial: "bg-red-500/20 text-red-400",
   informative: "bg-green-500/20 text-green-400",
+  manual: "bg-zinc-500/20 text-zinc-500",
 };
 
 export function StepClipSelect({

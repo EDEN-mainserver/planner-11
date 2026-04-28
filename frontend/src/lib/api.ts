@@ -120,6 +120,35 @@ export async function analyzeSubtitles(
   return res.json();
 }
 
+export function generateFallbackClipsFromDuration(
+  durationSeconds: number,
+  numClips: number = 5,
+  clipDuration: number = 60,
+  customPrompt: string = ""
+): Clip[] {
+  const safeDuration = Math.max(clipDuration, Math.floor(durationSeconds));
+  const safeNumClips = Math.max(1, numClips);
+  const step = safeNumClips > 1
+    ? Math.max(10, Math.floor((safeDuration - clipDuration) / (safeNumClips - 1)))
+    : 0;
+
+  return Array.from({ length: safeNumClips }, (_, index) => {
+    const startSeconds = Math.min(index * step, Math.max(0, safeDuration - clipDuration));
+    const endSeconds = Math.min(startSeconds + clipDuration, safeDuration);
+    const titleSuffix = customPrompt.trim() ? ` - ${customPrompt.trim()}` : "";
+
+    return {
+      title: `자동 후보 구간 ${index + 1}${titleSuffix}`,
+      start_time: secondsToTimestamp(startSeconds),
+      end_time: secondsToTimestamp(endSeconds),
+      reason: "자막이 없어 영상 길이를 기준으로 자동 후보 구간을 생성했습니다.",
+      hook: "영상 내용을 보며 직접 좋은 하이라이트인지 확인해 주세요.",
+      virality_score: 5,
+      category: "manual",
+    };
+  });
+}
+
 // 캡컷 드래프트 JSON 생성 (브라우저에서 처리)
 export function generateCapcutDraftJson(
   videoPath: string,
@@ -193,6 +222,13 @@ function parseTimeToSeconds(time: string): number {
   const t = time.replace(",", ".");
   const parts = t.split(":");
   return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseFloat(parts[2]);
+}
+
+function secondsToTimestamp(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},000`;
 }
 
 // 드래프트를 JSON 파일로 다운로드
