@@ -44,7 +44,12 @@
     "api/threads-auto-config.js": { "maxDuration": 15, "memory": 256 },
     "api/threads-auto-research.js": { "maxDuration": 120, "memory": 512 },
     "api/auth-google.js":  { "maxDuration": 30, "memory": 512 },
-    "api/users-db.js":     { "maxDuration": 15, "memory": 256 }
+    "api/users-db.js":     { "maxDuration": 15, "memory": 256 },
+    "api/payment/prepare.js":  { "maxDuration": 15, "memory": 256 },
+    "api/payment/confirm.js":  { "maxDuration": 30, "memory": 512 },
+    "api/payment/webhook.js":  { "maxDuration": 30, "memory": 512 },
+    "api/subscription/status.js": { "maxDuration": 15, "memory": 256 },
+    "api/subscription/usage.js":  { "maxDuration": 15, "memory": 256 }
   },
   "crons": [
     {

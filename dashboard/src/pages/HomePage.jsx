@@ -17,11 +17,12 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
     window.addEventListener("eden-session-change", handleSessionChange);
     return () => window.removeEventListener("eden-session-change", handleSessionChange);
   }, []);
+  const { plan, usageCount, monthlyLimit, limitReached, loading: subLoading } = useSubscription();
   const [idea, setIdea] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
   const [suggestedTopics, setSuggestedTopics] = useState([]);
-  const [activePage, setActivePage] = useState('home'); // 'home' | 'projects' | 'trash' | 'admin'
+  const [activePage, setActivePage] = useState('home'); // 'home' | 'projects' | 'trash' | 'admin' | 'pricing'
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [permDeleteId, setPermDeleteId] = useState(null);
   const handleSuggest = async () => {
@@ -125,6 +126,44 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
             에쿠 GrowthDB
           </div>
         </div>
+        {/* 구독 상태 */}
+        {!subLoading && (
+          <div className="px-3 mx-2 mb-2 py-2.5 bg-gray-50 border border-gray-200 rounded-xl">
+            {plan ? (
+              <>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-gray-600">{plan.name}</span>
+                  <button
+                    onClick={() => setActivePage('pricing')}
+                    className="text-[10px] text-purple-500 hover:text-purple-700 font-medium"
+                  >
+                    업그레이드
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${limitReached ? "bg-red-400" : "bg-purple-500"}`}
+                      style={{ width: `${Math.min(100, (usageCount / monthlyLimit) * 100)}%` }}
+                    />
+                  </div>
+                  <span className={`text-[10px] font-medium ${limitReached ? "text-red-500" : "text-gray-500"}`}>
+                    {usageCount}/{monthlyLimit}
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-400">이번 달 사용량</p>
+              </>
+            ) : (
+              <button
+                onClick={() => setActivePage('pricing')}
+                className="w-full text-xs font-semibold text-purple-600 hover:text-purple-800 text-center py-0.5"
+              >
+                플랜 구독하기 →
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="mt-auto px-4 py-3 border-t border-gray-100">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold flex-shrink-0">
@@ -301,7 +340,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
 
         {/* ════ E-Attack 화면 ════ */}
         {activePage === 'eattack' && (
-          <EAttackPage />
+          <EAttackPage onGoToPricing={() => setActivePage('pricing')} />
         )}
 
         {/* ════ 이걸 돈내고 써? 화면 ════ */}
@@ -309,6 +348,14 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
           <MoneyPage onBack={() => setActivePage('eattack')} />
         )}
 
+
+        {/* ════ 가격/구독 화면 ════ */}
+        {activePage === 'pricing' && (
+          <PricingPage
+            currentPlanId={plan?.id}
+            onBack={() => setActivePage('eattack')}
+          />
+        )}
 
         {/* ════ 에쿠 GrowthDB ════ */}
         {activePage === 'growthdb' && (
