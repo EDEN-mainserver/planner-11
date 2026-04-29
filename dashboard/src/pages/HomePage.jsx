@@ -6,7 +6,9 @@ import EAttackPage from "../eattack/EAttackPage";
 import MoneyPage from "../eattack/MoneyPage";
 import GrowthDBPage from "../eattack/GrowthDBPage";
 import AdminPage from "./AdminPage";
+import PricingPage from "./PricingPage";
 import { getSession, clearSession } from "../eattack/LoginModal";
+import { useSubscription } from "../hooks/useSubscription";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [session, setSession] = useState(() => getSession());

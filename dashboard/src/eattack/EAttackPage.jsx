@@ -8,6 +8,7 @@ import IbossPage from "./IbossPage";
 import FullAutoPage from "./FullAutoPage";
 import EAttackAssistantDock from "./EAttackAssistantDock";
 import { emitEAttackContext } from "./eattackContext";
+import { useSubscription } from "../hooks/useSubscription";
 
 // ─── 채널 데이터 정의 ───
 const CONTENT_TYPES = [
@@ -94,18 +95,26 @@ const TEXT_CHANNELS = [
 ];
 
 // ─── 채널 카드 컴포넌트 ───
-function ChannelCard({ item, onClick }) {
-  const isDisabled = item.disabled;
+function ChannelCard({ item, onClick, locked, onUpgrade }) {
+  const isDisabled = item.disabled || locked;
 
   return (
     <div
-      onClick={isDisabled ? undefined : onClick}
+      onClick={locked ? onUpgrade : (isDisabled ? undefined : onClick)}
       className={`relative group bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 transition-all duration-300
         ${isDisabled
-          ? "opacity-50 cursor-not-allowed"
+          ? locked ? "cursor-pointer opacity-70 hover:border-orange-300 hover:shadow-md" : "opacity-50 cursor-not-allowed"
           : "cursor-pointer hover:border-gray-300 hover:shadow-lg hover:-translate-y-1"
         }`}
     >
+      {locked && (
+        <div className="absolute top-3 right-3 bg-orange-100 text-orange-600 rounded-full p-1">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+      )}
+
       {/* 아이콘 */}
       <div className={`rounded-xl flex items-center justify-center bg-gradient-to-br shadow-lg flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 mb-4 transition-all duration-500 ${isDisabled ? "" : "group-hover:scale-110 group-hover:rotate-3"} ${item.gradient}`}>
         <div className="text-white [&>svg]:w-6 [&>svg]:h-6 sm:[&>svg]:w-7 sm:[&>svg]:h-7">
@@ -133,8 +142,17 @@ function ChannelCard({ item, onClick }) {
         </div>
       )}
 
+      {/* 업그레이드 뱃지 */}
+      {locked && (
+        <div className="mt-4">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-orange-50 text-orange-500 border border-orange-200">
+            업그레이드 필요
+          </span>
+        </div>
+      )}
+
       {/* 준비중 뱃지 */}
-      {isDisabled && (
+      {item.disabled && !locked && (
         <div className="mt-4">
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-400">
             준비중
@@ -146,11 +164,12 @@ function ChannelCard({ item, onClick }) {
 }
 
 // ─── 메인 E-Attack 페이지 ───
-export default function EAttackPage() {
+export default function EAttackPage({ onGoToPricing }) {
   // depth: 'root' → 글/이미지/영상 | 'text' → 블로그/아이보스 | 'blog' → 블로그 대시보드
   const [depth, setDepth] = useState("root");
   // 크롤링 페이지에서 선택한 레퍼런스 포스트
   const [referencePost, setReferencePost] = useState(null);
+  const { canUseFeature, limitReached, remaining, monthlyLimit, usageCount, plan } = useSubscription();
   const depthLabelMap = {
     root: "E-Attack 홈",
     text: "글",
@@ -270,7 +289,20 @@ export default function EAttackPage() {
 
         {depth === "root" && (
           <>
-            <h3 className="text-lg font-bold text-gray-800 mb-1">콘텐츠 유형 선택</h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-bold text-gray-800">콘텐츠 유형 선택</h3>
+              {plan && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-gray-400">{plan.name}</span>
+                  <span className={`font-semibold ${limitReached ? "text-red-500" : "text-gray-700"}`}>
+                    {usageCount}/{monthlyLimit}회
+                  </span>
+                  {limitReached && (
+                    <button onClick={onGoToPricing} className="text-xs text-orange-500 underline font-medium">업그레이드</button>
+                  )}
+                </div>
+              )}
+            </div>
             <p className="text-sm text-gray-400 mb-6">제작할 콘텐츠 유형을 선택하세요</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
               {CONTENT_TYPES.map((type) => (
@@ -278,6 +310,8 @@ export default function EAttackPage() {
                   key={type.key}
                   item={type}
                   onClick={() => handleTypeClick(type)}
+                  locked={!canUseFeature(type.key)}
+                  onUpgrade={onGoToPricing}
                 />
               ))}
             </div>
