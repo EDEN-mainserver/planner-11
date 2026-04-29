@@ -114,8 +114,23 @@ export async function callGemini(history, systemPrompt) {
     body: JSON.stringify({ history, systemPrompt }),
   });
   if (!resp.ok) {
-    const err = await resp.json();
-    throw new Error(err.error || `API 오류 ${resp.status}`);
+    // 응답이 JSON이 아닐 수 있음 (Vercel 인프라 에러: 타임아웃/페이로드 초과 등은 평문/HTML 반환)
+    const raw = await resp.text();
+    let message;
+    try {
+      const err = JSON.parse(raw);
+      message = err.error || err.message;
+    } catch {
+      const snippet = raw.replace(/<[^>]*>/g, '').trim().slice(0, 180);
+      message = snippet || `HTTP ${resp.status}`;
+    }
+    if (resp.status === 504 || /timeout|FUNCTION_INVOCATION_TIMEOUT/i.test(raw)) {
+      throw new Error(`서버 응답 시간 초과 (${resp.status}) — 잠시 후 다시 시도하거나 게시물 수를 줄여주세요.`);
+    }
+    if (resp.status === 413 || /PAYLOAD_TOO_LARGE/i.test(raw)) {
+      throw new Error(`요청 본문이 너무 큽니다 (${resp.status}) — 게시물/이미지 수를 줄여주세요.`);
+    }
+    throw new Error(`서버 오류 ${resp.status}: ${message}`);
   }
   const data = await resp.json();
   return data.text || '';

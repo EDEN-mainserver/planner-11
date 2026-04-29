@@ -60,6 +60,7 @@ async function fetchImageAsBase64(url) {
 }
 
 export const config = { api: { bodyParser: { sizeLimit: '10mb' } } };
+export const maxDuration = 800;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -115,8 +116,11 @@ export default async function handler(req, res) {
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
         return res.status(200).json({ text, model });
       }
-      const err = await resp.json();
-      lastError = err.error?.message || `오류 ${resp.status}`;
+      const raw = await resp.text();
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch {}
+      lastError = parsed?.error?.message || raw.slice(0, 200) || `오류 ${resp.status}`;
+      console.error(`[gemini] ${model} 실패 (${resp.status}):`, lastError);
       // 503(과부하) 또는 429(한도 초과)일 때만 다음 모델로 폴백
       if (resp.status !== 503 && resp.status !== 429) break;
     } catch (err) {
