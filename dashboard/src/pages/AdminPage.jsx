@@ -1297,16 +1297,28 @@ function MembersTab() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <select
-                        value={m.role || "user"}
-                        disabled={actionId === m.id}
-                        onChange={e => setRole(m.id, e.target.value)}
-                        className="px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white disabled:opacity-50"
-                      >
-                        <option value="user">일반</option>
-                        <option value="member">멤버</option>
-                        <option value="admin">관리자</option>
-                      </select>
+                      <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden">
+                        {[
+                          { value: "user",   label: "일반",   active: "bg-gray-100 text-gray-700" },
+                          { value: "member", label: "멤버",   active: "bg-blue-50 text-blue-600" },
+                          { value: "admin",  label: "관리자", active: "bg-purple-50 text-purple-600" },
+                        ].map(opt => {
+                          const current = (m.role || "user") === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              disabled={actionId === m.id}
+                              onClick={() => { if (!current) setRole(m.id, opt.value); }}
+                              className={`px-2.5 py-1 text-[11px] font-semibold transition-all border-r border-gray-200 last:border-r-0 disabled:opacity-50 ${
+                                current ? `${opt.active} font-bold` : "bg-white text-gray-400 hover:bg-gray-50"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                       {actionId === m.id && (
                         <span className="text-[11px] text-gray-400">저장중...</span>
                       )}
