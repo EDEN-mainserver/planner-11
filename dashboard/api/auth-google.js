@@ -96,6 +96,7 @@ export default async function handler(req, res) {
     const users   = await readUsers();
     const userId  = `google_${gUser.id}`;
     const existing = users.find(u => u.id === userId);
+    const isNewUser = !existing;
 
     const record = {
       id:          userId,
@@ -114,6 +115,25 @@ export default async function handler(req, res) {
       users.push(record);
     }
     await writeUsers(users);
+
+    // 4. Google Sheets 동기화 (환경변수 SHEETS_WEBHOOK_URL 설정 시 활성화)
+    const sheetsUrl = process.env.SHEETS_WEBHOOK_URL;
+    if (sheetsUrl) {
+      fetch(sheetsUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: isNewUser ? "insert" : "update",
+          id:          record.id,
+          email:       record.email,
+          displayName: record.displayName,
+          picture:     record.picture,
+          role:        record.role,
+          createdAt:   record.createdAt,
+          lastLoginAt: record.lastLoginAt,
+        }),
+      }).catch((e) => console.warn("[sheets-sync] 실패:", e.message));
+    }
 
     // 4. 세션 주입 HTML 반환 → localStorage 설정 후 홈 리다이렉트
     const session = {
