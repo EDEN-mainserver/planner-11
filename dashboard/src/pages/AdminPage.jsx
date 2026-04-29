@@ -1187,6 +1187,7 @@ function MembersTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [actionId, setActionId] = useState(null);
+  const [savedId, setSavedId] = useState(null);
 
   const fetchMembers = () => {
     setLoading(true);
@@ -1200,14 +1201,27 @@ function MembersTab() {
   useEffect(() => { fetchMembers(); }, []);
 
   const setRole = async (userId, role) => {
+    const prev = members;
+    setMembers(ms => ms.map(m => m.id === userId ? { ...m, role } : m));
     setActionId(userId);
-    await fetch("/api/users-db", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "setRole", userId, role }),
-    });
-    await fetchMembers();
-    setActionId(null);
+    try {
+      const res = await fetch("/api/users-db", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setRole", userId, role }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `저장 실패 (HTTP ${res.status})`);
+      }
+      setSavedId(userId);
+      setTimeout(() => setSavedId(null), 1500);
+    } catch (e) {
+      setMembers(prev);
+      alert(`역할 저장 실패: ${e.message}`);
+    } finally {
+      setActionId(null);
+    }
   };
 
   const deleteMember = async (userId) => {
@@ -1282,16 +1296,24 @@ function MembersTab() {
                     {m.lastLoginAt ? new Date(m.lastLoginAt).toLocaleDateString("ko-KR") : "-"}
                   </td>
                   <td className="px-4 py-3">
-                    <select
-                      value={m.role || "user"}
-                      disabled={actionId === m.id}
-                      onChange={e => setRole(m.id, e.target.value)}
-                      className="px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white"
-                    >
-                      <option value="user">일반</option>
-                      <option value="member">멤버</option>
-                      <option value="admin">관리자</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={m.role || "user"}
+                        disabled={actionId === m.id}
+                        onChange={e => setRole(m.id, e.target.value)}
+                        className="px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 bg-white disabled:opacity-50"
+                      >
+                        <option value="user">일반</option>
+                        <option value="member">멤버</option>
+                        <option value="admin">관리자</option>
+                      </select>
+                      {actionId === m.id && (
+                        <span className="text-[11px] text-gray-400">저장중...</span>
+                      )}
+                      {savedId === m.id && (
+                        <span className="text-[11px] text-green-500 font-semibold">✓ 저장됨</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <button
