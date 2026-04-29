@@ -7,8 +7,8 @@ import MoneyPage from "../eattack/MoneyPage";
 import GrowthDBPage from "../eattack/GrowthDBPage";
 import AdminPage from "./AdminPage";
 import PricingPage from "./PricingPage";
-import { getSession, clearSession } from "../eattack/LoginModal";
 import { useSubscription } from "../hooks/useSubscription";
+import { getSession, clearSession } from "../utils/authSession";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [session, setSession] = useState(() => getSession());
@@ -25,6 +25,14 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
   const [activePage, setActivePage] = useState('home'); // 'home' | 'projects' | 'trash' | 'admin' | 'pricing'
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [permDeleteId, setPermDeleteId] = useState(null);
+
+  useEffect(() => {
+    if (!isAdmin && activePage === "admin") {
+      const timer = window.setTimeout(() => setActivePage("home"), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [activePage, isAdmin]);
+
   const handleSuggest = async () => {
     setIsLoading(true);
     setSuggestedTopics([]);
@@ -67,7 +75,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
             { key: 'home',     label: '홈',          icon: '🏠' },
             { key: 'projects', label: '모든 프로젝트', icon: '📋' },
             { key: 'trash',    label: '휴지통',       icon: '🗑️', badge: trash.length },
-            { key: 'admin',    label: '관리자',       icon: '⚙️' },
+            ...(isAdmin ? [{ key: 'admin', label: '관리자', icon: '⚙️' }] : []),
             { key: 'notif',    label: '알림함',       icon: '🔔' },
           ].map(item => (
             <div key={item.key}
@@ -177,7 +185,8 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
             <button
               onClick={() => { clearSession(); window.location.reload(); }}
               title="로그아웃"
-              className="w-6 h-6 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0"
+              aria-label="로그아웃"
+              className="w-7 h-7 flex items-center justify-center rounded-md border border-transparent text-gray-500 hover:text-red-500 hover:bg-red-50 hover:border-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 transition-all flex-shrink-0 cursor-pointer"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -337,7 +346,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
 
         {/* ════ 관리자 화면 ════ */}
         {activePage === 'admin' && (
-          <AdminPage projects={projects} trash={trash} onLoad={onLoad} />
+          <AdminPage projects={projects} trash={trash} onLoad={onLoad} session={session} isAdmin={isAdmin} />
         )}
 
         {/* ════ E-Attack 화면 ════ */}

@@ -33,8 +33,21 @@ const PURPOSE_OPTS = [
   { v: "review", l: "고객 후기" },
 ];
 const STEP_LABELS = ["설정", "리서치", "기획", "이미지", "조립", "배포"];
+const UPLOAD_POST_MAX_CAROUSEL_ITEMS = 10;
 
 const threadsKey = (u) => `eden_threads_${u}_v1`;
+
+function getUploadPostValidationMessage({ title, user, platforms, cardsCount, cardHtmlCount }) {
+  const mediaCount = cardHtmlCount || cardsCount;
+  if (mediaCount <= 0) return "업로드할 카드가 없습니다. 카드를 먼저 조립해주세요";
+  if (mediaCount > UPLOAD_POST_MAX_CAROUSEL_ITEMS) {
+    return "캐러셀은 최대 10장까지 업로드할 수 있습니다";
+  }
+  if (!title.trim()) return "게시 제목을 입력해주세요";
+  if (!user.trim()) return "Upload Post managed user 값을 입력해주세요";
+  if (!platforms.length) return "게시할 플랫폼을 하나 이상 선택해주세요";
+  return "";
+}
 
 // ── 소셜 설정 로드/저장 (사용자별) ──
 function loadSocial(keyFn, username) {
@@ -76,7 +89,9 @@ async function runResearch(topic) {
           .join("\n");
       }
     }
-  } catch (_) {}
+  } catch {
+    // 검색 실패 시 Gemini 단독 생성으로 진행한다.
+  }
 
   return callGemini(
     [
@@ -827,6 +842,18 @@ export default function UnifiedPipelineTab() {
   const [postCaption, setPostCaption] = useState("");
   const [igDirectUrls, setIgDirectUrls] = useState("");
   const [igLogs, setIgLogs] = useState([]);
+  const [uploadPostTitle, setUploadPostTitle] = useState("");
+  const [uploadPostUser, setUploadPostUser] = useState(() => getSession()?.username || "");
+  const [uploadPostPlatforms, setUploadPostPlatforms] = useState(["tiktok"]);
+  const [uploadPostPosting, setUploadPostPosting] = useState(false);
+  const [uploadPostResult, setUploadPostResult] = useState(null);
+  const uploadPostValidationMessage = getUploadPostValidationMessage({
+    title: uploadPostTitle,
+    user: uploadPostUser,
+    platforms: uploadPostPlatforms,
+    cardsCount: cards.length,
+    cardHtmlCount: cardHtmls.length,
+  });
 
   useEffect(() => {
     emitEAttackContext({
@@ -860,6 +887,7 @@ export default function UnifiedPipelineTab() {
     setSession(s);
     setIgConfig(normalizeInstagramConfig(loadSocial(igKey, s.username)));
     setThConfig(loadSocial(threadsKey, s.username));
+    setUploadPostUser(s.username || "");
   };
 
   const handleLogout = () => {
@@ -1120,7 +1148,7 @@ export default function UnifiedPipelineTab() {
           }
         };
 
-        iframe.onerror = (e) => {
+        iframe.onerror = () => {
           URL.revokeObjectURL(blobUrl);
           iframe.remove();
           reject(new Error("iframe 로드 실패"));
@@ -1133,6 +1161,53 @@ export default function UnifiedPipelineTab() {
     }
 
     return images;
+  };
+
+  const dataUrlToFile = async (dataUrl, filename) => {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    return new File([blob], filename, { type: blob.type || "image/jpeg" });
+  };
+
+  const imageUrlToFile = async (url, filename) => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`이미지 다운로드 실패: ${response.status}`);
+    const blob = await response.blob();
+    return new File([blob], filename, { type: blob.type || "image/jpeg" });
+  };
+
+  const buildUploadPostCarouselFiles = async () => {
+    if (cardHtmls.length > 0) {
+      addLog("info", `Upload Post 캐러셀 캡처 시작: ${Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS)}장`);
+      setIgCaptureProgress({ step: "capture", done: 0, total: Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS) });
+      const captured = await captureCardHtmls(cardHtmls);
+      const files = await Promise.all(
+        captured.map((dataUrl, index) => dataUrlToFile(dataUrl, `carousel-${String(index + 1).padStart(2, "0")}.jpg`))
+      );
+      setIgCaptureProgress({ step: "uploading", done: files.length, total: files.length });
+      return files;
+    }
+
+    const sourceImages = cards
+      .map((card) => card.imageUrl)
+      .filter((url) => typeof url === "string" && url.length > 0)
+      .slice(0, UPLOAD_POST_MAX_CAROUSEL_ITEMS);
+
+    if (sourceImages.length === 0) {
+      throw new Error("업로드할 카드가 없습니다. 카드를 먼저 조립해주세요.");
+    }
+
+    addLog("info", `Upload Post 원본 이미지 수집: ${sourceImages.length}장`);
+    setIgCaptureProgress({ step: "uploading", done: 0, total: sourceImages.length });
+
+    const files = [];
+    for (let i = 0; i < sourceImages.length; i += 1) {
+      const file = await imageUrlToFile(sourceImages[i], `carousel-${String(i + 1).padStart(2, "0")}.jpg`);
+      files.push(file);
+      setIgCaptureProgress({ step: "uploading", done: i + 1, total: sourceImages.length });
+    }
+
+    return files;
   };
 
   const postToInstagram = async () => {
@@ -1279,6 +1354,75 @@ export default function UnifiedPipelineTab() {
     }
   };
 
+  const toggleUploadPostPlatform = (platform) => {
+    setUploadPostPlatforms((prev) =>
+      prev.includes(platform)
+        ? prev.filter((item) => item !== platform)
+        : [...prev, platform]
+    );
+  };
+
+  const uploadCarouselToUploadPost = async () => {
+    if (uploadPostValidationMessage) {
+      setError(uploadPostValidationMessage);
+      return;
+    }
+
+    setUploadPostPosting(true);
+    setUploadPostResult(null);
+    setError("");
+
+    try {
+      const carouselFiles = await buildUploadPostCarouselFiles();
+      addLog("info", `Upload Post 캐러셀 업로드 시작`, {
+        items: carouselFiles.length,
+        platforms: uploadPostPlatforms,
+        user: uploadPostUser.trim(),
+      });
+      const form = new FormData();
+      form.append("title", uploadPostTitle.trim());
+      form.append("user", uploadPostUser.trim());
+      uploadPostPlatforms.forEach((platform) => form.append("platform[]", platform));
+      carouselFiles.forEach((file) => form.append("photos[]", file));
+
+      const res = await fetch("/api/upload-post", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      addLog(res.ok ? "info" : "error", `Upload Post 응답 [${res.status}]`, data);
+      if (!res.ok) {
+        throw new Error(data.error || data.upstream?.message || data.data?.message || "Upload Post 업로드 실패");
+      }
+
+      setUploadPostResult({
+        status: "success",
+        message: data.message || "Upload Post 캐러셀 업로드 요청을 완료했습니다.",
+        data: {
+          status: data.upstream?.status || data.status,
+          jobId: data.jobId || data.data?.jobId || data.data?.data?.jobId || null,
+          message: data.upstream?.message || data.message || "",
+          title: uploadPostTitle.trim(),
+          user: uploadPostUser.trim(),
+          platforms: [...uploadPostPlatforms],
+          items: carouselFiles.length,
+          raw: data.data || data,
+        },
+      });
+    } catch (e) {
+      addLog("error", `Upload Post 오류: ${e.message}`);
+      setError(e.message);
+      setUploadPostResult({
+        status: "error",
+        message: e.message,
+        data: null,
+      });
+    } finally {
+      setUploadPostPosting(false);
+      setIgCaptureProgress({ step: "", done: 0, total: 0 });
+    }
+  };
+
   const reset = () => {
     setStep("setup");
     setTopic("");
@@ -1337,7 +1481,8 @@ export default function UnifiedPipelineTab() {
         </div>
         <button
           onClick={handleLogout}
-          className="text-[10px] text-gray-400 hover:text-red-500 transition-colors"
+          aria-label="로그아웃"
+          className="px-2 py-1 text-[10px] text-gray-500 border border-transparent rounded-md hover:text-red-500 hover:bg-red-50 hover:border-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 transition-colors cursor-pointer"
         >
           로그아웃
         </button>
@@ -2290,6 +2435,131 @@ export default function UnifiedPipelineTab() {
               </div>
             </div>
           )}
+
+          <div className="space-y-3 bg-white border border-pink-100 rounded-xl p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold text-gray-700">Upload Post 캐러셀 게시</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">현재 조립된 카드 1~10장을 캡처해 캐러셀로 업로드합니다.</p>
+              </div>
+              <span className="text-[10px] text-pink-600 font-semibold bg-pink-50 border border-pink-200 rounded px-1.5 py-0.5">
+                서버 API 키 사용
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-gray-600 block mb-1.5">캐러셀 소스</label>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs text-gray-600">
+                  <p>조립된 카드: <span className="font-semibold text-gray-800">{cards.length}장</span></p>
+                  <p className="mt-1">캡처 가능 카드: <span className="font-semibold text-gray-800">{Math.min(cardHtmls.length || cards.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS)}장</span></p>
+                  <p className="mt-1 text-[11px] text-gray-500">Upload Post `photos[]` 엔드포인트로 전송됩니다.</p>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 block mb-1.5">게시 제목</label>
+                <input
+                  type="text"
+                  value={uploadPostTitle}
+                  onChange={(e) => {
+                    setUploadPostTitle(e.target.value);
+                    setUploadPostResult(null);
+                  }}
+                  placeholder={topic || "Your Video Title"}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 block mb-1.5">Managed User</label>
+                <input
+                  type="text"
+                  value={uploadPostUser}
+                  onChange={(e) => {
+                    setUploadPostUser(e.target.value);
+                    setUploadPostResult(null);
+                  }}
+                  placeholder="upload-post managed user"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white font-mono"
+                />
+                <p className="mt-1.5 text-[11px] text-gray-500">
+                  Upload Post managed users 페이지에서 만든 `user` 값을 그대로 입력합니다.
+                </p>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 block mb-1.5">플랫폼</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {["tiktok", "instagram", "youtube", "facebook"].map((platform) => (
+                    <button
+                      key={platform}
+                      type="button"
+                      onClick={() => {
+                        toggleUploadPostPlatform(platform);
+                        setUploadPostResult(null);
+                      }}
+                      className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                        uploadPostPlatforms.includes(platform)
+                          ? "bg-pink-500 border-pink-500 text-white"
+                          : "bg-white border-gray-200 text-gray-500 hover:border-pink-200 hover:text-pink-600"
+                      }`}
+                    >
+                      {platform}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {uploadPostValidationMessage && (
+              <div className="px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-[11px] text-amber-700">
+                {uploadPostValidationMessage}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={uploadCarouselToUploadPost}
+              disabled={uploadPostPosting || Boolean(uploadPostValidationMessage)}
+              className="w-full py-3 bg-gray-900 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              {uploadPostPosting ? (
+                <>
+                  <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                  </svg>
+                  Upload Post 캐러셀 업로드 중...
+                </>
+              ) : (
+                "Upload Post로 캐러셀 게시"
+              )}
+            </button>
+
+            {uploadPostResult && (
+              <div className={`px-3 py-2.5 rounded-xl text-xs font-medium ${
+                uploadPostResult.status === "success"
+                  ? "bg-green-50 border border-green-200 text-green-700"
+                  : "bg-red-50 border border-red-200 text-red-600"
+              }`}>
+                <p>{uploadPostResult.message}</p>
+                {uploadPostResult.data?.jobId && <p className="mt-1 font-mono">jobId: {uploadPostResult.data.jobId}</p>}
+                {uploadPostResult.data?.status && <p className="mt-1">status: {uploadPostResult.data.status}</p>}
+                {uploadPostResult.data?.title && <p className="mt-1">title: {uploadPostResult.data.title}</p>}
+                {uploadPostResult.data?.user && <p className="mt-1">user: {uploadPostResult.data.user}</p>}
+                {uploadPostResult.data?.items && <p className="mt-1">items: {uploadPostResult.data.items}</p>}
+                {uploadPostResult.data?.platforms?.length > 0 && (
+                  <p className="mt-1">platforms: {uploadPostResult.data.platforms.join(", ")}</p>
+                )}
+                {uploadPostResult.data?.message && <p className="mt-1 opacity-90">upstream: {uploadPostResult.data.message}</p>}
+                {uploadPostResult.data?.raw && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[11px] font-semibold">원문 응답 보기</summary>
+                    <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap font-mono text-[10px] opacity-80">
+                      {JSON.stringify(uploadPostResult.data.raw, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* ── 실행 로그 패널 ── */}
           {igLogs.length > 0 && (
