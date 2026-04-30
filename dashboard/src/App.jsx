@@ -27,8 +27,10 @@ import { EMPTY_PRD } from "./utils/prd";
 import HomePage from "./pages/HomePage";
 import InterviewPage from "./pages/InterviewPage";
 import EditorPage from "./pages/EditorPage";
+import AuthPage from "./pages/AuthPage";
 
 export default function App() {
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
   const [page, setPage]                   = useState('home');
   const [prd, setPrd]                     = useState(EMPTY_PRD);
   const [specData, setSpecData]           = useState(null);
@@ -153,6 +155,22 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [prd, specData, flowData, projectTitle, page, currentProjectId, upsertProject]);
+
+  if (pathname === "/login") {
+    return (
+      <ErrorBoundary>
+        <AuthPage mode="login" />
+      </ErrorBoundary>
+    );
+  }
+
+  if (pathname === "/register") {
+    return (
+      <ErrorBoundary>
+        <AuthPage mode="register" />
+      </ErrorBoundary>
+    );
+  }
 
   if (page === 'home') return (
     <ErrorBoundary>
