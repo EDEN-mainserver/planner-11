@@ -1,16 +1,14 @@
 // AI 영상편집 자동화 탭
-// 영상 업로드 → 음성 추출(FFmpeg WASM) → Whisper 전사 → 세그먼트 결과 표시
+// 영상 업로드 → Whisper 직접 전사 → 세그먼트 결과 표시
 import { useState, useRef, useCallback } from "react";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 // ── 파이프라인 단계 ────────────────────────────────────────────────
 const PIPELINE_STEPS = [
-  { label: "영상 업로드",       icon: "📤" },
-  { label: "음성 추출·무음 제거", icon: "✂️" },
-  { label: "Whisper 전사",      icon: "🎙️" },
-  { label: "소스 자동 배치",    icon: "🎬" },
-  { label: "캡컷 드래프트",     icon: "✅" },
+  { label: "영상 업로드",    icon: "📤" },
+  { label: "Whisper 전사",  icon: "🎙️" },
+  { label: "세그먼트 분절", icon: "✂️" },
+  { label: "소스 자동 배치", icon: "🎬" },
+  { label: "캡컷 드래프트", icon: "✅" },
 ];
 
 // ── 기능 카드 데이터 ──────────────────────────────────────────────
@@ -52,21 +50,6 @@ const FEATURES = [
     tools: ["Claude Code"],
   },
 ];
-
-// ── FFmpeg WASM 로더 (싱글턴) ──────────────────────────────────────
-let ffmpegInstance = null;
-async function loadFFmpeg(onLog) {
-  if (ffmpegInstance) return ffmpegInstance;
-  const ff = new FFmpeg();
-  if (onLog) ff.on("log", ({ message }) => onLog(message));
-  const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
-  await ff.load({
-    coreURL:   await toBlobURL(`${baseURL}/ffmpeg-core.js`,   "text/javascript"),
-    wasmURL:   await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-  });
-  ffmpegInstance = ff;
-  return ff;
-}
 
 // ── 파일 크기 포맷 ────────────────────────────────────────────────
 function fmtBytes(b) {
@@ -111,60 +94,22 @@ function TranscribePanel() {
     setError("");
     setResult(null);
 
-    const isAudio = videoFile.type.startsWith("audio/");
+    // 25MB 초과 시 클라이언트에서 미리 차단
+    if (videoFile.size > 25 * 1024 * 1024) {
+      setError(`파일이 ${fmtBytes(videoFile.size)}입니다. Whisper 제한(25MB)을 초과합니다. 짧은 영상을 사용해주세요.`);
+      setStep("error");
+      return;
+    }
 
     try {
-      let audioBlob;
-      let audioType = "audio/mpeg";
+      setStep("transcribing");
+      setProgress(`파일 전송 중... (${fmtBytes(videoFile.size)})`);
 
-      if (isAudio) {
-        // 오디오 파일은 바로 사용
-        audioBlob = videoFile;
-        audioType = videoFile.type;
-        setStep("transcribing");
-        setProgress("Whisper로 전사 중...");
-      } else {
-        // 영상 → FFmpeg WASM으로 오디오 추출
-        setStep("extracting");
-        setProgress("FFmpeg 로드 중... (최초 1회만)");
-
-        const ff = await loadFFmpeg((msg) => {
-          if (msg.includes("time=")) {
-            const match = msg.match(/time=(\S+)/);
-            if (match) setProgress(`오디오 추출 중... ${match[1]}`);
-          }
-        });
-
-        setProgress("오디오 추출 중...");
-        await ff.writeFile("input.mp4", await fetchFile(videoFile));
-
-        // mp4 → mp3 (25MB 이하, Whisper 지원)
-        await ff.exec([
-          "-i", "input.mp4",
-          "-vn",               // 비디오 스트림 제거
-          "-ar", "16000",      // 16kHz (Whisper 최적)
-          "-ac", "1",          // 모노
-          "-b:a", "64k",       // 64kbps (충분한 품질, 작은 용량)
-          "output.mp3",
-        ]);
-
-        const data = await ff.readFile("output.mp3");
-        audioBlob = new Blob([data.buffer], { type: "audio/mpeg" });
-        audioType = "audio/mpeg";
-
-        // 임시 파일 정리
-        await ff.deleteFile("input.mp4").catch(() => {});
-        await ff.deleteFile("output.mp3").catch(() => {});
-
-        setStep("transcribing");
-        setProgress(`Whisper로 전사 중... (추출된 오디오: ${fmtBytes(audioBlob.size)})`);
-      }
-
-      // Whisper API 호출
+      // 영상/오디오 파일을 그대로 Whisper API로 전송 (mp4·mov·mp3·wav 모두 지원)
       const res = await fetch("/api/transcribe", {
         method: "POST",
-        headers: { "Content-Type": audioType },
-        body: audioBlob,
+        headers: { "Content-Type": videoFile.type || "video/mp4" },
+        body: videoFile,
       });
 
       if (!res.ok) {
@@ -179,7 +124,7 @@ function TranscribePanel() {
 
     } catch (e) {
       console.error("[transcribe]", e);
-      setError(e.message || "알 수 없는 오류");
+      setError(e.message || String(e) || "알 수 없는 오류");
       setStep("error");
       setProgress("");
     }
@@ -251,15 +196,13 @@ function TranscribePanel() {
       )}
 
       {/* 진행 상태 */}
-      {(step === "extracting" || step === "transcribing") && (
+      {step === "transcribing" && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-purple-50 border border-purple-200">
           <svg className="animate-spin flex-shrink-0 text-purple-500" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
           </svg>
           <div>
-            <p className="text-xs font-semibold text-purple-700">
-              {step === "extracting" ? "오디오 추출 중" : "Whisper 전사 중"}
-            </p>
+            <p className="text-xs font-semibold text-purple-700">Whisper 전사 중</p>
             <p className="text-xs text-purple-500 mt-0.5">{progress}</p>
           </div>
         </div>
@@ -453,7 +396,7 @@ export default function AutoEditTab({ nasState, onGoToNas, NasSaveFooter }) {
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-600">중요도 높음</span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500 text-white">구현됨</span>
               </div>
-              <p className="text-xs text-gray-400 mt-0.5">FFmpeg WASM으로 오디오 추출 → Whisper API 전사</p>
+              <p className="text-xs text-gray-400 mt-0.5">영상 파일 → Whisper API 직접 전사 (최대 25MB)</p>
             </div>
           </div>
           <div className="p-4">
