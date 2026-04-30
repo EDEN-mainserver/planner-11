@@ -834,18 +834,18 @@ const AUTO_EDIT_FEATURES = [
   {
     num: "01",
     key: "transcribe",
-    label: "오디오 자동 분석 및 전사",
+    label: "영상 업로드 및 자동 전사",
     priority: "높음",
     priorityColor: "bg-red-100 text-red-600",
     gradient: "from-purple-500 to-violet-600",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
       </svg>
     ),
-    desc: "오디오 파일을 OpenAI Whisper로 정밀 전사하고 의미 단위 15~20개 구간으로 자동 분절합니다.",
-    details: ["OpenAI Whisper API 전사", "의미 단위 자동 분절", "핵심 메시지·감정 흐름 파악", "타임스탬프 데이터 추출"],
-    tools: ["Whisper API"],
+    desc: "영상 파일을 업로드하면 음성 구간을 분석해 무음을 자동 제거하고, Whisper로 전사 후 의미 단위로 분절합니다.",
+    details: ["영상 파일 업로드 (mp4·mov·avi)", "FFmpeg 음성 추출", "무음 구간 자동 감지·제거", "Whisper API 전사 + 타임스탬프", "의미 단위 자동 분절"],
+    tools: ["FFmpeg", "Whisper API"],
   },
   {
     num: "02",
@@ -914,9 +914,9 @@ const AUTO_EDIT_FEATURES = [
 ];
 
 const PIPELINE_STEPS = [
-  { label: "오디오 업로드", icon: "📤" },
+  { label: "영상 업로드", icon: "📤" },
+  { label: "음성 추출·무음 제거", icon: "✂️" },
   { label: "Whisper 전사", icon: "🎙️" },
-  { label: "의미 단위 분절", icon: "✂️" },
   { label: "소스 자동 배치", icon: "🎬" },
   { label: "캡컷 드래프트", icon: "✅" },
 ];
