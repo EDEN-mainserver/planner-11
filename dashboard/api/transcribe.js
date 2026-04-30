@@ -1,17 +1,15 @@
 /**
  * 영상/오디오 전사 API — Vercel Serverless Function
- * POST /api/transcribe
- * Content-Type: audio/mpeg | audio/wav | video/mp4 등
- * Body: raw 오디오/영상 바이너리
+ * POST /api/transcribe  Body: { url: string }  (Vercel Blob URL)
  *
- * 프론트에서 @ffmpeg/ffmpeg(WASM)로 오디오 추출 후 전송
- * Whisper API로 전사 → 텍스트 + 세그먼트 타임스탬프 반환
+ * 흐름:
+ * 1. 클라이언트가 /api/blob-upload 에서 토큰 발급 후 Vercel Blob에 직접 업로드
+ * 2. 업로드된 Blob URL을 이 엔드포인트로 전달
+ * 3. Blob URL → 파일 다운로드 → Whisper API 전사 → Blob 삭제 → 결과 반환
  */
+import { del } from "@vercel/blob";
 
-export const config = {
-  api: { bodyParser: false },
-  maxDuration: 120,
-};
+export const config = { maxDuration: 120 };
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -23,67 +21,79 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "OPENAI_API_KEY 환경변수가 없습니다." });
   }
 
-  // ── raw body 수집 ──────────────────────────────────────────────
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const audioBuffer = Buffer.concat(chunks);
+  const { url } = req.body ?? {};
+  if (!url) {
+    return res.status(400).json({ error: "url 필드가 필요합니다." });
+  }
 
-  if (audioBuffer.length === 0) {
-    return res.status(400).json({ error: "파일이 비어 있습니다." });
+  // ── Blob URL에서 파일 다운로드 ──────────────────────────────────
+  let fileBuffer;
+  let contentType = "video/mp4";
+  try {
+    const fileRes = await fetch(url);
+    if (!fileRes.ok) throw new Error(`Blob 다운로드 실패 (${fileRes.status})`);
+    contentType = fileRes.headers.get("content-type") || "video/mp4";
+    const arrayBuffer = await fileRes.arrayBuffer();
+    fileBuffer = Buffer.from(arrayBuffer);
+    console.log(`[transcribe] 다운로드 완료: ${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB, 형식: ${contentType}`);
+  } catch (e) {
+    return res.status(500).json({ error: `파일 다운로드 오류: ${e.message}` });
   }
 
   // 25MB 초과 시 거절 (Whisper 제한)
-  if (audioBuffer.length > 25 * 1024 * 1024) {
-    return res.status(413).json({ error: "파일이 25MB를 초과합니다. 더 짧은 영상을 사용하거나 오디오로 추출 후 업로드해주세요." });
+  if (fileBuffer.length > 25 * 1024 * 1024) {
+    await del(url).catch(() => {});
+    return res.status(413).json({
+      error: `파일이 ${(fileBuffer.length / 1024 / 1024).toFixed(1)}MB입니다. Whisper 제한(25MB)을 초과합니다. 더 짧은 영상을 사용해주세요.`,
+    });
   }
 
-  // Content-Type → 확장자 결정
-  const contentType = req.headers["content-type"] || "audio/mpeg";
-  let ext = "mp3";
+  // ── Whisper API 호출 ───────────────────────────────────────────
+  let ext = "mp4";
   if (contentType.includes("wav"))  ext = "wav";
-  else if (contentType.includes("mp4")) ext = "mp4";
+  else if (contentType.includes("mpeg") || contentType.includes("mp3")) ext = "mp3";
   else if (contentType.includes("m4a")) ext = "m4a";
   else if (contentType.includes("webm")) ext = "webm";
+  else if (contentType.includes("quicktime") || contentType.includes("mov")) ext = "mov";
 
-  console.log(`[transcribe] 파일 크기: ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB, 형식: ${ext}`);
-
-  // ── Whisper API 호출 ───────────────────────────────────────────
   const formData = new FormData();
-  formData.append("file", new Blob([audioBuffer], { type: contentType }), `audio.${ext}`);
+  formData.append("file", new Blob([fileBuffer], { type: contentType }), `audio.${ext}`);
   formData.append("model", "whisper-1");
   formData.append("response_format", "verbose_json");
   formData.append("timestamp_granularities[]", "segment");
   formData.append("language", "ko");
 
-  const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${openaiKey}` },
-    body: formData,
-  });
-
-  if (!whisperRes.ok) {
-    const err = await whisperRes.json().catch(() => ({}));
-    console.error("[transcribe] Whisper 오류:", err);
-    return res.status(whisperRes.status).json({
-      error: err?.error?.message || `Whisper API 오류 (${whisperRes.status})`,
+  let data;
+  try {
+    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${openaiKey}` },
+      body: formData,
     });
+    if (!whisperRes.ok) {
+      const err = await whisperRes.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Whisper API 오류 (${whisperRes.status})`);
+    }
+    data = await whisperRes.json();
+  } catch (e) {
+    await del(url).catch(() => {});
+    return res.status(500).json({ error: e.message });
   }
 
-  const data = await whisperRes.json();
+  // ── Blob 파일 삭제 (전사 완료 후) ─────────────────────────────
+  await del(url).catch((e) => console.warn("[transcribe] Blob 삭제 실패:", e.message));
 
-  // ── 세그먼트 정제 + 의미 단위 그룹핑 ─────────────────────────
+  // ── 세그먼트 정제 + 짧은 구간 병합 ───────────────────────────
   const rawSegments = (data.segments || []).map(s => ({
     start: Math.round(s.start * 10) / 10,
     end:   Math.round(s.end   * 10) / 10,
     text:  s.text.trim(),
   }));
 
-  // 짧은 세그먼트 병합 (2초 미만은 앞 세그먼트에 합침)
   const segments = [];
   for (const seg of rawSegments) {
-    const duration = seg.end - seg.start;
     const last = segments[segments.length - 1];
-    if (last && duration < 2 && last.end === seg.start) {
+    if (last && (seg.end - seg.start) < 2 && last.end === seg.start) {
       last.end  = seg.end;
       last.text += " " + seg.text;
     } else {
@@ -91,7 +101,7 @@ export default async function handler(req, res) {
     }
   }
 
-  console.log(`[transcribe] 완료 — 세그먼트 ${segments.length}개, 전체: ${data.duration?.toFixed(1)}초`);
+  console.log(`[transcribe] 완료 — 세그먼트 ${segments.length}개, ${data.duration?.toFixed(1)}초`);
 
   return res.status(200).json({
     text:     data.text,

@@ -1,6 +1,7 @@
 // AI 영상편집 자동화 탭
-// 영상 업로드 → Whisper 직접 전사 → 세그먼트 결과 표시
+// 영상 업로드 → Vercel Blob 직접 업로드 → Whisper 전사 → 세그먼트 결과 표시
 import { useState, useRef, useCallback } from "react";
+import { upload } from "@vercel/blob/client";
 
 // ── 파이프라인 단계 ────────────────────────────────────────────────
 const PIPELINE_STEPS = [
@@ -94,22 +95,38 @@ function TranscribePanel() {
     setError("");
     setResult(null);
 
-    // 25MB 초과 시 클라이언트에서 미리 차단
-    if (videoFile.size > 25 * 1024 * 1024) {
-      setError(`파일이 ${fmtBytes(videoFile.size)}입니다. Whisper 제한(25MB)을 초과합니다. 짧은 영상을 사용해주세요.`);
-      setStep("error");
-      return;
-    }
-
     try {
+      // ── Step 1: Vercel Blob에 직접 업로드 (크기 제한 없음) ───
       setStep("transcribing");
-      setProgress(`파일 전송 중... (${fmtBytes(videoFile.size)})`);
+      setProgress(`Vercel Blob에 업로드 중... (${fmtBytes(videoFile.size)})`);
 
-      // 영상/오디오 파일을 그대로 Whisper API로 전송 (mp4·mov·mp3·wav 모두 지원)
+      const blob = await upload(
+        `transcribe-tmp/${Date.now()}-${videoFile.name}`,
+        videoFile,
+        {
+          access: "public",
+          handleUpload: async (body) => {
+            const res = await fetch("/api/blob-upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `토큰 발급 실패 (${res.status})`);
+            }
+            return res.json();
+          },
+        }
+      );
+
+      // ── Step 2: Blob URL을 전사 API로 전달 ──────────────────
+      setProgress("Whisper로 전사 중...");
+
       const res = await fetch("/api/transcribe", {
         method: "POST",
-        headers: { "Content-Type": videoFile.type || "video/mp4" },
-        body: videoFile,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: blob.url }),
       });
 
       if (!res.ok) {
