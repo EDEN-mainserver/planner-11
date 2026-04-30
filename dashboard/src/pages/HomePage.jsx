@@ -13,7 +13,7 @@ import LoginModal from "../eattack/LoginModal";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [session, setSession] = useState(() => getSession());
-  const [showLoginModal, setShowLoginModal] = useState(false);
+
   useEffect(() => {
     const handleSessionChange = (e) => setSession(e.detail || getSession());
     window.addEventListener("eden-session-change", handleSessionChange);
@@ -61,45 +61,9 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
 
   if (!session) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50 px-6" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-        <div className="w-full max-w-md bg-white border border-gray-200 rounded-3xl shadow-sm p-8 text-center">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-violet-500 to-pink-500 text-white flex items-center justify-center shadow-lg mb-5">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10 17l5-5-5-5"/>
-              <path d="M15 12H3"/>
-              <path d="M20 3v18"/>
-            </svg>
-          </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">로그아웃되었습니다</h1>
-          <p className="text-sm text-gray-500 leading-relaxed mb-6">
-            다시 로그인하면 대시보드와 자동화 기능을 계속 사용할 수 있습니다.
-          </p>
-          <div className="flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={() => setShowLoginModal(true)}
-              className="w-full py-3 bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600 text-white text-sm font-bold rounded-xl transition-all"
-            >
-              다시 로그인
-            </button>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="w-full py-3 bg-white border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-all"
-            >
-              새로고침
-            </button>
-          </div>
-        </div>
-        {showLoginModal && (
-          <LoginModal
-            onLogin={(nextSession) => {
-              setSession(nextSession);
-              setShowLoginModal(false);
-            }}
-          />
-        )}
-      </div>
+      <LoginModal
+        onLogin={(nextSession) => setSession(nextSession)}
+      />
     );
   }
 
