@@ -26,6 +26,7 @@
     "api/image-generate.js": { "maxDuration": 60,  "memory": 1024 },
     "api/gemini.js":       { "maxDuration": 60,  "memory": 1024 },
     "api/tts.js":          { "maxDuration": 60,  "memory": 1024 },
+    "api/transcribe.js":   { "maxDuration": 120, "memory": 1024 },
     "api/full-auto.js":    { "maxDuration": 300, "memory": 1024 },
     "api/full-auto-cron.js": { "maxDuration": 300, "memory": 1024 },
     "api/social-post.js":  { "maxDuration": 120, "memory": 1024 },
