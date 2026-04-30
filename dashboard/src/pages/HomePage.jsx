@@ -9,7 +9,6 @@ import AdminPage from "./AdminPage";
 import PricingPage from "./PricingPage";
 import { useSubscription } from "../hooks/useSubscription";
 import { getSession, clearSession } from "../utils/authSession";
-import LoginModal from "../eattack/LoginModal";
 
 export default function HomePage({ onStart, projects, onDelete, onLoad, trash = [], onRestore, onPermanentDelete, onEmptyTrash }) {
   const [session, setSession] = useState(() => getSession());
@@ -35,6 +34,12 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
     }
   }, [activePage, isAdmin]);
 
+  useEffect(() => {
+    if (!session) {
+      window.location.replace("/login");
+    }
+  }, [session]);
+
   const handleSuggest = async () => {
     setIsLoading(true);
     setSuggestedTopics([]);
@@ -59,13 +64,7 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
     onStart(idea.trim());
   };
 
-  if (!session) {
-    return (
-      <LoginModal
-        onLogin={(nextSession) => setSession(nextSession)}
-      />
-    );
-  }
+  if (!session) return null;
 
   return (
     <div className="h-screen flex bg-gray-50" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -193,7 +192,10 @@ export default function HomePage({ onStart, projects, onDelete, onLoad, trash = 
               {session?.displayName || "EDEN TEAM"}
             </span>
             <button
-              onClick={() => clearSession()}
+              onClick={() => {
+                clearSession();
+                window.location.replace("/login");
+              }}
               title="로그아웃"
               aria-label="로그아웃"
               className="w-7 h-7 flex items-center justify-center rounded-md border border-transparent text-gray-500 hover:text-red-500 hover:bg-red-50 hover:border-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 transition-all flex-shrink-0 cursor-pointer"
