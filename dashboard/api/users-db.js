@@ -3,6 +3,7 @@
 // POST → role 변경 또는 삭제
 
 import { put, list } from "@vercel/blob";
+import { syncUserToSheets } from "./_sheets-sync.js";
 
 const USERS_BLOB_PATH = "auth/google-users.json";
 
@@ -45,12 +46,30 @@ export default async function handler(req, res) {
       if (idx < 0) return res.status(404).json({ error: "사용자 없음" });
       users[idx].role = role;
       await writeUsers(users);
+      await syncUserToSheets({
+        action: "setRole",
+        id: users[idx].id,
+        email: users[idx].email,
+        displayName: users[idx].displayName,
+        picture: users[idx].picture,
+        role: users[idx].role,
+        createdAt: users[idx].createdAt,
+        lastLoginAt: users[idx].lastLoginAt,
+      });
       return res.status(200).json({ ok: true, user: users[idx] });
     }
 
     if (action === "delete" && userId) {
+      const target = users.find(u => u.id === userId);
       const next = users.filter(u => u.id !== userId);
       await writeUsers(next);
+      if (target) {
+        await syncUserToSheets({
+          action: "delete",
+          id: target.id,
+          email: target.email,
+        });
+      }
       return res.status(200).json({ ok: true });
     }
 
