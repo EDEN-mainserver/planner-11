@@ -105,18 +105,7 @@ function TranscribePanel() {
         videoFile,
         {
           access: "public",
-          handleUpload: async (body) => {
-            const res = await fetch("/api/blob-upload", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            });
-            if (!res.ok) {
-              const err = await res.json().catch(() => ({}));
-              throw new Error(err.error || `토큰 발급 실패 (${res.status})`);
-            }
-            return res.json();
-          },
+          handleUploadUrl: "/api/blob-upload",
         }
       );
 
