@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getSession } from "../eattack/LoginModal";
+import { getSession } from "../utils/authSession";
 import { PLANS, INTERNAL_USERS, isFeatureAllowed } from "../config/plans";
 import { USERS } from "../config/users";
 
@@ -46,7 +46,11 @@ export function useSubscription() {
     setLoading(false);
   }, [userId]);
 
-  useEffect(() => { fetchSubscription(); }, [fetchSubscription]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      fetchSubscription();
+    });
+  }, [fetchSubscription]);
 
   const role = subscription?.role || "customer";
   const isAdmin = role === "admin";

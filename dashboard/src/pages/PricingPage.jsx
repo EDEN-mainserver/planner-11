@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PLANS, PLAN_ORDER } from "../config/plans";
-import { getSession } from "../eattack/LoginModal";
+import { getSession } from "../utils/authSession";
 
 const BASE = import.meta.env.VITE_API_BASE || "";
 

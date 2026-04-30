@@ -2,6 +2,7 @@
 // src/config/users.js 에서 계정 관리
 import { useState } from "react";
 import { USERS } from "../config/users";
+import { saveSession } from "../utils/authSession";
 
 // Google OAuth URL 생성
 function buildGoogleAuthUrl() {
@@ -16,20 +17,6 @@ function buildGoogleAuthUrl() {
     prompt:        "select_account",
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-}
-
-const SESSION_KEY = "eden_auth_v1";
-
-export function getSession() {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY)) || null;
-  } catch {
-    return null;
-  }
-}
-
-export function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
 }
 
 export default function LoginModal({ onLogin }) {
@@ -55,9 +42,13 @@ export default function LoginModal({ onLogin }) {
       return;
     }
 
-    const session = { username: user.username, displayName: user.displayName };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    window.dispatchEvent(new CustomEvent("eden-session-change", { detail: session }));
+    const session = saveSession({
+      id: user.id || user.username,
+      username: user.username,
+      displayName: user.displayName,
+      role: user.role,
+      provider: "local",
+    });
     onLogin(session);
     setLoading(false);
   };

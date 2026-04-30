@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getSession } from "./LoginModal";
+import { getSession } from "../utils/authSession";
 
 const autoRunKey = (u) => `eattack_threads_auto_run_${u}_v1`;
 const autoMonitorCacheKey = (u) => `eattack_threads_auto_monitor_${u}_v1`;
