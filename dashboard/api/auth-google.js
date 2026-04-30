@@ -137,11 +137,13 @@ export default async function handler(req, res) {
 
     // 4. 세션 주입 HTML 반환 → localStorage 설정 후 홈 리다이렉트
     const session = {
+      id:          record.id,
       username:    userId,
       displayName: record.displayName,
       email:       record.email,
       picture:     record.picture,
       provider:    "google",
+      role:        record.role,
     };
 
     const sessionJson  = JSON.stringify(session);

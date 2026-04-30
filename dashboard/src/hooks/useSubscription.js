@@ -10,24 +10,34 @@ function getInternalRole(username) {
   return user?.role || "member";
 }
 
+function buildManagedSubscription(userId, role) {
+  return {
+    userId,
+    planId: "premium",
+    status: "active",
+    usageCount: 0,
+    monthlyLimit: 9999,
+    role,
+  };
+}
+
 export function useSubscription() {
   const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const session = getSession();
   const userId = session?.username;
+  const sessionRole = session?.role;
 
   const fetchSubscription = useCallback(async () => {
     if (!userId) { setLoading(false); return; }
     if (INTERNAL_USERS.includes(userId)) {
-      const role = getInternalRole(userId);
-      setSubscription({
-        planId: "premium",
-        status: "active",
-        usageCount: 0,
-        monthlyLimit: 9999,
-        role,
-      });
+      setSubscription(buildManagedSubscription(userId, getInternalRole(userId)));
+      setLoading(false);
+      return;
+    }
+    if (sessionRole === "admin" || sessionRole === "member") {
+      setSubscription(buildManagedSubscription(userId, sessionRole));
       setLoading(false);
       return;
     }
@@ -36,15 +46,19 @@ export function useSubscription() {
       if (resp.ok) {
         const data = await resp.json();
         const plan = PLANS[data.planId];
-        setSubscription({ ...data, monthlyLimit: plan?.monthlyLimit || 20 });
+        setSubscription({
+          ...data,
+          monthlyLimit: plan?.monthlyLimit || 20,
+          role: data.role || sessionRole || "customer",
+        });
       } else {
-        setSubscription(null);
+        setSubscription(sessionRole ? { userId, role: sessionRole, status: "inactive" } : null);
       }
     } catch {
-      setSubscription(null);
+      setSubscription(sessionRole ? { userId, role: sessionRole, status: "inactive" } : null);
     }
     setLoading(false);
-  }, [userId]);
+  }, [sessionRole, userId]);
 
   useEffect(() => {
     queueMicrotask(() => {
