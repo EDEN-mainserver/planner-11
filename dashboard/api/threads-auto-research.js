@@ -232,6 +232,24 @@ function calcScheduledAt(postTime) {
   return kstScheduled.toISOString();
 }
 
+function calcBatchScheduledAt(baseDateKst, postTime, dayOffset, slotIndex, intervalHours) {
+  const [hh, mm] = postTime.split(":").map(Number);
+  const base = new Date(`${baseDateKst}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00+09:00`);
+  base.setTime(base.getTime() + dayOffset * 24 * 60 * 60 * 1000 + slotIndex * intervalHours * 60 * 60 * 1000);
+  return base.toISOString();
+}
+
+function getBatchStartDateKst(postTime) {
+  const now = new Date();
+  const kstNow = new Date(now.getTime() + 9 * 3600 * 1000);
+  const kstToday = kstNow.toISOString().slice(0, 10);
+  const todayFirstSlot = new Date(`${kstToday}T${postTime}:00+09:00`);
+  if (todayFirstSlot.getTime() > now.getTime()) return kstToday;
+
+  const tomorrow = new Date(todayFirstSlot.getTime() + 24 * 60 * 60 * 1000);
+  return new Date(tomorrow.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 // ── 중복 예약 체크 ──
 function alreadyScheduledToday(schedules, postTime) {
   const target = calcScheduledAt(postTime);
@@ -275,8 +293,11 @@ const CTA_RULES = {
 };
 
 // ── 단일 계정 자동화 실행 ──
-async function runForAccount(username, config, env, runId) {
+async function runForAccount(username, config, env, runId, options = {}) {
   const logs = [];
+  const scheduledAtOverride = options.scheduledAt || null;
+  const allowExistingPendingAuto = options.allowExistingPendingAuto === true;
+  const scheduleMeta = options.scheduleMeta || null;
   const setPhase = async (phase, summary = null, extra = {}) => {
     await updateMonitorRun(username, runId, {
       phase,
@@ -479,7 +500,7 @@ ${text}
     // 4. 예약 등록 (중복 방지 — pending 자동 예약이 하나라도 있으면 스킵)
     const schedules = (await readBlob(PREFIX_SCHED, username)) || [];
     const pendingAuto = schedules.find(s => s.auto === true && s.status === "pending");
-    if (pendingAuto) {
+    if (pendingAuto && !allowExistingPendingAuto) {
       const pendingTime = new Date(pendingAuto.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
       await log(`대기 중인 자동 예약 있음 (${pendingTime}) — 스킵`, null, "scheduling");
       await updateMonitorRun(username, runId, {
@@ -492,7 +513,7 @@ ${text}
       return { skipped: true, skipReason: `기존 예약 대기 중: ${pendingTime}`, logs };
     }
 
-    const scheduledAt = calcScheduledAt(config.postTime);
+    const scheduledAt = scheduledAtOverride || calcScheduledAt(config.postTime);
     const newPost = {
       id:          `auto_${Date.now()}`,
       text,
@@ -502,6 +523,9 @@ ${text}
       status:      "pending",
       createdAt:   new Date().toISOString(),
       auto:        true,
+      autoBatch:   Boolean(scheduleMeta),
+      batchDay:    scheduleMeta?.dayIndex ?? null,
+      batchSlot:   scheduleMeta?.slotIndex ?? null,
     };
     schedules.push(newPost);
     await writeBlob(PREFIX_SCHED, username, schedules);
@@ -536,6 +560,7 @@ export const config = { maxDuration: 120, memory: 512 };
 export default async function handler(req, res) {
   const manualUsername = req.query?.username || req.body?.username || null;
   const manualRunId = req.query?.runId || req.body?.runId || null;
+  const batchOptions = req.method === "POST" ? (req.body?.batch || null) : null;
 
   // CRON_SECRET 검증
   const cronSecret = process.env.CRON_SECRET;
@@ -543,7 +568,7 @@ export default async function handler(req, res) {
     const auth = req.headers["authorization"] || "";
     if (auth !== `Bearer ${cronSecret}`) return res.status(401).json({ error: "Unauthorized" });
   }
-  if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
+  if (req.method !== "GET" && req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   const env = process.env;
   const results = [];
@@ -553,6 +578,41 @@ export default async function handler(req, res) {
       const cfg = await readBlob(PREFIX_AUTO, manualUsername);
       if (!cfg) return res.status(404).json({ error: "설정을 찾을 수 없습니다" });
       const runId = manualRunId || `manual_${Date.now()}`;
+
+      if (batchOptions) {
+        const days = Math.max(1, Math.min(14, Number(batchOptions.days) || 1));
+        const postsPerDay = Math.max(1, Math.min(6, Number(batchOptions.postsPerDay) || 1));
+        const intervalHours = Math.max(1, Math.min(12, Number(batchOptions.intervalHours) || 4));
+        const totalPosts = days * postsPerDay;
+        if (totalPosts > 20) {
+          return res.status(400).json({ error: "한 번에 최대 20개까지만 예약 생성할 수 있습니다" });
+        }
+
+        const baseDateKst = getBatchStartDateKst(cfg.postTime);
+        const batchResults = [];
+        for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
+          for (let slotIndex = 0; slotIndex < postsPerDay; slotIndex += 1) {
+            const slotRunId = `${runId}_d${dayIndex + 1}_s${slotIndex + 1}`;
+            const scheduledAt = calcBatchScheduledAt(baseDateKst, cfg.postTime, dayIndex, slotIndex, intervalHours);
+            const result = await runForAccount(manualUsername, cfg, env, slotRunId, {
+              scheduledAt,
+              allowExistingPendingAuto: true,
+              scheduleMeta: { dayIndex: dayIndex + 1, slotIndex: slotIndex + 1 },
+            });
+            batchResults.push({ runId: slotRunId, scheduledAt, ...result });
+          }
+        }
+
+        return res.status(200).json({
+          ok: true,
+          mode: "manual-batch",
+          username: manualUsername,
+          runId,
+          batch: { days, postsPerDay, intervalHours, totalPosts, baseDateKst },
+          results: batchResults,
+        });
+      }
+
       const result = await runForAccount(manualUsername, cfg, env, runId);
       return res.status(200).json({
         ok: true,

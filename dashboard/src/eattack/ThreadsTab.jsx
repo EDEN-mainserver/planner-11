@@ -484,8 +484,12 @@ export default function ThreadsTab() {
   const [autoFlow, setAutoFlow] = useState("template");
   const [autoCta, setAutoCta] = useState("comment");
   const [autoSourceMode, setAutoSourceMode] = useState("random");
+  const [autoBatchDays, setAutoBatchDays] = useState(3);
+  const [autoBatchPostsPerDay, setAutoBatchPostsPerDay] = useState(2);
+  const [autoBatchIntervalHours, setAutoBatchIntervalHours] = useState(4);
   const [autoSaving, setAutoSaving] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
+  const [autoBatchRunning, setAutoBatchRunning] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoLastUpdated, setAutoLastUpdated] = useState(null);
   const [autoRunResult, setAutoRunResult] = useState(null); // { logs, text, scheduledAt, skipped, skipReason, error }
@@ -889,6 +893,9 @@ ${JSON.stringify(template, null, 2)}
         setAutoFlow(cfg.flow || "template");
         setAutoCta(cfg.cta || "comment");
         setAutoSourceMode(cfg.sourceMode || "random");
+        setAutoBatchDays(cfg.batchDays || 3);
+        setAutoBatchPostsPerDay(cfg.batchPostsPerDay || 2);
+        setAutoBatchIntervalHours(cfg.batchIntervalHours || 4);
         setAutoLastUpdated(cfg.updatedAt || null);
       })
       .catch(() => {})
@@ -948,6 +955,9 @@ ${JSON.stringify(template, null, 2)}
             flow: autoFlow,
             cta: autoCta,
             sourceMode: autoSourceMode,
+            batchDays: Number(autoBatchDays) || 1,
+            batchPostsPerDay: Number(autoBatchPostsPerDay) || 1,
+            batchIntervalHours: Number(autoBatchIntervalHours) || 4,
             userId: userId.trim(),
             accessToken: accessToken.trim(),
           },
@@ -1007,6 +1017,9 @@ ${JSON.stringify(template, null, 2)}
             flow: autoFlow,
             cta: autoCta,
             sourceMode: autoSourceMode,
+            batchDays: Number(autoBatchDays) || 1,
+            batchPostsPerDay: Number(autoBatchPostsPerDay) || 1,
+            batchIntervalHours: Number(autoBatchIntervalHours) || 4,
             userId: userId.trim(),
             accessToken: accessToken.trim(),
           },
@@ -1042,6 +1055,88 @@ ${JSON.stringify(template, null, 2)}
       setAutoRunResult({ logs: [], error: e.message });
     } finally {
       setAutoRunning(false);
+    }
+  };
+
+  const handleGenerateAutoBatch = async () => {
+    if (!userId.trim() || !accessToken.trim()) {
+      addLog("error", "인증 설정에서 액세스 토큰과 사용자 ID를 먼저 저장하세요");
+      return;
+    }
+    const keywords = autoKeywords.split(",").map(k => k.trim()).filter(Boolean);
+    if (!keywords.length) {
+      addLog("error", "키워드를 하나 이상 입력하세요");
+      return;
+    }
+
+    const days = Math.max(1, Math.min(14, Number(autoBatchDays) || 1));
+    const postsPerDay = Math.max(1, Math.min(6, Number(autoBatchPostsPerDay) || 1));
+    const intervalHours = Math.max(1, Math.min(12, Number(autoBatchIntervalHours) || 4));
+    const totalPosts = days * postsPerDay;
+    if (totalPosts > 20) {
+      addLog("error", "한 번에 최대 20개까지만 선생성할 수 있습니다");
+      return;
+    }
+
+    setAutoBatchRunning(true);
+    addLog("info", `${days}일 x 하루 ${postsPerDay}개 예약 생성 시작 (${intervalHours}시간 간격)`);
+
+    try {
+      const saveRes = await fetch("/api/threads-auto-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          config: {
+            enabled: autoEnabled,
+            keywords,
+            postTime: autoPostTime,
+            format: autoFormat,
+            tone: autoTone,
+            flow: autoFlow,
+            cta: autoCta,
+            sourceMode: autoSourceMode,
+            batchDays: days,
+            batchPostsPerDay: postsPerDay,
+            batchIntervalHours: intervalHours,
+            userId: userId.trim(),
+            accessToken: accessToken.trim(),
+          },
+        }),
+      });
+      if (!saveRes.ok) throw new Error("설정 저장 실패");
+      setAutoLastUpdated(new Date().toISOString());
+
+      const runId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const res = await fetch("/api/threads-auto-research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          runId,
+          batch: { days, postsPerDay, intervalHours },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "일괄 예약 생성 실패");
+
+      const successCount = (data.results || []).filter(r => !r.skipped && !r.error).length;
+      addLog("info", `일괄 예약 생성 완료: ${successCount}/${totalPosts}개`);
+      (data.results || []).forEach((item, idx) => {
+        if (item.skipped) {
+          addLog("info", `  ↳ ${idx + 1}번 슬롯 스킵: ${item.skipReason}`);
+        } else if (item.error) {
+          addLog("error", `  ↳ ${idx + 1}번 슬롯 실패: ${item.error}`);
+        } else {
+          addLog("info", `  ↳ ${idx + 1}번 슬롯 예약: ${new Date(item.scheduledAt).toLocaleString("ko-KR")}`);
+        }
+      });
+
+      fetchSchedules(username).then(setScheduledPosts).catch(() => {});
+    } catch (e) {
+      addLog("error", `일괄 예약 생성 실패: ${e.message}`);
+    } finally {
+      setAutoBatchRunning(false);
     }
   };
 
@@ -1669,19 +1764,70 @@ ${JSON.stringify(template, null, 2)}
               <div className="flex gap-2">
                 <button
                   onClick={handleSaveAutoConfig}
-                  disabled={autoSaving || autoRunning}
+                  disabled={autoSaving || autoRunning || autoBatchRunning}
                   className="flex-1 py-2.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl transition-all"
                 >
                   {autoSaving ? "저장 중..." : "설정 저장"}
                 </button>
                 <button
                   onClick={handleRunAutoNow}
-                  disabled={autoRunning || autoSaving}
+                  disabled={autoRunning || autoSaving || autoBatchRunning}
                   className="px-4 py-2.5 text-xs font-bold text-violet-700 bg-white border border-violet-300 hover:bg-violet-50 disabled:opacity-40 rounded-xl transition-all whitespace-nowrap"
                   title="현재 설정을 저장하고 즉시 실행 (실제 크론은 매일 KST 06:00 자동 실행)"
                 >
                   {autoRunning ? "실행 중..." : "지금 실행"}
                 </button>
+              </div>
+
+              <div className="rounded-xl border border-violet-200 bg-white/80 px-3 py-3 space-y-3">
+                <p className="text-[11px] font-bold text-violet-700">여러 개 미리 예약 생성</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-violet-600">선생성 일수</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="14"
+                      value={autoBatchDays}
+                      onChange={e => setAutoBatchDays(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-violet-600">하루 업로드 수</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="6"
+                      value={autoBatchPostsPerDay}
+                      onChange={e => setAutoBatchPostsPerDay(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-violet-600">간격(시간)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={autoBatchIntervalHours}
+                      onChange={e => setAutoBatchIntervalHours(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={handleGenerateAutoBatch}
+                  disabled={autoBatchRunning || autoSaving || autoRunning}
+                  className="w-full py-2.5 text-xs font-bold text-violet-700 bg-violet-100 border border-violet-300 hover:bg-violet-200 disabled:opacity-40 rounded-xl transition-all"
+                >
+                  {autoBatchRunning
+                    ? "여러 예약 생성 중..."
+                    : `${Number(autoBatchDays) || 1}일 x ${Number(autoBatchPostsPerDay) || 1}개 미리 생성`}
+                </button>
+                <p className="text-[10px] text-violet-400 leading-relaxed">
+                  첫 슬롯은 기본 게시 시간부터 시작하고, 같은 날 추가 슬롯은 입력한 시간 간격으로 예약됩니다. 한 번에 최대 20개까지 생성합니다.
+                </p>
               </div>
 
               <div className="text-[11px] text-violet-500 bg-white border border-violet-100 rounded-xl px-3 py-2 leading-relaxed">
