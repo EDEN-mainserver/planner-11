@@ -1178,11 +1178,21 @@ export default function UnifiedPipelineTab() {
 
   const buildUploadPostCarouselFiles = async () => {
     if (cardHtmls.length > 0) {
-      addLog("info", `Upload Post 캐러셀 캡처 시작: ${Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS)}장`);
-      setIgCaptureProgress({ step: "capture", done: 0, total: Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS) });
-      const captured = await captureCardHtmls(cardHtmls);
+      const total = Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS);
+      addLog("info", `Upload Post 캐러셀 캡처 시작: ${total}장`);
+      setIgCaptureProgress({ step: "capture", done: 0, total });
+
+      // Puppeteer 서버 API로 정확한 렌더링 (html2canvas 레이아웃 깨짐 문제 해결)
+      const shotRes = await fetch("/api/html-screenshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ htmls: cardHtmls.slice(0, total) }),
+      });
+      const shotData = await shotRes.json();
+      if (!shotRes.ok) throw new Error(shotData.error || "카드 이미지 변환 실패");
+
       const files = await Promise.all(
-        captured.map((dataUrl, index) => dataUrlToFile(dataUrl, `carousel-${String(index + 1).padStart(2, "0")}.jpg`))
+        shotData.images.map((dataUrl, index) => dataUrlToFile(dataUrl, `carousel-${String(index + 1).padStart(2, "0")}.jpg`))
       );
       setIgCaptureProgress({ step: "uploading", done: files.length, total: files.length });
       return files;
