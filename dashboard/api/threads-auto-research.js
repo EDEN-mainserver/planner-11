@@ -5,9 +5,9 @@
 // vercel.json cron: "0 21 * * *"
 
 import { list, put } from "@vercel/blob";
+import { readAllSchedules, saveSchedule } from "./_schedule-storage.js";
 
 const PREFIX_AUTO   = "threads-auto";
-const PREFIX_SCHED  = "threads-schedule";
 const PREFIX_TEMPLATE = "threads-template";
 const PREFIX_MONITOR = "threads-auto-monitor";
 const BLOB_FETCH_TIMEOUT_MS = 10000;
@@ -545,7 +545,7 @@ ${text}
     await guardCancel();
     await setPhase("scheduling", "예약 등록 처리 중");
     // 4. 예약 등록 (중복 방지 — pending 자동 예약이 하나라도 있으면 스킵)
-    const schedules = (await readBlob(PREFIX_SCHED, username)) || [];
+    const schedules = await readAllSchedules(username);
     const pendingAuto = schedules.find(s => s.auto === true && s.status === "pending");
     if (pendingAuto && !allowExistingPendingAuto) {
       const pendingTime = new Date(pendingAuto.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
@@ -577,8 +577,7 @@ ${text}
       batchDay:    scheduleMeta?.dayIndex ?? null,
       batchSlot:   scheduleMeta?.slotIndex ?? null,
     };
-    schedules.push(newPost);
-    await writeBlob(PREFIX_SCHED, username, schedules);
+    await saveSchedule(username, newPost);
     await log(`예약 완료: ${scheduledAt} (KST ${config.postTime})`, { scheduledAt }, "scheduling");
     await log(`본문 길이: ${text.length}자`, { length: text.length }, "scheduling");
     await updateMonitorRun(username, runId, {

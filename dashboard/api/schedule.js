@@ -5,40 +5,13 @@
 // PATCH  /api/schedule             → 완료 항목 일괄 삭제 { username }
 // PATCH  /api/schedule             → 예약 수정 { username, id, updates }
 
-import { put, list } from "@vercel/blob";
-
-const PREFIX = "threads-schedule";
-
-function normalizeScheduledAt(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)) return new Date(raw).toISOString();
-  const parsed = new Date(raw);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString();
-  return raw;
-}
-
-async function readSchedules(username) {
-  try {
-    const { blobs } = await list({ prefix: `${PREFIX}/${username}.json` });
-    if (!blobs.length) return [];
-    const latest = [...blobs].sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0))[0];
-    const res = await fetch(latest.url, { cache: "no-store" });
-    if (!res.ok) return [];
-    return await res.json();
-  } catch {
-    return [];
-  }
-}
-
-async function writeSchedules(username, schedules) {
-  await put(`${PREFIX}/${username}.json`, JSON.stringify(schedules), {
-    access: "public",
-    contentType: "application/json",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-  });
-}
+import {
+  clearNonPendingSchedules,
+  deleteScheduleRecord,
+  readAllSchedules,
+  saveSchedule,
+  updateScheduleRecord,
+} from "./_schedule-storage.js";
 
 export const config = { api: { bodyParser: { sizeLimit: "2mb" } } };
 
@@ -52,7 +25,7 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     const username = req.query?.username;
     if (!username) return res.status(400).json({ error: "username 필요" });
-    const schedules = await readSchedules(username);
+    const schedules = await readAllSchedules(username);
     return res.status(200).json({ schedules });
   }
 
@@ -60,19 +33,15 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const { username, schedule } = req.body || {};
     if (!username || !schedule) return res.status(400).json({ error: "username, schedule 필요" });
-    const schedules = await readSchedules(username);
-    schedules.push({ ...schedule, scheduledAt: normalizeScheduledAt(schedule.scheduledAt) });
-    await writeSchedules(username, schedules);
-    return res.status(200).json({ ok: true });
+    const saved = await saveSchedule(username, schedule);
+    return res.status(200).json({ ok: true, schedule: saved });
   }
 
   // DELETE — 예약 취소 (단건)
   if (req.method === "DELETE") {
     const { username, id } = req.body || {};
     if (!username || !id) return res.status(400).json({ error: "username, id 필요" });
-    const schedules = await readSchedules(username);
-    const updated = schedules.filter((s) => s.id !== id);
-    await writeSchedules(username, updated);
+    await deleteScheduleRecord(username, id);
     return res.status(200).json({ ok: true });
   }
 
@@ -80,27 +49,15 @@ export default async function handler(req, res) {
   if (req.method === "PATCH") {
     const { username, id, updates } = req.body || {};
     if (!username) return res.status(400).json({ error: "username 필요" });
-    const schedules = await readSchedules(username);
 
     if (id && updates && typeof updates === "object") {
-      const index = schedules.findIndex((s) => s.id === id);
-      if (index === -1) return res.status(404).json({ error: "예약을 찾을 수 없습니다" });
-      const next = [...schedules];
-      next[index] = {
-        ...next[index],
-        ...updates,
-        scheduledAt: updates.scheduledAt
-          ? normalizeScheduledAt(updates.scheduledAt)
-          : normalizeScheduledAt(next[index].scheduledAt),
-        updatedAt: new Date().toISOString(),
-      };
-      await writeSchedules(username, next);
-      return res.status(200).json({ ok: true, schedule: next[index] });
+      const schedule = await updateScheduleRecord(username, id, updates);
+      if (!schedule) return res.status(404).json({ error: "예약을 찾을 수 없습니다" });
+      return res.status(200).json({ ok: true, schedule });
     }
 
-    const updated = schedules.filter((s) => s.status === "pending");
-    await writeSchedules(username, updated);
-    return res.status(200).json({ ok: true, remaining: updated.length });
+    const remaining = await clearNonPendingSchedules(username);
+    return res.status(200).json({ ok: true, remaining });
   }
 
   return res.status(405).json({ error: "Method Not Allowed" });
