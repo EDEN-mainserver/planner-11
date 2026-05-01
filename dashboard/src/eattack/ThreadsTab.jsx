@@ -1002,34 +1002,44 @@ ${JSON.stringify(template, null, 2)}
     addLog("info", "현재 설정 저장 후 자동화 실행 중...");
 
     try {
+      const currentConfig = {
+        enabled: true,
+        keywords,
+        postTime: autoPostTime,
+        format: autoFormat,
+        tone: autoTone,
+        flow: autoFlow,
+        cta: autoCta,
+        sourceMode: autoSourceMode,
+        batchDays: Number(autoBatchDays) || 1,
+        batchPostsPerDay: Number(autoBatchPostsPerDay) || 1,
+        batchIntervalHours: Number(autoBatchIntervalHours) || 4,
+        userId: userId.trim(),
+        accessToken: accessToken.trim(),
+      };
+
       // 1) 현재 UI 설정을 먼저 서버에 저장
       const saveRes = await fetch("/api/threads-auto-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username,
-          config: {
-            enabled: true, // 즉시 실행 시 강제 활성
-            keywords,
-            postTime: autoPostTime,
-            format: autoFormat,
-            tone: autoTone,
-            flow: autoFlow,
-            cta: autoCta,
-            sourceMode: autoSourceMode,
-            batchDays: Number(autoBatchDays) || 1,
-            batchPostsPerDay: Number(autoBatchPostsPerDay) || 1,
-            batchIntervalHours: Number(autoBatchIntervalHours) || 4,
-            userId: userId.trim(),
-            accessToken: accessToken.trim(),
-          },
+          config: currentConfig,
         }),
       });
       if (!saveRes.ok) throw new Error("설정 저장 실패");
       setAutoLastUpdated(new Date().toISOString());
 
       // 2) 자동화 실행
-      const res = await fetch(`/api/threads-auto-research?username=${encodeURIComponent(username)}&runId=${encodeURIComponent(runId)}`);
+      const res = await fetch("/api/threads-auto-research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          runId,
+          config: currentConfig,
+        }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "실행 실패");
 
@@ -1082,26 +1092,28 @@ ${JSON.stringify(template, null, 2)}
     addLog("info", `${days}일 x 하루 ${postsPerDay}개 예약 생성 시작 (${intervalHours}시간 간격)`);
 
     try {
+      const currentConfig = {
+        enabled: autoEnabled,
+        keywords,
+        postTime: autoPostTime,
+        format: autoFormat,
+        tone: autoTone,
+        flow: autoFlow,
+        cta: autoCta,
+        sourceMode: autoSourceMode,
+        batchDays: days,
+        batchPostsPerDay: postsPerDay,
+        batchIntervalHours: intervalHours,
+        userId: userId.trim(),
+        accessToken: accessToken.trim(),
+      };
+
       const saveRes = await fetch("/api/threads-auto-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username,
-          config: {
-            enabled: autoEnabled,
-            keywords,
-            postTime: autoPostTime,
-            format: autoFormat,
-            tone: autoTone,
-            flow: autoFlow,
-            cta: autoCta,
-            sourceMode: autoSourceMode,
-            batchDays: days,
-            batchPostsPerDay: postsPerDay,
-            batchIntervalHours: intervalHours,
-            userId: userId.trim(),
-            accessToken: accessToken.trim(),
-          },
+          config: currentConfig,
         }),
       });
       if (!saveRes.ok) throw new Error("설정 저장 실패");
@@ -1114,6 +1126,7 @@ ${JSON.stringify(template, null, 2)}
         body: JSON.stringify({
           username,
           runId,
+          config: currentConfig,
           batch: { days, postsPerDay, intervalHours },
         }),
       });

@@ -612,6 +612,7 @@ export default async function handler(req, res) {
   const manualUsername = req.query?.username || req.body?.username || null;
   const manualRunId = req.query?.runId || req.body?.runId || null;
   const batchOptions = req.method === "POST" ? (req.body?.batch || null) : null;
+  const inlineConfig = req.method === "POST" ? (req.body?.config || null) : null;
 
   // CRON_SECRET 검증
   const cronSecret = process.env.CRON_SECRET;
@@ -626,7 +627,7 @@ export default async function handler(req, res) {
 
   try {
     if (manualUsername) {
-      const cfg = await readBlob(PREFIX_AUTO, manualUsername);
+      const cfg = inlineConfig || await readBlob(PREFIX_AUTO, manualUsername);
       if (!cfg) return res.status(404).json({ error: "설정을 찾을 수 없습니다" });
       const runId = manualRunId || `manual_${Date.now()}`;
 
