@@ -1223,6 +1223,7 @@ export default function UnifiedPipelineTab() {
   const postToInstagram = async () => {
     const accountId = String(igConfig.accountId || "").trim();
     const accessToken = normalizeInstagramToken(igConfig.accessToken);
+    const managedUser = getSession()?.username || "__guest";
 
     if (!accountId || !accessToken) {
       setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
@@ -1236,55 +1237,43 @@ export default function UnifiedPipelineTab() {
     try {
       addLog("info", `계정 ID: ${accountId}`);
       addLog("info", `토큰: ${accessToken.slice(0, 12)}...${accessToken.slice(-4)}`);
-
-      // 1. cards[].imageUrl 우선 — AI 이미지 생성한 경우
-      let imageList = cards.map((c) => c.imageUrl).filter(Boolean);
-      addLog("info", `AI 이미지: ${imageList.length}장`);
-
-      // 2. imageUrl 없으면 브라우저에서 직접 카드 HTML 캡처
-      if (imageList.length === 0) {
-        if (cardHtmls.length === 0) {
-          throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
-        }
-        addLog("info", `HTML 카드 캡처 시작: ${cardHtmls.length}장`);
-        setIgCaptureProgress({ step: "capture", done: 0, total: cardHtmls.length });
-        imageList = await captureCardHtmls(cardHtmls);
-        addLog("info", `캡처 완료: ${imageList.length}장`);
-        setIgCaptureProgress({ step: "uploading", done: imageList.length, total: imageList.length });
+      const carouselFiles = await buildUploadPostCarouselFiles();
+      if (carouselFiles.length === 0) {
+        throw new Error("업로드할 이미지가 없습니다.");
       }
 
-      if (imageList.length === 0) throw new Error("캡처된 이미지가 없습니다.");
+      const form = new FormData();
+      form.append("title", (postCaption || topic || "").trim());
+      form.append("user", managedUser);
+      form.append("platform[]", "instagram");
+      form.append("instagram_account_id", accountId);
+      form.append("instagram_access_token", accessToken);
+      carouselFiles.forEach((file) => form.append("photos[]", file));
 
-      addLog("info", `API 호출: POST /api/instagram-post (이미지 ${imageList.length}장)`);
+      addLog("info", `API 호출: POST /api/upload-post (이미지 ${carouselFiles.length}장)`);
 
-      const res = await fetch("/api/instagram-post", {
+      const res = await fetch("/api/upload-post", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId,
-          accessToken,
-          images: imageList,
-          caption: postCaption || topic,
-        }),
+        body: form,
       });
 
       const data = await res.json();
-
-      // 서버 로그 병합
-      if (data.logs?.length) {
-        data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
-      }
       addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
 
       if (!res.ok) throw new Error(data.error || "게시 실패");
 
-      addLog("info", `게시 성공! mediaId: ${data.mediaId}`);
-      if (data.permalink) addLog("info", `URL: ${data.permalink}`);
+      const igResultData = data.results?.instagram;
+      if (!igResultData?.success) {
+        throw new Error(igResultData?.error || "게시 실패");
+      }
+
+      addLog("info", `게시 성공! mediaId: ${igResultData.post_id}`);
+      if (igResultData.url) addLog("info", `URL: ${igResultData.url}`);
 
       setIgResult({
         status: "success",
-        message: `게시 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
-        permalink: data.permalink,
+        message: `게시 완료!${igResultData.url ? ` → ${igResultData.url}` : ""}`,
+        permalink: igResultData.url || null,
       });
     } catch (e) {
       addLog("error", `오류: ${e.message}`);
