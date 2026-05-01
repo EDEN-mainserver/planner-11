@@ -10,13 +10,19 @@ const PREFIX_AUTO   = "threads-auto";
 const PREFIX_SCHED  = "threads-schedule";
 const PREFIX_TEMPLATE = "threads-template";
 const PREFIX_MONITOR = "threads-auto-monitor";
+const BLOB_FETCH_TIMEOUT_MS = 10000;
+const NAVER_FETCH_TIMEOUT_MS = 15000;
+const GEMINI_FETCH_TIMEOUT_MS = 45000;
 
 // ── Blob 읽기/쓰기 유틸 ──
 async function readBlob(prefix, username) {
   try {
     const { blobs } = await list({ prefix: `${prefix}/${username}.json` });
     if (!blobs.length) return null;
-    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    const res = await fetch(blobs[0].url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(BLOB_FETCH_TIMEOUT_MS),
+    });
     return res.ok ? await res.json() : null;
   } catch { return null; }
 }
@@ -44,7 +50,10 @@ async function readMonitorRun(username, runId) {
   try {
     const { blobs } = await list({ prefix: monitorPath(username, runId) });
     if (!blobs.length) return null;
-    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    const res = await fetch(blobs[0].url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(BLOB_FETCH_TIMEOUT_MS),
+    });
     return res.ok ? await res.json() : null;
   } catch {
     return null;
@@ -100,7 +109,10 @@ async function readLatestThreadTemplate() {
   try {
     const { blobs } = await list({ prefix: `${PREFIX_TEMPLATE}/latest.json` });
     if (!blobs.length) return null;
-    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    const res = await fetch(blobs[0].url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(BLOB_FETCH_TIMEOUT_MS),
+    });
     return res.ok ? await res.json() : null;
   } catch {
     return null;
@@ -112,6 +124,7 @@ async function searchNaver(query, env) {
   try {
     const url = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(query)}&display=5&sort=date`;
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(NAVER_FETCH_TIMEOUT_MS),
       headers: {
         "X-Naver-Client-Id":     env.NAVER_CLIENT_ID,
         "X-Naver-Client-Secret": env.NAVER_CLIENT_SECRET,
@@ -134,6 +147,7 @@ async function callGemini(prompt, env) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
       const res = await fetch(url, {
         method: "POST",
+        signal: AbortSignal.timeout(GEMINI_FETCH_TIMEOUT_MS),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
@@ -263,6 +277,13 @@ const CTA_RULES = {
 // ── 단일 계정 자동화 실행 ──
 async function runForAccount(username, config, env, runId) {
   const logs = [];
+  const setPhase = async (phase, summary = null, extra = {}) => {
+    await updateMonitorRun(username, runId, {
+      phase,
+      summary: summary || undefined,
+      ...extra,
+    });
+  };
   const log = async (msg, detail = null, phase = null) => {
     logs.push(msg);
     console.log(`[auto-research:${username}] ${msg}`);
@@ -290,17 +311,20 @@ async function runForAccount(username, config, env, runId) {
     runId,
     status: "running",
     phase: "starting",
+    summary: "자동화 시작",
     logs: [],
     startedAt: new Date().toISOString(),
   });
 
   try {
+    await setPhase("loading_template", "템플릿/소스 준비 중");
     const threadTemplate = await readLatestThreadTemplate();
     const sourceMode = config.sourceMode || "random";
     const preferredSource = sourceMode === "random"
       ? (threadTemplate?.data ? (Math.random() < 0.5 ? "threads" : "naver") : "naver")
       : sourceMode;
     const sourceChoice = preferredSource === "threads" && !threadTemplate?.data ? "naver" : preferredSource;
+    await setPhase("selecting_source", `주제 소스 선택: ${sourceChoice}`);
     await log(`주제 소스 선택: ${sourceChoice}${sourceMode !== sourceChoice ? ` (설정: ${sourceMode})` : ""}`, null, "selecting");
 
     let prompt;
@@ -343,6 +367,7 @@ ${sourceSummary}
 - 마크다운 없이 순수 텍스트만`;
     } else {
       sourceLabel = "네이버 블로그";
+      await setPhase("searching", "네이버 블로그 리서치 중");
       await log(`키워드 검색 시작: ${config.keywords.join(", ")}`, null, "searching");
       const allArticles = [];
       for (const kw of config.keywords) {
@@ -382,6 +407,7 @@ ${articlesText}
     }
 
     await guardCancel();
+    await setPhase("generating", `Gemini 글 생성 중 (${sourceLabel})`);
     await log(`Gemini 글 생성 중... (${sourceLabel})`, null, "generating");
     const raw = await callGemini(prompt, env);
 
@@ -400,6 +426,7 @@ ${articlesText}
     await log(`글 생성 완료 (${text.length}자)`, { length: text.length }, "generating");
 
     await guardCancel();
+    await setPhase("reviewing", "AI 검토 및 본문 보강 중");
     const review = await reviewThreadText(text, {
       sourceLabel,
       formatRule: FORMAT_RULES[config.format] || FORMAT_RULES.expert,
@@ -448,6 +475,7 @@ ${text}
     }
 
     await guardCancel();
+    await setPhase("scheduling", "예약 등록 처리 중");
     // 4. 예약 등록 (중복 방지 — pending 자동 예약이 하나라도 있으면 스킵)
     const schedules = (await readBlob(PREFIX_SCHED, username)) || [];
     const pendingAuto = schedules.find(s => s.auto === true && s.status === "pending");
@@ -495,6 +523,7 @@ ${text}
       await updateMonitorRun(username, runId, {
         status: "failed",
         phase: "done",
+        summary: `실패: ${error.message}`,
         error: error.message,
       });
     }
