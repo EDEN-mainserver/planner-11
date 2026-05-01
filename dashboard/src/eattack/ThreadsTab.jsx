@@ -1818,7 +1818,7 @@ ${JSON.stringify(template, null, 2)}
                 </div>
                 <button
                   onClick={handleGenerateAutoBatch}
-                  disabled={autoBatchRunning || autoSaving || autoRunning}
+                  disabled={autoBatchRunning || autoSaving}
                   className="w-full py-2.5 text-xs font-bold text-violet-700 bg-violet-100 border border-violet-300 hover:bg-violet-200 disabled:opacity-40 rounded-xl transition-all"
                 >
                   {autoBatchRunning
