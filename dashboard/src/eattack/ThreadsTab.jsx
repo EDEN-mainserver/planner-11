@@ -2224,6 +2224,11 @@ ${JSON.stringify(template, null, 2)}
                                               : "외부 리서치 재구성"}
                                           </span>
                                         )}
+                                        {getEffectiveSourceInfo(p)?.choice === "threads" && (
+                                          <span className="px-2 py-1 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200">
+                                            Threads 소스 사용
+                                          </span>
+                                        )}
                                         <span className="px-2 py-1 rounded-full border bg-white text-sky-700 border-sky-200">
                                           근거 {Number(getEffectiveSourceInfo(p)?.provenance?.evidenceCount || getEffectiveSourceInfo(p)?.items?.length || 0)}건
                                         </span>
@@ -2244,6 +2249,12 @@ ${JSON.stringify(template, null, 2)}
                                           <span className="font-semibold text-sky-900">{getEffectiveSourceInfo(p).label || getEffectiveSourceInfo(p).choice || "-"}</span>
                                         </div>
                                         <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">수집 글 수</span>
+                                          <span className="font-semibold text-sky-900">
+                                            {Number(getEffectiveSourceInfo(p)?.items?.length || getEffectiveSourceInfo(p)?.sourceUrls?.length || 0)}건
+                                          </span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
                                           <span className="block text-[10px] text-sky-500">키워드</span>
                                           <span className="font-semibold text-sky-900">{(getEffectiveSourceInfo(p).keywords || []).join(", ") || "-"}</span>
                                         </div>
@@ -2254,6 +2265,12 @@ ${JSON.stringify(template, null, 2)}
                                         <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
                                           <span className="block text-[10px] text-sky-500">선택 후보 ID</span>
                                           <span className="font-mono font-semibold text-sky-900">{getEffectiveSourceInfo(p).candidateId || getEffectiveSourceInfo(p).candidateHash || "-"}</span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2 col-span-2">
+                                          <span className="block text-[10px] text-sky-500">출처 경로</span>
+                                          <span className="block font-mono text-[10px] leading-relaxed text-sky-900 break-all">
+                                            {getEffectiveSourceInfo(p).sourcePathFingerprint || "-"}
+                                          </span>
                                         </div>
                                       </div>
 
@@ -2295,6 +2312,27 @@ ${JSON.stringify(template, null, 2)}
                                                 {item.description && (
                                                   <p className="mt-1 text-gray-500 leading-relaxed">{item.description}</p>
                                                 )}
+                                                {(() => {
+                                                  const sourceUrl = Array.isArray(item.sourceUrls) && item.sourceUrls.length > 0
+                                                    ? item.sourceUrls[0]
+                                                    : (item.originallink || item.link || "");
+                                                  if (!sourceUrl) return null;
+                                                  const isLink = /^https?:\/\//i.test(sourceUrl);
+                                                  return isLink ? (
+                                                    <a
+                                                      href={sourceUrl}
+                                                      target="_blank"
+                                                      rel="noreferrer"
+                                                      className="mt-1 block text-[10px] font-mono leading-relaxed text-sky-500 break-all hover:text-sky-700 hover:underline"
+                                                    >
+                                                      원문 {sourceUrl}
+                                                    </a>
+                                                  ) : (
+                                                    <p className="mt-1 text-[10px] font-mono leading-relaxed text-sky-500 break-all">
+                                                      원문 {sourceUrl}
+                                                    </p>
+                                                  );
+                                                })()}
                                               </div>
                                             ))}
                                           </div>

@@ -45,11 +45,14 @@ export default async function handler(req, res) {
       await deleteLatest();
       return res.status(200).json({ ok: true, deleted: true });
     }
+    if (!Array.isArray(body.posts) || body.posts.length === 0) {
+      return res.status(400).json({ error: "posts 필요" });
+    }
     const payload = {
       savedAt: body.savedAt || new Date().toISOString(),
       keyword: body.keyword || "",
       data: body.data || null,
-      posts: Array.isArray(body.posts) ? body.posts : [],
+      posts: body.posts,
     };
     await writeLatest(payload);
     return res.status(200).json({ ok: true });

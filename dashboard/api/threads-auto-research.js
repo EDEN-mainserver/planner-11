@@ -547,27 +547,38 @@ function clusterItems(items, createSeed, shouldMerge, mergeItems, finalize) {
 }
 
 function buildNaverCandidates(allArticles) {
-  const articles = allArticles.map((article, index) => {
+  const groupedArticles = new Map();
+
+  for (const article of allArticles) {
     const title = cleanWhitespace(article.title);
     const description = cleanWhitespace(article.description);
-    const topicLabel = title || summarizeTopicFromText(description) || `리서치 후보 ${index + 1}`;
-    const tokens = uniqueTokens(tokenizeComparableText(`${article.keyword} ${title} ${description}`));
-    return {
-      ...article,
+    const sourceUrls = [article.originallink, article.link].filter(Boolean);
+    const sourcePathFingerprint = buildSourcePathFingerprint(sourceUrls);
+    const fallbackFingerprint = buildEvidenceFingerprint([title, description]);
+    const dedupeKey = sourcePathFingerprint || fallbackFingerprint;
+    const prev = groupedArticles.get(dedupeKey);
+    const nextKeywords = uniqueTokens([...(prev?.keywords || []), article.keyword].filter(Boolean));
+    groupedArticles.set(dedupeKey, {
+      ...(prev || article),
       title,
       description,
-      topicLabel,
-      tokens,
-      similarityText: `${article.keyword} ${title} ${description}`.trim(),
-    };
-  });
+      keywords: nextKeywords,
+      topicLabel: title || summarizeTopicFromText(description) || `리서치 후보 ${groupedArticles.size + 1}`,
+      tokens: uniqueTokens(tokenizeComparableText(`${nextKeywords.join(" ")} ${title} ${description}`)),
+      sourceUrls: uniqueTokens([...(prev?.sourceUrls || []), ...sourceUrls]),
+      sourcePathFingerprint,
+      similarityText: `${nextKeywords.join(" ")} ${title} ${description}`.trim(),
+    });
+  }
+
+  const articles = [...groupedArticles.values()];
 
   return clusterItems(
     articles,
     (article) => ({
       topicLabel: article.topicLabel,
       tokens: article.tokens,
-      keyword: article.keyword,
+      keyword: Array.isArray(article.keywords) ? article.keywords.join(", ") : article.keyword,
       representative: article,
     }),
     (cluster, article) => (
@@ -583,11 +594,12 @@ function buildNaverCandidates(allArticles) {
     },
     (cluster, index) => {
       const items = cluster.items.map((item) => ({
-        keyword: item.keyword,
+        keyword: item.keywords?.join(", ") || item.keyword || "",
         title: item.title,
         description: item.description,
         link: item.link || "",
         originallink: item.originallink || "",
+        sourceUrls: Array.isArray(item.sourceUrls) ? item.sourceUrls : [],
       }));
       const topicLabel = cluster.topicLabel || `리서치 후보 ${index + 1}`;
       const topicFingerprint = buildTopicFingerprint(topicLabel || cluster.tokens.join(" "));
@@ -1097,21 +1109,33 @@ async function runForAccount(username, config, env, runId, options = {}) {
 
     await setPhase("loading_template", "템플릿/소스 준비 중");
     const threadTemplate = await readLatestThreadTemplate();
+    const threadTemplatePosts = Array.isArray(threadTemplate?.posts) ? threadTemplate.posts : [];
+    const hasThreadsTemplate = threadTemplatePosts.length > 0;
     const sourceMode = config.sourceMode || "random";
     const preferredSource = sourceMode === "random"
-      ? (threadTemplate?.data ? (Math.random() < 0.5 ? "threads" : "naver") : "naver")
+      ? (hasThreadsTemplate ? (Math.random() < 0.5 ? "threads" : "naver") : "naver")
       : sourceMode;
-    const sourceChoice = preferredSource === "threads" && !threadTemplate?.data ? "naver" : preferredSource;
+    const sourceChoice = preferredSource === "threads" && !hasThreadsTemplate ? "naver" : preferredSource;
     await setPhase("selecting_source", `주제 소스 선택: ${sourceChoice}`);
     await log(`주제 소스 선택: ${sourceChoice}${sourceMode !== sourceChoice ? ` (설정: ${sourceMode})` : ""}`, null, "selecting");
+    if (sourceMode === "threads" && !hasThreadsTemplate) {
+      await log("Threads 소스가 선택됐지만 최신 템플릿에 posts가 없어 네이버로 전환", {
+        hasThreadsTemplate,
+        templateHasData: Boolean(threadTemplate?.data),
+      }, "selecting");
+    }
 
     let sourceLabel;
     let rawCandidates = [];
     let templateData = null;
 
-    if (sourceChoice === "threads" && threadTemplate?.data) {
-      const posts = Array.isArray(threadTemplate.posts) ? threadTemplate.posts : [];
-      templateData = threadTemplate.data;
+    if (sourceChoice === "threads" && hasThreadsTemplate) {
+      const posts = threadTemplatePosts;
+      templateData = threadTemplate?.data || {
+        keyword: threadTemplate?.keyword || "",
+        postsCount: posts.length,
+        savedAt: threadTemplate?.savedAt || null,
+      };
       sourceLabel = "Threads 인기글 역설계";
       rawCandidates = buildThreadsCandidates(posts);
     } else {

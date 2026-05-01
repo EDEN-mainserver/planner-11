@@ -21,11 +21,12 @@ function loadThreadTemplate() {
   try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
   catch { return null; }
 }
-function saveThreadTemplate(data, keyword = "") {
+function saveThreadTemplate(data, keyword = "", posts = []) {
   localStorage.setItem(THREAD_TEMPLATE_KEY, JSON.stringify({
     savedAt: new Date().toISOString(),
     keyword,
     data,
+    posts: Array.isArray(posts) ? posts : [],
   }));
 }
 function deleteThreadTemplate() { localStorage.removeItem(THREAD_TEMPLATE_KEY); }
@@ -215,7 +216,14 @@ export default function ThreadPage({ extensionData = null, onExtensionDataConsum
   const [filterMin, setFilterMin]       = useState(0);
   const [templateMap, setTemplateMap]   = useState(() => {
     const saved = loadThreadTemplate();
-    return saved?.data ? { loading: false, data: saved.data, error: null, savedAt: saved.savedAt } : null;
+    return saved?.data ? {
+      loading: false,
+      data: saved.data,
+      error: null,
+      savedAt: saved.savedAt,
+      postsCount: Array.isArray(saved.posts) ? saved.posts.length : 0,
+      keyword: saved.keyword || "",
+    } : null;
   });
 
   // 키워드 입력 변경 시 키워드별 개수 자동 동기화 (중복 제거)
@@ -469,9 +477,16 @@ JSON 형식으로만 반환:
         data,
         posts: summarizePosts(sourcePosts),
       };
-      saveThreadTemplate(data, keywordKey);
+      saveThreadTemplate(data, keywordKey, snapshot.posts);
       syncThreadTemplateToServer(snapshot);
-      setTemplateMap({ loading: false, data, error: null, savedAt: new Date().toISOString() });
+      setTemplateMap({
+        loading: false,
+        data,
+        error: null,
+        savedAt: new Date().toISOString(),
+        postsCount: snapshot.posts.length,
+        keyword: keywordKey,
+      });
     } catch (e) {
       setTemplateMap({ loading: false, data: null, error: e.message || "템플릿 역설계 실패" });
     }
@@ -487,9 +502,9 @@ JSON 형식으로만 반환:
       data: templateMap.data,
       posts: summarizePosts(posts.filter(p => keywordFilter === null || p.keyword === keywordFilter)),
     };
-    saveThreadTemplate(templateMap.data, keywordKey);
+    saveThreadTemplate(templateMap.data, keywordKey, snapshot.posts);
     syncThreadTemplateToServer(snapshot);
-    setTemplateMap(prev => ({ ...prev, savedAt }));
+    setTemplateMap(prev => ({ ...prev, savedAt, postsCount: snapshot.posts.length, keyword: keywordKey }));
   }, [templateMap?.data, keywordFilter, keyword, posts]);
 
   const handleDeleteTemplate = useCallback(() => {
@@ -636,6 +651,16 @@ JSON 형식으로만 반환:
                 <div>
                   <p className="text-xs font-bold text-amber-800">조회수 기반 템플릿 역설계</p>
                   <p className="text-sm font-semibold text-gray-900 mt-1">{templateMap.data.summary}</p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold">
+                    <span className="px-2 py-1 rounded-full border bg-white text-amber-700 border-amber-200">
+                      수집 글 {templateMap.postsCount ?? 0}건
+                    </span>
+                    {templateMap.keyword && (
+                      <span className="px-2 py-1 rounded-full border bg-white text-amber-700 border-amber-200">
+                        키워드 {templateMap.keyword}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
