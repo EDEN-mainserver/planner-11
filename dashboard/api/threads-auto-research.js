@@ -17,6 +17,20 @@ const PREFIX_MONITOR = "threads-auto-monitor";
 const BLOB_FETCH_TIMEOUT_MS = 10000;
 const NAVER_FETCH_TIMEOUT_MS = 15000;
 const GEMINI_FETCH_TIMEOUT_MS = 45000;
+const RECENT_HISTORY_LIMIT = 10;
+const RECENT_HISTORY_DAYS = 14;
+const MAX_REPEAT_RETRIES = 3;
+const MIN_TOKEN_LENGTH = 2;
+const KOREAN_STOPWORDS = new Set([
+  "그리고", "하지만", "그러나", "그래서", "정말", "진짜", "이건", "저는", "우리는", "때문에",
+  "위해서", "대한", "에서", "으로", "에게", "하면", "하는", "합니다", "있습니다", "있어요",
+  "하는데", "같은", "최근", "오늘", "내일", "지금", "바로", "가장", "이런", "그런",
+]);
+const ENGLISH_STOPWORDS = new Set([
+  "about", "after", "before", "being", "could", "every", "from", "have", "into", "just",
+  "more", "most", "only", "over", "than", "that", "their", "there", "these", "this",
+  "with", "would", "your", "today", "latest", "using",
+]);
 
 // ── Blob 읽기/쓰기 유틸 ──
 async function readBlob(prefix, username) {
@@ -122,6 +136,326 @@ async function readLatestThreadTemplate() {
   } catch {
     return null;
   }
+}
+
+function stripHtml(value) {
+  return String(value || "").replace(/<[^>]+>/g, " ");
+}
+
+function cleanWhitespace(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeComparableText(value) {
+  return cleanWhitespace(stripHtml(value))
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeComparableText(value) {
+  return normalizeComparableText(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => {
+      if (!token || token.length < MIN_TOKEN_LENGTH) return false;
+      return !KOREAN_STOPWORDS.has(token) && !ENGLISH_STOPWORDS.has(token);
+    });
+}
+
+function uniqueTokens(tokens) {
+  return [...new Set(tokens)];
+}
+
+function jaccardSimilarity(aTokens, bTokens) {
+  const a = new Set(aTokens);
+  const b = new Set(bTokens);
+  if (!a.size || !b.size) return 0;
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection += 1;
+  }
+  const union = new Set([...a, ...b]).size;
+  return union ? intersection / union : 0;
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0).toString(36);
+}
+
+function buildTopicFingerprint(value) {
+  const tokens = uniqueTokens(tokenizeComparableText(value)).slice(0, 12);
+  return tokens.join("-");
+}
+
+function buildEvidenceFingerprint(parts) {
+  const tokens = uniqueTokens(
+    parts.flatMap((part) => tokenizeComparableText(part))
+  ).slice(0, 20);
+  return tokens.join("-");
+}
+
+function summarizeTopicFromText(value) {
+  const cleaned = cleanWhitespace(value)
+    .replace(/\n+/g, " ")
+    .replace(/[#@][^\s#@]+/g, "")
+    .trim();
+  if (!cleaned) return "";
+  const firstSentence = cleaned.split(/[.!?\n]/).find(Boolean) || cleaned;
+  return firstSentence.slice(0, 80).trim();
+}
+
+function isLegacyAutoSchedule(schedule) {
+  return Boolean(
+    schedule?.auto === true &&
+    !schedule?.sourceInfo?.topicFingerprint &&
+    !schedule?.sourceInfo?.evidenceFingerprint
+  );
+}
+
+function buildBodyFingerprint(value) {
+  return normalizeComparableText(value).slice(0, 180);
+}
+
+function historyTimestamp(schedule) {
+  const raw = schedule?.postedAt || schedule?.scheduledAt || schedule?.createdAt || "";
+  const time = Date.parse(raw);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function extractHistoryEntry(schedule) {
+  const sourceInfo = schedule?.sourceInfo || {};
+  return {
+    id: schedule?.id || "",
+    runId: schedule?.runId || "",
+    status: schedule?.status || "",
+    scheduledAt: schedule?.scheduledAt || null,
+    postedAt: schedule?.postedAt || null,
+    topicLabel: sourceInfo.topicLabel || "",
+    topicFingerprint: sourceInfo.topicFingerprint || "",
+    evidenceFingerprint: sourceInfo.evidenceFingerprint || "",
+    candidateId: sourceInfo.candidateId || sourceInfo.candidateHash || "",
+    bodyFingerprint: buildBodyFingerprint(schedule?.text || ""),
+    legacy: isLegacyAutoSchedule(schedule),
+    timestamp: historyTimestamp(schedule),
+  };
+}
+
+function selectRecentHistory(schedules) {
+  const cutoff = Date.now() - RECENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  return schedules
+    .filter((schedule) => schedule?.auto === true)
+    .filter((schedule) => schedule?.status === "pending" || schedule?.status === "posted")
+    .map(extractHistoryEntry)
+    .filter((entry) => entry.timestamp >= cutoff)
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, RECENT_HISTORY_LIMIT);
+}
+
+function createRepeatMatch(history, reason) {
+  return {
+    id: history.id || "",
+    runId: history.runId || "",
+    status: history.status || "",
+    scheduledAt: history.scheduledAt || null,
+    postedAt: history.postedAt || null,
+    topicLabel: history.topicLabel || "",
+    topicFingerprint: history.topicFingerprint || "",
+    evidenceFingerprint: history.evidenceFingerprint || "",
+    candidateId: history.candidateId || "",
+    legacy: Boolean(history.legacy),
+    reason,
+  };
+}
+
+function findStrongRepeat(history, fingerprint) {
+  if (!fingerprint?.topicFingerprint || !fingerprint?.evidenceFingerprint) return null;
+  return history.find((entry) => {
+    if (entry.legacy) return false;
+    if (entry.candidateId && fingerprint.candidateId && entry.candidateId === fingerprint.candidateId) {
+      return true;
+    }
+    return (
+      entry.topicFingerprint === fingerprint.topicFingerprint &&
+      entry.evidenceFingerprint === fingerprint.evidenceFingerprint
+    );
+  }) || null;
+}
+
+function findLegacyBodyRepeat(history, bodyFingerprint) {
+  if (!bodyFingerprint) return null;
+  return history.find((entry) => entry.legacy && entry.bodyFingerprint && entry.bodyFingerprint === bodyFingerprint) || null;
+}
+
+function buildRepeatCheckBase(history) {
+  return {
+    comparedRecentCount: history.length,
+    recentWindowDays: RECENT_HISTORY_DAYS,
+    recentWindowLimit: RECENT_HISTORY_LIMIT,
+    maxRetries: MAX_REPEAT_RETRIES,
+  };
+}
+
+function buildRepeatCheckResult(history, status, attempts, match = null, extra = {}) {
+  return {
+    ...buildRepeatCheckBase(history),
+    status,
+    attempts,
+    passed: status === "passed" || status === "reselected",
+    match,
+    ...extra,
+  };
+}
+
+function clusterItems(items, createSeed, shouldMerge, mergeItems, finalize) {
+  const clusters = [];
+  for (const item of items) {
+    const seed = createSeed(item);
+    const target = clusters.find((cluster) => shouldMerge(cluster, seed));
+    if (target) {
+      target.items.push(item);
+      mergeItems(target, seed);
+    } else {
+      clusters.push({ ...seed, items: [item] });
+    }
+  }
+  return clusters.map((cluster, index) => finalize(cluster, index)).filter(Boolean);
+}
+
+function buildNaverCandidates(allArticles) {
+  const articles = allArticles.map((article, index) => {
+    const title = cleanWhitespace(article.title);
+    const description = cleanWhitespace(article.description);
+    const topicLabel = title || summarizeTopicFromText(description) || `리서치 후보 ${index + 1}`;
+    const tokens = uniqueTokens(tokenizeComparableText(`${article.keyword} ${title} ${description}`));
+    return {
+      ...article,
+      title,
+      description,
+      topicLabel,
+      tokens,
+      similarityText: `${article.keyword} ${title} ${description}`.trim(),
+    };
+  });
+
+  return clusterItems(
+    articles,
+    (article) => ({
+      topicLabel: article.topicLabel,
+      tokens: article.tokens,
+      keyword: article.keyword,
+      representative: article,
+    }),
+    (cluster, article) => (
+      cluster.topicLabel === article.topicLabel ||
+      jaccardSimilarity(cluster.tokens, article.tokens) >= 0.58
+    ),
+    (cluster, article) => {
+      cluster.tokens = uniqueTokens([...cluster.tokens, ...article.tokens]).slice(0, 24);
+      if ((article.representative?.description?.length || 0) > (cluster.representative?.description?.length || 0)) {
+        cluster.representative = article.representative;
+        cluster.topicLabel = article.topicLabel;
+      }
+    },
+    (cluster, index) => {
+      const items = cluster.items.map((item) => ({
+        keyword: item.keyword,
+        title: item.title,
+        description: item.description,
+      }));
+      const topicLabel = cluster.topicLabel || `리서치 후보 ${index + 1}`;
+      const topicFingerprint = buildTopicFingerprint(topicLabel || cluster.tokens.join(" "));
+      const evidenceFingerprint = buildEvidenceFingerprint(
+        items.flatMap((item) => [item.keyword, item.title, item.description])
+      );
+      const candidateId = `naver-${index + 1}-${hashString(`${topicFingerprint}|${evidenceFingerprint}`)}`;
+      return {
+        candidateId,
+        topicLabel,
+        topicFingerprint,
+        evidenceFingerprint,
+        summary: items
+          .slice(0, 3)
+          .map((item, itemIndex) => `[${itemIndex + 1}] (${item.keyword}) ${item.title} | ${item.description}`)
+          .join("\n"),
+        items,
+        score: items.length,
+      };
+    }
+  ).sort((a, b) => b.score - a.score);
+}
+
+function buildThreadsCandidates(posts) {
+  const rankedPosts = posts
+    .filter((post) => cleanWhitespace(post?.content))
+    .sort((a, b) => ((b.views || 0) + (b.likes || 0) + (b.comments || 0)) - ((a.views || 0) + (a.likes || 0) + (a.comments || 0)))
+    .slice(0, 12)
+    .map((post, index) => {
+      const content = cleanWhitespace(String(post.content || "").slice(0, 280));
+      const topicLabel = summarizeTopicFromText(content) || `Threads 후보 ${index + 1}`;
+      const tokens = uniqueTokens(tokenizeComparableText(content));
+      return {
+        ...post,
+        content,
+        topicLabel,
+        tokens,
+      };
+    });
+
+  return clusterItems(
+    rankedPosts,
+    (post) => ({
+      topicLabel: post.topicLabel,
+      tokens: post.tokens,
+      representative: post,
+    }),
+    (cluster, post) => (
+      cluster.topicLabel === post.topicLabel ||
+      jaccardSimilarity(cluster.tokens, post.tokens) >= 0.5
+    ),
+    (cluster, post) => {
+      cluster.tokens = uniqueTokens([...cluster.tokens, ...post.tokens]).slice(0, 24);
+      const clusterScore = (cluster.representative?.views || 0) + (cluster.representative?.likes || 0);
+      const nextScore = (post.representative?.views || 0) + (post.representative?.likes || 0);
+      if (nextScore > clusterScore) {
+        cluster.representative = post.representative;
+        cluster.topicLabel = post.topicLabel;
+      }
+    },
+    (cluster, index) => {
+      const items = cluster.items.map((item) => ({
+        author: item.author || "unknown",
+        views: Number(item.views || 0),
+        likes: Number(item.likes || 0),
+        comments: Number(item.comments || 0),
+        content: item.content,
+      }));
+      const topicLabel = cluster.topicLabel || `Threads 후보 ${index + 1}`;
+      const topicFingerprint = buildTopicFingerprint(topicLabel || cluster.tokens.join(" "));
+      const evidenceFingerprint = buildEvidenceFingerprint(items.map((item) => item.content));
+      const candidateId = `threads-${index + 1}-${hashString(`${topicFingerprint}|${evidenceFingerprint}`)}`;
+      return {
+        candidateId,
+        topicLabel,
+        topicFingerprint,
+        evidenceFingerprint,
+        summary: items
+          .slice(0, 3)
+          .map((item, itemIndex) => `[${itemIndex + 1}] @${item.author} | 조회 ${item.views.toLocaleString()} | 좋아요 ${item.likes.toLocaleString()} | 댓글 ${item.comments.toLocaleString()} | ${item.content}`)
+          .join("\n"),
+        items,
+        score: items.reduce((sum, item) => sum + item.views + item.likes + item.comments, 0),
+      };
+    }
+  ).sort((a, b) => b.score - a.score);
 }
 
 // ── 네이버 검색 ──
