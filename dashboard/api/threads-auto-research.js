@@ -398,6 +398,7 @@ async function runForAccount(username, config, env, runId, options = {}) {
     let prompt;
     let sourceLabel;
     let sourceSummary = "";
+    let sourceItems = [];
 
     if (sourceChoice === "threads" && threadTemplate?.data) {
       const posts = Array.isArray(threadTemplate.posts) ? threadTemplate.posts : [];
@@ -407,6 +408,13 @@ async function runForAccount(username, config, env, runId, options = {}) {
         .slice(0, 8);
       const templateData = threadTemplate.data;
       sourceLabel = "Threads 인기글 역설계";
+      sourceItems = topPosts.map((p) => ({
+        author: p.author || "unknown",
+        views: Number(p.views || 0),
+        likes: Number(p.likes || 0),
+        comments: Number(p.comments || 0),
+        content: String(p.content || "").slice(0, 280),
+      }));
       sourceSummary = topPosts.length
         ? topPosts.map((p, i) => `[${i + 1}] @${p.author || "unknown"} | 조회 ${Number(p.views || 0).toLocaleString()} | 좋아요 ${Number(p.likes || 0).toLocaleString()} | 댓글 ${Number(p.comments || 0).toLocaleString()} | ${p.content}`).join("\n")
         : JSON.stringify(templateData, null, 2);
@@ -444,6 +452,11 @@ ${sourceSummary}
         allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
       }
       if (!allArticles.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
+      sourceItems = allArticles.slice(0, 10).map((a) => ({
+        keyword: a.keyword,
+        title: a.title,
+        description: a.description,
+      }));
       await log(`검색 결과: ${allArticles.length}건`, { count: allArticles.length }, "searching");
       for (const [i, a] of allArticles.slice(0, 8).entries()) {
         await log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`);
@@ -576,6 +589,19 @@ ${text}
       autoBatch:   Boolean(scheduleMeta),
       batchDay:    scheduleMeta?.dayIndex ?? null,
       batchSlot:   scheduleMeta?.slotIndex ?? null,
+      runId,
+      sourceInfo: {
+        mode: sourceMode,
+        choice: sourceChoice,
+        label: sourceLabel,
+        summary: sourceSummary,
+        keywords: Array.isArray(config.keywords) ? config.keywords : [],
+        items: sourceItems,
+        format: config.format || "expert",
+        tone: config.tone || "template",
+        flow: config.flow || "template",
+        cta: config.cta || "comment",
+      },
     };
     await saveSchedule(username, newPost);
     await log(`예약 완료: ${scheduledAt} (KST ${config.postTime})`, { scheduledAt }, "scheduling");

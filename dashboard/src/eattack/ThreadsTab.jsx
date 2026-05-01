@@ -126,6 +126,13 @@ async function updateSchedule(username, id, updates) {
   return data.schedule || null;
 }
 
+async function fetchAutoRunDetail(username, runId) {
+  const res = await fetch(`/api/threads-auto-monitor?username=${encodeURIComponent(username)}&runId=${encodeURIComponent(runId)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "실행 로그 조회 실패");
+  return data.current || null;
+}
+
 function loadThreadTemplate() {
   try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
   catch { return null; }
@@ -516,6 +523,9 @@ export default function ThreadsTab() {
   const [editingScheduleText, setEditingScheduleText] = useState("");
   const [editingScheduleTime, setEditingScheduleTime] = useState("");
   const [scheduleUpdating, setScheduleUpdating] = useState(false);
+  const [scheduleSourceOpenId, setScheduleSourceOpenId] = useState("");
+  const [scheduleSourceLoadingId, setScheduleSourceLoadingId] = useState("");
+  const [scheduleSourceMap, setScheduleSourceMap] = useState({});
 
   // 풀 자동화 설정
   const [showAutoPanel, setShowAutoPanel] = useState(false);
@@ -621,6 +631,26 @@ export default function ThreadsTab() {
       return null;
     } finally {
       setAutoMonitorLoading(false);
+    }
+  };
+
+  const openScheduleSource = async (schedule) => {
+    const nextId = scheduleSourceOpenId === schedule.id ? "" : schedule.id;
+    setExpandedScheduleId(schedule.id);
+    setScheduleSourceOpenId(nextId);
+    if (!nextId || scheduleSourceMap[schedule.id] || !schedule.runId) return;
+
+    setScheduleSourceLoadingId(schedule.id);
+    try {
+      const detail = await fetchAutoRunDetail(username, schedule.runId);
+      setScheduleSourceMap((prev) => ({ ...prev, [schedule.id]: detail }));
+    } catch (e) {
+      setScheduleSourceMap((prev) => ({
+        ...prev,
+        [schedule.id]: { error: e.message, logs: [] },
+      }));
+    } finally {
+      setScheduleSourceLoadingId("");
     }
   };
 
@@ -2025,6 +2055,12 @@ ${JSON.stringify(template, null, 2)}
                         >
                           {expandedScheduleId === p.id ? "닫기" : "보기"}
                         </button>
+                        <button
+                          onClick={() => openScheduleSource(p)}
+                          className="text-[11px] font-semibold text-sky-600 hover:text-sky-700 flex-shrink-0"
+                        >
+                          {scheduleSourceOpenId === p.id ? "출처닫기" : "출처"}
+                        </button>
                         {p.status === "pending" && (
                           <>
                             <button
@@ -2082,6 +2118,95 @@ ${JSON.stringify(template, null, 2)}
                               <pre className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-gray-700 bg-white rounded-xl border border-white/80 px-3 py-3">
                                 {p.text}
                               </pre>
+                              {scheduleSourceOpenId === p.id && (
+                                <div className="rounded-xl border border-sky-100 bg-sky-50/70 px-3 py-3 space-y-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-[11px] font-bold text-sky-800">생성 출처 / 수집 정보</p>
+                                      <p className="text-[10px] text-sky-600">
+                                        {p.sourceInfo?.label || (p.auto ? "자동 예약 메타데이터 없음" : "수동 예약")}
+                                      </p>
+                                    </div>
+                                    {p.runId && (
+                                      <span className="text-[10px] font-mono text-sky-500">{p.runId}</span>
+                                    )}
+                                  </div>
+
+                                  {p.sourceInfo ? (
+                                    <>
+                                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">소스 선택</span>
+                                          <span className="font-semibold text-sky-900">{p.sourceInfo.label || p.sourceInfo.choice || "-"}</span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">키워드</span>
+                                          <span className="font-semibold text-sky-900">{(p.sourceInfo.keywords || []).join(", ") || "-"}</span>
+                                        </div>
+                                      </div>
+
+                                      {Array.isArray(p.sourceInfo.items) && p.sourceInfo.items.length > 0 && (
+                                        <div className="space-y-2">
+                                          <p className="text-[10px] font-bold text-sky-700">실제 가져온 정보</p>
+                                          <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                            {p.sourceInfo.items.slice(0, 8).map((item, idx) => (
+                                              <div key={`${p.id}-source-${idx}`} className="rounded-lg border border-sky-100 bg-white px-2.5 py-2 text-[11px] text-gray-700">
+                                                {item.keyword && (
+                                                  <p className="text-[10px] font-mono text-sky-500 mb-1">{item.keyword}</p>
+                                                )}
+                                                {item.author && (
+                                                  <p className="text-[10px] font-mono text-sky-500 mb-1">
+                                                    @{item.author} · 조회 {Number(item.views || 0).toLocaleString()} · 좋아요 {Number(item.likes || 0).toLocaleString()} · 댓글 {Number(item.comments || 0).toLocaleString()}
+                                                  </p>
+                                                )}
+                                                <p className="font-semibold text-gray-800">{item.title || item.content || "-"}</p>
+                                                {item.description && (
+                                                  <p className="mt-1 text-gray-500 leading-relaxed">{item.description}</p>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <div className="text-[11px] text-gray-500 bg-white border border-sky-100 rounded-lg px-3 py-2">
+                                      이 예약에는 저장된 출처 메타데이터가 없습니다.
+                                    </div>
+                                  )}
+
+                                  <div className="space-y-2">
+                                    <p className="text-[10px] font-bold text-sky-700">생성 로그</p>
+                                    {scheduleSourceLoadingId === p.id ? (
+                                      <div className="text-[11px] text-sky-600 bg-white border border-sky-100 rounded-lg px-3 py-2">
+                                        실행 로그 불러오는 중...
+                                      </div>
+                                    ) : scheduleSourceMap[p.id]?.error ? (
+                                      <div className="text-[11px] text-red-500 bg-white border border-red-100 rounded-lg px-3 py-2">
+                                        {scheduleSourceMap[p.id].error}
+                                      </div>
+                                    ) : Array.isArray(scheduleSourceMap[p.id]?.logs) && scheduleSourceMap[p.id].logs.length > 0 ? (
+                                      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                                        {scheduleSourceMap[p.id].logs.map((entry, idx) => (
+                                          <div key={`${p.id}-log-${idx}`} className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                                              <span className="font-mono">
+                                                {entry?.time ? new Date(entry.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "now"}
+                                              </span>
+                                              <span className="font-semibold uppercase">{entry?.phase || entry?.level || "log"}</span>
+                                            </div>
+                                            <p className="mt-1 text-[11px] text-gray-700 leading-relaxed">{entry?.msg || ""}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="text-[11px] text-gray-500 bg-white border border-sky-100 rounded-lg px-3 py-2">
+                                        실행 로그가 없거나, 이 예약은 수동으로 만들어졌습니다.
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                               <p className="text-[11px] text-gray-400">
                                 예약 시간: {new Date(p.scheduledAt).toLocaleString("ko-KR")}
                               </p>
