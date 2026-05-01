@@ -3,8 +3,9 @@
 // POST /api/schedule               → 예약 추가   { username, schedule }
 // DELETE /api/schedule             → 예약 취소   { username, id }
 // PATCH  /api/schedule             → 완료 항목 일괄 삭제 { username }
+// PATCH  /api/schedule             → 예약 수정 { username, id, updates }
 
-import { put, list, del } from "@vercel/blob";
+import { put, list } from "@vercel/blob";
 
 const PREFIX = "threads-schedule";
 
@@ -30,15 +31,11 @@ async function readSchedules(username) {
 }
 
 async function writeSchedules(username, schedules) {
-  // 기존 파일 삭제 후 새로 작성 (Blob 누적 방지)
-  const { blobs } = await list({ prefix: `${PREFIX}/${username}.json` });
-  if (blobs.length) {
-    await Promise.allSettled(blobs.map((b) => del(b.url)));
-  }
   await put(`${PREFIX}/${username}.json`, JSON.stringify(schedules), {
     access: "public",
     contentType: "application/json",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }
 
@@ -80,9 +77,26 @@ export default async function handler(req, res) {
 
   // PATCH — 완료/실패 항목 일괄 삭제
   if (req.method === "PATCH") {
-    const { username } = req.body || {};
+    const { username, id, updates } = req.body || {};
     if (!username) return res.status(400).json({ error: "username 필요" });
     const schedules = await readSchedules(username);
+
+    if (id && updates && typeof updates === "object") {
+      const index = schedules.findIndex((s) => s.id === id);
+      if (index === -1) return res.status(404).json({ error: "예약을 찾을 수 없습니다" });
+      const next = [...schedules];
+      next[index] = {
+        ...next[index],
+        ...updates,
+        scheduledAt: updates.scheduledAt
+          ? normalizeScheduledAt(updates.scheduledAt)
+          : normalizeScheduledAt(next[index].scheduledAt),
+        updatedAt: new Date().toISOString(),
+      };
+      await writeSchedules(username, next);
+      return res.status(200).json({ ok: true, schedule: next[index] });
+    }
+
     const updated = schedules.filter((s) => s.status === "pending");
     await writeSchedules(username, updated);
     return res.status(200).json({ ok: true, remaining: updated.length });

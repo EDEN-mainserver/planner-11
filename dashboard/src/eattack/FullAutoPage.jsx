@@ -169,7 +169,6 @@ export default function FullAutoPage({ onBack }) {
       return;
     }
     setExpandedAccount(accId);
-    if (scheduleMap[accId]) return; // 이미 로드됨
     setScheduleLoading(accId);
     try {
       const res = await fetch(`/api/schedule?username=${encodeURIComponent(accId)}`);

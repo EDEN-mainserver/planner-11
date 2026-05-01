@@ -115,6 +115,17 @@ async function clearDoneSchedulesServer(username) {
   return res.ok;
 }
 
+async function updateSchedule(username, id, updates) {
+  const res = await fetch("/api/schedule", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, id, updates }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.schedule || null;
+}
+
 function loadThreadTemplate() {
   try { return JSON.parse(localStorage.getItem(THREAD_TEMPLATE_KEY)) || null; }
   catch { return null; }
@@ -500,6 +511,11 @@ export default function ThreadsTab() {
   const [bulkImporting, setBulkImporting] = useState(false);
   const [bulkResult, setBulkResult] = useState(null); // { success, fail }
   const [scheduleView, setScheduleView] = useState("pending"); // "pending" | "all"
+  const [expandedScheduleId, setExpandedScheduleId] = useState("");
+  const [editingScheduleId, setEditingScheduleId] = useState("");
+  const [editingScheduleText, setEditingScheduleText] = useState("");
+  const [editingScheduleTime, setEditingScheduleTime] = useState("");
+  const [scheduleUpdating, setScheduleUpdating] = useState(false);
 
   // 풀 자동화 설정
   const [showAutoPanel, setShowAutoPanel] = useState(false);
@@ -1280,6 +1296,54 @@ ${JSON.stringify(template, null, 2)}
     if (ok) setScheduledPosts((prev) => prev.filter((p) => p.status === "pending"));
   };
 
+  const openScheduleEditor = (post) => {
+    setExpandedScheduleId(post.id);
+    setEditingScheduleId(post.id);
+    setEditingScheduleText(post.text || "");
+    setEditingScheduleTime((post.scheduledAt || "").slice(0, 16));
+  };
+
+  const closeScheduleEditor = () => {
+    setEditingScheduleId("");
+    setEditingScheduleText("");
+    setEditingScheduleTime("");
+  };
+
+  const handleUpdateSchedule = async (post) => {
+    if (!editingScheduleText.trim()) {
+      addLog("error", "예약 글 본문이 비어 있습니다");
+      return;
+    }
+    if (editingScheduleText.trim().length > TH_MAX_CHARS) {
+      addLog("error", `예약 글은 ${TH_MAX_CHARS}자 이하여야 합니다`);
+      return;
+    }
+    if (!editingScheduleTime) {
+      addLog("error", "예약 시간을 입력하세요");
+      return;
+    }
+    const nextScheduledAt = new Date(editingScheduleTime).toISOString();
+    if (Number.isNaN(new Date(nextScheduledAt).getTime())) {
+      addLog("error", "예약 시간 형식이 올바르지 않습니다");
+      return;
+    }
+    setScheduleUpdating(true);
+    try {
+      const updated = await updateSchedule(username, post.id, {
+        text: editingScheduleText.trim(),
+        scheduledAt: nextScheduledAt,
+      });
+      if (!updated) throw new Error("예약 수정 실패");
+      setScheduledPosts((prev) => prev.map((item) => (item.id === post.id ? updated : item)));
+      addLog("info", `예약 수정 완료: ${new Date(updated.scheduledAt).toLocaleString("ko-KR")}`);
+      closeScheduleEditor();
+    } catch (e) {
+      addLog("error", e.message || "예약 수정 실패");
+    } finally {
+      setScheduleUpdating(false);
+    }
+  };
+
   // CSV 일괄 업로드
   // CSV 형식: datetime,text  (헤더 포함)
   // datetime: YYYY-MM-DD HH:MM 또는 YYYY-MM-DDTHH:MM
@@ -1930,27 +1994,100 @@ ${JSON.stringify(template, null, 2)}
                   예약된 콘텐츠가 없습니다
                 </div>
               ) : (
-                <div className="space-y-1 max-h-60 overflow-y-auto pr-0.5">
+                <div className="space-y-1 max-h-72 overflow-y-auto pr-0.5">
                   {scheduledPosts
                     .filter(p => scheduleView === "all" || p.status === "pending")
                     .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
                     .map(p => (
-                    <div key={p.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border
-                      ${p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0
-                        ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
-                      <span className="text-gray-500 flex-shrink-0 font-mono text-[11px]">
-                        {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      <span className="flex-1 text-gray-700 truncate">{p.text.slice(0, 30)}{p.text.length > 30 ? "..." : ""}</span>
-                      <span className={`flex-shrink-0 font-semibold text-[11px]
-                        ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
-                        {p.status === "pending" ? "대기" : p.status === "posted" ? "완료" : "실패"}
-                      </span>
-                      {p.status === "pending" && (
-                        <button onClick={() => cancelSchedule(p.id)} className="text-gray-300 hover:text-red-500 flex-shrink-0">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    <div key={p.id} className={`rounded-xl border text-xs ${
+                      p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                    }`}>
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0
+                          ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
+                        <span className="text-gray-500 flex-shrink-0 font-mono text-[11px]">
+                          {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        <button
+                          onClick={() => setExpandedScheduleId(expandedScheduleId === p.id ? "" : p.id)}
+                          className="flex-1 text-left text-gray-700 truncate hover:text-gray-900"
+                          title="본문 보기"
+                        >
+                          {p.text.slice(0, 30)}{p.text.length > 30 ? "..." : ""}
                         </button>
+                        <span className={`flex-shrink-0 font-semibold text-[11px]
+                          ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
+                          {p.status === "pending" ? "대기" : p.status === "posted" ? "완료" : "실패"}
+                        </span>
+                        <button
+                          onClick={() => setExpandedScheduleId(expandedScheduleId === p.id ? "" : p.id)}
+                          className="text-[11px] font-semibold text-gray-400 hover:text-violet-600 flex-shrink-0"
+                        >
+                          {expandedScheduleId === p.id ? "닫기" : "보기"}
+                        </button>
+                        {p.status === "pending" && (
+                          <>
+                            <button
+                              onClick={() => openScheduleEditor(p)}
+                              className="text-[11px] font-semibold text-violet-500 hover:text-violet-700 flex-shrink-0"
+                            >
+                              수정
+                            </button>
+                            <button onClick={() => cancelSchedule(p.id)} className="text-gray-300 hover:text-red-500 flex-shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {expandedScheduleId === p.id && (
+                        <div className="border-t border-white/70 px-3 py-3 space-y-3">
+                          {editingScheduleId === p.id ? (
+                            <>
+                              <textarea
+                                value={editingScheduleText}
+                                onChange={(e) => setEditingScheduleText(e.target.value)}
+                                rows={7}
+                                className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                              />
+                              <div className="flex items-center justify-between gap-3">
+                                <input
+                                  type="datetime-local"
+                                  value={editingScheduleTime}
+                                  onChange={(e) => setEditingScheduleTime(e.target.value)}
+                                  className="px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                                />
+                                <span className={`text-[11px] font-mono ${editingScheduleText.length > TH_MAX_CHARS ? "text-red-500" : "text-gray-400"}`}>
+                                  {editingScheduleText.length}/{TH_MAX_CHARS}
+                                </span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleUpdateSchedule(p)}
+                                  disabled={scheduleUpdating}
+                                  className="px-3 py-2 text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl"
+                                >
+                                  {scheduleUpdating ? "저장 중..." : "수정 저장"}
+                                </button>
+                                <button
+                                  onClick={closeScheduleEditor}
+                                  disabled={scheduleUpdating}
+                                  className="px-3 py-2 text-[11px] font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 rounded-xl"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="space-y-2">
+                              <pre className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-gray-700 bg-white rounded-xl border border-white/80 px-3 py-3">
+                                {p.text}
+                              </pre>
+                              <p className="text-[11px] text-gray-400">
+                                예약 시간: {new Date(p.scheduledAt).toLocaleString("ko-KR")}
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
