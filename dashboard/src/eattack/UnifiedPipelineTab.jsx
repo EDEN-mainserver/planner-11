@@ -1246,8 +1246,6 @@ export default function UnifiedPipelineTab() {
       form.append("title", (postCaption || topic || "").trim());
       form.append("user", managedUser);
       form.append("platform[]", "instagram");
-      form.append("instagram_account_id", accountId);
-      form.append("instagram_access_token", accessToken);
       carouselFiles.forEach((file) => form.append("photos[]", file));
 
       addLog("info", `API 호출: POST /api/upload-post (이미지 ${carouselFiles.length}장)`);

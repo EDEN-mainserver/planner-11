@@ -268,6 +268,33 @@ function expandSearchTerms(keywords) {
   return uniqueTokens(terms).slice(0, MAX_SEARCH_TERMS);
 }
 
+function canonicalizeSourceUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    return `${host}${pathname}`.toLowerCase();
+  } catch {
+    return raw
+      .replace(/^https?:\/\//i, "")
+      .split("?")[0]
+      .split("#")[0]
+      .replace(/\/+$/, "")
+      .toLowerCase();
+  }
+}
+
+function buildSourcePathFingerprint(urls) {
+  const tokens = uniqueTokens(
+    (Array.isArray(urls) ? urls : [])
+      .map((url) => canonicalizeSourceUrl(url))
+      .filter(Boolean)
+  ).slice(0, 12);
+  return tokens.join("|");
+}
+
 function shuffleArray(values) {
   const next = [...values];
   for (let i = next.length - 1; i > 0; i -= 1) {
@@ -372,6 +399,7 @@ function extractHistoryEntry(schedule) {
     topicFingerprint: sourceInfo.topicFingerprint || "",
     topicFamilyFingerprint: sourceInfo.topicFamilyFingerprint || "",
     evidenceFingerprint: sourceInfo.evidenceFingerprint || "",
+    sourcePathFingerprint: sourceInfo.sourcePathFingerprint || "",
     candidateId: sourceInfo.candidateId || sourceInfo.candidateHash || "",
     bodyFingerprint: buildBodyFingerprint(schedule?.text || ""),
     legacyThemeFingerprint: buildLegacyThemeFingerprint(schedule?.text || ""),
@@ -402,6 +430,7 @@ function createRepeatMatch(history, reason) {
     topicFingerprint: history.topicFingerprint || "",
     topicFamilyFingerprint: history.topicFamilyFingerprint || "",
     evidenceFingerprint: history.evidenceFingerprint || "",
+    sourcePathFingerprint: history.sourcePathFingerprint || "",
     candidateId: history.candidateId || "",
     legacyThemeFingerprint: history.legacyThemeFingerprint || "",
     legacy: Boolean(history.legacy),
@@ -410,10 +439,13 @@ function createRepeatMatch(history, reason) {
 }
 
 function findStrongRepeat(history, fingerprint) {
-  if (!fingerprint?.topicFingerprint && !fingerprint?.topicFamilyFingerprint && !fingerprint?.evidenceFingerprint) return null;
+  if (!fingerprint?.topicFingerprint && !fingerprint?.topicFamilyFingerprint && !fingerprint?.evidenceFingerprint && !fingerprint?.sourcePathFingerprint) return null;
   return history.find((entry) => {
     if (entry.legacy) return false;
     if (entry.candidateId && fingerprint.candidateId && entry.candidateId === fingerprint.candidateId) {
+      return true;
+    }
+    if (entry.sourcePathFingerprint && fingerprint.sourcePathFingerprint && entry.sourcePathFingerprint === fingerprint.sourcePathFingerprint) {
       return true;
     }
     if (entry.topicFamilyFingerprint && fingerprint.topicFamilyFingerprint && entry.topicFamilyFingerprint === fingerprint.topicFamilyFingerprint) {
@@ -554,12 +586,16 @@ function buildNaverCandidates(allArticles) {
         keyword: item.keyword,
         title: item.title,
         description: item.description,
+        link: item.link || "",
+        originallink: item.originallink || "",
       }));
       const topicLabel = cluster.topicLabel || `리서치 후보 ${index + 1}`;
       const topicFingerprint = buildTopicFingerprint(topicLabel || cluster.tokens.join(" "));
       const topicFamilyFingerprint = buildTopicFamilyFingerprint(`${topicLabel} ${cluster.tokens.join(" ")}`);
+      const sourceUrls = items.flatMap((item) => [item.originallink, item.link]).filter(Boolean);
+      const sourcePathFingerprint = buildSourcePathFingerprint(sourceUrls);
       const evidenceFingerprint = buildEvidenceFingerprint(
-        items.flatMap((item) => [item.keyword, item.title, item.description])
+        items.flatMap((item) => [item.keyword, item.title, item.description, item.originallink, item.link])
       );
       const candidateId = `naver-${index + 1}-${hashString(`${topicFingerprint}|${evidenceFingerprint}`)}`;
       return {
@@ -568,6 +604,8 @@ function buildNaverCandidates(allArticles) {
         topicFingerprint,
         topicFamilyFingerprint,
         evidenceFingerprint,
+        sourceUrls,
+        sourcePathFingerprint,
         summary: items
           .slice(0, 3)
           .map((item, itemIndex) => `[${itemIndex + 1}] (${item.keyword}) ${item.title} | ${item.description}`)
@@ -623,10 +661,13 @@ function buildThreadsCandidates(posts) {
         likes: Number(item.likes || 0),
         comments: Number(item.comments || 0),
         content: item.content,
+        link: item.link || "",
       }));
       const topicLabel = cluster.topicLabel || `Threads 후보 ${index + 1}`;
       const topicFingerprint = buildTopicFingerprint(topicLabel || cluster.tokens.join(" "));
       const topicFamilyFingerprint = buildTopicFamilyFingerprint(`${topicLabel} ${cluster.tokens.join(" ")}`);
+      const sourceUrls = items.map((item) => item.link).filter(Boolean);
+      const sourcePathFingerprint = buildSourcePathFingerprint(sourceUrls);
       const evidenceFingerprint = buildEvidenceFingerprint(items.map((item) => item.content));
       const candidateId = `threads-${index + 1}-${hashString(`${topicFingerprint}|${evidenceFingerprint}`)}`;
       return {
@@ -635,6 +676,8 @@ function buildThreadsCandidates(posts) {
         topicFingerprint,
         topicFamilyFingerprint,
         evidenceFingerprint,
+        sourceUrls,
+        sourcePathFingerprint,
         summary: items
           .slice(0, 3)
           .map((item, itemIndex) => `[${itemIndex + 1}] @${item.author} | 조회 ${item.views.toLocaleString()} | 좋아요 ${item.likes.toLocaleString()} | 댓글 ${item.comments.toLocaleString()} | ${item.content}`)
@@ -662,6 +705,8 @@ async function searchNaver(query, env) {
     return (data.items || []).map((item) => ({
       title:       item.title.replace(/<[^>]+>/g, ""),
       description: item.description.replace(/<[^>]+>/g, ""),
+      link: item.link || "",
+      originallink: item.originallink || "",
     }));
   } catch { return []; }
 }
@@ -893,6 +938,8 @@ function buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLa
     topicFingerprint: candidate?.topicFingerprint || "",
     topicFamilyFingerprint: candidate?.topicFamilyFingerprint || "",
     evidenceFingerprint: candidate?.evidenceFingerprint || "",
+    sourcePathFingerprint: candidate?.sourcePathFingerprint || "",
+    sourceUrls: Array.isArray(candidate?.sourceUrls) ? candidate.sourceUrls : [],
     candidateId: candidate?.candidateId || "",
     candidateHash: candidate?.candidateId || "",
     searchTerms: Array.isArray(searchTerms) ? searchTerms : [],
@@ -1040,10 +1087,11 @@ async function runForAccount(username, config, env, runId, options = {}) {
         topicLabel: entry.topicLabel,
         topicFingerprint: entry.topicFingerprint,
         topicFamilyFingerprint: entry.topicFamilyFingerprint,
-        evidenceFingerprint: entry.evidenceFingerprint,
-        candidateId: entry.candidateId,
-        legacy: entry.legacy,
-      })),
+      evidenceFingerprint: entry.evidenceFingerprint,
+      sourcePathFingerprint: entry.sourcePathFingerprint,
+      candidateId: entry.candidateId,
+      legacy: entry.legacy,
+    })),
     });
     await log(`최근 자동 이력 ${repeatHistory.length}건 비교 준비`, { count: repeatHistory.length }, "starting");
 
@@ -1140,6 +1188,7 @@ async function runForAccount(username, config, env, runId, options = {}) {
         remainingCandidates: remainingCandidates.length,
         candidateId: nextCandidate.candidateId,
         topicFamilyFingerprint: nextCandidate.topicFamilyFingerprint,
+        sourcePathFingerprint: nextCandidate.sourcePathFingerprint,
       }, "generating");
       const raw = await callGemini(prompt, env);
       const parsed = parseGeneratedCandidatePayload(raw, [nextCandidate]);
@@ -1164,6 +1213,7 @@ async function runForAccount(username, config, env, runId, options = {}) {
         topicFingerprint: parsed.candidate.topicFingerprint,
         topicFamilyFingerprint: parsed.candidate.topicFamilyFingerprint,
         evidenceFingerprint: parsed.candidate.evidenceFingerprint,
+        sourcePathFingerprint: parsed.candidate.sourcePathFingerprint,
       };
       const strongRepeat = findStrongRepeat(repeatHistory, generationMeta);
       const legacyBodyRepeat = findLegacyBodyRepeat(repeatHistory, candidateText);

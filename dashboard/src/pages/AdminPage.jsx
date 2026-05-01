@@ -360,18 +360,52 @@ function SocialTab() {
     }
   };
 
-  const saveIg = () => {
+  const saveIg = async () => {
     saveSocial(igKey, selectedUser, ig);
-    setIgSaved(true);
-    setTimeout(() => setIgSaved(false), 2000);
-    addLog("info", `Instagram 설정 저장됨 (${selectedUser})`);
+    try {
+      const res = await fetch("/api/social-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: selectedUser,
+          instagram: {
+            accountId: String(ig.accountId || "").trim(),
+            accessToken: String(ig.accessToken || "").trim(),
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "서버 저장 실패");
+      setIgSaved(true);
+      setTimeout(() => setIgSaved(false), 2000);
+      addLog("info", `Instagram 설정 저장됨 (${selectedUser})`);
+    } catch (e) {
+      addLog("error", `Instagram 서버 저장 실패: ${e.message}`);
+    }
   };
 
-  const saveTh = () => {
+  const saveTh = async () => {
     saveSocial(threadsKey, selectedUser, th);
-    setThSaved(true);
-    setTimeout(() => setThSaved(false), 2000);
-    addLog("info", `Threads 설정 저장됨 (${selectedUser})`);
+    try {
+      const res = await fetch("/api/social-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: selectedUser,
+          threads: {
+            userId: String(th.userId || "").trim(),
+            accessToken: String(th.accessToken || "").trim(),
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "서버 저장 실패");
+      setThSaved(true);
+      setTimeout(() => setThSaved(false), 2000);
+      addLog("info", `Threads 설정 저장됨 (${selectedUser})`);
+    } catch (e) {
+      addLog("error", `Threads 서버 저장 실패: ${e.message}`);
+    }
   };
 
   const saveFa = () => {

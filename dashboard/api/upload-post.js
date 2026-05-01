@@ -2,6 +2,7 @@
 
 import { head, put } from "@vercel/blob";
 import { runInstagramUploadPostJob } from "./_instagram-upload-post.js";
+import { readSocialConfig } from "./_social-config.js";
 
 export const config = {
   api: {
@@ -236,6 +237,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "jpg, jpeg, png, webp 형식의 이미지만 업로드할 수 있습니다" });
     }
 
+    const socialConfig = (await readSocialConfig(user)) || {};
+    const resolvedAccountId = accountId || String(socialConfig.instagram?.accountId || "").trim();
+    const resolvedAccessToken = accessToken || String(socialConfig.instagram?.accessToken || "").trim();
+    if (!resolvedAccountId || !resolvedAccessToken) {
+      return res.status(400).json({
+        error: "이 user에 연결된 Instagram 계정이 없습니다. 관리자 페이지에서 Instagram 설정을 서버에 저장해주세요",
+      });
+    }
+
     const existing = await readStatus(requestId);
     if (existing?.response) {
       return res.status(200).json(existing.response);
@@ -252,8 +262,8 @@ export default async function handler(req, res) {
     const logs = [];
     try {
       const instagram = await runInstagramUploadPostJob({
-        accountId,
-        accessToken,
+        accountId: resolvedAccountId,
+        accessToken: resolvedAccessToken,
         photos,
         title,
         logs,

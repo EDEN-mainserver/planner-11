@@ -102,6 +102,20 @@ function looksNarrowKeywordSet(keywords) {
   return cleaned.every((keyword) => NARROW_KEYWORD_MARKERS.some((marker) => keyword.includes(marker)));
 }
 
+function toDatetimeLocalValue(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function fromDatetimeLocalValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
 // ── 예약 스케줄 서버 API ──
 async function fetchSchedules(username) {
   const res = await fetch(`/api/schedule?username=${encodeURIComponent(username)}`);
@@ -1381,7 +1395,7 @@ ${JSON.stringify(template, null, 2)}
     setExpandedScheduleId(post.id);
     setEditingScheduleId(post.id);
     setEditingScheduleText(post.text || "");
-    setEditingScheduleTime((post.scheduledAt || "").slice(0, 16));
+    setEditingScheduleTime(toDatetimeLocalValue(post.scheduledAt || ""));
   };
 
   const closeScheduleEditor = () => {
@@ -1403,8 +1417,8 @@ ${JSON.stringify(template, null, 2)}
       addLog("error", "예약 시간을 입력하세요");
       return;
     }
-    const nextScheduledAt = new Date(editingScheduleTime).toISOString();
-    if (Number.isNaN(new Date(nextScheduledAt).getTime())) {
+    const nextScheduledAt = fromDatetimeLocalValue(editingScheduleTime);
+    if (!nextScheduledAt) {
       addLog("error", "예약 시간 형식이 올바르지 않습니다");
       return;
     }
