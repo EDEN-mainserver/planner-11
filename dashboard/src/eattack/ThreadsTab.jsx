@@ -153,6 +153,33 @@ function loadTemplateSelection(username) {
 function saveTemplateSelection(username, data) {
   localStorage.setItem(templateSelectionKey(username), JSON.stringify(data));
 }
+
+function getBatchStartDateKst(postTime) {
+  const now = new Date();
+  const kstNow = new Date(now.getTime() + 9 * 3600 * 1000);
+  const kstToday = kstNow.toISOString().slice(0, 10);
+  const todayFirstSlot = new Date(`${kstToday}T${postTime}:00+09:00`);
+  if (todayFirstSlot.getTime() > now.getTime()) return kstToday;
+
+  const tomorrow = new Date(todayFirstSlot.getTime() + 24 * 60 * 60 * 1000);
+  return new Date(tomorrow.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function calcBatchScheduledAt(baseDateKst, postTime, dayOffset, slotIndex, intervalHours) {
+  const [hh, mm] = postTime.split(":").map(Number);
+  const base = new Date(`${baseDateKst}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00+09:00`);
+  base.setTime(base.getTime() + dayOffset * 24 * 60 * 60 * 1000 + slotIndex * intervalHours * 60 * 60 * 1000);
+  return base.toISOString();
+}
+
+async function parseResponsePayload(res) {
+  const raw = await res.text();
+  try {
+    return { data: JSON.parse(raw), raw };
+  } catch {
+    return { data: null, raw };
+  }
+}
 function loadAutoRunId(username) {
   try {
     return localStorage.getItem(autoRunKey(username)) || "";
@@ -1120,30 +1147,53 @@ ${JSON.stringify(template, null, 2)}
       setAutoLastUpdated(new Date().toISOString());
 
       const runId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const res = await fetch("/api/threads-auto-research", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          runId,
-          config: currentConfig,
-          batch: { days, postsPerDay, intervalHours },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "일괄 예약 생성 실패");
+      const baseDateKst = getBatchStartDateKst(autoPostTime);
+      let successCount = 0;
+      let failCount = 0;
 
-      const successCount = (data.results || []).filter(r => !r.skipped && !r.error).length;
-      addLog("info", `일괄 예약 생성 완료: ${successCount}/${totalPosts}개`);
-      (data.results || []).forEach((item, idx) => {
-        if (item.skipped) {
-          addLog("info", `  ↳ ${idx + 1}번 슬롯 스킵: ${item.skipReason}`);
-        } else if (item.error) {
-          addLog("error", `  ↳ ${idx + 1}번 슬롯 실패: ${item.error}`);
-        } else {
-          addLog("info", `  ↳ ${idx + 1}번 슬롯 예약: ${new Date(item.scheduledAt).toLocaleString("ko-KR")}`);
+      for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
+        for (let slotIndex = 0; slotIndex < postsPerDay; slotIndex += 1) {
+          const order = dayIndex * postsPerDay + slotIndex + 1;
+          const scheduledAt = calcBatchScheduledAt(baseDateKst, autoPostTime, dayIndex, slotIndex, intervalHours);
+          const slotRunId = `${runId}_d${dayIndex + 1}_s${slotIndex + 1}`;
+
+          addLog("info", `${order}/${totalPosts} 슬롯 생성 시작 → ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
+
+          const res = await fetch("/api/threads-auto-research", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username,
+              runId: slotRunId,
+              config: currentConfig,
+              options: {
+                scheduledAt,
+                allowExistingPendingAuto: true,
+                scheduleMeta: { dayIndex: dayIndex + 1, slotIndex: slotIndex + 1 },
+              },
+            }),
+          });
+
+          const { data, raw } = await parseResponsePayload(res);
+          if (!res.ok) {
+            failCount += 1;
+            const message = data?.error || raw.replace(/<[^>]*>/g, "").trim().slice(0, 180) || `HTTP ${res.status}`;
+            addLog("error", `${order}/${totalPosts} 슬롯 실패: ${message}`);
+            continue;
+          }
+
+          const result = data?.result;
+          if (result?.skipped) {
+            failCount += 1;
+            addLog("info", `${order}/${totalPosts} 슬롯 스킵: ${result.skipReason}`);
+          } else {
+            successCount += 1;
+            addLog("info", `${order}/${totalPosts} 슬롯 예약 완료`);
+          }
         }
-      });
+      }
+
+      addLog("info", `일괄 예약 생성 완료: 성공 ${successCount}개 · 실패 ${failCount}개`);
 
       fetchSchedules(username).then(setScheduledPosts).catch(() => {});
     } catch (e) {

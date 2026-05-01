@@ -613,6 +613,7 @@ export default async function handler(req, res) {
   const manualRunId = req.query?.runId || req.body?.runId || null;
   const batchOptions = req.method === "POST" ? (req.body?.batch || null) : null;
   const inlineConfig = req.method === "POST" ? (req.body?.config || null) : null;
+  const runOptions = req.method === "POST" ? (req.body?.options || null) : null;
 
   // CRON_SECRET 검증
   const cronSecret = process.env.CRON_SECRET;
@@ -665,7 +666,7 @@ export default async function handler(req, res) {
         });
       }
 
-      const result = await runForAccount(manualUsername, cfg, env, runId);
+      const result = await runForAccount(manualUsername, cfg, env, runId, runOptions || {});
       return res.status(200).json({
         ok: true,
         mode: "manual",
