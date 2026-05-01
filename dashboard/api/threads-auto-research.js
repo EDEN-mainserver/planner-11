@@ -20,6 +20,7 @@ const GEMINI_FETCH_TIMEOUT_MS = 45000;
 const RECENT_HISTORY_LIMIT = 10;
 const RECENT_HISTORY_DAYS = 14;
 const MAX_REPEAT_RETRIES = 3;
+const LEGACY_THEME_SIMILARITY_THRESHOLD = 0.56;
 const MIN_TOKEN_LENGTH = 2;
 const KOREAN_STOPWORDS = new Set([
   "그리고", "하지만", "그러나", "그래서", "정말", "진짜", "이건", "저는", "우리는", "때문에",
@@ -31,6 +32,13 @@ const ENGLISH_STOPWORDS = new Set([
   "more", "most", "only", "over", "than", "that", "their", "there", "these", "this",
   "with", "would", "your", "today", "latest", "using",
 ]);
+const TOPIC_FAMILY_STOPWORDS = new Set([
+  "ai", "app", "blog", "chatgpt", "claude", "code", "coding", "develop", "developer",
+  "development", "gemini", "no", "nocode", "post", "service", "tool", "tools", "update",
+  "video", "workflow", "automation", "자동화", "앱", "개발", "개발자", "코딩", "프로그램",
+  "서비스", "툴", "도구", "업데이트", "사용법", "후기",
+]);
+const MAX_SEARCH_TERMS = 12;
 
 // ── Blob 읽기/쓰기 유틸 ──
 async function readBlob(prefix, username) {
@@ -151,6 +159,124 @@ function tokenizeComparableText(value) {
     });
 }
 
+function normalizeSearchKeyword(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[.!?'"‘’“”,:;()[\]{}|/\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function expandKeywordVariants(keyword) {
+  const base = normalizeSearchKeyword(keyword);
+  if (!base) return [];
+
+  const lower = base.toLowerCase();
+  const variants = new Set([base]);
+
+  if (/claude|클로드/i.test(base)) {
+    [
+      "Claude Code",
+      "claude code",
+      "클로드 코드",
+      "클로드코드",
+      "Anthropic",
+      "앤트로픽",
+      "AI 코딩",
+      "코딩 자동화",
+      "개발 자동화",
+      "비전공자 개발",
+    ].forEach((term) => variants.add(term));
+  }
+
+  if (/chatgpt|gpt|챗gpt|챗지피티/i.test(base)) {
+    [
+      "ChatGPT",
+      "GPT",
+      "생성형 AI",
+      "프롬프트",
+      "업무 자동화",
+      "AI 활용",
+      "생산성",
+    ].forEach((term) => variants.add(term));
+  }
+
+  if (/ai|인공지능|생성형/i.test(base)) {
+    [
+      "인공지능",
+      "생성형 AI",
+      "AI 활용",
+      "AI 자동화",
+      "업무 자동화",
+      "툴 후기",
+    ].forEach((term) => variants.add(term));
+  }
+
+  if (/앱|app|서비스|프로덕트/i.test(base)) {
+    [
+      "앱 개발",
+      "노코드 앱",
+      "AI 앱",
+      "서비스 기획",
+      "프로덕트",
+      "MVP",
+    ].forEach((term) => variants.add(term));
+  }
+
+  if (/코드|code|coding|개발/i.test(base)) {
+    [
+      "코딩",
+      "개발자",
+      "비전공자",
+      "개발 입문",
+      "코드 자동화",
+      "생산성 도구",
+    ].forEach((term) => variants.add(term));
+  }
+
+  if (/자동화|workflow|work flow|workflow|노코드/i.test(lower)) {
+    [
+      "업무 자동화",
+      "노코드",
+      "워크플로우",
+      "생산성",
+      "자동화 툴",
+    ].forEach((term) => variants.add(term));
+  }
+
+  const baseSegments = base.split(/[,\s/]+/).map((part) => part.trim()).filter(Boolean);
+  if (baseSegments.length >= 2) {
+    variants.add(baseSegments.join(" "));
+    variants.add(baseSegments[0]);
+    variants.add(baseSegments[baseSegments.length - 1]);
+  }
+
+  return [...variants].filter(Boolean).slice(0, 8);
+}
+
+function expandSearchTerms(keywords) {
+  const terms = [];
+  for (const keyword of keywords || []) {
+    const expanded = expandKeywordVariants(keyword);
+    for (const term of expanded) {
+      terms.push(term);
+      if (terms.length >= MAX_SEARCH_TERMS) break;
+    }
+    if (terms.length >= MAX_SEARCH_TERMS) break;
+  }
+  return uniqueTokens(terms).slice(0, MAX_SEARCH_TERMS);
+}
+
+function shuffleArray(values) {
+  const next = [...values];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+}
+
 function uniqueTokens(tokens) {
   return [...new Set(tokens)];
 }
@@ -182,6 +308,14 @@ function buildTopicFingerprint(value) {
   return tokens.join("-");
 }
 
+function buildTopicFamilyFingerprint(value) {
+  const tokens = uniqueTokens(
+    tokenizeComparableText(value).filter((token) => !TOPIC_FAMILY_STOPWORDS.has(token))
+  ).slice(0, 8);
+  if (tokens.length) return tokens.join("-");
+  return buildTopicFingerprint(value);
+}
+
 function buildEvidenceFingerprint(parts) {
   const tokens = uniqueTokens(
     parts.flatMap((part) => tokenizeComparableText(part))
@@ -211,6 +345,15 @@ function buildBodyFingerprint(value) {
   return normalizeComparableText(value).slice(0, 180);
 }
 
+function buildLegacyThemeFingerprint(value) {
+  const source = cleanWhitespace(String(value || ""))
+    .replace(/\n+/g, " ")
+    .slice(0, 220);
+  const lead = summarizeTopicFromText(source);
+  const tokens = uniqueTokens(tokenizeComparableText(`${source} ${lead}`)).slice(0, 16);
+  return tokens.join("-");
+}
+
 function historyTimestamp(schedule) {
   const raw = schedule?.postedAt || schedule?.scheduledAt || schedule?.createdAt || "";
   const time = Date.parse(raw);
@@ -227,9 +370,11 @@ function extractHistoryEntry(schedule) {
     postedAt: schedule?.postedAt || null,
     topicLabel: sourceInfo.topicLabel || "",
     topicFingerprint: sourceInfo.topicFingerprint || "",
+    topicFamilyFingerprint: sourceInfo.topicFamilyFingerprint || "",
     evidenceFingerprint: sourceInfo.evidenceFingerprint || "",
     candidateId: sourceInfo.candidateId || sourceInfo.candidateHash || "",
     bodyFingerprint: buildBodyFingerprint(schedule?.text || ""),
+    legacyThemeFingerprint: buildLegacyThemeFingerprint(schedule?.text || ""),
     legacy: isLegacyAutoSchedule(schedule),
     timestamp: historyTimestamp(schedule),
   };
@@ -255,18 +400,23 @@ function createRepeatMatch(history, reason) {
     postedAt: history.postedAt || null,
     topicLabel: history.topicLabel || "",
     topicFingerprint: history.topicFingerprint || "",
+    topicFamilyFingerprint: history.topicFamilyFingerprint || "",
     evidenceFingerprint: history.evidenceFingerprint || "",
     candidateId: history.candidateId || "",
+    legacyThemeFingerprint: history.legacyThemeFingerprint || "",
     legacy: Boolean(history.legacy),
     reason,
   };
 }
 
 function findStrongRepeat(history, fingerprint) {
-  if (!fingerprint?.topicFingerprint || !fingerprint?.evidenceFingerprint) return null;
+  if (!fingerprint?.topicFingerprint && !fingerprint?.topicFamilyFingerprint && !fingerprint?.evidenceFingerprint) return null;
   return history.find((entry) => {
     if (entry.legacy) return false;
     if (entry.candidateId && fingerprint.candidateId && entry.candidateId === fingerprint.candidateId) {
+      return true;
+    }
+    if (entry.topicFamilyFingerprint && fingerprint.topicFamilyFingerprint && entry.topicFamilyFingerprint === fingerprint.topicFamilyFingerprint) {
       return true;
     }
     return (
@@ -276,9 +426,24 @@ function findStrongRepeat(history, fingerprint) {
   }) || null;
 }
 
-function findLegacyBodyRepeat(history, bodyFingerprint) {
-  if (!bodyFingerprint) return null;
-  return history.find((entry) => entry.legacy && entry.bodyFingerprint && entry.bodyFingerprint === bodyFingerprint) || null;
+function findLegacyBodyRepeat(history, bodyText) {
+  const bodyFingerprint = buildBodyFingerprint(bodyText);
+  const legacyThemeFingerprint = buildLegacyThemeFingerprint(bodyText);
+  if (!bodyFingerprint && !legacyThemeFingerprint) return null;
+
+  const exactMatch = history.find((entry) => entry.legacy && entry.bodyFingerprint && entry.bodyFingerprint === bodyFingerprint) || null;
+  if (exactMatch) return exactMatch;
+
+  if (!legacyThemeFingerprint) return null;
+  const currentTokens = legacyThemeFingerprint.split("-").filter(Boolean);
+  if (!currentTokens.length) return null;
+
+  return history.find((entry) => {
+    if (!entry.legacy || !entry.legacyThemeFingerprint) return false;
+    const entryTokens = entry.legacyThemeFingerprint.split("-").filter(Boolean);
+    if (!entryTokens.length) return false;
+    return jaccardSimilarity(currentTokens, entryTokens) >= LEGACY_THEME_SIMILARITY_THRESHOLD;
+  }) || null;
 }
 
 function buildRepeatCheckBase(history) {
@@ -288,6 +453,39 @@ function buildRepeatCheckBase(history) {
     recentWindowLimit: RECENT_HISTORY_LIMIT,
     maxRetries: MAX_REPEAT_RETRIES,
   };
+}
+
+function buildTopicFamilyStats(history) {
+  const counts = new Map();
+  for (const entry of history) {
+    if (entry.topicFamilyFingerprint) {
+      counts.set(entry.topicFamilyFingerprint, (counts.get(entry.topicFamilyFingerprint) || 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function selectBestCandidate(candidates, history) {
+  const familyCounts = buildTopicFamilyStats(history);
+  const scored = candidates
+    .map((candidate) => {
+      const familyCount = familyCounts.get(candidate.topicFamilyFingerprint) || 0;
+      const exactRepeat = history.some((entry) => !entry.legacy && entry.candidateId && entry.candidateId === candidate.candidateId);
+      return {
+        ...candidate,
+        familyCount,
+        exactRepeat,
+      };
+    })
+    .sort((a, b) => {
+      if (a.exactRepeat !== b.exactRepeat) return a.exactRepeat ? 1 : -1;
+      if (a.familyCount !== b.familyCount) return a.familyCount - b.familyCount;
+      if ((a.score || 0) !== (b.score || 0)) return (b.score || 0) - (a.score || 0);
+      return String(a.candidateId || "").localeCompare(String(b.candidateId || ""));
+    });
+
+  const fresh = scored.find((candidate) => candidate.familyCount === 0 && !candidate.exactRepeat) || null;
+  return fresh || scored[0] || null;
 }
 
 function buildRepeatCheckResult(history, status, attempts, match = null, extra = {}) {
@@ -359,6 +557,7 @@ function buildNaverCandidates(allArticles) {
       }));
       const topicLabel = cluster.topicLabel || `리서치 후보 ${index + 1}`;
       const topicFingerprint = buildTopicFingerprint(topicLabel || cluster.tokens.join(" "));
+      const topicFamilyFingerprint = buildTopicFamilyFingerprint(`${topicLabel} ${cluster.tokens.join(" ")}`);
       const evidenceFingerprint = buildEvidenceFingerprint(
         items.flatMap((item) => [item.keyword, item.title, item.description])
       );
@@ -367,6 +566,7 @@ function buildNaverCandidates(allArticles) {
         candidateId,
         topicLabel,
         topicFingerprint,
+        topicFamilyFingerprint,
         evidenceFingerprint,
         summary: items
           .slice(0, 3)
@@ -426,12 +626,14 @@ function buildThreadsCandidates(posts) {
       }));
       const topicLabel = cluster.topicLabel || `Threads 후보 ${index + 1}`;
       const topicFingerprint = buildTopicFingerprint(topicLabel || cluster.tokens.join(" "));
+      const topicFamilyFingerprint = buildTopicFamilyFingerprint(`${topicLabel} ${cluster.tokens.join(" ")}`);
       const evidenceFingerprint = buildEvidenceFingerprint(items.map((item) => item.content));
       const candidateId = `threads-${index + 1}-${hashString(`${topicFingerprint}|${evidenceFingerprint}`)}`;
       return {
         candidateId,
         topicLabel,
         topicFingerprint,
+        topicFamilyFingerprint,
         evidenceFingerprint,
         summary: items
           .slice(0, 3)
@@ -676,7 +878,7 @@ function buildSourceInfo(config, sourceMode, sourceChoice, sourceLabel, sourceSu
   };
 }
 
-function buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLabel, candidate, repeatCheck) {
+function buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLabel, candidate, repeatCheck, searchTerms = []) {
   const sourceInfo = buildSourceInfo(
     config,
     sourceMode,
@@ -689,9 +891,11 @@ function buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLa
     ...sourceInfo,
     topicLabel: candidate?.topicLabel || "",
     topicFingerprint: candidate?.topicFingerprint || "",
+    topicFamilyFingerprint: candidate?.topicFamilyFingerprint || "",
     evidenceFingerprint: candidate?.evidenceFingerprint || "",
     candidateId: candidate?.candidateId || "",
     candidateHash: candidate?.candidateId || "",
+    searchTerms: Array.isArray(searchTerms) ? searchTerms : [],
     provenance: {
       ...sourceInfo.provenance,
       repeatCheck,
@@ -699,38 +903,33 @@ function buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLa
   };
 }
 
-function buildCandidatePrompt(sourceChoice, config, candidates, templateData = null) {
-  const candidateLines = candidates.map((candidate, index) => {
-    const evidenceText = candidate.items
-      .slice(0, 3)
-      .map((item) => {
-        if (sourceChoice === "threads") {
-          return `@${item.author} | 조회 ${Number(item.views || 0).toLocaleString()} | 좋아요 ${Number(item.likes || 0).toLocaleString()} | ${item.content}`;
-        }
-        return `(${item.keyword}) ${item.title} | ${item.description}`;
-      })
-      .join(" / ");
-    return [
-      `후보 ${index + 1}`,
-      `candidateId: ${candidate.candidateId}`,
-      `topicLabel: ${candidate.topicLabel}`,
-      `topicFingerprint: ${candidate.topicFingerprint}`,
-      `evidenceFingerprint: ${candidate.evidenceFingerprint}`,
-      `evidence: ${evidenceText}`,
-    ].join("\n");
-  }).join("\n\n");
+function buildCandidatePrompt(sourceChoice, config, candidate, templateData = null) {
+  const evidenceText = candidate.items
+    .slice(0, 3)
+    .map((item) => {
+      if (sourceChoice === "threads") {
+        return `@${item.author} | 조회 ${Number(item.views || 0).toLocaleString()} | 좋아요 ${Number(item.likes || 0).toLocaleString()} | ${item.content}`;
+      }
+      return `(${item.keyword}) ${item.title} | ${item.description}`;
+    })
+    .join(" / ");
 
   const sourceIntro = sourceChoice === "threads"
-    ? `아래는 최근 Threads 인기글을 유사 메시지끼리 묶어 정리한 후보 목록이야.
+    ? `아래는 최근 Threads 인기글을 유사 메시지끼리 묶어 정리한 단일 후보야.
 ${templateData ? `\n[Threads 역설계 템플릿]\n${JSON.stringify(templateData, null, 2)}\n` : ""}`
-    : "아래는 네이버 검색 결과를 중복 기사군으로 정리한 후보 목록이야.";
+    : "아래는 네이버 검색 결과를 중복 기사군으로 정리한 단일 후보야.";
 
   return `너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
 ${sourceIntro}
-최근 사용한 논점/근거와 겹치지 않는 후보 1개만 골라 최종 게시글을 작성해.
+최근 사용한 논점/근거와 겹치지 않는 후보를 서버가 이미 골랐어. 아래 후보를 바탕으로 최종 게시글만 작성해.
 
-[후보 목록]
-${candidateLines}
+[선택 후보]
+candidateId: ${candidate.candidateId}
+topicLabel: ${candidate.topicLabel}
+topicFingerprint: ${candidate.topicFingerprint}
+topicFamilyFingerprint: ${candidate.topicFamilyFingerprint}
+evidenceFingerprint: ${candidate.evidenceFingerprint}
+evidence: ${evidenceText}
 
 [작성 규칙]
 - 포맷: ${FORMAT_RULES[config.format] || FORMAT_RULES.expert}
@@ -746,10 +945,11 @@ ${candidateLines}
 
 반환 형식:
 {
-  "candidateId": "선택한 후보 ID",
+  "candidateId": "${candidate.candidateId}",
   "topicLabel": "이번 글의 핵심 주제 한 줄",
-  "topicFingerprint": "후보와 동일한 비교용 키",
-  "evidenceFingerprint": "후보와 동일한 비교용 키",
+  "topicFingerprint": "${candidate.topicFingerprint}",
+  "topicFamilyFingerprint": "${candidate.topicFamilyFingerprint}",
+  "evidenceFingerprint": "${candidate.evidenceFingerprint}",
   "postText": "최종 Threads 게시글 본문"
 }`;
 }
@@ -764,6 +964,7 @@ function parseGeneratedCandidatePayload(raw, candidates) {
     candidate,
     topicLabel: String(parsed.topicLabel || candidate.topicLabel || "").trim() || candidate.topicLabel,
     topicFingerprint: String(parsed.topicFingerprint || candidate.topicFingerprint || "").trim() || candidate.topicFingerprint,
+    topicFamilyFingerprint: String(parsed.topicFamilyFingerprint || candidate.topicFamilyFingerprint || "").trim() || candidate.topicFamilyFingerprint,
     evidenceFingerprint: String(parsed.evidenceFingerprint || candidate.evidenceFingerprint || "").trim() || candidate.evidenceFingerprint,
     postText: String(parsed.postText || parsed.text || "").trim(),
   };
@@ -838,6 +1039,7 @@ async function runForAccount(username, config, env, runId, options = {}) {
         postedAt: entry.postedAt,
         topicLabel: entry.topicLabel,
         topicFingerprint: entry.topicFingerprint,
+        topicFamilyFingerprint: entry.topicFamilyFingerprint,
         evidenceFingerprint: entry.evidenceFingerprint,
         candidateId: entry.candidateId,
         legacy: entry.legacy,
@@ -867,9 +1069,10 @@ async function runForAccount(username, config, env, runId, options = {}) {
     } else {
       sourceLabel = "네이버 블로그";
       await setPhase("searching", "네이버 블로그 리서치 중");
-      await log(`키워드 검색 시작: ${config.keywords.join(", ")}`, null, "searching");
+      const searchTerms = shuffleArray(expandSearchTerms(config.keywords));
+      await log(`키워드 검색 시작: ${config.keywords.join(", ")}`, { searchTerms }, "searching");
       const allArticles = [];
-      for (const kw of config.keywords) {
+      for (const kw of searchTerms) {
         await guardCancel();
         const results = await searchNaver(kw, env);
         allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
@@ -880,6 +1083,7 @@ async function runForAccount(username, config, env, runId, options = {}) {
         await log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`);
       }
       rawCandidates = buildNaverCandidates(allArticles);
+      config.searchTerms = searchTerms;
     }
 
     if (!rawCandidates.length) throw new Error("후보를 구성하지 못했습니다");
@@ -925,16 +1129,23 @@ async function runForAccount(username, config, env, runId, options = {}) {
 
     for (let attempt = 1; attempt <= MAX_REPEAT_RETRIES && remainingCandidates.length > 0; attempt += 1) {
       await guardCancel();
-      const prompt = buildCandidatePrompt(sourceChoice, config, remainingCandidates, templateData);
+      const nextCandidate = selectBestCandidate(remainingCandidates, repeatHistory);
+      if (!nextCandidate) {
+        await log("새로운 주제군 후보가 없어 생성 중단", null, "generating");
+        break;
+      }
+      const prompt = buildCandidatePrompt(sourceChoice, config, nextCandidate, templateData);
       await log(`후보 선택형 생성 시도 ${attempt}/${MAX_REPEAT_RETRIES} (${remainingCandidates.length}개 후보)`, {
         attempt,
         remainingCandidates: remainingCandidates.length,
+        candidateId: nextCandidate.candidateId,
+        topicFamilyFingerprint: nextCandidate.topicFamilyFingerprint,
       }, "generating");
       const raw = await callGemini(prompt, env);
-      const parsed = parseGeneratedCandidatePayload(raw, remainingCandidates);
+      const parsed = parseGeneratedCandidatePayload(raw, [nextCandidate]);
       if (!parsed) {
         await log(`생성 결과 파싱 실패 - 다음 후보군 재시도`, null, "generating");
-        remainingCandidates = remainingCandidates.slice(1);
+        remainingCandidates = remainingCandidates.filter((candidate) => candidate.candidateId !== nextCandidate.candidateId);
         continue;
       }
 
@@ -951,10 +1162,11 @@ async function runForAccount(username, config, env, runId, options = {}) {
         candidateId: parsed.candidate.candidateId,
         topicLabel: parsed.topicLabel || parsed.candidate.topicLabel,
         topicFingerprint: parsed.candidate.topicFingerprint,
+        topicFamilyFingerprint: parsed.candidate.topicFamilyFingerprint,
         evidenceFingerprint: parsed.candidate.evidenceFingerprint,
       };
       const strongRepeat = findStrongRepeat(repeatHistory, generationMeta);
-      const legacyBodyRepeat = findLegacyBodyRepeat(repeatHistory, buildBodyFingerprint(candidateText));
+      const legacyBodyRepeat = findLegacyBodyRepeat(repeatHistory, candidateText);
       if (strongRepeat || legacyBodyRepeat) {
         const match = createRepeatMatch(strongRepeat || legacyBodyRepeat, strongRepeat ? "topic+evidence" : "legacy-body");
         await log(`반복 감지로 후보 재선택: ${generationMeta.topicLabel || parsed.candidate.topicLabel}`, match, "generating");
@@ -1062,9 +1274,10 @@ ${text}
     const postReviewRepeat = findStrongRepeat(repeatHistory, {
       candidateId: selectedCandidate.candidateId,
       topicFingerprint: selectedCandidate.topicFingerprint,
+      topicFamilyFingerprint: selectedCandidate.topicFamilyFingerprint,
       evidenceFingerprint: selectedCandidate.evidenceFingerprint,
     });
-    const postReviewLegacy = findLegacyBodyRepeat(repeatHistory, buildBodyFingerprint(text));
+    const postReviewLegacy = findLegacyBodyRepeat(repeatHistory, text);
     if (postReviewRepeat || postReviewLegacy) {
       const match = createRepeatMatch(postReviewRepeat || postReviewLegacy, postReviewRepeat ? "topic+evidence" : "legacy-body");
       const repeatCheck = buildRepeatCheckResult(repeatHistory, "skipped", finalRepeatCheck?.attempts || 1, match, {
@@ -1078,7 +1291,7 @@ ${text}
         skipReason: repeatCheck.reason,
         text,
         sourceLabel,
-        sourceInfo: buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLabel, selectedCandidate, repeatCheck),
+        sourceInfo: buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLabel, selectedCandidate, repeatCheck, config.searchTerms || []),
         summary: "검토 후 반복 감지로 스킵",
       });
       return { skipped: true, skipReason: repeatCheck.reason, logs };
@@ -1104,7 +1317,8 @@ ${text}
           sourceChoice,
           sourceLabel,
           selectedCandidate,
-          finalRepeatCheck || buildRepeatCheckResult(repeatHistory, "passed", 1)
+          finalRepeatCheck || buildRepeatCheckResult(repeatHistory, "passed", 1),
+          config.searchTerms || []
         ),
       });
       return { skipped: true, skipReason: `기존 예약 대기 중: ${pendingTime}`, logs };
@@ -1120,7 +1334,8 @@ ${text}
       sourceChoice,
       sourceLabel,
       selectedCandidate,
-      finalRepeatCheck || buildRepeatCheckResult(repeatHistory, "passed", 1)
+      finalRepeatCheck || buildRepeatCheckResult(repeatHistory, "passed", 1),
+      config.searchTerms || []
     );
 
     const newPost = {

@@ -80,6 +80,28 @@ const DEFAULT_TEMPLATE_OPTIONS = {
   cta: CTA_OPTIONS,
 };
 
+const NARROW_KEYWORD_MARKERS = [
+  "ai",
+  "chatgpt",
+  "claude",
+  "cloude",
+  "code",
+  "coding",
+  "개발",
+  "개발자",
+  "앱",
+  "자동화",
+  "생성형ai",
+];
+
+function looksNarrowKeywordSet(keywords) {
+  const cleaned = (Array.isArray(keywords) ? keywords : [])
+    .map((keyword) => String(keyword || "").toLowerCase().replace(/\s+/g, ""))
+    .filter(Boolean);
+  if (cleaned.length < 3) return false;
+  return cleaned.every((keyword) => NARROW_KEYWORD_MARKERS.some((marker) => keyword.includes(marker)));
+}
+
 // ── 예약 스케줄 서버 API ──
 async function fetchSchedules(username) {
   const res = await fetch(`/api/schedule?username=${encodeURIComponent(username)}`);
@@ -1869,6 +1891,11 @@ ${JSON.stringify(template, null, 2)}
                 className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
               />
               <p className="text-[10px] text-violet-400">각 키워드로 네이버 블로그 5개씩 검색, 최신 AI 이슈를 자동 수집합니다</p>
+              {looksNarrowKeywordSet(autoKeywords.split(",")) && (
+                <p className="text-[10px] leading-relaxed text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  현재 키워드가 Claude / AI / 개발 계열로만 묶여 있습니다. 주제가 한 방향으로 반복될 수 있으니, 뉴스·업무·생활·툴 후기처럼 서로 다른 축을 섞는 편이 좋습니다.
+                </p>
+              )}
             </div>
 
             {/* 게시 시간 */}
