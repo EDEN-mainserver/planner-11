@@ -34,6 +34,7 @@ async function writeBlob(prefix, username, data) {
     access: "public",
     contentType: "application/json",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }
 
