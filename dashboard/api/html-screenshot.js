@@ -19,6 +19,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "htmls 배열이 필요합니다" });
   }
 
+  // @sparticuz/chromium이 /tmp에 압축 해제한 .so 파일을 링커가 찾을 수 있도록 경로 추가
+  const libPaths = [
+    "/tmp",
+    "/var/task/node_modules/@sparticuz/chromium/bin",
+    process.env.LD_LIBRARY_PATH,
+  ].filter(Boolean).join(":");
+  process.env.LD_LIBRARY_PATH = libPaths;
+
   let browser;
   try {
     const executablePath = await chromium.executablePath();
@@ -36,7 +44,7 @@ export default async function handler(req, res) {
         "--disable-features=site-per-process",
       ],
       executablePath,
-      headless: "new",
+      headless: chromium.headless,
       defaultViewport: { width: 1080, height: 1350, deviceScaleFactor: 1 },
     });
 
