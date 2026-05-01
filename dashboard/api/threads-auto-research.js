@@ -65,6 +65,7 @@ async function writeMonitorRun(username, runId, data) {
     access: "public",
     contentType: "application/json",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }
 
