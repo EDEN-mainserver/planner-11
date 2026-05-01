@@ -1137,7 +1137,7 @@ export default function UnifiedPipelineTab() {
               imageTimeout: 15000,
             });
 
-            const dataUrl = canvas.toDataURL("image/png");
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.97);
             URL.revokeObjectURL(blobUrl);
             iframe.remove();
             resolve(dataUrl);
@@ -1166,14 +1166,14 @@ export default function UnifiedPipelineTab() {
   const dataUrlToFile = async (dataUrl, filename) => {
     const response = await fetch(dataUrl);
     const blob = await response.blob();
-    return new File([blob], filename, { type: blob.type || "image/png" });
+    return new File([blob], filename, { type: blob.type || "image/jpeg" });
   };
 
   const imageUrlToFile = async (url, filename) => {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`이미지 다운로드 실패: ${response.status}`);
     const blob = await response.blob();
-    return new File([blob], filename, { type: blob.type || "image/png" });
+    return new File([blob], filename, { type: blob.type || "image/jpeg" });
   };
 
   const buildUploadPostCarouselFiles = async () => {
@@ -1182,7 +1182,7 @@ export default function UnifiedPipelineTab() {
       setIgCaptureProgress({ step: "capture", done: 0, total: Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS) });
       const captured = await captureCardHtmls(cardHtmls);
       const files = await Promise.all(
-        captured.map((dataUrl, index) => dataUrlToFile(dataUrl, `carousel-${String(index + 1).padStart(2, "0")}.png`))
+        captured.map((dataUrl, index) => dataUrlToFile(dataUrl, `carousel-${String(index + 1).padStart(2, "0")}.jpg`))
       );
       setIgCaptureProgress({ step: "uploading", done: files.length, total: files.length });
       return files;
