@@ -2,11 +2,8 @@
 // 카드뉴스 HTML을 받아 1080×1350 JPEG base64로 반환
 // POST /api/html-screenshot  Body: { htmls: string[] }
 
-const { default: chromium } = await import("@sparticuz/chromium-min");
+const { default: chromium } = await import("@sparticuz/chromium");
 const { default: puppeteer } = await import("puppeteer-core");
-
-const CHROMIUM_PACK_URL =
-  "https://github.com/Sparticuz/chromium/releases/download/v131.0.0/chromium-v131.0.0-pack.tar";
 
 export const config = { maxDuration: 120, memory: 1024 };
 
@@ -22,16 +19,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "htmls 배열이 필요합니다" });
   }
 
-  // libnss3.so 등 시스템 라이브러리 탐색 경로 보완 (Vercel Lambda AL2 환경)
-  process.env.LD_LIBRARY_PATH = [
-    "/tmp",
-    "/var/task/node_modules/@sparticuz/chromium-min/bin",
-    process.env.LD_LIBRARY_PATH,
-  ].filter(Boolean).join(":");
-
   let browser;
   try {
-    const executablePath = await chromium.executablePath(CHROMIUM_PACK_URL);
+    const executablePath = await chromium.executablePath();
 
     browser = await puppeteer.launch({
       args: [
