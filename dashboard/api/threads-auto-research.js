@@ -46,22 +46,8 @@ async function readBlob(prefix, username) {
   } catch { return null; }
 }
 
-async function writeBlob(prefix, username, data) {
-  await put(`${prefix}/${username}.json`, JSON.stringify(data), {
-    access: "public",
-    contentType: "application/json",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-  });
-}
-
 function monitorPath(username, runId) {
   return `${PREFIX_MONITOR}/${username}/${runId}.json`;
-}
-
-async function listMonitorRuns(username) {
-  const { blobs } = await list({ prefix: `${PREFIX_MONITOR}/${username}/` });
-  return blobs.sort((a, b) => new Date(b.uploadedAt || b.pathname) - new Date(a.uploadedAt || a.pathname));
 }
 
 async function readMonitorRun(username, runId) {
@@ -497,7 +483,7 @@ async function callGemini(prompt, env) {
       if (!res.ok) {
         const raw = await res.text();
         let parsed = null;
-        try { parsed = JSON.parse(raw); } catch {}
+        try { parsed = JSON.parse(raw); } catch { parsed = null; }
         const message = parsed?.error?.message || raw.slice(0, 200) || `HTTP ${res.status}`;
         errors.push(`${model}: ${message}`);
         if (res.status !== 429 && res.status !== 503) break;
@@ -536,7 +522,7 @@ async function callGemini(prompt, env) {
       } else {
         const raw = await resp.text();
         let parsed = null;
-        try { parsed = JSON.parse(raw); } catch {}
+        try { parsed = JSON.parse(raw); } catch { parsed = null; }
         const message = parsed?.error?.message || raw.slice(0, 200) || `HTTP ${resp.status}`;
         errors.push(`claude-sonnet-4-6: ${message}`);
       }
@@ -635,17 +621,6 @@ function getBatchStartDateKst(postTime) {
   return new Date(tomorrow.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-// ── 중복 예약 체크 ──
-function alreadyScheduledToday(schedules, postTime) {
-  const target = calcScheduledAt(postTime);
-  const targetDate = target.slice(0, 10); // YYYY-MM-DD
-  return schedules.some((s) =>
-    s.status === "pending" &&
-    s.auto === true &&
-    s.scheduledAt.slice(0, 10) === targetDate
-  );
-}
-
 // ── 포맷 규칙 맵 ──
 const FORMAT_RULES = {
   expert:    "전문가가 쉽게 풀어주는 말투. 주장 → 이유 → 적용 팁 → 낮은 허들 CTA 흐름.",
@@ -701,6 +676,111 @@ function buildSourceInfo(config, sourceMode, sourceChoice, sourceLabel, sourceSu
   };
 }
 
+function buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLabel, candidate, repeatCheck) {
+  const sourceInfo = buildSourceInfo(
+    config,
+    sourceMode,
+    sourceChoice,
+    sourceLabel,
+    candidate?.summary || "",
+    candidate?.items || []
+  );
+  return {
+    ...sourceInfo,
+    topicLabel: candidate?.topicLabel || "",
+    topicFingerprint: candidate?.topicFingerprint || "",
+    evidenceFingerprint: candidate?.evidenceFingerprint || "",
+    candidateId: candidate?.candidateId || "",
+    candidateHash: candidate?.candidateId || "",
+    provenance: {
+      ...sourceInfo.provenance,
+      repeatCheck,
+    },
+  };
+}
+
+function buildCandidatePrompt(sourceChoice, config, candidates, templateData = null) {
+  const candidateLines = candidates.map((candidate, index) => {
+    const evidenceText = candidate.items
+      .slice(0, 3)
+      .map((item) => {
+        if (sourceChoice === "threads") {
+          return `@${item.author} | 조회 ${Number(item.views || 0).toLocaleString()} | 좋아요 ${Number(item.likes || 0).toLocaleString()} | ${item.content}`;
+        }
+        return `(${item.keyword}) ${item.title} | ${item.description}`;
+      })
+      .join(" / ");
+    return [
+      `후보 ${index + 1}`,
+      `candidateId: ${candidate.candidateId}`,
+      `topicLabel: ${candidate.topicLabel}`,
+      `topicFingerprint: ${candidate.topicFingerprint}`,
+      `evidenceFingerprint: ${candidate.evidenceFingerprint}`,
+      `evidence: ${evidenceText}`,
+    ].join("\n");
+  }).join("\n\n");
+
+  const sourceIntro = sourceChoice === "threads"
+    ? `아래는 최근 Threads 인기글을 유사 메시지끼리 묶어 정리한 후보 목록이야.
+${templateData ? `\n[Threads 역설계 템플릿]\n${JSON.stringify(templateData, null, 2)}\n` : ""}`
+    : "아래는 네이버 검색 결과를 중복 기사군으로 정리한 후보 목록이야.";
+
+  return `너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
+${sourceIntro}
+최근 사용한 논점/근거와 겹치지 않는 후보 1개만 골라 최종 게시글을 작성해.
+
+[후보 목록]
+${candidateLines}
+
+[작성 규칙]
+- 포맷: ${FORMAT_RULES[config.format] || FORMAT_RULES.expert}
+- 말투: ${TONE_RULES[config.tone] || TONE_RULES.template}
+- 흐름: ${FLOW_RULES[config.flow] || FLOW_RULES.template}
+- CTA: ${CTA_RULES[config.cta] || CTA_RULES.comment}
+- 최소 220자 이상, 최대 500자 이내
+- 줄바꿈 활용, 한 줄 10~25자
+- 해시태그 2~4개 (마지막에)
+- 마지막 문장은 완결된 문장이나 자연스러운 CTA로 닫을 것
+- 후보의 핵심 논점과 근거를 바탕으로 재구성하되 복붙하지 말 것
+- 안내문, 제목, 설명 없이 JSON만 반환
+
+반환 형식:
+{
+  "candidateId": "선택한 후보 ID",
+  "topicLabel": "이번 글의 핵심 주제 한 줄",
+  "topicFingerprint": "후보와 동일한 비교용 키",
+  "evidenceFingerprint": "후보와 동일한 비교용 키",
+  "postText": "최종 Threads 게시글 본문"
+}`;
+}
+
+function parseGeneratedCandidatePayload(raw, candidates) {
+  const parsed = parseJSONBlock(raw);
+  if (!parsed || typeof parsed !== "object") return null;
+  const candidateId = String(parsed.candidateId || "").trim();
+  const candidate = candidates.find((item) => item.candidateId === candidateId) || null;
+  if (!candidate) return null;
+  return {
+    candidate,
+    topicLabel: String(parsed.topicLabel || candidate.topicLabel || "").trim() || candidate.topicLabel,
+    topicFingerprint: String(parsed.topicFingerprint || candidate.topicFingerprint || "").trim() || candidate.topicFingerprint,
+    evidenceFingerprint: String(parsed.evidenceFingerprint || candidate.evidenceFingerprint || "").trim() || candidate.evidenceFingerprint,
+    postText: String(parsed.postText || parsed.text || "").trim(),
+  };
+}
+
+function cleanGeneratedThreadText(raw) {
+  return String(raw || "")
+    .replace(/\r/g, "")
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```[a-z]*\n?/gi, "").replace(/```/g, ""))
+    .trim()
+    .replace(/^(네|좋아요|물론|알겠습니다)[,!\s].*/m, "")
+    .replace(/^#{1,6}\s*.*/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 500);
+}
+
 // ── 단일 계정 자동화 실행 ──
 async function runForAccount(username, config, env, runId, options = {}) {
   const logs = [];
@@ -747,6 +827,24 @@ async function runForAccount(username, config, env, runId, options = {}) {
   });
 
   try {
+    const schedules = await readAllSchedules(username);
+    const repeatHistory = selectRecentHistory(schedules);
+    await updateMonitorRun(username, runId, {
+      repeatHistory: repeatHistory.map((entry) => ({
+        id: entry.id,
+        runId: entry.runId,
+        status: entry.status,
+        scheduledAt: entry.scheduledAt,
+        postedAt: entry.postedAt,
+        topicLabel: entry.topicLabel,
+        topicFingerprint: entry.topicFingerprint,
+        evidenceFingerprint: entry.evidenceFingerprint,
+        candidateId: entry.candidateId,
+        legacy: entry.legacy,
+      })),
+    });
+    await log(`최근 자동 이력 ${repeatHistory.length}건 비교 준비`, { count: repeatHistory.length }, "starting");
+
     await setPhase("loading_template", "템플릿/소스 준비 중");
     const threadTemplate = await readLatestThreadTemplate();
     const sourceMode = config.sourceMode || "random";
@@ -757,52 +855,15 @@ async function runForAccount(username, config, env, runId, options = {}) {
     await setPhase("selecting_source", `주제 소스 선택: ${sourceChoice}`);
     await log(`주제 소스 선택: ${sourceChoice}${sourceMode !== sourceChoice ? ` (설정: ${sourceMode})` : ""}`, null, "selecting");
 
-    let prompt;
     let sourceLabel;
-    let sourceSummary = "";
-    let sourceItems = [];
+    let rawCandidates = [];
+    let templateData = null;
 
     if (sourceChoice === "threads" && threadTemplate?.data) {
       const posts = Array.isArray(threadTemplate.posts) ? threadTemplate.posts : [];
-      const topPosts = posts
-        .filter((p) => (p.views || 0) > 0 || (p.likes || 0) > 0 || (p.comments || 0) > 0)
-        .sort((a, b) => (b.views || 0) - (a.views || 0))
-        .slice(0, 8);
-      const templateData = threadTemplate.data;
+      templateData = threadTemplate.data;
       sourceLabel = "Threads 인기글 역설계";
-      sourceItems = topPosts.map((p) => ({
-        author: p.author || "unknown",
-        views: Number(p.views || 0),
-        likes: Number(p.likes || 0),
-        comments: Number(p.comments || 0),
-        content: String(p.content || "").slice(0, 280),
-      }));
-      sourceSummary = topPosts.length
-        ? topPosts.map((p, i) => `[${i + 1}] @${p.author || "unknown"} | 조회 ${Number(p.views || 0).toLocaleString()} | 좋아요 ${Number(p.likes || 0).toLocaleString()} | 댓글 ${Number(p.comments || 0).toLocaleString()} | ${p.content}`).join("\n")
-        : JSON.stringify(templateData, null, 2);
-      prompt =
-`너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
-아래는 최근 Threads 인기글을 조회수 기반으로 역설계한 결과와 포스트 요약이야.
-이 구조를 참고해서 오늘 반응이 좋을 주제 1개를 고르고, Threads 게시글 최종안 1개를 작성해줘.
-
-[Threads 역설계 템플릿]
-${JSON.stringify(templateData, null, 2)}
-
-[Threads 포스트 요약]
-${sourceSummary}
-
-[작성 규칙]
-- 포맷: ${FORMAT_RULES[config.format] || FORMAT_RULES.expert}
-- 말투: ${TONE_RULES[config.tone] || TONE_RULES.template}
-- 흐름: ${FLOW_RULES[config.flow] || FLOW_RULES.template}
-- CTA: ${CTA_RULES[config.cta] || CTA_RULES.comment}
-- 최소 220자 이상, 최대 500자 이내
-- 최대 500자 이내
-- 줄바꿈 활용, 한 줄 10~25자
-- 해시태그 2~4개 (마지막에)
-- 마지막 문장은 완결된 문장이나 자연스러운 CTA로 닫을 것
-- 안내문, 제목, 설명 없이 게시글 본문만 출력
-- 마크다운 없이 순수 텍스트만`;
+      rawCandidates = buildThreadsCandidates(posts);
     } else {
       sourceLabel = "네이버 블로그";
       await setPhase("searching", "네이버 블로그 리서치 중");
@@ -814,59 +875,146 @@ ${sourceSummary}
         allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
       }
       if (!allArticles.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
-      sourceItems = allArticles.slice(0, 10).map((a) => ({
-        keyword: a.keyword,
-        title: a.title,
-        description: a.description,
-      }));
       await log(`검색 결과: ${allArticles.length}건`, { count: allArticles.length }, "searching");
       for (const [i, a] of allArticles.slice(0, 8).entries()) {
         await log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`);
       }
+      rawCandidates = buildNaverCandidates(allArticles);
+    }
 
-      const articlesText = allArticles.slice(0, 10).map((a, i) =>
-        `[${i + 1}] 키워드: ${a.keyword} | 제목: ${a.title} | 요약: ${a.description}`
-      ).join("\n");
-      prompt =
-`너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
-아래 최신 AI 관련 기사/포스트 목록에서 오늘 가장 반응이 좋을 주제 1개를 선택해,
-Threads 게시글 최종안 1개를 바로 작성해줘.
+    if (!rawCandidates.length) throw new Error("후보를 구성하지 못했습니다");
+    await log(`후보 군집화 완료: ${rawCandidates.length}개`, { count: rawCandidates.length }, sourceChoice === "threads" ? "selecting" : "searching");
 
-[최신 기사 목록]
-${articlesText}
-
-[작성 규칙]
-- 포맷: ${FORMAT_RULES[config.format] || FORMAT_RULES.expert}
-- 말투: ${TONE_RULES[config.tone] || TONE_RULES.template}
-- 흐름: ${FLOW_RULES[config.flow] || FLOW_RULES.template}
-- CTA: ${CTA_RULES[config.cta] || CTA_RULES.comment}
-- 최소 220자 이상, 최대 500자 이내
-- 최대 500자 이내
-- 줄바꿈 활용, 한 줄 10~25자
-- 해시태그 2~4개 (마지막에)
-- 마지막 문장은 완결된 문장이나 자연스러운 CTA로 닫을 것
-- 안내문, 제목, 설명 없이 게시글 본문만 출력
-- 마크다운 없이 순수 텍스트만`;
+    const initialFilteredCandidates = rawCandidates.filter((candidate) => !findStrongRepeat(repeatHistory, candidate));
+    const recentlyBlocked = rawCandidates.length - initialFilteredCandidates.length;
+    if (recentlyBlocked > 0) {
+      await log(`최근 논점/근거 중복 후보 ${recentlyBlocked}개 제외`, { blocked: recentlyBlocked }, "selecting");
+    }
+    if (!initialFilteredCandidates.length) {
+      const repeatCheck = buildRepeatCheckResult(
+        repeatHistory,
+        "skipped",
+        0,
+        null,
+        { reason: "최근 예약/게시와 논점 중복으로 대체 후보 없음", filteredBeforeGeneration: rawCandidates.length }
+      );
+      await updateMonitorRun(username, runId, {
+        status: "skipped",
+        phase: "done",
+        skipReason: repeatCheck.reason,
+        sourceLabel,
+        sourceInfo: {
+          mode: sourceMode,
+          choice: sourceChoice,
+          label: sourceLabel,
+          provenance: { repeatCheck },
+        },
+        summary: "반복 회피 후보 없음",
+      });
+      return { skipped: true, skipReason: repeatCheck.reason, logs };
     }
 
     await guardCancel();
     await setPhase("generating", `Gemini 글 생성 중 (${sourceLabel})`);
-    await log(`Gemini 글 생성 중... (${sourceLabel})`, null, "generating");
-    const raw = await callGemini(prompt, env);
+    let text = "";
+    let selectedCandidate = null;
+    let generationMeta = null;
+    let finalRepeatCheck = null;
+    let remainingCandidates = [...initialFilteredCandidates];
+    const attemptedCandidateIds = [];
 
-    // 3. 텍스트 정리 (cleanThreadDraft 서버 버전)
-    let text = raw
-      .replace(/\r/g, "")
-      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```[a-z]*\n?/gi, "").replace(/```/g, ""))
-      .trim()
-      .replace(/^(네|좋아요|물론|알겠습니다)[,!\s].*/m, "")
-      .replace(/^#{1,6}\s*.*/gm, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim()
-      .slice(0, 500);
+    for (let attempt = 1; attempt <= MAX_REPEAT_RETRIES && remainingCandidates.length > 0; attempt += 1) {
+      await guardCancel();
+      const prompt = buildCandidatePrompt(sourceChoice, config, remainingCandidates, templateData);
+      await log(`후보 선택형 생성 시도 ${attempt}/${MAX_REPEAT_RETRIES} (${remainingCandidates.length}개 후보)`, {
+        attempt,
+        remainingCandidates: remainingCandidates.length,
+      }, "generating");
+      const raw = await callGemini(prompt, env);
+      const parsed = parseGeneratedCandidatePayload(raw, remainingCandidates);
+      if (!parsed) {
+        await log(`생성 결과 파싱 실패 - 다음 후보군 재시도`, null, "generating");
+        remainingCandidates = remainingCandidates.slice(1);
+        continue;
+      }
 
-    if (!text) throw new Error("생성된 텍스트 없음");
-    await log(`글 생성 완료 (${text.length}자)`, { length: text.length }, "generating");
+      attemptedCandidateIds.push(parsed.candidate.candidateId);
+      let candidateText = cleanGeneratedThreadText(parsed.postText);
+      if (!candidateText) {
+        await log(`선택 후보 ${parsed.candidate.candidateId} 본문 비어 있음 - 재시도`, null, "generating");
+        remainingCandidates = remainingCandidates.filter((candidate) => candidate.candidateId !== parsed.candidate.candidateId);
+        continue;
+      }
+      await log(`글 생성 완료 (${candidateText.length}자)`, { length: candidateText.length, candidateId: parsed.candidate.candidateId }, "generating");
+
+      generationMeta = {
+        candidateId: parsed.candidate.candidateId,
+        topicLabel: parsed.topicLabel || parsed.candidate.topicLabel,
+        topicFingerprint: parsed.candidate.topicFingerprint,
+        evidenceFingerprint: parsed.candidate.evidenceFingerprint,
+      };
+      const strongRepeat = findStrongRepeat(repeatHistory, generationMeta);
+      const legacyBodyRepeat = findLegacyBodyRepeat(repeatHistory, buildBodyFingerprint(candidateText));
+      if (strongRepeat || legacyBodyRepeat) {
+        const match = createRepeatMatch(strongRepeat || legacyBodyRepeat, strongRepeat ? "topic+evidence" : "legacy-body");
+        await log(`반복 감지로 후보 재선택: ${generationMeta.topicLabel || parsed.candidate.topicLabel}`, match, "generating");
+        finalRepeatCheck = buildRepeatCheckResult(
+          repeatHistory,
+          attempt === 1 ? "reselected" : "reselected",
+          attempt,
+          match,
+          { attemptedCandidateIds: [...attemptedCandidateIds] }
+        );
+        remainingCandidates = remainingCandidates.filter((candidate) => candidate.candidateId !== parsed.candidate.candidateId);
+        continue;
+      }
+
+      text = candidateText;
+      selectedCandidate = parsed.candidate;
+      finalRepeatCheck = buildRepeatCheckResult(
+        repeatHistory,
+        attempt > 1 || recentlyBlocked > 0 ? "reselected" : "passed",
+        attempt,
+        null,
+        {
+          attemptedCandidateIds: [...attemptedCandidateIds],
+          filteredBeforeGeneration: recentlyBlocked,
+        }
+      );
+      break;
+    }
+
+    if (!text || !selectedCandidate) {
+      const repeatCheck = finalRepeatCheck || buildRepeatCheckResult(
+        repeatHistory,
+        "skipped",
+        Math.min(MAX_REPEAT_RETRIES, attemptedCandidateIds.length),
+        null,
+        {
+          attemptedCandidateIds,
+          reason: "최근 예약/게시와 논점 중복으로 대체 후보 없음",
+          filteredBeforeGeneration: recentlyBlocked,
+        }
+      );
+      if (!repeatCheck.reason) {
+        repeatCheck.reason = "최근 예약/게시와 논점 중복으로 대체 후보 없음";
+      }
+      await log(repeatCheck.reason, { attemptedCandidateIds }, "generating");
+      await updateMonitorRun(username, runId, {
+        status: "skipped",
+        phase: "done",
+        skipReason: repeatCheck.reason,
+        sourceLabel,
+        sourceInfo: {
+          mode: sourceMode,
+          choice: sourceChoice,
+          label: sourceLabel,
+          provenance: { repeatCheck },
+        },
+        summary: "반복 회피 실패로 스킵",
+      });
+      return { skipped: true, skipReason: repeatCheck.reason, logs };
+    }
 
     await guardCancel();
     await setPhase("reviewing", "AI 검토 및 본문 보강 중");
@@ -903,25 +1051,44 @@ ${text}
         env
       );
       const repaired = repairRaw
-        .replace(/\r/g, "")
-        .replace(/```[\s\S]*?```/g, (m) => m.replace(/```[a-z]*\n?/gi, "").replace(/```/g, ""))
-        .trim()
-        .replace(/^(네|좋아요|물론|알겠습니다)[,!\s].*/m, "")
-        .replace(/^#{1,6}\s*.*/gm, "")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim()
-        .slice(0, 500);
+        ? cleanGeneratedThreadText(repairRaw)
+        : "";
       if (repaired.length >= text.length) {
         text = repaired;
         await log(`보강 생성 완료 (${text.length}자)`, { length: text.length }, "reviewing");
       }
     }
 
+    const postReviewRepeat = findStrongRepeat(repeatHistory, {
+      candidateId: selectedCandidate.candidateId,
+      topicFingerprint: selectedCandidate.topicFingerprint,
+      evidenceFingerprint: selectedCandidate.evidenceFingerprint,
+    });
+    const postReviewLegacy = findLegacyBodyRepeat(repeatHistory, buildBodyFingerprint(text));
+    if (postReviewRepeat || postReviewLegacy) {
+      const match = createRepeatMatch(postReviewRepeat || postReviewLegacy, postReviewRepeat ? "topic+evidence" : "legacy-body");
+      const repeatCheck = buildRepeatCheckResult(repeatHistory, "skipped", finalRepeatCheck?.attempts || 1, match, {
+        reason: "최근 예약/게시와 논점 중복으로 대체 후보 없음",
+        attemptedCandidateIds: finalRepeatCheck?.attemptedCandidateIds || [selectedCandidate.candidateId],
+      });
+      await log(`검토 후 반복 재확인으로 스킵`, match, "reviewing");
+      await updateMonitorRun(username, runId, {
+        status: "skipped",
+        phase: "done",
+        skipReason: repeatCheck.reason,
+        text,
+        sourceLabel,
+        sourceInfo: buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLabel, selectedCandidate, repeatCheck),
+        summary: "검토 후 반복 감지로 스킵",
+      });
+      return { skipped: true, skipReason: repeatCheck.reason, logs };
+    }
+
     await guardCancel();
     await setPhase("scheduling", "예약 등록 처리 중");
     // 4. 예약 등록 (중복 방지 — pending 자동 예약이 하나라도 있으면 스킵)
-    const schedules = await readAllSchedules(username);
-    const pendingAuto = schedules.find(s => s.auto === true && s.status === "pending");
+    const schedulesBeforeSave = await readAllSchedules(username);
+    const pendingAuto = schedulesBeforeSave.find(s => s.auto === true && s.status === "pending");
     if (pendingAuto && !allowExistingPendingAuto) {
       const pendingTime = new Date(pendingAuto.scheduledAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
       await log(`대기 중인 자동 예약 있음 (${pendingTime}) — 스킵`, null, "scheduling");
@@ -931,6 +1098,14 @@ ${text}
         skipReason: `기존 예약 대기 중: ${pendingTime}`,
         text,
         sourceLabel,
+        sourceInfo: buildSourceInfoWithCandidate(
+          config,
+          sourceMode,
+          sourceChoice,
+          sourceLabel,
+          selectedCandidate,
+          finalRepeatCheck || buildRepeatCheckResult(repeatHistory, "passed", 1)
+        ),
       });
       return { skipped: true, skipReason: `기존 예약 대기 중: ${pendingTime}`, logs };
     }
@@ -939,13 +1114,13 @@ ${text}
     const scheduleIdSuffix = scheduleMeta
       ? `d${scheduleMeta.dayIndex}_s${scheduleMeta.slotIndex}`
       : Math.random().toString(36).slice(2, 8);
-    const sourceInfo = buildSourceInfo(
+    const sourceInfo = buildSourceInfoWithCandidate(
       config,
       sourceMode,
       sourceChoice,
       sourceLabel,
-      sourceSummary,
-      sourceItems
+      selectedCandidate,
+      finalRepeatCheck || buildRepeatCheckResult(repeatHistory, "passed", 1)
     );
 
     const newPost = {
@@ -1011,6 +1186,7 @@ ${text}
 export const config = { maxDuration: 120, memory: 512 };
 
 export default async function handler(req, res) {
+  const PROCESS_ENV = globalThis.process?.env || {};
   const manualUsername = req.query?.username || req.body?.username || null;
   const manualRunId = req.query?.runId || req.body?.runId || null;
   const batchOptions = req.method === "POST" ? (req.body?.batch || null) : null;
@@ -1018,14 +1194,14 @@ export default async function handler(req, res) {
   const runOptions = req.method === "POST" ? (req.body?.options || null) : null;
 
   // CRON_SECRET 검증
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = PROCESS_ENV.CRON_SECRET;
   if (cronSecret && !manualUsername) {
     const auth = req.headers["authorization"] || "";
     if (auth !== `Bearer ${cronSecret}`) return res.status(401).json({ error: "Unauthorized" });
   }
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
-  const env = process.env;
+  const env = PROCESS_ENV;
   const results = [];
 
   try {

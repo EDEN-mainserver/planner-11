@@ -664,6 +664,25 @@ export default function ThreadsTab() {
     schedule?.sourceInfo || scheduleSourceMap[schedule?.id]?.sourceInfo || null
   );
 
+  const isLegacyTrackedAutoSchedule = (schedule) => (
+    Boolean(schedule?.auto) &&
+    !getEffectiveSourceInfo(schedule)?.topicFingerprint &&
+    !getEffectiveSourceInfo(schedule)?.evidenceFingerprint
+  );
+
+  const getRepeatCheck = (schedule) => (
+    getEffectiveSourceInfo(schedule)?.provenance?.repeatCheck || null
+  );
+
+  const getRepeatCheckLabel = (schedule) => {
+    const repeatCheck = getRepeatCheck(schedule);
+    if (!repeatCheck) return isLegacyTrackedAutoSchedule(schedule) ? "논점 추적 도입 전 생성분" : "반복 검사 정보 없음";
+    if (repeatCheck.status === "passed") return "최근 반복 회피 통과";
+    if (repeatCheck.status === "reselected") return "중복 감지 후 후보 재선택";
+    if (repeatCheck.status === "skipped") return "대체 후보 없음으로 스킵";
+    return repeatCheck.status || "반복 검사 완료";
+  };
+
   const updateTemplateOption = (group, key, field, value) => {
     setTemplateOptions(prev => ({
       ...prev,
@@ -2139,7 +2158,7 @@ ${JSON.stringify(template, null, 2)}
                                     <div>
                                       <p className="text-[11px] font-bold text-sky-800">생성 출처 / 수집 정보</p>
                                       <p className="text-[10px] text-sky-600">
-                                        {getEffectiveSourceInfo(p)?.label || (p.auto ? "기존 예약: 출처 추적 도입 전 생성분" : "수동 예약")}
+                                        {getEffectiveSourceInfo(p)?.label || (p.auto ? "기존 예약: 논점 추적 도입 전 생성분" : "수동 예약")}
                                       </p>
                                     </div>
                                     {p.runId && (
@@ -2167,6 +2186,15 @@ ${JSON.stringify(template, null, 2)}
                                         <span className="px-2 py-1 rounded-full border bg-white text-sky-700 border-sky-200">
                                           근거 {Number(getEffectiveSourceInfo(p)?.provenance?.evidenceCount || getEffectiveSourceInfo(p)?.items?.length || 0)}건
                                         </span>
+                                        <span className={`px-2 py-1 rounded-full border ${
+                                          getRepeatCheck(p)?.status === "skipped"
+                                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                                            : getRepeatCheck(p)?.status === "reselected"
+                                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                                              : "bg-white text-sky-700 border-sky-200"
+                                        }`}>
+                                          {getRepeatCheckLabel(p)}
+                                        </span>
                                       </div>
 
                                       <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -2177,6 +2205,34 @@ ${JSON.stringify(template, null, 2)}
                                         <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
                                           <span className="block text-[10px] text-sky-500">키워드</span>
                                           <span className="font-semibold text-sky-900">{(getEffectiveSourceInfo(p).keywords || []).join(", ") || "-"}</span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">핵심 주제</span>
+                                          <span className="font-semibold text-sky-900">{getEffectiveSourceInfo(p).topicLabel || "-"}</span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">선택 후보 ID</span>
+                                          <span className="font-mono font-semibold text-sky-900">{getEffectiveSourceInfo(p).candidateId || getEffectiveSourceInfo(p).candidateHash || "-"}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 gap-2 text-[11px]">
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">반복 검사 결과</span>
+                                          <span className="font-semibold text-sky-900">{getRepeatCheckLabel(p)}</span>
+                                          {getRepeatCheck(p)?.reason && (
+                                            <p className="mt-1 text-[10px] leading-relaxed text-amber-700">{getRepeatCheck(p).reason}</p>
+                                          )}
+                                          {getRepeatCheck(p)?.match && (
+                                            <p className="mt-1 text-[10px] leading-relaxed text-sky-700">
+                                              최근 이력과 비교: {getRepeatCheck(p).match.reason === "legacy-body" ? "레거시 본문 유사" : "같은 논점 + 근거"} 감지 후 재선택
+                                            </p>
+                                          )}
+                                          {typeof getRepeatCheck(p)?.attempts === "number" && (
+                                            <p className="mt-1 text-[10px] text-sky-600">
+                                              비교 {getRepeatCheck(p).comparedRecentCount || 0}건 · 생성 시도 {getRepeatCheck(p).attempts}회
+                                            </p>
+                                          )}
                                         </div>
                                       </div>
 
@@ -2206,7 +2262,7 @@ ${JSON.stringify(template, null, 2)}
                                     </>
                                   ) : (
                                     <div className="text-[11px] text-gray-500 bg-white border border-sky-100 rounded-lg px-3 py-2">
-                                      이 예약은 출처 추적 기능을 넣기 전에 만들어진 기존 예약이거나, 수동으로 등록된 예약입니다.
+                                      이 예약은 논점 추적 기능을 넣기 전에 만들어진 기존 예약이거나, 수동으로 등록된 예약입니다.
                                     </div>
                                   )}
 

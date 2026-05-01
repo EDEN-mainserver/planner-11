@@ -21,6 +21,7 @@ function summarizeRun(run) {
     skipReason: run.skipReason || null,
     sourceLabel: run.sourceLabel || null,
     sourceInfo: run.sourceInfo || null,
+    repeatHistory: Array.isArray(run.repeatHistory) ? run.repeatHistory : [],
     text: run.text || "",
     textLength: run.text ? String(run.text).length : 0,
     logs: Array.isArray(run.logs) ? run.logs : [],
