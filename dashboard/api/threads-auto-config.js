@@ -2,7 +2,7 @@
 // GET  /api/threads-auto-config?username=xxx  → 설정 조회
 // POST /api/threads-auto-config               → 설정 저장 { username, config }
 
-import { put, list, del } from "@vercel/blob";
+import { put, list } from "@vercel/blob";
 
 const PREFIX = "threads-auto";
 
@@ -10,7 +10,8 @@ async function readConfig(username) {
   try {
     const { blobs } = await list({ prefix: `${PREFIX}/${username}.json` });
     if (!blobs.length) return null;
-    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    const latest = [...blobs].sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0))[0];
+    const res = await fetch(latest.url, { cache: "no-store" });
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -19,12 +20,11 @@ async function readConfig(username) {
 }
 
 async function writeConfig(username, config) {
-  const { blobs } = await list({ prefix: `${PREFIX}/${username}.json` });
-  if (blobs.length) await Promise.allSettled(blobs.map((b) => del(b.url)));
   await put(`${PREFIX}/${username}.json`, JSON.stringify(config), {
     access: "public",
     contentType: "application/json",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }
 

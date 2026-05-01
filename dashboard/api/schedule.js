@@ -22,7 +22,8 @@ async function readSchedules(username) {
   try {
     const { blobs } = await list({ prefix: `${PREFIX}/${username}.json` });
     if (!blobs.length) return [];
-    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    const latest = [...blobs].sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0))[0];
+    const res = await fetch(latest.url, { cache: "no-store" });
     if (!res.ok) return [];
     return await res.json();
   } catch {

@@ -4,7 +4,7 @@
 //
 // vercel.json cron: "0 21 * * *"
 
-import { list, put, del } from "@vercel/blob";
+import { list, put } from "@vercel/blob";
 
 const PREFIX_AUTO   = "threads-auto";
 const PREFIX_SCHED  = "threads-schedule";
@@ -19,7 +19,8 @@ async function readBlob(prefix, username) {
   try {
     const { blobs } = await list({ prefix: `${prefix}/${username}.json` });
     if (!blobs.length) return null;
-    const res = await fetch(blobs[0].url, {
+    const latest = [...blobs].sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0))[0];
+    const res = await fetch(latest.url, {
       cache: "no-store",
       signal: AbortSignal.timeout(BLOB_FETCH_TIMEOUT_MS),
     });
@@ -28,8 +29,6 @@ async function readBlob(prefix, username) {
 }
 
 async function writeBlob(prefix, username, data) {
-  const { blobs } = await list({ prefix: `${prefix}/${username}.json` });
-  if (blobs.length) await Promise.allSettled(blobs.map((b) => del(b.url)));
   await put(`${prefix}/${username}.json`, JSON.stringify(data), {
     access: "public",
     contentType: "application/json",
