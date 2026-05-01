@@ -144,6 +144,7 @@ async function searchNaver(query, env) {
 // ── Gemini API 직접 호출 ──
 async function callGemini(prompt, env) {
   const models = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
+  const errors = [];
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
@@ -156,13 +157,58 @@ async function callGemini(prompt, env) {
           generationConfig: { temperature: 0.75, maxOutputTokens: 2048 },
         }),
       });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        const raw = await res.text();
+        let parsed = null;
+        try { parsed = JSON.parse(raw); } catch {}
+        const message = parsed?.error?.message || raw.slice(0, 200) || `HTTP ${res.status}`;
+        errors.push(`${model}: ${message}`);
+        if (res.status !== 429 && res.status !== 503) break;
+        continue;
+      }
       const data = await res.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
       if (text) return text;
-    } catch { continue; }
+      errors.push(`${model}: empty response`);
+    } catch (err) {
+      errors.push(`${model}: ${err.message}`);
+      continue;
+    }
   }
-  throw new Error("Gemini 모든 모델 실패");
+
+  if (env.ANTHROPIC_API_KEY) {
+    try {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: AbortSignal.timeout(GEMINI_FETCH_TIMEOUT_MS),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 2048,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const text = data.content?.[0]?.text || "";
+        if (text) return text;
+      } else {
+        const raw = await resp.text();
+        let parsed = null;
+        try { parsed = JSON.parse(raw); } catch {}
+        const message = parsed?.error?.message || raw.slice(0, 200) || `HTTP ${resp.status}`;
+        errors.push(`claude-sonnet-4-6: ${message}`);
+      }
+    } catch (err) {
+      errors.push(`claude-sonnet-4-6: ${err.message}`);
+    }
+  }
+
+  throw new Error(`Gemini/Claude 생성 실패: ${errors.join(" | ")}`);
 }
 
 function parseJSONBlock(text) {
