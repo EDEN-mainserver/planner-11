@@ -8,6 +8,7 @@
 import {
   clearNonPendingSchedules,
   deleteScheduleRecord,
+  isDuplicateScheduleTextError,
   readAllSchedules,
   saveSchedule,
   updateScheduleRecord,
@@ -33,8 +34,15 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const { username, schedule } = req.body || {};
     if (!username || !schedule) return res.status(400).json({ error: "username, schedule 필요" });
-    const saved = await saveSchedule(username, schedule);
-    return res.status(200).json({ ok: true, schedule: saved });
+    try {
+      const saved = await saveSchedule(username, schedule);
+      return res.status(200).json({ ok: true, schedule: saved });
+    } catch (error) {
+      if (isDuplicateScheduleTextError(error)) {
+        return res.status(409).json({ error: error.message, duplicate: error.duplicate || null });
+      }
+      throw error;
+    }
   }
 
   // DELETE — 예약 취소 (단건)
@@ -51,9 +59,16 @@ export default async function handler(req, res) {
     if (!username) return res.status(400).json({ error: "username 필요" });
 
     if (id && updates && typeof updates === "object") {
-      const schedule = await updateScheduleRecord(username, id, updates);
-      if (!schedule) return res.status(404).json({ error: "예약을 찾을 수 없습니다" });
-      return res.status(200).json({ ok: true, schedule });
+      try {
+        const schedule = await updateScheduleRecord(username, id, updates);
+        if (!schedule) return res.status(404).json({ error: "예약을 찾을 수 없습니다" });
+        return res.status(200).json({ ok: true, schedule });
+      } catch (error) {
+        if (isDuplicateScheduleTextError(error)) {
+          return res.status(409).json({ error: error.message, duplicate: error.duplicate || null });
+        }
+        throw error;
+      }
     }
 
     const remaining = await clearNonPendingSchedules(username);

@@ -2,6 +2,27 @@ import { del, list, put } from "@vercel/blob";
 
 export const SCHEDULE_PREFIX = "threads-schedule";
 
+function normalizeScheduleText(text) {
+  return String(text || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\r/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function createDuplicateScheduleError(duplicate) {
+  const error = new Error("같은 본문의 예약 글이 이미 있습니다");
+  error.code = "DUPLICATE_SCHEDULE_TEXT";
+  error.status = 409;
+  error.duplicate = duplicate || null;
+  return error;
+}
+
+export function isDuplicateScheduleTextError(error) {
+  return error?.code === "DUPLICATE_SCHEDULE_TEXT";
+}
+
 function sortByUploadedAtDesc(a, b) {
   return new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0);
 }
@@ -136,6 +157,19 @@ export async function saveSchedule(username, schedule) {
   }
 
   const stored = toStoredSchedule(schedule);
+  const normalizedText = normalizeScheduleText(stored.text);
+  if (normalizedText) {
+    const schedules = await readAllSchedules(username);
+    const duplicate = schedules.find((item) => {
+      if (!item?.id || item.id === stored.id) return false;
+      if (item.status !== "pending" && item.status !== "posted") return false;
+      return normalizeScheduleText(item.text) === normalizedText;
+    });
+    if (duplicate) {
+      throw createDuplicateScheduleError(duplicate);
+    }
+  }
+
   await put(toItemPath(username, stored.id), JSON.stringify(stored), {
     access: "public",
     contentType: "application/json",

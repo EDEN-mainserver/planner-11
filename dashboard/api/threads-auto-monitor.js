@@ -19,6 +19,8 @@ function summarizeRun(run) {
     summary: run.summary || null,
     error: run.error || null,
     skipReason: run.skipReason || null,
+    sourceLabel: run.sourceLabel || null,
+    sourceInfo: run.sourceInfo || null,
     text: run.text || "",
     textLength: run.text ? String(run.text).length : 0,
     logs: Array.isArray(run.logs) ? run.logs : [],

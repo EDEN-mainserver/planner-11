@@ -5,7 +5,11 @@
 // vercel.json cron: "0 21 * * *"
 
 import { list, put } from "@vercel/blob";
-import { readAllSchedules, saveSchedule } from "./_schedule-storage.js";
+import {
+  isDuplicateScheduleTextError,
+  readAllSchedules,
+  saveSchedule,
+} from "./_schedule-storage.js";
 
 const PREFIX_AUTO   = "threads-auto";
 const PREFIX_TEMPLATE = "threads-template";
@@ -339,6 +343,30 @@ const CTA_RULES = {
   soft:     "강요 없이 오늘 바로 한 가지를 해보게 하는 CTA",
 };
 
+function buildSourceInfo(config, sourceMode, sourceChoice, sourceLabel, sourceSummary, sourceItems) {
+  const strategy = sourceChoice === "threads" ? "pattern-reconstruction" : "article-research";
+  return {
+    mode: sourceMode,
+    choice: sourceChoice,
+    label: sourceLabel,
+    summary: sourceSummary,
+    keywords: Array.isArray(config.keywords) ? config.keywords : [],
+    items: sourceItems,
+    format: config.format || "expert",
+    tone: config.tone || "template",
+    flow: config.flow || "template",
+    cta: config.cta || "comment",
+    provenance: {
+      dataBacked: Array.isArray(sourceItems) && sourceItems.length > 0,
+      strategy,
+      evidenceType: sourceChoice === "threads" ? "high-performing-threads" : "naver-blog-search",
+      evidenceCount: Array.isArray(sourceItems) ? sourceItems.length : 0,
+      reconstructionTarget: sourceChoice === "threads" ? "잘된 Threads 구조 재구성" : "외부 리서치 기반 재구성",
+      generatedWithoutEvidence: !Array.isArray(sourceItems) || sourceItems.length === 0,
+    },
+  };
+}
+
 // ── 단일 계정 자동화 실행 ──
 async function runForAccount(username, config, env, runId, options = {}) {
   const logs = [];
@@ -577,6 +605,15 @@ ${text}
     const scheduleIdSuffix = scheduleMeta
       ? `d${scheduleMeta.dayIndex}_s${scheduleMeta.slotIndex}`
       : Math.random().toString(36).slice(2, 8);
+    const sourceInfo = buildSourceInfo(
+      config,
+      sourceMode,
+      sourceChoice,
+      sourceLabel,
+      sourceSummary,
+      sourceItems
+    );
+
     const newPost = {
       id:          `auto_${Date.now()}_${scheduleIdSuffix}`,
       text,
@@ -590,20 +627,26 @@ ${text}
       batchDay:    scheduleMeta?.dayIndex ?? null,
       batchSlot:   scheduleMeta?.slotIndex ?? null,
       runId,
-      sourceInfo: {
-        mode: sourceMode,
-        choice: sourceChoice,
-        label: sourceLabel,
-        summary: sourceSummary,
-        keywords: Array.isArray(config.keywords) ? config.keywords : [],
-        items: sourceItems,
-        format: config.format || "expert",
-        tone: config.tone || "template",
-        flow: config.flow || "template",
-        cta: config.cta || "comment",
-      },
+      sourceInfo,
     };
-    await saveSchedule(username, newPost);
+    try {
+      await saveSchedule(username, newPost);
+    } catch (error) {
+      if (isDuplicateScheduleTextError(error)) {
+        await log("같은 본문 예약이 이미 있어 이번 슬롯은 스킵", null, "scheduling");
+        await updateMonitorRun(username, runId, {
+          status: "skipped",
+          phase: "done",
+          skipReason: error.message,
+          scheduledAt,
+          text,
+          sourceLabel,
+          sourceInfo,
+        });
+        return { skipped: true, skipReason: error.message, logs };
+      }
+      throw error;
+    }
     await log(`예약 완료: ${scheduledAt} (KST ${config.postTime})`, { scheduledAt }, "scheduling");
     await log(`본문 길이: ${text.length}자`, { length: text.length }, "scheduling");
     await updateMonitorRun(username, runId, {
@@ -612,6 +655,7 @@ ${text}
       scheduledAt,
       text,
       sourceLabel,
+      sourceInfo,
       summary: `예약 완료 (${text.length}자)`,
     });
 

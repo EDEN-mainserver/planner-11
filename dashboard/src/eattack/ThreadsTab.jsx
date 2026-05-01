@@ -94,7 +94,13 @@ async function addSchedule(username, schedule) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, schedule }),
   });
-  return res.ok;
+  const data = await res.json().catch(() => ({}));
+  return {
+    ok: res.ok,
+    error: data?.error || "",
+    schedule: data?.schedule || null,
+    duplicate: data?.duplicate || null,
+  };
 }
 
 async function removeSchedule(username, id) {
@@ -653,6 +659,10 @@ export default function ThreadsTab() {
       setScheduleSourceLoadingId("");
     }
   };
+
+  const getEffectiveSourceInfo = (schedule) => (
+    schedule?.sourceInfo || scheduleSourceMap[schedule?.id]?.sourceInfo || null
+  );
 
   const updateTemplateOption = (group, key, field, value) => {
     setTemplateOptions(prev => ({
@@ -1302,9 +1312,9 @@ ${JSON.stringify(template, null, 2)}
       status: "pending",
       createdAt: new Date().toISOString(),
     };
-    const ok = await addSchedule(username, newPost);
+    const result = await addSchedule(username, newPost);
     setScheduleSaving(false);
-    if (!ok) { addLog("error", "예약 저장 실패"); return; }
+    if (!result.ok) { addLog("error", result.error || "예약 저장 실패"); return; }
     setScheduledPosts((prev) => [...prev, newPost]);
     addLog("info", `예약 완료: ${new Date(scheduledAtISO).toLocaleString("ko-KR")}`);
     setScheduleEnabled(false);
@@ -1428,9 +1438,14 @@ ${JSON.stringify(template, null, 2)}
     let success = 0;
     let fail = errors.length;
     for (const post of parsed) {
-      const ok = await addSchedule(username, post);
-      if (ok) { success++; setScheduledPosts((prev) => [...prev, post]); }
-      else fail++;
+      const result = await addSchedule(username, post);
+      if (result.ok) {
+        success++;
+        setScheduledPosts((prev) => [...prev, post]);
+      } else {
+        fail++;
+        addLog("error", `${new Date(post.scheduledAt).toLocaleString("ko-KR")} 예약 실패: ${result.error || "중복 또는 저장 오류"}`);
+      }
     }
 
     setBulkImporting(false);
@@ -2124,7 +2139,7 @@ ${JSON.stringify(template, null, 2)}
                                     <div>
                                       <p className="text-[11px] font-bold text-sky-800">생성 출처 / 수집 정보</p>
                                       <p className="text-[10px] text-sky-600">
-                                        {p.sourceInfo?.label || (p.auto ? "자동 예약 메타데이터 없음" : "수동 예약")}
+                                        {getEffectiveSourceInfo(p)?.label || (p.auto ? "기존 예약: 출처 추적 도입 전 생성분" : "수동 예약")}
                                       </p>
                                     </div>
                                     {p.runId && (
@@ -2132,24 +2147,44 @@ ${JSON.stringify(template, null, 2)}
                                     )}
                                   </div>
 
-                                  {p.sourceInfo ? (
+                                  {getEffectiveSourceInfo(p) ? (
                                     <>
+                                      <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+                                        <span className={`px-2 py-1 rounded-full border ${
+                                          getEffectiveSourceInfo(p)?.provenance?.dataBacked
+                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                            : "bg-red-50 text-red-600 border-red-200"
+                                        }`}>
+                                          {getEffectiveSourceInfo(p)?.provenance?.dataBacked ? "데이터 기반 재구성" : "근거 없는 일반 생성"}
+                                        </span>
+                                        {getEffectiveSourceInfo(p)?.provenance?.strategy && (
+                                          <span className="px-2 py-1 rounded-full border bg-white text-sky-700 border-sky-200">
+                                            {getEffectiveSourceInfo(p).provenance.strategy === "pattern-reconstruction"
+                                              ? "잘된 Threads 구조 재구성"
+                                              : "외부 리서치 재구성"}
+                                          </span>
+                                        )}
+                                        <span className="px-2 py-1 rounded-full border bg-white text-sky-700 border-sky-200">
+                                          근거 {Number(getEffectiveSourceInfo(p)?.provenance?.evidenceCount || getEffectiveSourceInfo(p)?.items?.length || 0)}건
+                                        </span>
+                                      </div>
+
                                       <div className="grid grid-cols-2 gap-2 text-[11px]">
                                         <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
                                           <span className="block text-[10px] text-sky-500">소스 선택</span>
-                                          <span className="font-semibold text-sky-900">{p.sourceInfo.label || p.sourceInfo.choice || "-"}</span>
+                                          <span className="font-semibold text-sky-900">{getEffectiveSourceInfo(p).label || getEffectiveSourceInfo(p).choice || "-"}</span>
                                         </div>
                                         <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
                                           <span className="block text-[10px] text-sky-500">키워드</span>
-                                          <span className="font-semibold text-sky-900">{(p.sourceInfo.keywords || []).join(", ") || "-"}</span>
+                                          <span className="font-semibold text-sky-900">{(getEffectiveSourceInfo(p).keywords || []).join(", ") || "-"}</span>
                                         </div>
                                       </div>
 
-                                      {Array.isArray(p.sourceInfo.items) && p.sourceInfo.items.length > 0 && (
+                                      {Array.isArray(getEffectiveSourceInfo(p).items) && getEffectiveSourceInfo(p).items.length > 0 && (
                                         <div className="space-y-2">
                                           <p className="text-[10px] font-bold text-sky-700">실제 가져온 정보</p>
                                           <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                                            {p.sourceInfo.items.slice(0, 8).map((item, idx) => (
+                                            {getEffectiveSourceInfo(p).items.slice(0, 8).map((item, idx) => (
                                               <div key={`${p.id}-source-${idx}`} className="rounded-lg border border-sky-100 bg-white px-2.5 py-2 text-[11px] text-gray-700">
                                                 {item.keyword && (
                                                   <p className="text-[10px] font-mono text-sky-500 mb-1">{item.keyword}</p>
@@ -2171,7 +2206,7 @@ ${JSON.stringify(template, null, 2)}
                                     </>
                                   ) : (
                                     <div className="text-[11px] text-gray-500 bg-white border border-sky-100 rounded-lg px-3 py-2">
-                                      이 예약에는 저장된 출처 메타데이터가 없습니다.
+                                      이 예약은 출처 추적 기능을 넣기 전에 만들어진 기존 예약이거나, 수동으로 등록된 예약입니다.
                                     </div>
                                   )}
 
