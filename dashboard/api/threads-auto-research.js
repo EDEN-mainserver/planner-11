@@ -514,8 +514,11 @@ ${text}
     }
 
     const scheduledAt = scheduledAtOverride || calcScheduledAt(config.postTime);
+    const scheduleIdSuffix = scheduleMeta
+      ? `d${scheduleMeta.dayIndex}_s${scheduleMeta.slotIndex}`
+      : Math.random().toString(36).slice(2, 8);
     const newPost = {
-      id:          `auto_${Date.now()}`,
+      id:          `auto_${Date.now()}_${scheduleIdSuffix}`,
       text,
       userId:      config.userId,
       accessToken: config.accessToken,
