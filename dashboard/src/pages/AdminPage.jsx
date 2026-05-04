@@ -360,6 +360,69 @@ function SocialTab() {
     }
   };
 
+  const fetchIgAccountId = async () => {
+    const accessToken = String(ig.accessToken || "").trim();
+    if (!accessToken) { addLog("error", "Instagram 액세스 토큰을 먼저 입력하세요"); return; }
+    addLog("info", "Facebook 페이지 → Instagram 계정 ID 조회 중...");
+    try {
+      const pagesRes = await fetch(
+        `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}`
+      );
+      const pagesData = await pagesRes.json();
+      if (pagesData.error) throw new Error(pagesData.error.message);
+      if (!pagesData.data?.length) {
+        throw new Error("연결된 Facebook 페이지가 없습니다. Facebook 페이지와 Instagram 비즈니스 계정을 연결해주세요.");
+      }
+
+      let foundId = null;
+      let foundUsername = null;
+      for (const page of pagesData.data) {
+        const igRes = await fetch(
+          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${accessToken}`
+        );
+        const igData = await igRes.json();
+        if (igData.error) throw new Error(igData.error.message);
+        if (igData.instagram_business_account?.id) {
+          foundId = igData.instagram_business_account.id;
+          const uRes = await fetch(
+            `https://graph.facebook.com/v21.0/${foundId}?fields=username&access_token=${accessToken}`
+          );
+          const uData = await uRes.json();
+          if (uData.error) throw new Error(uData.error.message);
+          foundUsername = uData.username || foundId;
+          break;
+        }
+      }
+
+      if (!foundId) {
+        throw new Error("Facebook 페이지에 연결된 Instagram 비즈니스 계정을 찾을 수 없습니다.");
+      }
+
+      const next = { ...ig, accountId: foundId, accessToken };
+      setIg(next);
+      saveSocial(igKey, selectedUser, next);
+      const res = await fetch("/api/social-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: selectedUser,
+          instagram: {
+            accountId: String(foundId || "").trim(),
+            accessToken: String(accessToken || "").trim(),
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "서버 저장 실패");
+      setIgSaved(true);
+      setTimeout(() => setIgSaved(false), 2000);
+      addLog("info", `✅ 조회 성공: @${foundUsername} → ${foundId}`);
+      addLog("info", `Instagram 설정 자동 저장됨 (${selectedUser})`);
+    } catch (e) {
+      addLog("error", `계정 ID 조회 실패: ${e.message}`);
+    }
+  };
+
   const saveIg = async () => {
     saveSocial(igKey, selectedUser, ig);
     try {
@@ -576,16 +639,25 @@ function SocialTab() {
                 <p className="text-[11px] text-gray-400">
                   Meta Business Suite → 설정 → Instagram → API 액세스 토큰
                 </p>
-                <button
-                  onClick={saveIg}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                    igSaved
-                      ? "bg-green-500 text-white"
-                      : "bg-pink-500 hover:bg-pink-600 text-white"
-                  }`}
-                >
-                  {igSaved ? "✓ 저장됨" : "저장"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={fetchIgAccountId}
+                    disabled={!ig.accessToken?.trim()}
+                    className="px-3 py-2 text-xs font-bold border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-all whitespace-nowrap"
+                  >
+                    ID 조회
+                  </button>
+                  <button
+                    onClick={saveIg}
+                    className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                      igSaved
+                        ? "bg-green-500 text-white"
+                        : "bg-pink-500 hover:bg-pink-600 text-white"
+                    }`}
+                  >
+                    {igSaved ? "✓ 저장됨" : "저장"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
