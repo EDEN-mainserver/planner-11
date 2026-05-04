@@ -1,4 +1,4 @@
-/* global Buffer, process */
+/* global Buffer */
 
 import { head, put } from "@vercel/blob";
 import { runInstagramUploadPostJob } from "./_instagram-upload-post.js";
@@ -195,6 +195,54 @@ function buildFailedStatus(requestId, err, pending) {
   };
 }
 
+function describeInstagramConfig(socialConfig, accountId, accessToken) {
+  const savedAccountId = String(socialConfig?.instagram?.accountId || "").trim();
+  const savedAccessToken = String(socialConfig?.instagram?.accessToken || "").trim();
+  const effectiveAccountId = String(accountId || savedAccountId || "").trim();
+  const effectiveAccessToken = String(accessToken || savedAccessToken || "").trim();
+
+  if (!savedAccountId && !savedAccessToken && !effectiveAccountId && !effectiveAccessToken) {
+    return {
+      ok: false,
+      error: "이 user에 연결된 Instagram 설정이 없습니다",
+      detail: "관리자 페이지에서 Instagram accountId와 accessToken을 저장한 뒤 다시 시도해주세요",
+    };
+  }
+
+  if (!effectiveAccountId && !effectiveAccessToken) {
+    const missing = [];
+    if (!savedAccountId) missing.push("accountId");
+    if (!savedAccessToken) missing.push("accessToken");
+    return {
+      ok: false,
+      error: "Instagram 설정이 불완전합니다",
+      detail: `누락된 값: ${missing.join(", ") || "accountId, accessToken"}`,
+    };
+  }
+
+  if (!effectiveAccountId) {
+    return {
+      ok: false,
+      error: "Instagram accountId가 없습니다",
+      detail: "관리자 페이지에서 Instagram 비즈니스 계정 ID를 저장해주세요",
+    };
+  }
+
+  if (!effectiveAccessToken) {
+    return {
+      ok: false,
+      error: "Instagram accessToken이 없습니다",
+      detail: "관리자 페이지에서 Instagram 액세스 토큰을 저장해주세요",
+    };
+  }
+
+  return {
+    ok: true,
+    accountId: effectiveAccountId,
+    accessToken: effectiveAccessToken,
+  };
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -238,13 +286,15 @@ export default async function handler(req, res) {
     }
 
     const socialConfig = (await readSocialConfig(user)) || {};
-    const resolvedAccountId = accountId || String(socialConfig.instagram?.accountId || "").trim();
-    const resolvedAccessToken = accessToken || String(socialConfig.instagram?.accessToken || "").trim();
-    if (!resolvedAccountId || !resolvedAccessToken) {
+    const instagramConfig = describeInstagramConfig(socialConfig, accountId, accessToken);
+    if (!instagramConfig.ok) {
       return res.status(400).json({
-        error: "이 user에 연결된 Instagram 계정이 없습니다. 관리자 페이지에서 Instagram 설정을 서버에 저장해주세요",
+        error: instagramConfig.error,
+        detail: instagramConfig.detail,
       });
     }
+    const resolvedAccountId = instagramConfig.accountId;
+    const resolvedAccessToken = instagramConfig.accessToken;
 
     const existing = await readStatus(requestId);
     if (existing?.response) {

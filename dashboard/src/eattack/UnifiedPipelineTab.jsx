@@ -1559,7 +1559,7 @@ ${planningText}
       const data = await res.json().catch(() => ({}));
       addLog(res.ok ? "info" : "error", `Upload Post 응답 [${res.status}]`, data);
       if (!res.ok) {
-        throw new Error(data.error || data.upstream?.message || data.data?.message || "Upload Post 업로드 실패");
+        throw new Error(data.error || data.detail || data.upstream?.message || data.data?.message || "Upload Post 업로드 실패");
       }
 
       setUploadPostResult({
@@ -2733,6 +2733,7 @@ ${planningText}
                   <p className="mt-1">platforms: {uploadPostResult.data.platforms.join(", ")}</p>
                 )}
                 {uploadPostResult.data?.message && <p className="mt-1 opacity-90">upstream: {uploadPostResult.data.message}</p>}
+                {uploadPostResult.data?.detail && <p className="mt-1 opacity-90">detail: {uploadPostResult.data.detail}</p>}
                 {uploadPostResult.data?.raw && (
                   <details className="mt-2">
                     <summary className="cursor-pointer text-[11px] font-semibold">원문 응답 보기</summary>
