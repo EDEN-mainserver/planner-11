@@ -1356,6 +1356,36 @@ export default function UnifiedPipelineTab() {
     ].join("").trim();
   };
 
+  const pickCaptionKeyword = () => {
+    const base = [topic, plan?.type, cards[0]?.headline, plan?.slides?.[0]?.headline]
+      .filter(Boolean)
+      .join(" ");
+    const match = base.match(/[가-힣A-Za-z0-9]{2,5}/);
+    return match?.[0] || "자료";
+  };
+
+  const enforceCaptionCta = (caption) => {
+    const keyword = pickCaptionKeyword();
+    const text = String(caption || "").trim();
+    const withoutExtraTags = text.replace(/(?:#[^\s#]+[\s]*){6,}$/g, "").trim();
+    const hasCommentCta = /댓글에\s*["“][^"”]+["”]라고\s*남겨주세요/.test(withoutExtraTags);
+    const withCta = hasCommentCta
+      ? withoutExtraTags
+      : `${withoutExtraTags}\n\n댓글에 "${keyword}"라고 남겨주세요.\n정리본 보내드릴게요!`;
+
+    const lines = withCta.split("\n");
+    const tagLineIndex = lines.findIndex((line) => line.trim().startsWith("#"));
+    if (tagLineIndex === -1) return withCta;
+
+    const tagLine = lines[tagLineIndex]
+      .trim()
+      .split(/\s+/)
+      .filter((item) => item.startsWith("#"))
+      .slice(0, 5)
+      .join(" ");
+    return [...lines.slice(0, tagLineIndex), tagLine].join("\n").trim();
+  };
+
   const generateCaptionFromPlan = async (target = "instagram") => {
     const sourceSlides = cards.length ? cards : plan?.slides || [];
     if (!sourceSlides.length) {
@@ -1387,21 +1417,22 @@ ${planningText}
 
 작성 규칙:
 - 바로 게시할 캡션 본문만 출력
-- 전체 길이는 250~450자 정도로 짧게 작성
-- 첫 문장은 카피라이팅 후킹 문장으로 작성
-- 첫 문장은 1문장 또는 1.5문장 느낌으로 짧고 강하게 작성
-- 긴 설명형 문단 금지, 2~3개의 짧은 문단으로 구성
-- CTA는 댓글 유도형으로 작성
-- CTA에는 사용자가 댓글에 입력할 쉬운 단어 1개를 반드시 제안
-- CTA 예시: 댓글에 "하네스"라고 남겨주세요. 정리본 보내드릴게요.
+- 전체 길이는 공백 포함 220~360자
+- 후킹 1문장, 요약 1~2문단, CTA 2줄, 해시태그 1줄만 출력
+- 후킹은 35자 이내로 짧고 강한 카피라이팅 문장
+- 요약은 총 2~4문장만 작성
+- CTA 2줄은 반드시 포함하고 생략 금지
 - 댓글 단어는 주제에서 가장 핵심적인 2~5글자 단어로 작성
 - 해시태그는 마지막 줄에 최대 5개만 포함
-- 마크다운, 제목, 따옴표, 설명 금지
+- 긴 설명, 개념 강의, 배경 설명, 마크다운, 제목, 따옴표, 번호 목록 금지
+- 아래 출력 구조 외 다른 문장 추가 금지
 
-반드시 아래 출력 구조를 지켜:
+반드시 아래 출력 구조와 줄바꿈을 그대로 지켜:
 [후킹 1문장]
 
-[짧은 요약 1~2문단]
+[짧은 요약 1문단, 1~2문장]
+
+[짧은 요약 1문단, 1~2문장]
 
 댓글에 "[핵심단어]"라고 남겨주세요.
 정리본 보내드릴게요!
@@ -1414,7 +1445,7 @@ ${planningText}
         "인스타그램 카드뉴스 캡션 작성 전문가. 짧은 후킹 카피와 댓글 단어 CTA가 있는 게시 가능한 캡션 본문만 반환합니다."
       );
       const caption = String(raw || "").trim();
-      const nextCaption = caption || buildFallbackCaption();
+      const nextCaption = enforceCaptionCta(caption || buildFallbackCaption());
       if (target === "uploadPost") {
         setUploadPostTitle(nextCaption);
         setUploadPostResult(null);
