@@ -29,6 +29,7 @@
     "api/transcribe.js":   { "maxDuration": 120, "memory": 1024 },
     "api/blob-upload.js":  { "maxDuration": 30,  "memory": 512  },
     "api/full-auto.js":    { "maxDuration": 300, "memory": 1024 },
+    "api/assistant-command.js": { "maxDuration": 60, "memory": 512 },
     "api/full-auto-cron.js": { "maxDuration": 300, "memory": 1024 },
     "api/social-post.js":  { "maxDuration": 120, "memory": 1024 },
     "api/media.js":        { "maxDuration": 120, "memory": 1024 },
@@ -56,7 +57,7 @@
   "crons": [
     {
       "path": "/api/full-auto-cron",
-      "schedule": "0 0 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/threads-scheduler",

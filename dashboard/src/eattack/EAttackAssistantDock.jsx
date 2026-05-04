@@ -5,6 +5,14 @@ import { emitEAttackCommand, summarizeText } from "./eattackContext";
 
 const HISTORY_KEY = (u) => `eattack_ai_assistant_history_${u}_v1`;
 const INPUT_KEY = (u) => `eattack_ai_assistant_input_${u}_v1`;
+const ASSISTANT_COMMAND_API = "/api/assistant-command";
+const FULL_AUTO_CONFIRM_LABEL = "오늘 매시간 카드뉴스 자동화 켜기";
+const FULL_AUTO_OPEN_LABEL = "풀가동화 화면 열기";
+const FULL_AUTO_SECRET = import.meta.env.VITE_FULL_AUTO_SECRET || "";
+const USERS_KEY = "eden_users_v1";
+const igKey = (u) => `eden_ig_${u}_v1`;
+const threadsKey = (u) => `eden_threads_${u}_v1`;
+const fullAutoKey = (u) => `eden_fullauto_${u}_v1`;
 
 function loadJson(key, fallback) {
   try {
@@ -17,6 +25,56 @@ function loadJson(key, fallback) {
 
 function saveJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function loadLocalJson(key, fallback = null) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function makeAssistantAccount(user) {
+  const username = user?.username || user?.id || user;
+  if (!username) return null;
+  const ig = loadLocalJson(igKey(username), {}) || {};
+  const th = loadLocalJson(threadsKey(username), {}) || {};
+  const fa = loadLocalJson(fullAutoKey(username), {}) || {};
+  return {
+    id: username,
+    name: user?.displayName || user?.name || username,
+    igAccountId: ig.accountId || "",
+    igAccessToken: ig.accessToken || "",
+    threadsUserId: th.userId || "",
+    threadsAccessToken: th.accessToken || "",
+    settings: {
+      topics: fa.topics || "",
+      brandName: fa.brandName || "",
+      tone: fa.tone || "친근하고 전문적인",
+      slideCount: fa.slideCount || 5,
+      captionTemplate: fa.captionTemplate || "{title}\n\n{body}",
+    },
+  };
+}
+
+function loadAssistantAccounts(username) {
+  const users = loadLocalJson(USERS_KEY, []) || [];
+  const accounts = Array.isArray(users)
+    ? users.map(makeAssistantAccount).filter(Boolean)
+    : [];
+  if (accounts.length) return accounts;
+  const fallback = makeAssistantAccount({ username, displayName: username });
+  return fallback ? [fallback] : [];
+}
+
+function isFullAutoHourlyRequest(text) {
+  const value = String(text || "").replace(/\s+/g, " ");
+  const wantsCardNews = /카드\s*뉴스|카드뉴스|콘텐츠|이미지/.test(value);
+  const wantsHourly = /매시간|1시간|한\s*시간|hourly/i.test(value);
+  const wantsPublish = /배포|발행|게시|예약|올려|포스팅/.test(value);
+  return wantsCardNews && wantsHourly && wantsPublish;
 }
 
 function makeQuickPrompts(scopeLabel) {
@@ -64,6 +122,7 @@ export default function EAttackAssistantDock({
   const [sending, setSending] = useState(false);
   const [activeQuick, setActiveQuick] = useState(null);
   const [contextSnapshot, setContextSnapshot] = useState(null);
+  const [executingCommand, setExecutingCommand] = useState(false);
 
   useEffect(() => {
     const handleSessionChange = () => setSession(getSession());
@@ -182,9 +241,62 @@ export default function EAttackAssistantDock({
 - 현재 화면에서 전환 가능한 기능이 있으면 choices에 그 기능명을 넣는다.
 `, [scopeLabel, currentContextText]);
 
+  const executeAssistantCommand = async (sourceText) => {
+    const accounts = loadAssistantAccounts(username);
+    setExecutingCommand(true);
+    setSending(true);
+    try {
+      const res = await fetch(ASSISTANT_COMMAND_API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(FULL_AUTO_SECRET ? { Authorization: `Bearer ${FULL_AUTO_SECRET}` } : {}),
+        },
+        body: JSON.stringify({
+          action: "configure_full_auto_hourly",
+          accounts,
+          requestedBy: username,
+          sourceText,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.detail || "자동화 설정에 실패했습니다.");
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `매시간 풀가동화 실행 대상으로 ${data.accountCount}개 계정을 등록했습니다.\n\n주의: Vercel Hobby 플랜에서는 크론이 제한될 수 있습니다. 배포 환경이 Pro이거나 외부 크론이 /api/full-auto-cron을 매시간 호출하면 기존 기능만으로 정보 수집, 카드뉴스 생성, 배포까지 이어집니다.`,
+          choices: [FULL_AUTO_OPEN_LABEL],
+          time: new Date().toISOString(),
+        },
+      ]);
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `자동화 설정 실패: ${e.message}`,
+          choices: [FULL_AUTO_OPEN_LABEL],
+          time: new Date().toISOString(),
+          error: true,
+        },
+      ]);
+    } finally {
+      setExecutingCommand(false);
+      setSending(false);
+      setActiveQuick(null);
+    }
+  };
+
   const sendPrompt = async (prompt) => {
     const content = String(prompt || "").trim();
     if (!content || sending) return;
+
+    if (content === FULL_AUTO_OPEN_LABEL) {
+      handleNavigate("fullAuto");
+      return;
+    }
+
     const nextMessages = [
       ...messages,
       { role: "user", content, time: new Date().toISOString() },
@@ -192,6 +304,27 @@ export default function EAttackAssistantDock({
     setMessages(nextMessages);
     setSending(true);
     setActiveQuick(content);
+
+    if (content === FULL_AUTO_CONFIRM_LABEL) {
+      await executeAssistantCommand(content);
+      return;
+    }
+
+    if (isFullAutoHourlyRequest(content)) {
+      setMessages([
+        ...nextMessages,
+        {
+          role: "assistant",
+          content: "요청을 풀가동화 카드뉴스 매시간 배포로 인식했습니다. 기존 풀가동화 계정 설정을 사용해서 정보 수집, 카드뉴스 생성, IG/Threads 배포 파이프라인을 매시간 실행 대상으로 등록할 수 있습니다. 실제 배포/예약 작업이므로 아래 버튼으로 한 번 더 확인해 주세요.",
+          choices: [FULL_AUTO_CONFIRM_LABEL, FULL_AUTO_OPEN_LABEL],
+          time: new Date().toISOString(),
+        },
+      ]);
+      setSending(false);
+      setActiveQuick(null);
+      return;
+    }
+
     try {
       const raw = await callGemini(
         nextMessages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
@@ -339,7 +472,7 @@ export default function EAttackAssistantDock({
                 <button
                   key={label}
                   onClick={() => sendPrompt(label)}
-                  disabled={sending}
+                  disabled={sending || executingCommand}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all disabled:opacity-40 ${
                     activeQuick === label
                       ? "bg-violet-600 text-white border-violet-600"
@@ -384,7 +517,7 @@ export default function EAttackAssistantDock({
                         <button
                           key={choice}
                           onClick={() => sendPrompt(choice)}
-                          disabled={sending}
+                          disabled={sending || executingCommand}
                           className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-all disabled:opacity-40"
                         >
                           {choice}
@@ -414,10 +547,10 @@ export default function EAttackAssistantDock({
             <div className="flex items-center gap-2">
               <button
                 onClick={handleSubmit}
-                disabled={sending || !input.trim()}
+                disabled={sending || executingCommand || !input.trim()}
                 className="flex-1 py-2.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl transition-all"
               >
-                {sending ? "응답 중..." : "보내기"}
+                {executingCommand ? "실행 중..." : sending ? "응답 중..." : "보내기"}
               </button>
             </div>
           </div>

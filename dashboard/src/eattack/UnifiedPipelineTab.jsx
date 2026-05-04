@@ -840,6 +840,7 @@ export default function UnifiedPipelineTab() {
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
+  const [captionGenerating, setCaptionGenerating] = useState(false);
   const [igDirectUrls, setIgDirectUrls] = useState("");
   const [igLogs, setIgLogs] = useState([]);
   const [uploadPostTitle, setUploadPostTitle] = useState("");
@@ -1288,6 +1289,78 @@ export default function UnifiedPipelineTab() {
       .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url));
     setIgDirectUrls(urls.join("\n"));
     addLog("info", `공개 URL ${urls.length}개를 채웠습니다`);
+  };
+
+  const buildFallbackCaption = () => {
+    const sourceSlides = cards.length ? cards : plan?.slides || [];
+    const title = sourceSlides[0]?.headline || topic;
+    const points = sourceSlides
+      .slice(0, 5)
+      .map((slide) => slide.headline)
+      .filter(Boolean)
+      .map((headline, i) => `${i + 1}. ${headline}`)
+      .join("\n");
+    const brandLine = brandName ? `\n\n${brandName}` : "";
+    return [
+      title,
+      points ? `\n${points}` : "",
+      brandLine,
+      "\n\n#카드뉴스 #인스타그램 #콘텐츠 #트렌드",
+    ].join("").trim();
+  };
+
+  const generateCaptionFromPlan = async () => {
+    const sourceSlides = cards.length ? cards : plan?.slides || [];
+    if (!sourceSlides.length) {
+      setError("기획된 카드뉴스 내용이 없습니다. 먼저 기획 단계를 완료해주세요.");
+      return;
+    }
+
+    setCaptionGenerating(true);
+    setError("");
+    try {
+      const planningText = sourceSlides
+        .map((slide, i) => [
+          `${i + 1}. ${slide.headline || ""}`,
+          slide.body ? `본문: ${slide.body}` : "",
+          slide.part ? `구성: ${slide.part}` : "",
+        ].filter(Boolean).join("\n"))
+        .join("\n\n");
+
+      const prompt = `
+다음 카드뉴스 기획안을 바탕으로 인스타그램 게시 캡션 1개를 작성해줘.
+
+주제: ${topic || "미입력"}
+브랜드: ${brandName || "없음"}
+톤: ${tone}
+목적: ${purpose}
+
+기획안:
+${planningText}
+
+규칙:
+- 바로 붙여넣어 게시할 본문만 출력
+- 첫 줄은 후킹 문장
+- 2~4개의 짧은 문단
+- 카드뉴스 내용을 자연스럽게 요약
+- CTA 1문장 포함
+- 해시태그 4~8개를 마지막 줄에 포함
+- 마크다운, 제목, 따옴표, 설명 금지
+`.trim();
+
+      const raw = await callGemini(
+        [{ role: "user", content: prompt }],
+        "인스타그램 카드뉴스 캡션 작성 전문가. 게시 가능한 캡션 본문만 반환합니다."
+      );
+      const caption = String(raw || "").trim();
+      setPostCaption(caption || buildFallbackCaption());
+      addLog("info", "기획 기반 인스타그램 캡션을 작성했습니다.");
+    } catch (e) {
+      setPostCaption(buildFallbackCaption());
+      addLog("error", `캡션 AI 작성 실패: ${e.message}`);
+    } finally {
+      setCaptionGenerating(false);
+    }
   };
 
   const postDirectInstagramUrls = async () => {
@@ -2333,6 +2406,14 @@ export default function UnifiedPipelineTab() {
             <label className="text-xs font-bold text-gray-600 block mb-1.5">
               게시 캡션 <span className="font-normal text-gray-400">(선택 — 비우면 주제 사용)</span>
             </label>
+            <button
+              type="button"
+              onClick={generateCaptionFromPlan}
+              disabled={captionGenerating || !(cards.length || plan?.slides?.length)}
+              className="mb-2 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-pink-200 text-pink-600 bg-pink-50 hover:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              {captionGenerating ? "작성 중..." : "기획 기반 캡션 작성"}
+            </button>
             <textarea
               rows={3}
               placeholder={`예: ${topic}\n\n#카드뉴스 #정보 #트렌드`}
