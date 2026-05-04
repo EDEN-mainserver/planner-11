@@ -43,7 +43,7 @@ function getUploadPostValidationMessage({ title, user, platforms, cardsCount, ca
   if (mediaCount > UPLOAD_POST_MAX_CAROUSEL_ITEMS) {
     return "캐러셀은 최대 10장까지 업로드할 수 있습니다";
   }
-  if (!title.trim()) return "게시 제목을 입력해주세요";
+  if (!title.trim()) return "게시 캡션을 입력해주세요";
   if (!user.trim()) return "Upload Post managed user 값을 입력해주세요";
   if (!platforms.length) return "게시할 플랫폼을 하나 이상 선택해주세요";
   return "";
@@ -900,7 +900,7 @@ export default function UnifiedPipelineTab() {
   const [igLogs, setIgLogs] = useState([]);
   const [uploadPostTitle, setUploadPostTitle] = useState("");
   const [uploadPostUser, setUploadPostUser] = useState(() => getSession()?.username || "");
-  const [uploadPostPlatforms, setUploadPostPlatforms] = useState(["tiktok"]);
+  const [uploadPostPlatforms, setUploadPostPlatforms] = useState(["instagram"]);
   const [uploadPostPosting, setUploadPostPosting] = useState(false);
   const [uploadPostResult, setUploadPostResult] = useState(null);
   const uploadPostValidationMessage = getUploadPostValidationMessage({
@@ -1364,7 +1364,7 @@ export default function UnifiedPipelineTab() {
     ].join("").trim();
   };
 
-  const generateCaptionFromPlan = async () => {
+  const generateCaptionFromPlan = async (target = "instagram") => {
     const sourceSlides = cards.length ? cards : plan?.slides || [];
     if (!sourceSlides.length) {
       setError("기획된 카드뉴스 내용이 없습니다. 먼저 기획 단계를 완료해주세요.");
@@ -1408,10 +1408,23 @@ ${planningText}
         "인스타그램 카드뉴스 캡션 작성 전문가. 게시 가능한 캡션 본문만 반환합니다."
       );
       const caption = String(raw || "").trim();
-      setPostCaption(caption || buildFallbackCaption());
-      addLog("info", "기획 기반 인스타그램 캡션을 작성했습니다.");
+      const nextCaption = caption || buildFallbackCaption();
+      if (target === "uploadPost") {
+        setUploadPostTitle(nextCaption);
+        setUploadPostResult(null);
+        addLog("info", "기획 기반 Upload Post 캡션을 작성했습니다.");
+      } else {
+        setPostCaption(nextCaption);
+        addLog("info", "기획 기반 인스타그램 캡션을 작성했습니다.");
+      }
     } catch (e) {
-      setPostCaption(buildFallbackCaption());
+      const fallback = buildFallbackCaption();
+      if (target === "uploadPost") {
+        setUploadPostTitle(fallback);
+        setUploadPostResult(null);
+      } else {
+        setPostCaption(fallback);
+      }
       addLog("error", `캡션 AI 작성 실패: ${e.message}`);
     } finally {
       setCaptionGenerating(false);
@@ -1477,14 +1490,6 @@ ${planningText}
       setIgPosting(false);
       setIgCaptureProgress({ step: "", done: 0, total: 0 });
     }
-  };
-
-  const toggleUploadPostPlatform = (platform) => {
-    setUploadPostPlatforms((prev) =>
-      prev.includes(platform)
-        ? prev.filter((item) => item !== platform)
-        : [...prev, platform]
-    );
   };
 
   const uploadCarouselToUploadPost = async () => {
@@ -2463,7 +2468,7 @@ ${planningText}
             </label>
             <button
               type="button"
-              onClick={generateCaptionFromPlan}
+              onClick={() => generateCaptionFromPlan("instagram")}
               disabled={captionGenerating || !(cards.length || plan?.slides?.length)}
               className="mb-2 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-pink-200 text-pink-600 bg-pink-50 hover:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
@@ -2590,17 +2595,25 @@ ${planningText}
                 </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">게시 제목</label>
-                <input
-                  type="text"
+                <label className="text-xs font-bold text-gray-600 block mb-1.5">게시 캡션</label>
+                <textarea
+                  rows={4}
                   value={uploadPostTitle}
                   onChange={(e) => {
                     setUploadPostTitle(e.target.value);
                     setUploadPostResult(null);
                   }}
-                  placeholder={topic || "Your Video Title"}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
+                  placeholder={postCaption || topic || "Upload Post caption"}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white resize-none leading-relaxed"
                 />
+                <button
+                  type="button"
+                  onClick={() => generateCaptionFromPlan("uploadPost")}
+                  disabled={captionGenerating || !(cards.length || plan?.slides?.length)}
+                  className="mt-2 px-2 py-0.5 rounded text-[10px] font-bold border border-pink-200 text-pink-600 bg-pink-50 hover:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  {captionGenerating ? "작성 중..." : "기획 기반 캡션 넣기"}
+                </button>
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-600 block mb-1.5">Managed User</label>
@@ -2621,18 +2634,19 @@ ${planningText}
               <div>
                 <label className="text-xs font-bold text-gray-600 block mb-1.5">플랫폼</label>
                 <div className="flex flex-wrap gap-1.5">
-                  {["tiktok", "instagram", "youtube", "facebook"].map((platform) => (
+                  {["instagram", "tiktok", "youtube", "facebook"].map((platform) => (
                     <button
                       key={platform}
                       type="button"
                       onClick={() => {
-                        toggleUploadPostPlatform(platform);
+                        if (platform === "instagram") setUploadPostPlatforms(["instagram"]);
                         setUploadPostResult(null);
                       }}
+                      disabled={platform !== "instagram"}
                       className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
                         uploadPostPlatforms.includes(platform)
                           ? "bg-pink-500 border-pink-500 text-white"
-                          : "bg-white border-gray-200 text-gray-500 hover:border-pink-200 hover:text-pink-600"
+                          : "bg-white border-gray-200 text-gray-400 disabled:opacity-40 disabled:cursor-not-allowed"
                       }`}
                     >
                       {platform}
