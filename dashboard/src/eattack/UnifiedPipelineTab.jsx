@@ -133,10 +133,65 @@ JSON만 반환.`,
   );
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("기획서 파싱 실패 — 다시 시도해주세요");
-  return JSON.parse(match[0]);
+  return parsePlanningJson(raw);
 }
 
 // ── 벤치마킹 디자인 → HTML 템플릿 추출 ──
+function extractJsonObject(raw) {
+  const text = String(raw || "").trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+  const match = text.match(/\{[\s\S]*\}/);
+  return match ? match[0] : "";
+}
+
+function normalizePlanData(planData) {
+  const slides = Array.isArray(planData?.slides) ? planData.slides : [];
+  return {
+    ...planData,
+    type: planData?.type || "카드뉴스",
+    slides: slides.map((slide, i) => {
+      const bodyLines = Array.isArray(slide.bodyLines)
+        ? slide.bodyLines.map((line) => String(line || "").trim()).filter(Boolean)
+        : [];
+      return {
+        ...slide,
+        num: Number(slide.num) || i + 1,
+        part: slide.part || (i === 0 ? "도입" : i === slides.length - 1 ? "마무리" : "본문"),
+        headline: String(slide.headline || "").trim(),
+        bodyLines,
+        body: bodyLines.length ? bodyLines.join("\n") : String(slide.body || "").trim(),
+        imagePrompt: String(slide.imagePrompt || "").trim(),
+      };
+    }),
+  };
+}
+
+async function parsePlanningJson(raw) {
+  const jsonText = extractJsonObject(raw);
+  if (!jsonText) throw new Error("기획서 파싱 실패 - JSON 응답이 없습니다. 다시 시도해주세요.");
+
+  try {
+    return normalizePlanData(JSON.parse(jsonText));
+  } catch (firstError) {
+    const repaired = await callGemini(
+      [
+        {
+          role: "user",
+          content: `다음 텍스트를 유효한 JSON으로 고쳐줘. 설명 없이 JSON만 반환해.\n\n${jsonText}`,
+        },
+      ],
+      "JSON 복구 전문가. 유효한 JSON만 반환합니다."
+    );
+    const repairedJson = extractJsonObject(repaired);
+    try {
+      return normalizePlanData(JSON.parse(repairedJson));
+    } catch {
+      throw new Error(`기획서 JSON 파싱 실패: ${firstError.message}`);
+    }
+  }
+}
+
 async function analyzeDesignToTemplate(base64, mimeType) {
   const raw = await callGemini(
     [
