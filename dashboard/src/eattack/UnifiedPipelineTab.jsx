@@ -2777,7 +2777,7 @@ ${buildCaptionContext()}`,
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : "bg-red-50 text-red-600 border-red-200"
                         }`}>
-                          {item.status === "pending" && item.retryAt ? "retrying" : item.status}
+                          {item.status === "pending" && item.retryAt ? "재시도 대기" : item.status}
                         </span>
                         <span className="ml-auto text-[10px] text-violet-500 font-mono">
                           {item.images?.length || item.imageUrls?.length || 0}장
