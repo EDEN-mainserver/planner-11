@@ -23,11 +23,19 @@ class ProjectResponse(BaseModel):
 
 # --- 쇼츠 생성 ---
 
+class SubtitleSegment(BaseModel):
+    start: float
+    end: float
+    text: str
+
+
 class GenerateOptions(BaseModel):
     remove_silence: bool = False
     add_hook_voice: bool = False
     subtitle_style: str = Field("karaoke", pattern="^(karaoke|highlight|simple)$")
     language: str = "ko"
+    subtitle_source: str = Field("whisper", pattern="^(whisper|youtube_auto|srt|none)$")
+    subtitle_segments: list[SubtitleSegment] | None = None
 
 
 class GenerateRequest(BaseModel):

@@ -74,6 +74,8 @@ class ShortsGenerationPipeline:
         add_hook_voice = opts.get("add_hook_voice", False)
         subtitle_style = opts.get("subtitle_style", "karaoke")
         language = opts.get("language", "ko")
+        subtitle_source = opts.get("subtitle_source", "whisper")
+        external_segments = opts.get("subtitle_segments")  # youtube_auto / srt 에서 전달된 세그먼트
 
         output_dir = Path(settings.output_dir) / project_id
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -97,10 +99,26 @@ class ShortsGenerationPipeline:
         total_duration = source_info.get("duration", 0)
         logger.info(f"[{project_id}] 소스 확보 완료: {total_duration}초")
 
-        # --- 2. Whisper 자막 생성 ---
-        logger.info(f"[{project_id}] 2단계: 자막 생성")
-        transcript = await transcriber.transcribe(source_path, language)
-        logger.info(f"[{project_id}] 자막 생성 완료: {len(transcript['segments'])}개 세그먼트")
+        # --- 2. 자막 생성 (외부 세그먼트 우선, 없으면 Whisper) ---
+        logger.info(f"[{project_id}] 2단계: 자막 생성 (소스: {subtitle_source})")
+        if subtitle_source != "whisper" and external_segments:
+            # youtube_auto 또는 srt — 외부 세그먼트를 words 포맷으로 변환
+            words = [
+                {"start": s["start"], "end": s["end"], "word": s["text"]}
+                for s in external_segments
+            ]
+            transcript = {
+                "text": " ".join(s["text"] for s in external_segments),
+                "segments": external_segments,
+                "words": words,
+            }
+            logger.info(f"[{project_id}] 외부 자막 사용: {len(external_segments)}개 세그먼트")
+        elif subtitle_source == "none":
+            transcript = {"text": "", "segments": [], "words": []}
+            logger.info(f"[{project_id}] 자막 없음 모드")
+        else:
+            transcript = await transcriber.transcribe(source_path, language)
+            logger.info(f"[{project_id}] Whisper 전사 완료: {len(transcript['segments'])}개 세그먼트")
 
         # --- 3. GPT 하이라이트 감지 ---
         logger.info(f"[{project_id}] 3단계: 하이라이트 감지")

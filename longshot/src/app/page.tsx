@@ -7,9 +7,40 @@ import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+type SubtitleSource = "youtube_auto" | "srt" | "none";
+type Segment = { start: number; end: number; text: string };
+
+function parseSRTTime(t: string): number {
+  const [hms, ms] = t.split(",");
+  const [h, m, s] = hms.split(":").map(Number);
+  return h * 3600 + m * 60 + s + Number(ms) / 1000;
+}
+
+function parseSRT(content: string): Segment[] {
+  return content
+    .trim()
+    .split(/\n\n+/)
+    .flatMap((block) => {
+      const lines = block.trim().split("\n");
+      if (lines.length < 3) return [];
+      const m = lines[1].match(
+        /(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})/
+      );
+      if (!m) return [];
+      return [
+        {
+          start: parseSRTTime(m[1]),
+          end: parseSRTTime(m[2]),
+          text: lines.slice(2).join(" ").trim(),
+        },
+      ];
+    });
+}
+
 export default function Home() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const srtInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<"youtube" | "upload">("youtube");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -21,15 +52,64 @@ export default function Home() {
   const [addHookVoice, setAddHookVoice] = useState(true);
   const [subtitleStyle, setSubtitleStyle] = useState("karaoke");
 
+  // 자막 소스 상태
+  const [subtitleSource, setSubtitleSource] = useState<SubtitleSource>("youtube_auto");
+  const [srtFile, setSrtFile] = useState<File | null>(null);
+  const [srtSegments, setSrtSegments] = useState<Segment[] | null>(null);
+
+  const handleSrtFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSrtFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const content = ev.target?.result as string;
+      setSrtSegments(parseSRT(content));
+    };
+    reader.readAsText(file, "utf-8");
+  };
+
+  const handleTabChange = (tab: "youtube" | "upload") => {
+    setActiveTab(tab);
+    // 업로드 탭은 youtube_auto 사용 불가
+    if (tab === "upload" && subtitleSource === "youtube_auto") {
+      setSubtitleSource("srt");
+    }
+  };
+
   const handleYoutubeSubmit = async () => {
     if (!youtubeUrl.trim()) {
       setError("유튜브 링크를 입력해주세요");
+      return;
+    }
+    if (subtitleSource === "srt" && !srtSegments) {
+      setError("SRT 파일을 첨부해주세요");
       return;
     }
     setIsSubmitting(true);
     setError("");
 
     try {
+      // 자막 소스에 따라 세그먼트 수집
+      let subtitleSegments: Segment[] | null = null;
+
+      if (subtitleSource === "youtube_auto") {
+        const tRes = await fetch("/api/transcript", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: youtubeUrl }),
+        });
+        if (tRes.ok) {
+          const tData = await tRes.json();
+          subtitleSegments = tData.segments;
+        } else {
+          const tErr = await tRes.json().catch(() => ({}));
+          throw new Error(tErr.error || "유튜브 자막을 가져오지 못했습니다");
+        }
+      } else if (subtitleSource === "srt") {
+        subtitleSegments = srtSegments;
+      }
+
       // 1. 프로젝트 생성
       const res = await fetch(`${API_URL}/api/projects/`, {
         method: "POST",
@@ -50,14 +130,20 @@ export default function Home() {
             remove_silence: removeSilence,
             add_hook_voice: addHookVoice,
             subtitle_style: subtitleStyle,
+            subtitle_source: subtitleSource,
+            subtitle_segments: subtitleSegments,
           },
         }),
       });
 
       // 3. 대시보드로 이동
       router.push("/dashboard");
-    } catch {
-      setError("서버 연결에 실패했습니다. 백엔드가 실행 중인지 확인해주세요.");
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "서버 연결에 실패했습니다. 백엔드가 실행 중인지 확인해주세요."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -70,6 +156,11 @@ export default function Home() {
     }
     setIsSubmitting(true);
     setError("");
+
+    if (subtitleSource === "srt" && !srtSegments) {
+      setError("SRT 파일을 첨부해주세요");
+      return;
+    }
 
     try {
       // 1. 파일 업로드 + 프로젝트 생성
@@ -91,6 +182,8 @@ export default function Home() {
             remove_silence: removeSilence,
             add_hook_voice: addHookVoice,
             subtitle_style: subtitleStyle,
+            subtitle_source: subtitleSource,
+            subtitle_segments: subtitleSource === "srt" ? srtSegments : null,
           },
         }),
       });
@@ -151,7 +244,7 @@ export default function Home() {
             {/* 탭 */}
             <div className="flex gap-1 mb-4 bg-muted rounded-lg p-1">
               <button
-                onClick={() => setActiveTab("youtube")}
+                onClick={() => handleTabChange("youtube")}
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
                   activeTab === "youtube"
                     ? "bg-background text-foreground shadow-sm"
@@ -161,7 +254,7 @@ export default function Home() {
                 유튜브 링크
               </button>
               <button
-                onClick={() => setActiveTab("upload")}
+                onClick={() => handleTabChange("upload")}
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
                   activeTab === "upload"
                     ? "bg-background text-foreground shadow-sm"
@@ -281,6 +374,77 @@ export default function Home() {
                   <option value="highlight">자막: 하이라이트</option>
                   <option value="simple">자막: 심플</option>
                 </select>
+              </div>
+
+              {/* 자막 소스 선택 */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground text-left">자막 소스</p>
+                <div className="flex flex-wrap gap-2">
+                  {activeTab === "youtube" && (
+                    <button
+                      type="button"
+                      onClick={() => setSubtitleSource("youtube_auto")}
+                      className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                        subtitleSource === "youtube_auto"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                      }`}
+                    >
+                      YouTube 자동자막
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSubtitleSource("srt")}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                      subtitleSource === "srt"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                    }`}
+                  >
+                    SRT 파일 첨부
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubtitleSource("none")}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                      subtitleSource === "none"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                    }`}
+                  >
+                    자막 없음
+                  </button>
+                </div>
+
+                {/* SRT 파일 선택 */}
+                {subtitleSource === "srt" && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={srtInputRef}
+                      type="file"
+                      accept=".srt"
+                      className="hidden"
+                      onChange={handleSrtFile}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => srtInputRef.current?.click()}
+                      className={`text-xs px-3 py-1.5 rounded-lg border border-dashed transition-colors ${
+                        srtFile
+                          ? "border-primary text-primary bg-primary/5"
+                          : "border-border text-muted-foreground hover:border-primary/50"
+                      }`}
+                    >
+                      {srtFile ? `✓ ${srtFile.name}` : "SRT 파일 선택"}
+                    </button>
+                    {srtSegments && (
+                      <span className="text-xs text-muted-foreground">
+                        {srtSegments.length}개 자막
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
