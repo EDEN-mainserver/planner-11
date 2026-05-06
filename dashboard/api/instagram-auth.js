@@ -3,7 +3,7 @@
 
 const APP_ID     = process.env.INSTAGRAM_APP_ID     || "1657867098880562";
 const APP_SECRET = process.env.INSTAGRAM_APP_SECRET || "";
-const REDIRECT_URI = "https://planforge-ui.vercel.app/auth/instagram";
+const REDIRECT_URI = "https://planforge-ui.vercel.app/auth/instagram/";
 
 function popupHtml(data) {
   return `<!DOCTYPE html>
