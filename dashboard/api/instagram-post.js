@@ -1,10 +1,41 @@
-// ig-mcp 방식: 공개 URL → Instagram Graph API 직접 호출
-// ref: github.com/jlbadano/ig-mcp
+// Instagram Graph API 게시 (ig-mcp 방식)
+// base64 data URL → Vercel Blob 임시 업로드 → 공개 URL → Graph API → Blob 삭제
+
+import { put, del } from "@vercel/blob";
 
 const IG_API = "https://graph.facebook.com/v22.0";
 
+export const config = {
+  api: {
+    bodyParser: { sizeLimit: "50mb" },
+    maxDuration: 120,
+  },
+};
+
 function normalizeToken(value) {
   return String(value || "").replace(/[\s​-‍﻿]+/g, "").trim();
+}
+
+// base64 data URL → Vercel Blob 업로드 → 공개 URL 반환
+async function toPublicUrl(image, index) {
+  // 이미 공개 URL이면 그대로 사용
+  if (String(image).startsWith("http")) return { url: image, blobUrl: null };
+
+  // base64 data URL 처리
+  const match = String(image).match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error(`이미지 ${index + 1}: 지원하지 않는 형식입니다`);
+
+  const mimeType = match[1];
+  const buffer = Buffer.from(match[2], "base64");
+  const ext = mimeType.includes("png") ? "png" : "jpg";
+  const filename = `ig-temp/${Date.now()}-${index}.${ext}`;
+
+  const blob = await put(filename, buffer, {
+    access: "public",
+    contentType: mimeType,
+  });
+
+  return { url: blob.url, blobUrl: blob.url };
 }
 
 async function createContainer(accountId, accessToken, imageUrl, caption, isCarouselItem) {
@@ -73,20 +104,27 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "accountId와 accessToken이 필요합니다" });
   }
   if (!Array.isArray(images) || images.length === 0) {
-    return res.status(400).json({ error: "images 배열이 필요합니다 (공개 URL)" });
+    return res.status(400).json({ error: "이미지가 없습니다" });
   }
-  if (images.some(url => !String(url).startsWith("http"))) {
-    return res.status(400).json({ error: "images는 공개 https:// URL이어야 합니다" });
-  }
+
+  const blobUrls = [];
 
   try {
-    let containerId;
+    // 1. 모든 이미지를 공개 URL로 변환 (base64면 Blob 업로드)
+    const publicUrls = [];
+    for (let i = 0; i < images.length; i++) {
+      const { url, blobUrl } = await toPublicUrl(images[i], i);
+      publicUrls.push(url);
+      if (blobUrl) blobUrls.push(blobUrl);
+    }
 
-    if (images.length === 1) {
-      containerId = await createContainer(accountId, accessToken, images[0], caption || "", false);
+    // 2. Instagram 게시
+    let containerId;
+    if (publicUrls.length === 1) {
+      containerId = await createContainer(accountId, accessToken, publicUrls[0], caption || "", false);
     } else {
       const childIds = [];
-      for (const url of images) {
+      for (const url of publicUrls) {
         childIds.push(await createContainer(accountId, accessToken, url, "", true));
       }
       containerId = await createCarouselContainer(accountId, accessToken, childIds, caption || "");
@@ -98,5 +136,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, mediaId, permalink });
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  } finally {
+    // 3. Blob 즉시 삭제 (임시 파일 정리)
+    if (blobUrls.length > 0) {
+      Promise.allSettled(blobUrls.map((url) => del(url))).catch(() => {});
+    }
   }
 }

@@ -1111,9 +1111,9 @@ export default function UnifiedPipelineTab() {
   };
 
   const postToInstagram = async () => {
-    const images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.startsWith("http"));
+    const images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
     if (images.length === 0) {
-      setError("게시할 공개 이미지 URL이 없습니다. AI 이미지 생성 후 다시 시도해주세요.");
+      setError("게시할 이미지가 없습니다. 이미지 생성 후 다시 시도해주세요.");
       return;
     }
     setIgPosting(true);
