@@ -1,6 +1,6 @@
 // 통합 카드뉴스 파이프라인
 // 크롤링/리서치 → 기획 → 이미지 생성 → 카드 조립 → 배포
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { callGemini, generateImage } from "../utils/gemini";
 import LoginModal from "./LoginModal";
 import { getSession, clearSession } from "../utils/authSession";
@@ -1004,7 +1004,7 @@ export default function UnifiedPipelineTab() {
     setSession(null);
   };
 
-  const loadInstagramAutoMonitor = async (runId = null) => {
+  const loadInstagramAutoMonitor = useCallback(async (runId = null) => {
     if (!session?.username) return null;
     setIgAutoMonitorLoading(true);
     try {
@@ -1023,7 +1023,7 @@ export default function UnifiedPipelineTab() {
     } finally {
       setIgAutoMonitorLoading(false);
     }
-  };
+  }, [session?.username]);
 
   useEffect(() => {
     if (!session?.username) return;
@@ -1056,7 +1056,7 @@ export default function UnifiedPipelineTab() {
 
     loadAutoState();
     return () => { canceled = true; };
-  }, [session?.username]);
+  }, [session?.username, loadInstagramAutoMonitor]);
 
   // 로그인 안 된 경우 모달 표시
   if (!session) {
