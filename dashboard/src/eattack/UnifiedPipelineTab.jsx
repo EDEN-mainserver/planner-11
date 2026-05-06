@@ -506,10 +506,10 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         flex-shrink:0;border:2px solid rgba(155,142,255,.3);">
         <span style="color:#fff;font-size:34px;font-weight:900;">${esc(brand).charAt(0)}</span>
       </div>
-      <div style="flex:1;overflow:hidden;">
-        <div style="font-size:28px;font-weight:900;color:#111;margin-bottom:4px;
+      <div style="flex:1;overflow:hidden;min-width:0;display:flex;flex-direction:column;gap:4px;">
+        <div style="font-size:28px;font-weight:900;color:#111;line-height:1.1;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(brand)}</div>
-        <div style="font-size:19px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(topic)}</div>
+        <div style="font-size:16px;color:#666;line-height:1.25;word-break:keep-all;${clampStyle(1)}">${esc(topic)}</div>
       </div>
       <div style="background:#4c6ef5;color:#fff;font-size:21px;font-weight:700;
         padding:13px 26px;border-radius:11px;flex-shrink:0;white-space:nowrap;">Follow</div>
@@ -614,10 +614,10 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
           ${statItems.map((b, ii) => {
             const numMatch = b.match(/(\d[\d,]*%?|\d+배|\d+만|\d+억|\d+개|\d+명|\d+시간)/);
             const num = numMatch ? numMatch[1] : `0${ii+1}`;
-            const label = b.replace(num, '').trim().slice(0, 18) || esc(b).slice(0, 18);
-            return `<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:16px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;">
+            const label = b.replace(num, '').trim().slice(0, 28) || esc(b).slice(0, 28);
+            return `<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:22px 16px 16px;display:flex;flex-direction:column;justify-content:flex-start;gap:10px;overflow:hidden;">
               <div style="font-size:36px;font-weight:900;color:${statColors[ii % 4]};line-height:1;margin-bottom:6px;overflow:hidden;white-space:nowrap;">${esc(num)}</div>
-              <div style="font-size:15px;color:#aaa;word-break:keep-all;line-height:1.3;${clampStyle(2)}">${esc(label)}</div>
+              <div style="font-size:16px;color:#aaa;word-break:keep-all;line-height:1.35;${clampStyle(1)}">${esc(label)}</div>
             </div>`;
           }).join('')}
         </div>
@@ -689,7 +689,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         if (line.type === 'blank') return `<div style="display:flex;align-items:center;height:26px;">${numHtml}</div>`;
         if (line.type === 'comment') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#6e7681;font-size:16px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span></div>`;
         if (line.type === 'bool') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;">: </span><span style="color:#ff7b72;font-size:16px;font-family:'Courier New',monospace;">${line.value}</span></div>`;
-        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:16px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.35;${clampStyle(1)}flex:1;min-width:0;">&quot;${line.value}&quot;</span></div>`;
+        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:15px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.45;${clampStyle(2)}flex:1;min-width:0;">&quot;${line.value}&quot;</span></div>`;
       };
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
