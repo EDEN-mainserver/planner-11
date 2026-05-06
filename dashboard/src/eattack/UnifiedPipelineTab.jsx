@@ -875,6 +875,8 @@ export default function UnifiedPipelineTab() {
   // 소셜 설정 (사용자별 로드)
   const [igConfig, setIgConfig]   = useState(() => normalizeInstagramConfig(loadSocial(igKey, getSession()?.username || "__guest")));
   const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
+  const [igPosting, setIgPosting] = useState(false);
+  const [igResult,  setIgResult]  = useState(null);
   const [thPosting, setThPosting] = useState(false);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
@@ -1105,6 +1107,37 @@ export default function UnifiedPipelineTab() {
     setCards([]);
     setHtmlContent("");
     setError("");
+    setIgResult(null);
+  };
+
+  const postToInstagram = async () => {
+    const images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.startsWith("http"));
+    if (images.length === 0) {
+      setError("게시할 공개 이미지 URL이 없습니다. AI 이미지 생성 후 다시 시도해주세요.");
+      return;
+    }
+    setIgPosting(true);
+    setIgResult(null);
+    setError("");
+    try {
+      const res = await fetch("/api/instagram-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: igConfig.accountId,
+          accessToken: igConfig.accessToken,
+          images,
+          caption: postCaption || topic,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "게시 실패");
+      setIgResult({ ok: true, permalink: data.permalink });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setIgPosting(false);
+    }
   };
 
   // ── 스텝 인디케이터 ──
@@ -1937,16 +1970,42 @@ export default function UnifiedPipelineTab() {
 
           {/* 게시 버튼 */}
           <button
-            disabled={!igConfig.accountId || !igConfig.accessToken}
-            className="w-full py-3 bg-gradient-to-r from-fuchsia-500 to-pink-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+            onClick={postToInstagram}
+            disabled={igPosting || !igConfig.accountId || !igConfig.accessToken}
+            className="w-full py-3 bg-gradient-to-r from-fuchsia-500 to-pink-500 hover:from-fuchsia-600 hover:to-pink-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
-              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
-            </svg>
-            인스타그램에 게시하기
+            {igPosting ? (
+              <>
+                <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                게시 중...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+                </svg>
+                인스타그램에 게시하기
+              </>
+            )}
           </button>
+
+          {igResult?.ok && (
+            <div className="px-3 py-2.5 rounded-xl text-xs font-medium bg-green-50 border border-green-200 text-green-700 flex items-start gap-2">
+              <span>✅</span>
+              <div>
+                <span>게시 완료!</span>
+                {igResult.permalink && (
+                  <a href={igResult.permalink} target="_blank" rel="noopener noreferrer" className="block mt-1 underline">
+                    게시물 보기
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Threads ── */}
