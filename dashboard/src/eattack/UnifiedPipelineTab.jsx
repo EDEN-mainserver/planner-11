@@ -34,6 +34,9 @@ const PURPOSE_OPTS = [
 ];
 const STEP_LABELS = ["설정", "리서치", "기획", "이미지", "조립", "배포"];
 const threadsKey = (u) => `eden_threads_${u}_v1`;
+const captionPromptKey = (u) => `eden_caption_prompt_${u}_v1`;
+const DEFAULT_CAPTION_PROMPT =
+  "기획을 바탕으로 인스타그램 게시용 캡션을 작성해줘. 첫 문장은 시선을 끌고, 본문은 2~4문장으로 자연스럽게 풀어 쓰고, 마지막에는 관련 해시태그 5~8개를 붙여줘.";
 
 // ── 소셜 설정 로드/저장 (사용자별) ──
 function loadSocial(keyFn, username) {
@@ -42,6 +45,13 @@ function loadSocial(keyFn, username) {
 }
 function saveSocial(keyFn, username, data) {
   localStorage.setItem(keyFn(username), JSON.stringify(data));
+}
+function loadLocalText(key) {
+  try { return localStorage.getItem(key) || ""; }
+  catch { return ""; }
+}
+function saveLocalText(key, value) {
+  localStorage.setItem(key, value);
 }
 
 function normalizeInstagramToken(value) {
@@ -884,6 +894,11 @@ export default function UnifiedPipelineTab() {
   const [thPosting, setThPosting] = useState(false);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
+  const [captionPrompt, setCaptionPrompt] = useState(() =>
+    loadLocalText(captionPromptKey(getSession()?.username || "__guest")) || DEFAULT_CAPTION_PROMPT
+  );
+  const [captionSaving, setCaptionSaving] = useState(false);
+  const [captionGenerating, setCaptionGenerating] = useState(false);
 
   useEffect(() => {
     emitEAttackContext({
@@ -910,6 +925,7 @@ export default function UnifiedPipelineTab() {
     setSession(s);
     setIgConfig(normalizeInstagramConfig(loadSocial(igKey, s.username)));
     setThConfig(loadSocial(threadsKey, s.username));
+    setCaptionPrompt(loadLocalText(captionPromptKey(s.username)) || DEFAULT_CAPTION_PROMPT);
   };
 
   const handleLogout = () => {
@@ -1013,6 +1029,89 @@ export default function UnifiedPipelineTab() {
       setCardHtmls(buildPremiumTemplate._lastCardHtmls || []);
       return next;
     });
+  };
+
+  const persistCaptionPrompt = async () => {
+    const username = session?.username || "__guest";
+    setCaptionSaving(true);
+    try {
+      const nextPrompt = String(captionPrompt || "").trim() || DEFAULT_CAPTION_PROMPT;
+      saveLocalText(captionPromptKey(username), nextPrompt);
+      setCaptionPrompt(nextPrompt);
+    } finally {
+      setCaptionSaving(false);
+    }
+  };
+
+  const buildCaptionContext = () => {
+    const sourceCards = cards.length > 0 ? cards : plan?.slides || [];
+    const cardLines = sourceCards.map((card, i) => {
+      const headline = String(card.headline || "").trim();
+      const body = String(card.body || "").trim().replace(/\n+/g, " | ");
+      return `${i + 1}. ${headline}${body ? ` / ${body}` : ""}`;
+    }).filter(Boolean).join("\n");
+
+    const researchText = String(research || "").trim();
+    return [
+      `주제: ${topic || ""}`,
+      `브랜드: ${brandName || "브랜드"}`,
+      `톤: ${tone}`,
+      `목적: ${purpose}`,
+      researchText ? `리서치 요약:\n${researchText}` : "",
+      cardLines ? `카드 요약:\n${cardLines}` : "",
+    ].filter(Boolean).join("\n\n");
+  };
+
+  const generateCaptionFromPrompt = async () => {
+    if (!topic?.trim()) {
+      setError("캡션을 만들 주제를 먼저 입력해주세요");
+      return;
+    }
+    setCaptionGenerating(true);
+    setError("");
+    try {
+      await persistCaptionPrompt();
+
+      const sourceCards = cards.length > 0 ? cards : plan?.slides || [];
+      const cardLines = sourceCards.map((card, i) => {
+        const headline = String(card.headline || "").trim();
+        const body = String(card.body || "").trim().replace(/\n+/g, " | ");
+        return `${i + 1}. ${headline}${body ? ` / ${body}` : ""}`;
+      }).join("\n");
+
+      const rawPrompt = String(captionPrompt || "").trim() || DEFAULT_CAPTION_PROMPT;
+      const filledPrompt = rawPrompt
+        .replaceAll("{topic}", topic || "")
+        .replaceAll("{brand}", brandName || "브랜드")
+        .replaceAll("{tone}", tone || "")
+        .replaceAll("{purpose}", purpose || "")
+        .replaceAll("{research}", String(research || "").trim())
+        .replaceAll("{cards}", cardLines);
+
+      const result = await callGemini(
+        [
+          {
+            role: "user",
+            content: `아래 캡션 작성 지시를 가장 우선으로 따르고, 문맥을 참고해 게시용 캡션만 작성해줘.
+추가 설명, 머리말, 따옴표, 코드블록 없이 캡션 본문만 출력해.
+줄바꿈과 해시태그는 지시에 맞게 자연스럽게 포함해.
+
+캡션 작성 지시:
+${filledPrompt}
+
+문맥:
+${buildCaptionContext()}`,
+          },
+        ],
+        "SNS 게시용 캡션 카피라이터. 사용자의 스타일 지시를 최우선으로 따르고, 결과물만 출력합니다."
+      );
+
+      setPostCaption(String(result || "").trim());
+    } catch (e) {
+      setError(e.message || "캡션 생성 실패");
+    } finally {
+      setCaptionGenerating(false);
+    }
   };
 
   // 벤치마킹 이미지 업로드
@@ -2006,13 +2105,41 @@ export default function UnifiedPipelineTab() {
             <label className="text-xs font-bold text-gray-600 block mb-1.5">
               게시 캡션 <span className="font-normal text-gray-400">(선택 — 비우면 주제 사용)</span>
             </label>
-            <button
-              type="button"
-              disabled
-              className="mb-2 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-pink-200 text-pink-600 bg-pink-50 opacity-40 cursor-not-allowed"
-            >
-              기획 기반 캡션 작성
-            </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col md:flex-row md:items-stretch gap-2">
+                <button
+                  type="button"
+                  onClick={generateCaptionFromPrompt}
+                  disabled={captionGenerating || !topic?.trim()}
+                  className="px-3 py-2 rounded-lg text-[11px] font-bold border border-pink-200 text-pink-600 bg-pink-50 hover:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {captionGenerating ? "캡션 생성 중..." : "기획 기반 캡션 작성"}
+                </button>
+                <textarea
+                  rows={2}
+                  placeholder={`캡션 생성 프롬프트 예시:\n{topic} 중심으로 3문장 + CTA + 해시태그 5개`}
+                  className="flex-1 w-full px-3 py-2 text-[11px] border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white resize-none leading-relaxed"
+                  value={captionPrompt}
+                  onChange={(e) => setCaptionPrompt(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={persistCaptionPrompt}
+                  disabled={captionSaving}
+                  className="px-3 py-2 rounded-lg text-[11px] font-bold border border-gray-200 text-gray-700 bg-gray-50 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {captionSaving ? "저장 중..." : "저장"}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                <code className="text-gray-500">{'{topic}'}</code>,{" "}
+                <code className="text-gray-500">{'{brand}'}</code>,{" "}
+                <code className="text-gray-500">{'{tone}'}</code>,{" "}
+                <code className="text-gray-500">{'{purpose}'}</code>,{" "}
+                <code className="text-gray-500">{'{research}'}</code>,{" "}
+                <code className="text-gray-500">{'{cards}'}</code> 를 사용할 수 있습니다.
+              </p>
+            </div>
             <textarea
               rows={3}
               placeholder={`예: ${topic}\n\n#카드뉴스 #정보 #트렌드`}
