@@ -53,6 +53,7 @@ function normalizeInstagramConfig(config = {}) {
     ...config,
     accessToken: normalizeInstagramToken(config.accessToken),
     accountId: String(config.accountId || "").trim(),
+    username: String(config.username || "").trim(),
   };
 }
 
@@ -1892,55 +1893,62 @@ export default function UnifiedPipelineTab() {
         {/* 인스타그램 설정 */}
         <div className="space-y-3 bg-gray-50 border border-gray-100 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-1">
-            {/* 인스타그램 아이콘 */}
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500">
               <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
               <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
               <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
             </svg>
             <p className="text-xs font-bold text-gray-700">인스타그램 자동 게시</p>
-            <span className="text-[10px] text-violet-600 font-semibold bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5">
-              {session.displayName} 계정
-            </span>
+            {igConfig.accessToken && igConfig.accountId
+              ? <span className="ml-auto text-[10px] font-bold bg-green-100 text-green-600 border border-green-200 rounded-full px-2 py-0.5">연동됨 · @{igConfig.username || igConfig.accountId}</span>
+              : <span className="ml-auto text-[10px] text-gray-400">미연동</span>
+            }
           </div>
 
-          {/* 액세스 토큰 — 먼저 입력 */}
-          <div>
-            <label className="text-xs font-bold text-gray-600 block mb-1.5">
-              ① 액세스 토큰 (Access Token)
-            </label>
-            <input
-              type="password"
-              placeholder="EAAxxxxxxxxxxxxxxx..."
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
-              value={igConfig.accessToken}
-              onChange={(e) => {
-                const next = { ...igConfig, accessToken: normalizeInstagramToken(e.target.value) };
-                setIgConfig(next);
-                saveSocial(igKey, session.username, next);
-              }}
-            />
-          </div>
-
-          {/* 계정 ID */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-gray-600">
-                ② 비즈니스 계정 ID
-              </label>
+          {/* OAuth 연동 버튼 */}
+          {igConfig.accessToken && igConfig.accountId ? (
+            <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-xl px-3 py-2.5">
+              <p className="text-xs text-green-700">Instagram 계정이 연동되었습니다.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  const cleared = { accessToken: "", accountId: "", username: "" };
+                  setIgConfig(cleared);
+                  saveSocial(igKey, session.username, cleared);
+                }}
+                className="text-[10px] text-red-400 hover:text-red-600 font-semibold"
+              >
+                연동 해제
+              </button>
             </div>
-            <input
-              type="text"
-              placeholder="예: 17841400000000000"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
-              value={igConfig.accountId || ""}
-              onChange={(e) => {
-                const next = { ...igConfig, accountId: e.target.value.trim() };
-                setIgConfig(next);
-                saveSocial(igKey, session.username, next);
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const SCOPES = "instagram_basic,instagram_content_publish";
+                const oauthUrl = `https://api.instagram.com/oauth/authorize?client_id=1268925518205893&redirect_uri=https://planforge-ui.vercel.app/auth/instagram&scope=${SCOPES}&response_type=code`;
+                const popup = window.open(oauthUrl, "instagram-auth", "width=580,height=720,left=200,top=100");
+                const onMessage = (e) => {
+                  if (e.data?.type !== "instagram_auth") return;
+                  window.removeEventListener("message", onMessage);
+                  if (e.data.error) { setError("Instagram 연동 실패: " + e.data.error); return; }
+                  const next = { accessToken: e.data.accessToken, accountId: e.data.userId, username: e.data.username || "" };
+                  setIgConfig(next);
+                  saveSocial(igKey, session.username, next);
+                };
+                window.addEventListener("message", onMessage);
+                const timer = setInterval(() => { if (popup?.closed) { clearInterval(timer); window.removeEventListener("message", onMessage); } }, 500);
               }}
-            />
-          </div>
+              className="w-full py-2.5 bg-gradient-to-r from-pink-500 to-fuchsia-500 hover:from-pink-600 hover:to-fuchsia-600 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+              </svg>
+              Instagram 계정 연동하기
+            </button>
+          )}
 
           {/* 캡션 */}
           <div>

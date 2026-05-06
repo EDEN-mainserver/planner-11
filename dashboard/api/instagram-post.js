@@ -3,7 +3,7 @@
 
 import { put, del } from "@vercel/blob";
 
-const IG_API = "https://graph.facebook.com/v22.0";
+const IG_API = "https://graph.instagram.com/v22.0";
 
 export const config = {
   api: {
