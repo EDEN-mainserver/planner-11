@@ -876,7 +876,6 @@ export default function UnifiedPipelineTab() {
   const [igConfig, setIgConfig]   = useState(() => normalizeInstagramConfig(loadSocial(igKey, getSession()?.username || "__guest")));
   const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
   const [thPosting, setThPosting] = useState(false);
-  const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
 
@@ -1106,7 +1105,6 @@ export default function UnifiedPipelineTab() {
     setCards([]);
     setHtmlContent("");
     setError("");
-    setIgResult(null);
   };
 
   // ── 스텝 인디케이터 ──
@@ -1950,29 +1948,6 @@ export default function UnifiedPipelineTab() {
             인스타그램에 게시하기
           </button>
 
-          {/* 게시 결과 */}
-          {igResult && (
-            <div className={`px-3 py-2.5 rounded-xl text-xs font-medium flex items-start gap-2 ${
-              igResult.status === "success"
-                ? "bg-green-50 border border-green-200 text-green-700"
-                : "bg-blue-50 border border-blue-200 text-blue-700"
-            }`}>
-              <span>{igResult.status === "success" ? "✅" : "ℹ️"}</span>
-              <div>
-                <span>{igResult.message}</span>
-                {igResult.permalink && (
-                  <a
-                    href={igResult.permalink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block mt-1 underline"
-                  >
-                    게시물 보기
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ── Threads ── */}
