@@ -878,6 +878,7 @@ export default function UnifiedPipelineTab() {
   const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
   const [igPosting, setIgPosting] = useState(false);
   const [igResult,  setIgResult]  = useState(null);
+  const [igLogs,    setIgLogs]    = useState([]);
   const [thPosting, setThPosting] = useState(false);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
@@ -1115,28 +1116,36 @@ export default function UnifiedPipelineTab() {
     setIgPosting(true);
     setIgResult(null);
     setError("");
+    setIgLogs([]);
+    const log = (msg) => setIgLogs((p) => [...p, `[${new Date().toLocaleTimeString("ko-KR")}] ${msg}`]);
+
     try {
+      log(`계정: @${igConfig.username || igConfig.accountId}`);
+
       // 1. imageUrl 있는 카드 먼저 수집
       let images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
+      log(`카드 imageUrl 수집: ${images.length}개`);
 
       // 2. imageUrl 없으면 cardHtmls → html-screenshot API로 변환
       if (images.length === 0 && cardHtmls.length > 0) {
-        setError("카드 이미지 변환 중...");
+        log(`HTML 카드 감지 (${cardHtmls.length}장) → 스크린샷 변환 시작`);
         const shotRes = await fetch("/api/html-screenshot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ htmls: cardHtmls }),
         });
         const shotData = await shotRes.json();
+        log(`html-screenshot 응답: ${shotRes.status}`);
         if (!shotRes.ok) throw new Error(shotData.error || "카드 이미지 변환 실패");
         images = shotData.images || [];
-        setError("");
+        log(`스크린샷 완료: ${images.length}장`);
       }
 
       if (images.length === 0) {
         throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
       }
 
+      log(`instagram-post API 호출 (이미지 ${images.length}장)`);
       const res = await fetch("/api/instagram-post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1148,9 +1157,12 @@ export default function UnifiedPipelineTab() {
         }),
       });
       const data = await res.json();
+      log(`instagram-post 응답: ${res.status} / ${JSON.stringify(data).slice(0, 120)}`);
       if (!res.ok) throw new Error(data.error || "게시 실패");
+      log(`게시 완료! permalink: ${data.permalink}`);
       setIgResult({ ok: true, permalink: data.permalink });
     } catch (e) {
+      log(`오류: ${e.message}`);
       setError(e.message);
     } finally {
       setIgPosting(false);
@@ -2027,6 +2039,38 @@ export default function UnifiedPipelineTab() {
                     게시물 보기
                   </a>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* 실행 로그 패널 */}
+          {igLogs.length > 0 && (
+            <div className="rounded-xl border border-gray-800 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-900">
+                <span className="text-[11px] font-bold text-gray-300 font-mono">실행 로그</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(igLogs.join("\n"));
+                    }}
+                    className="text-[10px] text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded transition-colors"
+                  >
+                    복사
+                  </button>
+                  <button
+                    onClick={() => setIgLogs([])}
+                    className="text-[10px] text-gray-500 hover:text-gray-300"
+                  >
+                    지우기
+                  </button>
+                </div>
+              </div>
+              <div className="bg-gray-950 p-3 max-h-48 overflow-y-auto space-y-0.5 font-mono">
+                {igLogs.map((line, i) => (
+                  <div key={i} className={`text-[11px] leading-relaxed ${line.includes("오류") ? "text-red-400" : "text-gray-300"}`}>
+                    {line}
+                  </div>
+                ))}
               </div>
             </div>
           )}
