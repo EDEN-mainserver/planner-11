@@ -33,32 +33,7 @@ const PURPOSE_OPTS = [
   { v: "review", l: "고객 후기" },
 ];
 const STEP_LABELS = ["설정", "리서치", "기획", "이미지", "조립", "배포"];
-const UPLOAD_POST_MAX_CAROUSEL_ITEMS = 10;
-
 const threadsKey = (u) => `eden_threads_${u}_v1`;
-
-function getUploadPostValidationMessage({ title, user, videoFile }) {
-  if (!user.trim()) return "Upload Post managed user 값을 입력해주세요";
-  if (!title.trim()) return "게시 제목을 입력해주세요";
-  if (!videoFile) return "업로드할 비디오 파일을 선택해주세요";
-  const isVideoType = String(videoFile.type || "").startsWith("video/");
-  const isVideoExt = /\.(mp4|mov|webm|m4v|mkv|avi)$/i.test(String(videoFile.name || ""));
-  if (!isVideoType && !isVideoExt) return "비디오 파일만 업로드할 수 있습니다";
-  return "";
-}
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes < 0) return "-";
-  if (bytes < 1024) return `${bytes}B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unitIdx = 0;
-  while (value >= 1024 && unitIdx < units.length - 1) {
-    value /= 1024;
-    unitIdx += 1;
-  }
-  return `${value.toFixed(value >= 10 ? 1 : 2)}${units[unitIdx]}`;
-}
 
 // ── 소셜 설정 로드/저장 (사용자별) ──
 function loadSocial(keyFn, username) {
@@ -904,19 +879,7 @@ export default function UnifiedPipelineTab() {
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
-  const [captionGenerating, setCaptionGenerating] = useState(false);
   const [igDirectUrls, setIgDirectUrls] = useState("");
-  const [igLogs, setIgLogs] = useState([]);
-  const [uploadPostTitle, setUploadPostTitle] = useState("");
-  const [uploadPostUser, setUploadPostUser] = useState(() => getSession()?.username || "");
-  const [uploadPostVideo, setUploadPostVideo] = useState(null);
-  const [uploadPostPosting, setUploadPostPosting] = useState(false);
-  const [uploadPostResult, setUploadPostResult] = useState(null);
-  const uploadPostValidationMessage = getUploadPostValidationMessage({
-    title: uploadPostTitle,
-    user: uploadPostUser,
-    videoFile: uploadPostVideo,
-  });
 
   useEffect(() => {
     emitEAttackContext({
@@ -938,18 +901,11 @@ export default function UnifiedPipelineTab() {
     });
   }, [step, running, useTemplate, topic, brandName, tone, purpose, slideCount, cards.length, thPosting]);
 
-  const addLog = (level, msg, detail = null) => {
-    const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
-    setIgLogs(prev => [...prev.slice(-49), entry]); // 최대 50줄
-    console[level === "error" ? "error" : "log"](`[IG] ${msg}`, detail || "");
-  };
-
   // 로그인 핸들러
   const handleLogin = (s) => {
     setSession(s);
     setIgConfig(normalizeInstagramConfig(loadSocial(igKey, s.username)));
     setThConfig(loadSocial(threadsKey, s.username));
-    setUploadPostUser(s.username || "");
   };
 
   const handleLogout = () => {
@@ -1090,16 +1046,6 @@ export default function UnifiedPipelineTab() {
       setStep("assembly");
     });
 
-  const downloadHtml = () => {
-    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${topic.slice(0, 20)}-카드뉴스.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const postToThreads = async () => {
     if (!thConfig.userId || !thConfig.accessToken) {
       setError("스레드 사용자 ID와 액세스 토큰을 입력해주세요");
@@ -1152,266 +1098,6 @@ export default function UnifiedPipelineTab() {
     }
   };
 
-  // 카드 HTML → 브라우저에서 직접 JPEG base64 캡처 (puppeteer 없음)
-  const captureCardHtmls = async (htmlArray) => {
-    const { default: html2canvas } = await import("html2canvas");
-    const images = [];
-    const targets = htmlArray.slice(0, 10);
-
-    for (let i = 0; i < targets.length; i++) {
-      const html = targets[i];
-      const base64 = await new Promise((resolve, reject) => {
-        const blob = new Blob([html], { type: "text/html" });
-        const blobUrl = URL.createObjectURL(blob);
-
-        const iframe = document.createElement("iframe");
-        iframe.style.cssText =
-          "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
-        iframe.src = blobUrl;
-
-        iframe.onload = async () => {
-          try {
-            const doc = iframe.contentDocument;
-            // 폰트 로드 대기 (fonts.ready + 실제 글리프 로드 확인)
-            await doc.fonts.ready;
-            // 한글 폰트 글리프 강제 로드 — 'Noto Sans KR'이 실제로 렌더 가능한 상태인지 확인
-            await Promise.allSettled([
-              doc.fonts.load('700 48px "Noto Sans KR"', "가나다라마바사"),
-              doc.fonts.load('400 24px "Noto Sans KR"', "가나다라마바사"),
-            ]);
-            // 렌더링 안정화 대기 (1.5초로 증가)
-            await new Promise((r) => setTimeout(r, 1500));
-
-            const canvas = await html2canvas(doc.documentElement, {
-              width: 1080,
-              height: 1350,
-              windowWidth: 1080,
-              windowHeight: 1350,
-              scale: 2,
-              useCORS: true,
-              allowTaint: false,
-              backgroundColor: "#080814",
-              logging: false,
-              x: 0,
-              y: 0,
-              imageTimeout: 15000,
-            });
-
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.97);
-            URL.revokeObjectURL(blobUrl);
-            iframe.remove();
-            resolve(dataUrl);
-          } catch (e) {
-            URL.revokeObjectURL(blobUrl);
-            iframe.remove();
-            reject(e);
-          }
-        };
-
-        iframe.onerror = () => {
-          URL.revokeObjectURL(blobUrl);
-          iframe.remove();
-          reject(new Error("iframe 로드 실패"));
-        };
-
-        document.body.appendChild(iframe);
-      });
-
-      images.push(base64);
-    }
-
-    return images;
-  };
-
-  const dataUrlToFile = async (dataUrl, filename) => {
-    const response = await fetch(dataUrl);
-    const blob = await response.blob();
-    return new File([blob], filename, { type: blob.type || "image/jpeg" });
-  };
-
-  const imageUrlToFile = async (url, filename) => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`이미지 다운로드 실패: ${response.status}`);
-    const blob = await response.blob();
-    return new File([blob], filename, { type: blob.type || "image/jpeg" });
-  };
-
-  const buildUploadPostCarouselFiles = async () => {
-    if (cardHtmls.length > 0) {
-      const total = Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS);
-      addLog("info", `Upload Post 캐러셀 캡처 시작: ${total}장`);
-      const dataUrls = await captureCardHtmls(cardHtmls.slice(0, total));
-      const files = await Promise.all(
-        dataUrls.map((dataUrl, index) => dataUrlToFile(dataUrl, `carousel-${String(index + 1).padStart(2, "0")}.jpg`))
-      );
-      return files;
-    }
-
-    const sourceImages = cards
-      .map((card) => card.imageUrl)
-      .filter((url) => typeof url === "string" && url.length > 0)
-      .slice(0, UPLOAD_POST_MAX_CAROUSEL_ITEMS);
-
-    if (sourceImages.length === 0) {
-      throw new Error("업로드할 카드가 없습니다. 카드를 먼저 조립해주세요.");
-    }
-
-    addLog("info", `Upload Post 원본 이미지 수집: ${sourceImages.length}장`);
-    const files = [];
-    for (let i = 0; i < sourceImages.length; i += 1) {
-      const file = await imageUrlToFile(sourceImages[i], `carousel-${String(i + 1).padStart(2, "0")}.jpg`);
-      files.push(file);
-    }
-
-    return files;
-  };
-
-  const buildFallbackUploadPostTitle = () => {
-    const sourceSlides = cards.length ? cards : plan?.slides || [];
-    const title = sourceSlides[0]?.headline || topic || "TikTok 업로드";
-    const brandSuffix = brandName ? ` · ${brandName}` : "";
-    return `${title}${brandSuffix}`.trim();
-  };
-
-  const generateCaptionFromPlan = async (target = "uploadPost") => {
-    if (target !== "uploadPost") return;
-    const sourceSlides = cards.length ? cards : plan?.slides || [];
-    if (!sourceSlides.length) {
-      setError("기획된 카드뉴스 내용이 없습니다. 먼저 기획 단계를 완료해주세요.");
-      return;
-    }
-
-    setCaptionGenerating(true);
-    setError("");
-    try {
-      const planningText = sourceSlides
-        .map((slide, i) => [
-          `${i + 1}. ${slide.headline || ""}`,
-          slide.body ? `본문: ${slide.body}` : "",
-          slide.part ? `구성: ${slide.part}` : "",
-        ].filter(Boolean).join("\n"))
-        .join("\n\n");
-
-      const prompt = `
-다음 기획안을 바탕으로 TikTok 업로드 제목 1개를 작성해줘.
-
-주제: ${topic || "미입력"}
-브랜드: ${brandName || "없음"}
-톤: ${tone}
-목적: ${purpose}
-
-기획안:
-${planningText}
-
-작성 규칙:
-- 바로 업로드할 수 있는 짧은 제목만 출력
-- 전체 길이는 공백 포함 18~48자
-- CTA, 해시태그, 번호 목록, 마크다운, 따옴표, 부가 설명 금지
-- 영상의 핵심 내용을 한 줄로 요약
-- 설명형 문장보다 검색용/노출용 제목에 가깝게 작성
-- 아래 출력 구조 외 다른 문장 추가 금지
-
-제목만 한 줄로 출력.
-`.trim();
-
-      const raw = await callGemini(
-        [{ role: "user", content: prompt }],
-        "TikTok 업로드 제목 작성 전문가. 짧고 노출 친화적인 제목만 반환합니다."
-      );
-      const caption = String(raw || "").trim();
-      setUploadPostTitle(caption || buildFallbackUploadPostTitle());
-      setUploadPostResult(null);
-      addLog("info", "기획 기반 Upload Post 제목을 작성했습니다.");
-    } catch (e) {
-      setUploadPostTitle(buildFallbackUploadPostTitle());
-      setUploadPostResult(null);
-      addLog("error", `캡션 AI 작성 실패: ${e.message}`);
-    } finally {
-      setCaptionGenerating(false);
-    }
-  };
-
-  const uploadTikTokVideoToUploadPost = async () => {
-    if (uploadPostValidationMessage) {
-      setError(uploadPostValidationMessage);
-      return;
-    }
-
-    setUploadPostPosting(true);
-    setUploadPostResult(null);
-    setError("");
-
-    let responseData = null;
-    try {
-      const videoFile = uploadPostVideo;
-      if (!videoFile) {
-        throw new Error("업로드할 비디오 파일이 없습니다.");
-      }
-
-      addLog("info", "Upload Post TikTok 업로드 시작", {
-        fileName: videoFile.name,
-        fileSize: videoFile.size,
-        fileType: videoFile.type,
-        user: uploadPostUser.trim(),
-      });
-
-      const form = new FormData();
-      form.append("title", uploadPostTitle.trim());
-      form.append("user", uploadPostUser.trim());
-      form.append("platform[]", "tiktok");
-      form.append("video", videoFile, videoFile.name || "video.mp4");
-
-      const res = await fetch("/api/upload-post-tiktok", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json().catch(() => ({}));
-      responseData = data;
-      addLog(res.ok ? "info" : "error", `Upload Post TikTok 응답 [${res.status}]`, data);
-      if (!res.ok) {
-        throw new Error(
-          data.error ||
-          data.detail ||
-          data.message ||
-          data.upstream?.message ||
-          data.upstream?.body?.message ||
-          data.response?.message ||
-          data.response?.error ||
-          "Upload Post 업로드 실패"
-        );
-      }
-
-      setUploadPostResult({
-        status: "success",
-        message: data.message || "Upload Post TikTok 업로드 요청을 완료했습니다.",
-        data: {
-          status: data.upstream?.status || data.status || res.status,
-          message: data.message || data.response?.message || data.upstream?.body?.message || "",
-          detail: data.detail || data.response?.detail || "",
-          title: uploadPostTitle.trim(),
-          user: uploadPostUser.trim(),
-          platform: "tiktok",
-          video: {
-            name: videoFile.name,
-            size: videoFile.size,
-            type: videoFile.type,
-          },
-          raw: data,
-        },
-      });
-    } catch (e) {
-      addLog("error", `Upload Post TikTok 오류: ${e.message}`);
-      setError(e.message);
-      setUploadPostResult({
-        status: "error",
-        message: e.message,
-        data: responseData,
-      });
-    } finally {
-      setUploadPostPosting(false);
-    }
-  };
-
   const reset = () => {
     setStep("setup");
     setTopic("");
@@ -1422,9 +1108,6 @@ ${planningText}
     setHtmlContent("");
     setError("");
     setIgResult(null);
-    setUploadPostTitle("");
-    setUploadPostVideo(null);
-    setUploadPostResult(null);
   };
 
   // ── 스텝 인디케이터 ──
@@ -2170,23 +1853,10 @@ ${planningText}
         <UserBar />
         <StepBar />
 
-        {/* 상단: 제목 + HTML 다운로드 */}
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-gray-800">배포</p>
-            <p className="text-xs text-gray-400">{cards.length}장 · {topic}</p>
-          </div>
-          <button
-            onClick={downloadHtml}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-gray-700 transition-all shadow-sm"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            HTML 다운로드
-          </button>
+        {/* 상단: 제목 */}
+        <div>
+          <p className="text-sm font-bold text-gray-800">배포</p>
+          <p className="text-xs text-gray-400">{cards.length}장 · {topic}</p>
         </div>
 
         {/* 인스타그램 설정 */}
@@ -2222,51 +1892,12 @@ ${planningText}
             />
           </div>
 
-          {/* 계정 ID — 토큰 입력 후 자동 조회 */}
+          {/* 계정 ID */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-gray-600">
                 ② 비즈니스 계정 ID
               </label>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={async () => {
-                    const imgUrls = cards.map((c) => c.imageUrl).filter(Boolean);
-                    if (imgUrls.length === 0 && cardHtmls.length === 0) {
-                      addLog("error", "다운로드할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
-                      return;
-                    }
-                    try {
-                      addLog("info", "이미지 다운로드 준비 중...");
-                      let downloadList = imgUrls;
-                      if (downloadList.length === 0) {
-                        addLog("info", `HTML 캡처 시작: ${cardHtmls.length}장`);
-                        downloadList = await captureCardHtmls(cardHtmls);
-                      }
-                      downloadList.forEach((src, i) => {
-                        const a = document.createElement("a");
-                        a.href = src;
-                        a.download = `card-${String(i + 1).padStart(2, "0")}.jpg`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      });
-                      addLog("info", `✅ ${downloadList.length}장 다운로드 완료`);
-                    } catch (e) {
-                      addLog("error", `다운로드 실패: ${e.message}`);
-                    }
-                  }}
-                  className="text-[10px] font-bold text-emerald-600 hover:text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5"
-                >
-                  📥 이미지 다운로드
-                </button>
-                <button
-                  disabled
-                  className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 rounded px-2 py-0.5 opacity-40 cursor-not-allowed"
-                >
-                  🔍 토큰으로 자동 조회
-                </button>
-              </div>
             </div>
             <input
               type="text"
@@ -2372,179 +2003,6 @@ ${planningText}
                     게시물 보기
                   </a>
                 )}
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-3 bg-white border border-pink-100 rounded-xl p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-bold text-gray-700">Upload Post TikTok 비디오 업로드</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">`video` + `platform[]=tiktok`으로 외부 업로드 API를 호출합니다.</p>
-              </div>
-              <span className="text-[10px] text-pink-600 font-semibold bg-pink-50 border border-pink-200 rounded px-1.5 py-0.5">
-                서버 API 키 사용
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">비디오 파일</label>
-                <input
-                  type="file"
-                  accept="video/*"
-                  onClick={(e) => {
-                    e.currentTarget.value = "";
-                  }}
-                  onChange={(e) => {
-                    setUploadPostVideo(e.target.files?.[0] || null);
-                    setUploadPostResult(null);
-                  }}
-                  className="w-full text-sm border border-gray-200 rounded-lg bg-white px-3 py-2 file:mr-3 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:bg-pink-50 file:text-pink-700 file:font-bold hover:file:bg-pink-100"
-                />
-                {uploadPostVideo ? (
-                  <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs text-gray-600">
-                    <p className="font-semibold text-gray-800 truncate">{uploadPostVideo.name}</p>
-                    <p className="mt-1 font-mono">{formatBytes(uploadPostVideo.size)} · {uploadPostVideo.type || "unknown"}</p>
-                  </div>
-                ) : (
-                  <p className="mt-1.5 text-[11px] text-gray-500">
-                    업로드할 비디오를 선택하세요. mp4, mov, webm 등을 지원합니다.
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">게시 제목</label>
-                <textarea
-                  rows={4}
-                  value={uploadPostTitle}
-                  onChange={(e) => {
-                    setUploadPostTitle(e.target.value);
-                    setUploadPostResult(null);
-                  }}
-                  placeholder={postCaption || topic || "Upload Post title"}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white resize-none leading-relaxed"
-                />
-                <button
-                  type="button"
-                  onClick={() => generateCaptionFromPlan("uploadPost")}
-                  disabled={captionGenerating || !(cards.length || plan?.slides?.length)}
-                  className="mt-2 px-2 py-0.5 rounded text-[10px] font-bold border border-pink-200 text-pink-600 bg-pink-50 hover:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  {captionGenerating ? "작성 중..." : "기획 기반 제목 넣기"}
-                </button>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">Managed User</label>
-                <input
-                  type="text"
-                  value={uploadPostUser}
-                  onChange={(e) => {
-                    setUploadPostUser(e.target.value);
-                    setUploadPostResult(null);
-                  }}
-                  placeholder="upload-post managed user"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white font-mono"
-                />
-                <p className="mt-1.5 text-[11px] text-gray-500">
-                  Upload Post managed users 페이지에서 만든 `user` 값을 그대로 입력합니다.
-                </p>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">업로드 규칙</label>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs text-gray-600">
-                  <p>플랫폼: <span className="font-semibold text-gray-800">tiktok</span></p>
-                  <p className="mt-1">필수 필드: <span className="font-semibold text-gray-800">video, title, user, platform[]</span></p>
-                  <p className="mt-1 text-[11px] text-gray-500">외부 API 응답은 그대로 아래 결과 패널에 표시됩니다.</p>
-                </div>
-              </div>
-            </div>
-
-            {uploadPostValidationMessage && (
-              <div className="px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-[11px] text-amber-700">
-                {uploadPostValidationMessage}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={uploadTikTokVideoToUploadPost}
-              disabled={uploadPostPosting || Boolean(uploadPostValidationMessage)}
-              className="w-full py-3 bg-gray-900 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
-            >
-              {uploadPostPosting ? (
-                <>
-                  <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                  </svg>
-                  Upload Post TikTok 업로드 중...
-                </>
-              ) : (
-                "Upload Post로 TikTok 비디오 업로드"
-              )}
-            </button>
-
-            {uploadPostResult && (
-              <div className={`px-3 py-2.5 rounded-xl text-xs font-medium ${
-                uploadPostResult.status === "success"
-                  ? "bg-green-50 border border-green-200 text-green-700"
-                  : "bg-red-50 border border-red-200 text-red-600"
-              }`}>
-                <p>{uploadPostResult.message}</p>
-                {uploadPostResult.data?.status && <p className="mt-1">status: {uploadPostResult.data.status}</p>}
-                {uploadPostResult.data?.title && <p className="mt-1">title: {uploadPostResult.data.title}</p>}
-                {uploadPostResult.data?.user && <p className="mt-1">user: {uploadPostResult.data.user}</p>}
-                {uploadPostResult.data?.platform && <p className="mt-1">platform: {uploadPostResult.data.platform}</p>}
-                {uploadPostResult.data?.video?.name && <p className="mt-1">video: {uploadPostResult.data.video.name}</p>}
-                {uploadPostResult.data?.video?.size && <p className="mt-1">size: {formatBytes(uploadPostResult.data.video.size)}</p>}
-                {uploadPostResult.data?.error && <p className="mt-1">error: {uploadPostResult.data.error}</p>}
-                {uploadPostResult.data?.message && <p className="mt-1 opacity-90">message: {uploadPostResult.data.message}</p>}
-                {uploadPostResult.data?.detail && <p className="mt-1 opacity-90">detail: {uploadPostResult.data.detail}</p>}
-                {uploadPostResult.data?.raw && (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-[11px] font-semibold">원문 응답 보기</summary>
-                    <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap font-mono text-[10px] opacity-80">
-                      {JSON.stringify(uploadPostResult.data.raw, null, 2)}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* ── 실행 로그 패널 ── */}
-          {igLogs.length > 0 && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900">
-                <span className="text-[11px] font-bold text-gray-300 font-mono">실행 로그</span>
-                <button
-                  onClick={() => setIgLogs([])}
-                  className="text-[10px] text-gray-500 hover:text-gray-300"
-                >
-                  지우기
-                </button>
-              </div>
-              <div className="bg-gray-950 p-3 max-h-52 overflow-y-auto space-y-1 font-mono">
-                {igLogs.map((log, i) => (
-                  <div key={i} className="flex gap-2 text-[11px] leading-relaxed">
-                    <span className="text-gray-600 flex-shrink-0">{log.time}</span>
-                    <span className={`flex-shrink-0 font-bold ${
-                      log.level === "error" ? "text-red-400" : "text-emerald-400"
-                    }`}>
-                      {log.level === "error" ? "ERR" : "LOG"}
-                    </span>
-                    <span className={log.level === "error" ? "text-red-300" : "text-gray-200"}>
-                      {log.msg}
-                    </span>
-                    {log.detail && (
-                      <span className="text-gray-500 truncate">
-                        {typeof log.detail === "object"
-                          ? JSON.stringify(log.detail)
-                          : String(log.detail)}
-                      </span>
-                    )}
-                  </div>
-                ))}
               </div>
             </div>
           )}

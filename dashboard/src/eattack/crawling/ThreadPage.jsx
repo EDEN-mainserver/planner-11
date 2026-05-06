@@ -696,55 +696,59 @@ JSON 형식으로만 반환:
               )}
 
               {templateMap.data.focus_analysis && (
-                <div className="grid md:grid-cols-4 gap-2">
+                <div className="space-y-2 border-l-2 border-amber-200 pl-3">
                   {[
                     { label: "흐름", value: templateMap.data.focus_analysis.flow },
                     { label: "첫 문장", value: templateMap.data.focus_analysis.hook_copywriting },
                     { label: "말투", value: templateMap.data.focus_analysis.tone },
                     { label: "CTA", value: templateMap.data.focus_analysis.cta },
                   ].map(item => (
-                    <div key={item.label} className="bg-white rounded-lg border border-amber-100 p-3">
-                      <p className="text-[10px] font-bold text-amber-700 mb-1">{item.label}</p>
-                      <p className="text-xs text-gray-600 leading-relaxed">{item.value}</p>
+                    <div key={item.label} className="flex gap-3 text-xs text-gray-700">
+                      <span className="shrink-0 w-12 font-bold text-amber-700">{item.label}</span>
+                      <span className="leading-relaxed">{item.value}</span>
                     </div>
                   ))}
                 </div>
               )}
 
               {templateMap.data.recommended_master_template && (
-                <div className="bg-white rounded-lg border border-amber-100 p-3">
-                  <p className="text-xs font-bold text-gray-800 mb-2">
+                <div className="bg-white/80 rounded-xl border border-amber-100 p-4">
+                  <p className="text-xs font-bold text-gray-800">
                     {templateMap.data.recommended_master_template.name}
                   </p>
-                  <div className="grid md:grid-cols-2 gap-2">
+                  <div className="mt-3 space-y-2 border-l-2 border-amber-200 pl-3">
                     {templateMap.data.recommended_master_template.steps?.map((step, i) => (
-                      <div key={i} className="flex gap-2 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                        <span className="font-bold text-amber-600">{i + 1}</span>
-                        <span>{step}</span>
+                      <div key={i} className="flex gap-3 text-xs text-gray-700">
+                        <span className="shrink-0 w-5 font-bold text-amber-600">{i + 1}</span>
+                        <span className="leading-relaxed">{step}</span>
                       </div>
                     ))}
                   </div>
-                  {templateMap.data.recommended_master_template.example_hook && (
-                    <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
-                      첫 문장 예시: {templateMap.data.recommended_master_template.example_hook}
-                    </p>
-                  )}
-                  {(templateMap.data.recommended_master_template.hook_rule || templateMap.data.recommended_master_template.tone_rule || templateMap.data.recommended_master_template.cta_rule) && (
-                    <div className="mt-2 grid md:grid-cols-2 gap-2">
+                  {(templateMap.data.recommended_master_template.hook_rule || templateMap.data.recommended_master_template.example_hook || templateMap.data.recommended_master_template.tone_rule || templateMap.data.recommended_master_template.cta_rule) && (
+                    <div className="mt-3 space-y-2 border-l-2 border-violet-200 pl-3">
                       {templateMap.data.recommended_master_template.hook_rule && (
-                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                          첫 문장 규칙: {templateMap.data.recommended_master_template.hook_rule}
-                        </p>
+                        <div className="flex gap-3 text-xs text-gray-700">
+                          <span className="shrink-0 w-12 font-bold text-violet-700">첫 문장</span>
+                          <span className="leading-relaxed">{templateMap.data.recommended_master_template.hook_rule}</span>
+                        </div>
+                      )}
+                      {templateMap.data.recommended_master_template.example_hook && (
+                        <div className="flex gap-3 text-xs text-gray-700">
+                          <span className="shrink-0 w-12 font-bold text-violet-700">예시</span>
+                          <span className="leading-relaxed">{templateMap.data.recommended_master_template.example_hook}</span>
+                        </div>
                       )}
                       {templateMap.data.recommended_master_template.tone_rule && (
-                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                          말투: {templateMap.data.recommended_master_template.tone_rule}
-                        </p>
+                        <div className="flex gap-3 text-xs text-gray-700">
+                          <span className="shrink-0 w-12 font-bold text-violet-700">말투</span>
+                          <span className="leading-relaxed">{templateMap.data.recommended_master_template.tone_rule}</span>
+                        </div>
                       )}
                       {templateMap.data.recommended_master_template.cta_rule && (
-                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                          CTA: {templateMap.data.recommended_master_template.cta_rule}
-                        </p>
+                        <div className="flex gap-3 text-xs text-gray-700">
+                          <span className="shrink-0 w-12 font-bold text-violet-700">CTA</span>
+                          <span className="leading-relaxed">{templateMap.data.recommended_master_template.cta_rule}</span>
+                        </div>
                       )}
                     </div>
                   )}
@@ -752,38 +756,39 @@ JSON 형식으로만 반환:
               )}
 
               {templateMap.data.post_templates?.length > 0 && (
-                <div className="grid lg:grid-cols-2 gap-2">
+                <div className="space-y-3">
                   {templateMap.data.post_templates.slice(0, 4).map((tpl, i) => (
-                    <div key={i} className="bg-white rounded-lg border border-amber-100 p-3">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <p className="text-xs font-bold text-gray-800">{tpl.structure_name}</p>
-                        <span className="text-[10px] font-semibold text-gray-400">
-                          #{tpl.rank_by_views} · 조회 {Number(tpl.views || 0).toLocaleString()}
-                        </span>
+                    <div key={i} className="bg-white/80 rounded-xl border border-amber-100 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold text-gray-800">{tpl.structure_name}</p>
+                          <p className="text-[10px] font-semibold text-gray-400 mt-1">
+                            #{tpl.rank_by_views} · 조회 {Number(tpl.views || 0).toLocaleString()}
+                          </p>
+                        </div>
+                        {tpl.hook_type && (
+                          <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 border border-violet-100 rounded-full px-2 py-1">
+                            {tpl.hook_type}
+                          </span>
+                        )}
                       </div>
-                      <div className="space-y-1">
+                      <div className="mt-3 space-y-2 border-l-2 border-gray-200 pl-3">
                         {tpl.template?.map((step, j) => (
-                          <p key={j} className="text-xs text-gray-600 leading-relaxed">{step}</p>
+                          <div key={j} className="flex gap-3 text-xs text-gray-700">
+                            <span className="shrink-0 w-5 font-bold text-amber-600">{j + 1}</span>
+                            <span className="leading-relaxed">{step}</span>
+                          </div>
                         ))}
                       </div>
+                      {tpl.opening_example && (
+                        <p className="mt-3 text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                          첫 문장 예시: {tpl.opening_example}
+                        </p>
+                      )}
                       {tpl.copy_formula && (
                         <p className="mt-2 text-xs text-purple-700 bg-purple-50 rounded-lg px-3 py-2">
                           {tpl.copy_formula}
                         </p>
-                      )}
-                      {(tpl.hook_type || tpl.opening_example) && (
-                        <div className="mt-2 grid gap-2">
-                          {tpl.hook_type && (
-                            <p className="text-[11px] text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                              훅 유형: {tpl.hook_type}
-                            </p>
-                          )}
-                          {tpl.opening_example && (
-                            <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
-                              첫 문장 예시: {tpl.opening_example}
-                            </p>
-                          )}
-                        </div>
                       )}
                     </div>
                   ))}
