@@ -107,8 +107,8 @@ ${slideCount}장 카드뉴스 기획서를 JSON으로 작성해줘:
     {
       "num": 1,
       "part": "표지|본문|마무리",
-      "headline": "제목(15자이내)",
-      "body": "본문 — 표지/마무리는 한 줄 요약. 본문 슬라이드는 반드시 줄바꿈(\\n)으로 구분된 5개 항목으로 작성: 첫째줄=핵심요약(20자이내), 둘째줄=소제목(15자이내), 셋째~다섯째줄=세부내용(각 20자이내), 다섯째줄=효과/결론(20자이내)",
+      "headline": "제목(한 줄, 12~15자 이내)",
+      "body": "본문 — 표지/마무리는 한 줄 요약. 본문 슬라이드는 반드시 줄바꿈(\\n)으로 구분된 5개 항목으로 작성: 첫째줄=핵심요약(20자 이내), 둘째줄=소제목(15자 이내), 셋째~다섯째줄=세부내용(각 15~20자 이내), 전체 80자 이내",
       "imagePrompt": "영어로 이미지 설명, 사실적 사진 스타일, no text, no watermark"
     }
   ]
@@ -383,6 +383,8 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
   const brand = brandName || "브랜드";
   const esc = (s) =>
     String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const clampStyle = (lines) =>
+    `display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:${lines};overflow:hidden;`;
   // 액센트 컬러 → rgba 사용을 위해 RGB 추출
   const ah = accent.replace("#", "");
   const accentRgb = `${parseInt(ah.slice(0,2),16)},${parseInt(ah.slice(2,4),16)},${parseInt(ah.slice(4,6),16)}`;
@@ -408,9 +410,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
           <div style="width:32px;height:32px;background:${accent};border-radius:8px;
             display:flex;align-items:center;justify-content:center;
             font-size:15px;font-weight:800;color:#fff;flex-shrink:0;">${ci + 1}</div>
-          <span style="font-size:22px;font-weight:600;color:rgba(255,255,255,.85);
-            overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1;">${esc(bc.headline)}</span>
-          ${chipSub ? `<span style="font-size:17px;color:rgba(255,255,255,.35);white-space:nowrap;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(chipSub)}</span>` : ""}
+          <span style="font-size:22px;font-weight:600;color:rgba(255,255,255,.85);line-height:1.25;
+            ${clampStyle(1)}flex:1;min-width:0;">${esc(bc.headline)}</span>
+          ${chipSub ? `<span style="font-size:17px;color:rgba(255,255,255,.35);line-height:1.25;white-space:nowrap;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(chipSub)}</span>` : ""}
         </div>`;
       }).join("");
 
@@ -448,12 +450,12 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     <div style="font-size:24px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:14px;
       overflow:hidden;white-space:nowrap;letter-spacing:.03em;">${esc(topic)}</div>
     <div style="font-size:82px;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.025em;
-      word-break:keep-all;overflow:hidden;margin-bottom:32px;">${esc(card.headline)}</div>
+      word-break:keep-all;${clampStyle(2)}margin-bottom:32px;">${esc(card.headline)}</div>
     ${previewChips ? `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:40px;overflow:hidden;">${previewChips}</div>` : ""}
     <div style="display:inline-flex;align-items:center;gap:8px;
       background:linear-gradient(90deg,rgba(155,142,255,.2),rgba(100,70,220,.15));
       border:1px solid rgba(155,142,255,.3);border-radius:12px;padding:17px 26px;
-      color:rgba(255,255,255,.85);font-size:22px;font-weight:500;overflow:hidden;white-space:nowrap;">
+      color:rgba(255,255,255,.85);font-size:22px;font-weight:500;overflow:hidden;white-space:nowrap;max-width:100%;">
       ${card.body ? esc(card.body) : "댓글 &amp; 팔로우로 더 많은 콘텐츠를"}
       <span style="color:${accent};font-weight:700;margin-left:6px;">&gt;&gt;</span>
     </div>
@@ -492,8 +494,8 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     ${summaryChips}
   </div>
   <div style="text-align:center;margin-bottom:40px;overflow:hidden;">
-    <div style="font-size:30px;font-weight:700;color:#111;line-height:1.9;word-break:keep-all;">${esc(card.headline)}</div>
-    ${card.body ? `<div style="font-size:24px;color:#888;line-height:1.7;margin-top:8px;word-break:keep-all;">${esc(card.body)}</div>` : ""}
+    <div style="font-size:30px;font-weight:700;color:#111;line-height:1.5;word-break:keep-all;${clampStyle(2)}">${esc(card.headline)}</div>
+    ${card.body ? `<div style="font-size:24px;color:#888;line-height:1.5;margin-top:8px;word-break:keep-all;${clampStyle(2)}">${esc(card.body)}</div>` : ""}
   </div>
   <div style="background:#fff;border-radius:20px;padding:30px 36px;width:100%;
     box-shadow:0 4px 28px rgba(0,0,0,.08);overflow:hidden;">
@@ -615,7 +617,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
             const label = b.replace(num, '').trim().slice(0, 18) || esc(b).slice(0, 18);
             return `<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:16px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;">
               <div style="font-size:36px;font-weight:900;color:${statColors[ii % 4]};line-height:1;margin-bottom:6px;overflow:hidden;white-space:nowrap;">${esc(num)}</div>
-              <div style="font-size:15px;color:#aaa;word-break:keep-all;overflow:hidden;line-height:1.3;">${esc(label)}</div>
+              <div style="font-size:15px;color:#aaa;word-break:keep-all;line-height:1.3;${clampStyle(2)}">${esc(label)}</div>
             </div>`;
           }).join('')}
         </div>
@@ -636,7 +638,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
             <div style="width:30px;height:30px;border-radius:50%;background:${accent};color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ii + 1}</div>
             ${ii < stepItems.length - 1 ? `<div style="position:absolute;"></div>` : ''}
             <div style="flex:1;background:#f8f9fa;border-radius:10px;padding:8px 14px;min-height:30px;display:flex;align-items:center;overflow:hidden;">
-              <span style="font-size:17px;color:#222;font-weight:500;word-break:keep-all;overflow:hidden;line-height:1.35;">${esc(b)}</span>
+              <span style="font-size:17px;color:#222;font-weight:500;word-break:keep-all;line-height:1.25;${clampStyle(2)}">${esc(b)}</span>
             </div>
           </div>`).join('')}
         </div>
@@ -656,11 +658,11 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
           <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
             <div style="font-size:14px;color:#ff7b72;font-weight:700;letter-spacing:.08em;flex-shrink:0;">Before</div>
-            ${leftItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;overflow:hidden;line-height:1.4;">· ${esc(b)}</div>`).join('')}
+            ${leftItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;line-height:1.4;${clampStyle(2)}">· ${esc(b)}</div>`).join('')}
           </div>
           <div style="background:linear-gradient(135deg,#0d2a1a,#0a2016);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
             <div style="font-size:14px;color:#7ee787;font-weight:700;letter-spacing:.08em;flex-shrink:0;">After</div>
-            ${rightItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;overflow:hidden;line-height:1.4;">· ${esc(b)}</div>`).join('')}
+            ${rightItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;line-height:1.4;${clampStyle(2)}">· ${esc(b)}</div>`).join('')}
           </div>
         </div>
       </div>`;
@@ -687,7 +689,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         if (line.type === 'blank') return `<div style="display:flex;align-items:center;height:26px;">${numHtml}</div>`;
         if (line.type === 'comment') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#6e7681;font-size:16px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span></div>`;
         if (line.type === 'bool') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;">: </span><span style="color:#ff7b72;font-size:16px;font-family:'Courier New',monospace;">${line.value}</span></div>`;
-        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:16px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.5;">&quot;${line.value}&quot;</span></div>`;
+        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:16px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.35;${clampStyle(1)}flex:1;min-width:0;">&quot;${line.value}&quot;</span></div>`;
       };
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
@@ -744,11 +746,11 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         ? `<div style="font-size:22px;font-weight:400;color:#666;text-align:center;
              margin-bottom:14px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(pluginSub)}</div>`
         : `<div style="margin-bottom:14px;flex-shrink:0;"></div>`}
-      <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
+    <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
         border-radius:16px;padding:18px 24px;margin-bottom:16px;overflow:hidden;flex-shrink:0;">
         <div style="font-size:16px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 가치</div>
-        <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.55;
-          word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
+        <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.45;
+          word-break:keep-all;${clampStyle(2)}">${esc(summaryText)}</div>
       </div>
       ${contentHtml}
       <div style="width:100%;background:linear-gradient(90deg,#f0eeff,#e8e4ff);
@@ -756,7 +758,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         margin-top:12px;margin-bottom:10px;
         display:flex;align-items:center;gap:12px;overflow:hidden;flex-shrink:0;">
         <span style="font-size:20px;flex-shrink:0;">💡</span>
-        <div style="font-size:20px;color:#333;font-weight:600;word-break:keep-all;overflow:hidden;">${esc(effectText)}</div>
+        <div style="font-size:20px;color:#333;font-weight:600;word-break:keep-all;line-height:1.35;${clampStyle(2)}">${esc(effectText)}</div>
       </div>
     </div>
     <div style="position:absolute;bottom:0;right:0;left:0;height:68px;
