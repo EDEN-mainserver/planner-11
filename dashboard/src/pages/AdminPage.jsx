@@ -253,6 +253,7 @@ function SocialTab() {
   const [igSaved, setIgSaved] = useState(false);
   const [thSaved, setThSaved] = useState(false);
   const [faSaved, setFaSaved] = useState(false);
+  const [igFetching, setIgFetching] = useState(false);
   const [thFetching, setThFetching] = useState(false);
   const [logs, setLogs] = useState([]);
 
@@ -363,6 +364,8 @@ function SocialTab() {
   const fetchIgAccountId = async () => {
     const accessToken = String(ig.accessToken || "").trim();
     if (!accessToken) { addLog("error", "Instagram 액세스 토큰을 먼저 입력하세요"); return; }
+    if (igFetching) return;
+    setIgFetching(true);
     addLog("info", "Facebook 페이지 → Instagram 계정 ID 조회 중...");
     try {
       const pagesRes = await fetch(
@@ -420,6 +423,8 @@ function SocialTab() {
       addLog("info", `Instagram 설정 자동 저장됨 (${selectedUser})`);
     } catch (e) {
       addLog("error", `계정 ID 조회 실패: ${e.message}`);
+    } finally {
+      setIgFetching(false);
     }
   };
 
@@ -642,10 +647,10 @@ function SocialTab() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={fetchIgAccountId}
-                    disabled={!ig.accessToken?.trim()}
+                    disabled={igFetching || !ig.accessToken?.trim()}
                     className="px-3 py-2 text-xs font-bold border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-all whitespace-nowrap"
                   >
-                    ID 조회
+                    {igFetching ? "조회 중..." : "ID 조회"}
                   </button>
                   <button
                     onClick={saveIg}

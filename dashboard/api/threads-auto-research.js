@@ -823,10 +823,14 @@ ${text}
 - 마지막이 불완전한 조각처럼 끝나면 안 됨
 - 최소 220자 이상, 최대 500자 이내
 - 한 문단 또는 2~5줄 구조로 읽히게 정리
+- 첫 문장은 반드시 훅이어야 함
+- 첫 문장이 설명문, 요약문, 안내문, 사족이면 다시 써야 함
+- 훅은 단정형, 반전형, 숫자형, 질문형, 충격형 중 하나여야 함
 - 마지막 줄은 완결된 문장이나 자연스러운 CTA로 끝낼 것
 - 해시태그가 있다면 1~4개만 자연스럽게 유지
 - 원문이 괜찮으면 내용은 유지하고 표현만 다듬어도 됨
 - 부족하면 더 자연스럽고 완결된 본문으로 재작성
+- CTA가 약하면 더 직접적이고 짧게 보강
 - 설명 없이 JSON만 반환
 
 반환 형식:
@@ -911,6 +915,37 @@ const CTA_RULES = {
   soft:     "강요 없이 오늘 바로 한 가지를 해보게 하는 CTA",
 };
 
+function buildTemplatePlaybook(templateData) {
+  if (!templateData || typeof templateData !== "object") return null;
+
+  const focus = templateData.focus_analysis || {};
+  const recommended = templateData.recommended_master_template || {};
+  const templates = Array.isArray(templateData.post_templates) ? templateData.post_templates.slice(0, 4) : [];
+
+  return {
+    summary: String(templateData.summary || "").trim(),
+    hook_rule: String(focus.hook_copywriting || recommended.example_hook || "").trim(),
+    flow_rule: String(focus.flow || "").trim(),
+    tone_rule: String(focus.tone || "").trim(),
+    cta_rule: String(focus.cta || recommended.cta_rule || "").trim(),
+    anti_patterns: Array.isArray(templateData.anti_patterns) ? templateData.anti_patterns.slice(0, 4) : [],
+    winning_patterns: Array.isArray(templateData.winning_patterns)
+      ? templateData.winning_patterns.slice(0, 4).map((item) => ({
+          pattern: String(item?.pattern || "").trim(),
+          why_it_works: String(item?.why_it_works || "").trim(),
+          use_when: String(item?.use_when || "").trim(),
+        }))
+      : [],
+    top_templates: templates.map((tpl) => ({
+      structure_name: String(tpl?.structure_name || "").trim(),
+      hook_type: String(tpl?.hook_type || tpl?.opening_type || "").trim(),
+      opening_example: String(tpl?.opening_example || tpl?.example_hook || "").trim(),
+      copy_formula: String(tpl?.copy_formula || "").trim(),
+      best_for: String(tpl?.best_for || "").trim(),
+    })),
+  };
+}
+
 function buildSourceInfo(config, sourceMode, sourceChoice, sourceLabel, sourceSummary, sourceItems) {
   const strategy = sourceChoice === "threads" ? "pattern-reconstruction" : "article-research";
   return {
@@ -975,7 +1010,7 @@ function buildCandidatePrompt(sourceChoice, config, candidate, templateData = nu
 
   const sourceIntro = sourceChoice === "threads"
     ? `아래는 최근 Threads 인기글을 유사 메시지끼리 묶어 정리한 단일 후보야.
-${templateData ? `\n[Threads 역설계 템플릿]\n${JSON.stringify(templateData, null, 2)}\n` : ""}`
+${templateData ? `\n[Threads 역설계 템플릿]\n${JSON.stringify(buildTemplatePlaybook(templateData), null, 2)}\n` : ""}`
     : "아래는 네이버 검색 결과를 중복 기사군으로 정리한 단일 후보야.";
 
   return `너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
@@ -999,6 +1034,10 @@ evidence: ${evidenceText}
 - 줄바꿈 활용, 한 줄 10~25자
 - 해시태그 2~4개 (마지막에)
 - 마지막 문장은 완결된 문장이나 자연스러운 CTA로 닫을 것
+- 첫 문장은 반드시 훅이어야 함
+- 첫 문장은 평범한 설명문, 요약문, 안내문으로 시작하지 말 것
+- 훅은 반전, 숫자, 충격, 질문, 단정 중 하나로 만든다
+- 템플릿이 있으면 그 분석을 그대로 설명하지 말고, 실제 게시글 문장으로 바꿔서 쓸 것
 - 후보의 핵심 논점과 근거를 바탕으로 재구성하되 복붙하지 말 것
 - 안내문, 제목, 설명 없이 JSON만 반환
 
@@ -1329,6 +1368,8 @@ async function runForAccount(username, config, env, runId, options = {}) {
       const repairRaw = await callGemini(
         `아래 Threads 본문을 220~500자 범위의 완결된 게시글로 다시 써줘.
 중간에 끊기면 안 되고, 마지막 문장과 CTA가 자연스럽게 닫혀야 해.
+첫 문장은 반드시 훅으로 다시 써야 해.
+설명문, 안내문, 요약문으로 시작하면 안 돼.
 설명 없이 최종 본문만 출력.
 
 [원문]

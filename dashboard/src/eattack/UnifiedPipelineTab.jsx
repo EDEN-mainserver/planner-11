@@ -900,8 +900,6 @@ export default function UnifiedPipelineTab() {
   // 소셜 설정 (사용자별 로드)
   const [igConfig, setIgConfig]   = useState(() => normalizeInstagramConfig(loadSocial(igKey, getSession()?.username || "__guest")));
   const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
-  const [igPosting, setIgPosting] = useState(false);
-  const [igCaptureProgress, setIgCaptureProgress] = useState({ step: "", done: 0, total: 0 });
   const [thPosting, setThPosting] = useState(false);
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
@@ -935,11 +933,10 @@ export default function UnifiedPipelineTab() {
         `목적 ${purpose}`,
         `슬라이드 ${slideCount}장`,
         `카드 ${cards.length}개`,
-        igPosting ? "IG 게시 중" : "",
         thPosting ? "Threads 게시 중" : "",
       ].filter(Boolean).join(" · "),
     });
-  }, [step, running, useTemplate, topic, brandName, tone, purpose, slideCount, cards.length, igPosting, thPosting]);
+  }, [step, running, useTemplate, topic, brandName, tone, purpose, slideCount, cards.length, thPosting]);
 
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
@@ -1162,8 +1159,6 @@ export default function UnifiedPipelineTab() {
     const targets = htmlArray.slice(0, 10);
 
     for (let i = 0; i < targets.length; i++) {
-      setIgCaptureProgress({ step: "capture", done: i, total: targets.length });
-
       const html = targets[i];
       const base64 = await new Promise((resolve, reject) => {
         const blob = new Blob([html], { type: "text/html" });
@@ -1245,13 +1240,10 @@ export default function UnifiedPipelineTab() {
     if (cardHtmls.length > 0) {
       const total = Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS);
       addLog("info", `Upload Post 캐러셀 캡처 시작: ${total}장`);
-      setIgCaptureProgress({ step: "capture", done: 0, total });
-
       const dataUrls = await captureCardHtmls(cardHtmls.slice(0, total));
       const files = await Promise.all(
         dataUrls.map((dataUrl, index) => dataUrlToFile(dataUrl, `carousel-${String(index + 1).padStart(2, "0")}.jpg`))
       );
-      setIgCaptureProgress({ step: "uploading", done: files.length, total: files.length });
       return files;
     }
 
@@ -1265,104 +1257,13 @@ export default function UnifiedPipelineTab() {
     }
 
     addLog("info", `Upload Post 원본 이미지 수집: ${sourceImages.length}장`);
-    setIgCaptureProgress({ step: "uploading", done: 0, total: sourceImages.length });
-
     const files = [];
     for (let i = 0; i < sourceImages.length; i += 1) {
       const file = await imageUrlToFile(sourceImages[i], `carousel-${String(i + 1).padStart(2, "0")}.jpg`);
       files.push(file);
-      setIgCaptureProgress({ step: "uploading", done: i + 1, total: sourceImages.length });
     }
 
     return files;
-  };
-
-  const postToInstagram = async () => {
-    const accountId = String(igConfig.accountId || "").trim();
-    const accessToken = normalizeInstagramToken(igConfig.accessToken);
-    const managedUser = getSession()?.username || "__guest";
-
-    if (!accountId || !accessToken) {
-      setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
-      return;
-    }
-    setIgPosting(true);
-    setIgResult(null);
-    setError("");
-    setIgLogs([]);
-    setIgCaptureProgress({ step: "", done: 0, total: 0 });
-    try {
-      addLog("info", `계정 ID: ${accountId}`);
-      addLog("info", `토큰: ${accessToken.slice(0, 12)}...${accessToken.slice(-4)}`);
-      const carouselFiles = await buildUploadPostCarouselFiles();
-      if (carouselFiles.length === 0) {
-        throw new Error("업로드할 이미지가 없습니다.");
-      }
-
-      const form = new FormData();
-      form.append("title", (postCaption || topic || "").trim());
-      form.append("user", managedUser);
-      form.append("platform[]", "instagram");
-      carouselFiles.forEach((file) => form.append("photos[]", file));
-
-      addLog("info", `API 호출: POST /api/upload-post (이미지 ${carouselFiles.length}장)`);
-
-      const res = await fetch("/api/upload-post", {
-        method: "POST",
-        body: form,
-      });
-
-      const data = await res.json();
-      addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
-
-      if (!res.ok) throw new Error(data.error || "게시 실패");
-
-      const igResultData = data.results?.instagram;
-      if (!igResultData?.success) {
-        throw new Error(igResultData?.error || "게시 실패");
-      }
-
-      addLog("info", `게시 성공! mediaId: ${igResultData.post_id}`);
-      if (igResultData.url) addLog("info", `URL: ${igResultData.url}`);
-
-      setIgResult({
-        status: "success",
-        message: `게시 완료!${igResultData.url ? ` → ${igResultData.url}` : ""}`,
-        permalink: igResultData.url || null,
-      });
-    } catch (e) {
-      addLog("error", `오류: ${e.message}`);
-      setError(e.message);
-    } finally {
-      setIgPosting(false);
-      setIgCaptureProgress({ step: "", done: 0, total: 0 });
-    }
-  };
-
-  const fillDirectUrlsFromCards = () => {
-    const urls = cards
-      .map((c) => c.imageUrl)
-      .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url));
-    setIgDirectUrls(urls.join("\n"));
-    addLog("info", `공개 URL ${urls.length}개를 채웠습니다`);
-  };
-
-  const buildFallbackCaption = () => {
-    const sourceSlides = cards.length ? cards : plan?.slides || [];
-    const title = sourceSlides[0]?.headline || topic;
-    const points = sourceSlides
-      .slice(0, 5)
-      .map((slide) => slide.headline)
-      .filter(Boolean)
-      .map((headline, i) => `${i + 1}. ${headline}`)
-      .join("\n");
-    const brandLine = brandName ? `\n\n${brandName}` : "";
-    return [
-      title,
-      points ? `\n${points}` : "",
-      brandLine,
-      "\n\n#카드뉴스 #인스타그램 #콘텐츠 #트렌드",
-    ].join("").trim();
   };
 
   const buildFallbackUploadPostTitle = () => {
@@ -1372,37 +1273,8 @@ export default function UnifiedPipelineTab() {
     return `${title}${brandSuffix}`.trim();
   };
 
-  const pickCaptionKeyword = () => {
-    const base = [topic, plan?.type, cards[0]?.headline, plan?.slides?.[0]?.headline]
-      .filter(Boolean)
-      .join(" ");
-    const match = base.match(/[가-힣A-Za-z0-9]{2,5}/);
-    return match?.[0] || "자료";
-  };
-
-  const enforceCaptionCta = (caption) => {
-    const keyword = pickCaptionKeyword();
-    const text = String(caption || "").trim();
-    const withoutExtraTags = text.replace(/(?:#[^\s#]+[\s]*){6,}$/g, "").trim();
-    const hasCommentCta = /댓글에\s*["“][^"”]+["”]라고\s*남겨주세요/.test(withoutExtraTags);
-    const withCta = hasCommentCta
-      ? withoutExtraTags
-      : `${withoutExtraTags}\n\n댓글에 "${keyword}"라고 남겨주세요.\n정리본 보내드릴게요!`;
-
-    const lines = withCta.split("\n");
-    const tagLineIndex = lines.findIndex((line) => line.trim().startsWith("#"));
-    if (tagLineIndex === -1) return withCta;
-
-    const tagLine = lines[tagLineIndex]
-      .trim()
-      .split(/\s+/)
-      .filter((item) => item.startsWith("#"))
-      .slice(0, 5)
-      .join(" ");
-    return [...lines.slice(0, tagLineIndex), tagLine].join("\n").trim();
-  };
-
-  const generateCaptionFromPlan = async (target = "instagram") => {
+  const generateCaptionFromPlan = async (target = "uploadPost") => {
+    if (target !== "uploadPost") return;
     const sourceSlides = cards.length ? cards : plan?.slides || [];
     if (!sourceSlides.length) {
       setError("기획된 카드뉴스 내용이 없습니다. 먼저 기획 단계를 완료해주세요.");
@@ -1420,8 +1292,7 @@ export default function UnifiedPipelineTab() {
         ].filter(Boolean).join("\n"))
         .join("\n\n");
 
-      const prompt = target === "uploadPost"
-        ? `
+      const prompt = `
 다음 기획안을 바탕으로 TikTok 업로드 제목 1개를 작성해줘.
 
 주제: ${topic || "미입력"}
@@ -1441,130 +1312,22 @@ ${planningText}
 - 아래 출력 구조 외 다른 문장 추가 금지
 
 제목만 한 줄로 출력.
-`.trim()
-        : `
-다음 카드뉴스 기획안을 바탕으로 인스타그램 게시 캡션 1개를 작성해줘.
-
-주제: ${topic || "미입력"}
-브랜드: ${brandName || "없음"}
-톤: ${tone}
-목적: ${purpose}
-
-기획안:
-${planningText}
-
-작성 규칙:
-- 바로 게시할 캡션 본문만 출력
-- 전체 길이는 공백 포함 220~360자
-- 후킹 1문장, 요약 1~2문단, CTA 2줄, 해시태그 1줄만 출력
-- 후킹은 35자 이내로 짧고 강한 카피라이팅 문장
-- 요약은 총 2~4문장만 작성
-- CTA 2줄은 반드시 포함하고 생략 금지
-- 댓글 단어는 주제에서 가장 핵심적인 2~5글자 단어로 작성
-- 해시태그는 마지막 줄에 최대 5개만 포함
-- 긴 설명, 개념 강의, 배경 설명, 마크다운, 제목, 따옴표, 번호 목록 금지
-- 아래 출력 구조 외 다른 문장 추가 금지
-
-반드시 아래 출력 구조와 줄바꿈을 그대로 지켜:
-[후킹 1문장]
-
-[짧은 요약 1문단, 1~2문장]
-
-[짧은 요약 1문단, 1~2문장]
-
-댓글에 "[핵심단어]"라고 남겨주세요.
-정리본 보내드릴게요!
-
-#해시태그1 #해시태그2 #해시태그3 #해시태그4 #해시태그5
 `.trim();
 
       const raw = await callGemini(
         [{ role: "user", content: prompt }],
-        target === "uploadPost"
-          ? "TikTok 업로드 제목 작성 전문가. 짧고 노출 친화적인 제목만 반환합니다."
-          : "인스타그램 카드뉴스 캡션 작성 전문가. 짧은 후킹 카피와 댓글 단어 CTA가 있는 게시 가능한 캡션 본문만 반환합니다."
+        "TikTok 업로드 제목 작성 전문가. 짧고 노출 친화적인 제목만 반환합니다."
       );
       const caption = String(raw || "").trim();
-      if (target === "uploadPost") {
-        setUploadPostTitle(caption || buildFallbackUploadPostTitle());
-        setUploadPostResult(null);
-        addLog("info", "기획 기반 Upload Post 제목을 작성했습니다.");
-      } else {
-        const nextCaption = enforceCaptionCta(caption || buildFallbackCaption());
-        setPostCaption(nextCaption);
-        addLog("info", "기획 기반 인스타그램 캡션을 작성했습니다.");
-      }
+      setUploadPostTitle(caption || buildFallbackUploadPostTitle());
+      setUploadPostResult(null);
+      addLog("info", "기획 기반 Upload Post 제목을 작성했습니다.");
     } catch (e) {
-      if (target === "uploadPost") {
-        setUploadPostTitle(buildFallbackUploadPostTitle());
-        setUploadPostResult(null);
-      } else {
-        setPostCaption(buildFallbackCaption());
-      }
+      setUploadPostTitle(buildFallbackUploadPostTitle());
+      setUploadPostResult(null);
       addLog("error", `캡션 AI 작성 실패: ${e.message}`);
     } finally {
       setCaptionGenerating(false);
-    }
-  };
-
-  const postDirectInstagramUrls = async () => {
-    const accountId = String(igConfig.accountId || "").trim();
-    const accessToken = normalizeInstagramToken(igConfig.accessToken);
-
-    if (!accountId || !accessToken) {
-      setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
-      return;
-    }
-    const urls = igDirectUrls
-      .split(/\n+/)
-      .map((u) => u.trim())
-      .filter(Boolean);
-
-    if (urls.length === 0) {
-      setError("공개 이미지 URL을 한 줄에 하나씩 입력해주세요");
-      return;
-    }
-
-    if (urls.length > 10) {
-      setError("인스타그램 캐러셀은 최대 10장까지 업로드할 수 있습니다");
-      return;
-    }
-
-    setIgPosting(true);
-    setIgResult(null);
-    setError("");
-    setIgLogs([]);
-    setIgCaptureProgress({ step: "uploading", done: 0, total: urls.length });
-
-    try {
-      addLog("info", `공개 URL 업로드 시작: ${urls.length}개`);
-      const res = await fetch("/api/instagram-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId,
-          accessToken,
-          images: urls,
-          caption: postCaption || topic,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.logs?.length) data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
-      addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
-      if (!res.ok) throw new Error(data.error || "게시 실패");
-
-      setIgResult({
-        status: "success",
-        message: `공개 URL 업로드 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
-        permalink: data.permalink,
-      });
-    } catch (e) {
-      addLog("error", `오류: ${e.message}`);
-      setError(e.message);
-    } finally {
-      setIgPosting(false);
-      setIgCaptureProgress({ step: "", done: 0, total: 0 });
     }
   };
 
@@ -1646,7 +1409,6 @@ ${planningText}
       });
     } finally {
       setUploadPostPosting(false);
-      setIgCaptureProgress({ step: "", done: 0, total: 0 });
     }
   };
 
@@ -2499,50 +2261,8 @@ ${planningText}
                   📥 이미지 다운로드
                 </button>
                 <button
-                  onClick={async () => {
-                    const accessToken = normalizeInstagramToken(igConfig.accessToken);
-                    if (!accessToken) {
-                      addLog("error", "토큰을 먼저 입력하세요");
-                      return;
-                    }
-                    try {
-                      addLog("info", "Facebook 페이지 → Instagram 계정 ID 조회 중...");
-                      // Facebook 페이지 목록 조회
-                      const pagesRes = await fetch(
-                        `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}`
-                      );
-                      const pagesData = await pagesRes.json();
-                      if (pagesData.error) throw new Error(pagesData.error.message);
-                      if (!pagesData.data?.length) throw new Error("연결된 Facebook 페이지가 없습니다. Facebook 페이지와 Instagram 비즈니스 계정을 연결해주세요.");
-
-                      // 각 페이지에서 Instagram 비즈니스 계정 찾기
-                      let foundId = null, foundUsername = null;
-                      for (const page of pagesData.data) {
-                        const igRes = await fetch(
-                          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${accessToken}`
-                        );
-                        const igData = await igRes.json();
-                        if (igData.instagram_business_account?.id) {
-                          foundId = igData.instagram_business_account.id;
-                          // username 조회
-                          const uRes = await fetch(
-                            `https://graph.facebook.com/v21.0/${foundId}?fields=username&access_token=${accessToken}`
-                          );
-                          const uData = await uRes.json();
-                          foundUsername = uData.username || foundId;
-                          break;
-                        }
-                      }
-                      if (!foundId) throw new Error("Facebook 페이지에 연결된 Instagram 비즈니스 계정을 찾을 수 없습니다.");
-                      const next = { ...igConfig, accountId: foundId, accessToken };
-                      setIgConfig(next);
-                      saveSocial(igKey, session.username, next);
-                      addLog("info", `✅ 조회 성공: @${foundUsername} → ${foundId}`);
-                    } catch (e) {
-                      addLog("error", `계정 ID 조회 실패: ${e.message}`);
-                    }
-                  }}
-                  className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
+                  disabled
+                  className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 rounded px-2 py-0.5 opacity-40 cursor-not-allowed"
                 >
                   🔍 토큰으로 자동 조회
                 </button>
@@ -2568,11 +2288,10 @@ ${planningText}
             </label>
             <button
               type="button"
-              onClick={() => generateCaptionFromPlan("instagram")}
-              disabled={captionGenerating || !(cards.length || plan?.slides?.length)}
-              className="mb-2 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-pink-200 text-pink-600 bg-pink-50 hover:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              disabled
+              className="mb-2 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-pink-200 text-pink-600 bg-pink-50 opacity-40 cursor-not-allowed"
             >
-              {captionGenerating ? "작성 중..." : "기획 기반 캡션 작성"}
+              기획 기반 캡션 작성
             </button>
             <textarea
               rows={3}
@@ -2591,8 +2310,8 @@ ${planningText}
               </div>
               <button
                 type="button"
-                onClick={fillDirectUrlsFromCards}
-                className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
+                disabled
+                className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 rounded px-2 py-0.5 opacity-40 cursor-not-allowed"
               >
                 현재 카드 URL 채우기
               </button>
@@ -2607,9 +2326,8 @@ ${planningText}
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={postDirectInstagramUrls}
-                disabled={igPosting || !igConfig.accountId || !igConfig.accessToken}
-                className="px-3 py-2 bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold rounded-lg transition-all"
+                disabled
+                className="px-3 py-2 bg-white border border-violet-200 text-violet-700 opacity-40 cursor-not-allowed text-xs font-bold rounded-lg"
               >
                 공개 URL로 업로드
               </button>
@@ -2623,31 +2341,15 @@ ${planningText}
 
           {/* 게시 버튼 */}
           <button
-            onClick={postToInstagram}
-            disabled={igPosting || !igConfig.accountId || !igConfig.accessToken}
-            className="w-full py-3 bg-gradient-to-r from-fuchsia-500 to-pink-500 hover:from-fuchsia-600 hover:to-pink-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+            disabled={!igConfig.accountId || !igConfig.accessToken}
+            className="w-full py-3 bg-gradient-to-r from-fuchsia-500 to-pink-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
           >
-            {igPosting ? (
-              <>
-                <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                </svg>
-                {igCaptureProgress.step === "capture" && igCaptureProgress.total > 0
-                  ? `카드 캡처 중... (${igCaptureProgress.done + 1}/${igCaptureProgress.total})`
-                  : igCaptureProgress.step === "uploading"
-                  ? "인스타그램 업로드 중..."
-                  : "게시 중..."}
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
-                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
-                </svg>
-                인스타그램에 게시하기
-              </>
-            )}
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+            </svg>
+            인스타그램에 게시하기
           </button>
 
           {/* 게시 결과 */}

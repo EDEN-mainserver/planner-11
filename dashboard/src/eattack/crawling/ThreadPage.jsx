@@ -421,18 +421,20 @@ JSON 배열 형식으로만 반환:
         [{ role: "user", content:
 `다음 Threads 인기글들을 조회수 순으로 분석해, 각 글의 구조를 템플릿으로 역설계해주세요.
 조회수가 높은 글일수록 더 강한 패턴으로 가중치를 두되, 좋아요/댓글/리포스트도 보조 지표로 반영하세요.
+분석 결과는 설명문이 아니라 바로 재사용 가능한 "훅 우선 템플릿"이어야 합니다.
+첫 문장, 말투, CTA가 강하게 살아 있어야 하고, 밋밋한 정보 요약은 피하세요.
 
 게시물 데이터:
 ${JSON.stringify(postsForPrompt, null, 2)}
 
 JSON 형식으로만 반환:
 {
-  "summary": "조회수 상위 글에서 반복되는 구조 패턴 한 줄 요약",
+  "summary": "조회수 상위 글에서 반복되는 훅 패턴을 한 줄로 압축한 요약",
   "focus_analysis": {
-    "flow": "상위 글들이 공통적으로 사용하는 전개 흐름",
-    "hook_copywriting": "첫 문장 카피라이팅의 반복 공식",
-    "tone": "말투/화자의 태도와 거리감",
-    "cta": "댓글/공유/저장/클릭을 유도하는 방식"
+    "flow": "상위 글들이 공통적으로 사용하는 전개 흐름을 hook-first 기준으로 설명",
+    "hook_copywriting": "첫 문장 카피라이팅의 반복 공식과 강한 시작 유형",
+    "tone": "말투/화자의 태도와 거리감, 특히 단정성/도발성/권위감",
+    "cta": "댓글/공유/저장/클릭을 유도하는 방식과 끝맺는 말투"
   },
   "winning_patterns": [
     {
@@ -446,9 +448,11 @@ JSON 형식으로만 반환:
       "rank_by_views": 1,
       "views": 12345,
       "structure_name": "템플릿 이름",
+      "hook_type": "충격형/반전형/숫자형/질문형/단정형 중 하나",
+      "opening_example": "실제로 쓸 수 있는 첫 문장 예시",
       "template": [
         "1단계: 첫 문장/후킹 구조",
-        "2단계: 문제 제기 또는 공감 장치",
+        "2단계: 문제 제기 또는 반전 장치",
         "3단계: 전개 방식",
         "4단계: 결론/CTA"
       ],
@@ -459,13 +463,14 @@ JSON 형식으로만 반환:
   "recommended_master_template": {
     "name": "가장 재사용성이 높은 마스터 템플릿 이름",
     "steps": ["1단계", "2단계", "3단계", "4단계"],
+    "hook_rule": "실제로 쓸 수 있는 첫 문장 규칙",
     "example_hook": "실제로 쓸 수 있는 첫 문장 예시",
     "tone_rule": "이 템플릿을 쓸 때 유지해야 하는 말투 규칙",
     "cta_rule": "이 템플릿을 쓸 때 가장 잘 맞는 CTA 규칙"
   }
 }`
         }],
-        "당신은 조회수 기반 소셜 콘텐츠 구조 분석가입니다. 텍스트 주제보다 흐름, 첫 문장 카피라이팅, 말투, CTA 패턴을 우선 분석하고 JSON만 반환하세요."
+        "당신은 조회수 기반 소셜 콘텐츠 구조 분석가입니다. 텍스트 주제보다 흐름, 첫 문장 카피라이팅, 말투, CTA 패턴을 우선 분석하고 JSON만 반환하세요. 결과는 설명서가 아니라 바로 복제 가능한 템플릿이어야 하며, 첫 문장 훅이 가장 중요합니다."
       );
 
       const data = parseJSON(res);
@@ -724,8 +729,13 @@ JSON 형식으로만 반환:
                       첫 문장 예시: {templateMap.data.recommended_master_template.example_hook}
                     </p>
                   )}
-                  {(templateMap.data.recommended_master_template.tone_rule || templateMap.data.recommended_master_template.cta_rule) && (
+                  {(templateMap.data.recommended_master_template.hook_rule || templateMap.data.recommended_master_template.tone_rule || templateMap.data.recommended_master_template.cta_rule) && (
                     <div className="mt-2 grid md:grid-cols-2 gap-2">
+                      {templateMap.data.recommended_master_template.hook_rule && (
+                        <p className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                          첫 문장 규칙: {templateMap.data.recommended_master_template.hook_rule}
+                        </p>
+                      )}
                       {templateMap.data.recommended_master_template.tone_rule && (
                         <p className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
                           말투: {templateMap.data.recommended_master_template.tone_rule}
@@ -760,6 +770,20 @@ JSON 형식으로만 반환:
                         <p className="mt-2 text-xs text-purple-700 bg-purple-50 rounded-lg px-3 py-2">
                           {tpl.copy_formula}
                         </p>
+                      )}
+                      {(tpl.hook_type || tpl.opening_example) && (
+                        <div className="mt-2 grid gap-2">
+                          {tpl.hook_type && (
+                            <p className="text-[11px] text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                              훅 유형: {tpl.hook_type}
+                            </p>
+                          )}
+                          {tpl.opening_example && (
+                            <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                              첫 문장 예시: {tpl.opening_example}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
