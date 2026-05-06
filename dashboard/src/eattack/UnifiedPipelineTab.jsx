@@ -1925,8 +1925,8 @@ export default function UnifiedPipelineTab() {
             <button
               type="button"
               onClick={() => {
-                const SCOPES = "instagram_basic,instagram_content_publish";
-                const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=1657867098880562&redirect_uri=https://planforge-ui.vercel.app/auth/instagram/&scope=${SCOPES}&response_type=code`;
+                const SCOPES = "instagram_business_basic,instagram_business_content_publish";
+                const oauthUrl = `https://www.instagram.com/oauth/authorize?force_reauth=true&client_id=1657867098880562&redirect_uri=https://planforge-ui.vercel.app/auth/instagram/&scope=${SCOPES}&response_type=code&enable_fb_login=0&hide_fb_login=1`;
                 const popup = window.open(oauthUrl, "instagram-auth", "width=580,height=720,left=200,top=100");
                 const onMessage = (e) => {
                   if (e.data?.type !== "instagram_auth") return;
