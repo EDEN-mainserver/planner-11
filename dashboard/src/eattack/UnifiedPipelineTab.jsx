@@ -1112,15 +1112,31 @@ export default function UnifiedPipelineTab() {
   };
 
   const postToInstagram = async () => {
-    const images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
-    if (images.length === 0) {
-      setError("게시할 이미지가 없습니다. 이미지 생성 후 다시 시도해주세요.");
-      return;
-    }
     setIgPosting(true);
     setIgResult(null);
     setError("");
     try {
+      // 1. imageUrl 있는 카드 먼저 수집
+      let images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
+
+      // 2. imageUrl 없으면 cardHtmls → html-screenshot API로 변환
+      if (images.length === 0 && cardHtmls.length > 0) {
+        setError("카드 이미지 변환 중...");
+        const shotRes = await fetch("/api/html-screenshot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ htmls: cardHtmls }),
+        });
+        const shotData = await shotRes.json();
+        if (!shotRes.ok) throw new Error(shotData.error || "카드 이미지 변환 실패");
+        images = shotData.images || [];
+        setError("");
+      }
+
+      if (images.length === 0) {
+        throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
+      }
+
       const res = await fetch("/api/instagram-post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
