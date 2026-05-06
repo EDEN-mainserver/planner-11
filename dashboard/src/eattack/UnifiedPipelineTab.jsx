@@ -1126,19 +1126,40 @@ export default function UnifiedPipelineTab() {
       let images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
       log(`카드 imageUrl 수집: ${images.length}개`);
 
-      // 2. imageUrl 없으면 cardHtmls → html-screenshot API로 변환
+      // 2. imageUrl 없으면 cardHtmls → 브라우저에서 html2canvas로 직접 캡처
       if (images.length === 0 && cardHtmls.length > 0) {
-        log(`HTML 카드 감지 (${cardHtmls.length}장) → 스크린샷 변환 시작`);
-        const shotRes = await fetch("/api/html-screenshot", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ htmls: cardHtmls }),
-        });
-        const shotData = await shotRes.json();
-        log(`html-screenshot 응답: ${shotRes.status}`);
-        if (!shotRes.ok) throw new Error(shotData.error || "카드 이미지 변환 실패");
-        images = shotData.images || [];
-        log(`스크린샷 완료: ${images.length}장`);
+        log(`HTML 카드 감지 (${cardHtmls.length}장) → 브라우저 캡처 시작`);
+        const { default: html2canvas } = await import("html2canvas");
+        const targets = cardHtmls.slice(0, 10);
+        for (let i = 0; i < targets.length; i++) {
+          log(`카드 ${i + 1}/${targets.length} 캡처 중...`);
+          const dataUrl = await new Promise((resolve, reject) => {
+            const blob = new Blob([targets[i]], { type: "text/html" });
+            const blobUrl = URL.createObjectURL(blob);
+            const iframe = document.createElement("iframe");
+            iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
+            iframe.src = blobUrl;
+            iframe.onload = async () => {
+              try {
+                const doc = iframe.contentDocument;
+                await doc.fonts.ready;
+                await new Promise((r) => setTimeout(r, 1200));
+                const canvas = await html2canvas(doc.documentElement, {
+                  width: 1080, height: 1350, windowWidth: 1080, windowHeight: 1350,
+                  scale: 1, useCORS: true, allowTaint: false, backgroundColor: "#080814",
+                  logging: false, x: 0, y: 0,
+                });
+                URL.revokeObjectURL(blobUrl);
+                iframe.remove();
+                resolve(canvas.toDataURL("image/jpeg", 0.92));
+              } catch (e) { URL.revokeObjectURL(blobUrl); iframe.remove(); reject(e); }
+            };
+            iframe.onerror = () => { URL.revokeObjectURL(blobUrl); iframe.remove(); reject(new Error("iframe 로드 실패")); };
+            document.body.appendChild(iframe);
+          });
+          images.push(dataUrl);
+        }
+        log(`브라우저 캡처 완료: ${images.length}장`);
       }
 
       if (images.length === 0) {
