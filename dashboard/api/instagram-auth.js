@@ -1,7 +1,7 @@
 // Instagram OAuth 콜백 핸들러
 // 흐름: Instagram 팝업 → 허용 → 여기로 리다이렉트 → 토큰 교환 → postMessage → 팝업 닫힘
 
-const APP_ID     = process.env.INSTAGRAM_APP_ID     || "1268925518205893";
+const APP_ID     = process.env.INSTAGRAM_APP_ID     || "1657867098880562";
 const APP_SECRET = process.env.INSTAGRAM_APP_SECRET || "";
 const REDIRECT_URI = "https://planforge-ui.vercel.app/auth/instagram";
 
