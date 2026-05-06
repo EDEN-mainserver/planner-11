@@ -1,5 +1,5 @@
 // 유통 페이지 — 대표전용 툴
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 

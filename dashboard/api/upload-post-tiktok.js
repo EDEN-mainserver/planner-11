@@ -1,5 +1,3 @@
-/* global Buffer, process */
-
 export const config = {
   api: {
     bodyParser: false,

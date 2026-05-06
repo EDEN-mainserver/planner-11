@@ -40,7 +40,7 @@ async function runResearch(topic) {
           .join("\n");
       }
     }
-  } catch (_) {}
+  } catch {}
 
   return callGemini(
     [

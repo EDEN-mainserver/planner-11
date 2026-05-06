@@ -1,7 +1,5 @@
 import { head, put } from "@vercel/blob";
 
-/* global process */
-
 export const config = { api: { bodyParser: { sizeLimit: "3mb" } } };
 
 const FULL_AUTO_CONFIG_PATH = "full-auto/team-config.json";

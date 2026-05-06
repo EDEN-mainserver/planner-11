@@ -1,6 +1,7 @@
 // Instagram Graph API 게시 (ig-mcp 방식)
 // base64 data URL → Vercel Blob 임시 업로드 → 공개 URL → Graph API → Blob 삭제
 
+import { Buffer } from "node:buffer";
 import { put, del } from "@vercel/blob";
 
 const IG_API = "https://graph.instagram.com/v22.0";
@@ -13,7 +14,7 @@ export const config = {
 };
 
 function normalizeToken(value) {
-  return String(value || "").replace(/[\s​-‍﻿]+/g, "").trim();
+  return String(value || "").replace(/[\s\u200B-\u200D\uFEFF-]+/g, "").trim();
 }
 
 // base64 data URL → Vercel Blob 업로드 → 공개 URL 반환
@@ -90,6 +91,53 @@ async function getPermalink(mediaId, accessToken) {
   }
 }
 
+export async function prepareInstagramImages(images) {
+  if (!Array.isArray(images) || images.length === 0) {
+    throw new Error("이미지가 없습니다");
+  }
+
+  const publicUrls = [];
+  const blobUrls = [];
+  for (let i = 0; i < images.length; i++) {
+    const { url, blobUrl } = await toPublicUrl(images[i], i);
+    publicUrls.push(url);
+    if (blobUrl) blobUrls.push(blobUrl);
+  }
+
+  return { publicUrls, blobUrls };
+}
+
+export async function postInstagram(accountId, accessToken, images, caption) {
+  if (!accountId || !accessToken) {
+    throw new Error("accountId와 accessToken이 필요합니다");
+  }
+  const blobUrls = [];
+
+  try {
+    const { publicUrls, blobUrls: preparedBlobUrls } = await prepareInstagramImages(images);
+    blobUrls.push(...preparedBlobUrls);
+
+    let containerId;
+    if (publicUrls.length === 1) {
+      containerId = await createContainer(accountId, accessToken, publicUrls[0], caption || "", false);
+    } else {
+      const childIds = [];
+      for (const url of publicUrls.slice(0, 10)) {
+        childIds.push(await createContainer(accountId, accessToken, url, "", true));
+      }
+      containerId = await createCarouselContainer(accountId, accessToken, childIds, caption || "");
+    }
+
+    const mediaId = await publishContainer(accountId, accessToken, containerId);
+    const permalink = await getPermalink(mediaId, accessToken);
+    return { ok: true, mediaId, permalink };
+  } finally {
+    if (blobUrls.length > 0) {
+      Promise.allSettled(blobUrls.map((url) => del(url))).catch(() => {});
+    }
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -100,46 +148,10 @@ export default async function handler(req, res) {
   const { accountId, accessToken: rawToken, images, caption } = req.body || {};
   const accessToken = normalizeToken(rawToken);
 
-  if (!accountId || !accessToken) {
-    return res.status(400).json({ error: "accountId와 accessToken이 필요합니다" });
-  }
-  if (!Array.isArray(images) || images.length === 0) {
-    return res.status(400).json({ error: "이미지가 없습니다" });
-  }
-
-  const blobUrls = [];
-
   try {
-    // 1. 모든 이미지를 공개 URL로 변환 (base64면 Blob 업로드)
-    const publicUrls = [];
-    for (let i = 0; i < images.length; i++) {
-      const { url, blobUrl } = await toPublicUrl(images[i], i);
-      publicUrls.push(url);
-      if (blobUrl) blobUrls.push(blobUrl);
-    }
-
-    // 2. Instagram 게시
-    let containerId;
-    if (publicUrls.length === 1) {
-      containerId = await createContainer(accountId, accessToken, publicUrls[0], caption || "", false);
-    } else {
-      const childIds = [];
-      for (const url of publicUrls) {
-        childIds.push(await createContainer(accountId, accessToken, url, "", true));
-      }
-      containerId = await createCarouselContainer(accountId, accessToken, childIds, caption || "");
-    }
-
-    const mediaId = await publishContainer(accountId, accessToken, containerId);
-    const permalink = await getPermalink(mediaId, accessToken);
-
-    return res.status(200).json({ ok: true, mediaId, permalink });
+    const result = await postInstagram(accountId, accessToken, images, caption);
+    return res.status(200).json(result);
   } catch (e) {
     return res.status(500).json({ error: e.message });
-  } finally {
-    // 3. Blob 즉시 삭제 (임시 파일 정리)
-    if (blobUrls.length > 0) {
-      Promise.allSettled(blobUrls.map((url) => del(url))).catch(() => {});
-    }
   }
 }

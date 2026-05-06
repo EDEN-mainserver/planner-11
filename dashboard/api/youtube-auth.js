@@ -94,7 +94,7 @@ export default async function handler(req, res) {
       );
       const chData = await chRes.json();
       channelTitle = chData.items?.[0]?.snippet?.title || "";
-    } catch (_) {}
+    } catch {}
 
     // postMessage로 부모 창(대시보드)에 토큰 전달 후 팝업 닫기
     return res.status(200).send(page("연결 완료!", `

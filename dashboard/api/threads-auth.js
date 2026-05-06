@@ -119,7 +119,7 @@ export default async function handler(req, res) {
       const meData = await meRes.json();
       userId   = meData.id       || "";
       username = meData.username || "";
-    } catch (_) {}
+    } catch {}
 
     return res.status(200).send(page("연결 완료!", `
       <div class="icon ok">✓</div>

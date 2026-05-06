@@ -2,6 +2,12 @@ import { del, list, put } from "@vercel/blob";
 
 export const SCHEDULE_PREFIX = "threads-schedule";
 
+function normalizeSchedulePlatform(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "instagram") return "instagram";
+  return "threads";
+}
+
 function normalizeScheduleText(text) {
   return String(text || "")
     .normalize("NFKC")
@@ -58,6 +64,7 @@ function toStoredSchedule(schedule) {
   return {
     ...schedule,
     scheduledAt: normalizeScheduledAt(schedule?.scheduledAt),
+    platform: normalizeSchedulePlatform(schedule?.platform),
   };
 }
 
@@ -163,6 +170,7 @@ export async function saveSchedule(username, schedule) {
     const duplicate = schedules.find((item) => {
       if (!item?.id || item.id === stored.id) return false;
       if (item.status !== "pending" && item.status !== "posted") return false;
+      if (normalizeSchedulePlatform(item.platform) !== normalizeSchedulePlatform(stored.platform)) return false;
       return normalizeScheduleText(item.text) === normalizedText;
     });
     if (duplicate) {

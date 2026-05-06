@@ -149,7 +149,7 @@ export default async function handler(req, res) {
     await new Promise((r) => setTimeout(r, 2000));
 
     // ── DOM 파싱 ──
-    const { posts, debugInfo } = await page.evaluate((parseCount) => {
+    const { posts, debugInfo } = await page.evaluate(() => {
       const articles = document.querySelectorAll('article[data-testid="tweet"]');
       const posts = [];
 

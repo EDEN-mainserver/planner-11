@@ -1,7 +1,7 @@
 // 풀가동화 콘텐츠 — 팀 계정 설정 CRUD
 // Vercel Blob에 full-auto/team-config.json 으로 저장/로드
 
-import { put, head, del } from "@vercel/blob";
+import { put, head } from "@vercel/blob";
 
 const CONFIG_PATH = "full-auto/team-config.json";
 const HISTORY_PATH = "full-auto/history.json";

@@ -93,21 +93,23 @@ export default async function handler(req, res) {
       // 현재 시각 이전인 pending 항목 추출
       const due = schedules.filter(
         (s) => {
+          const platform = String(s.platform || "threads").toLowerCase();
           const scheduled = normalizeScheduledAt(s.scheduledAt);
-          return s.status === "pending" && scheduled && scheduled <= now;
+          return platform === "threads" && s.status === "pending" && scheduled && scheduled <= now;
         }
       );
       if (!due.length) continue;
 
       for (const post of due) {
         try {
-          const mediaId = await postText(post.userId, post.accessToken, post.text);
+          const posted = { mediaId: await postText(post.userId, post.accessToken, post.text) };
           await updateScheduleRecord(username, post.id, {
             status: "posted",
             postedAt: new Date().toISOString(),
-            mediaId,
+            mediaId: posted.mediaId,
+            permalink: posted.permalink || post.permalink || null,
           });
-          results.push({ id: post.id, username, status: "posted", mediaId });
+          results.push({ id: post.id, username, status: "posted", mediaId: posted.mediaId, platform: "threads" });
         } catch (e) {
           await updateScheduleRecord(username, post.id, {
             status: "failed",

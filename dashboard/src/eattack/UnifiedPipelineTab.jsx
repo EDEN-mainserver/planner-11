@@ -54,6 +54,32 @@ function saveLocalText(key, value) {
   localStorage.setItem(key, value);
 }
 
+async function fetchSchedules(username) {
+  const res = await fetch(`/api/schedule?username=${encodeURIComponent(username)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.schedules || [];
+}
+
+async function addSchedule(username, schedule) {
+  const res = await fetch("/api/schedule", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, schedule }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, error: data?.error || "", schedule: data?.schedule || null };
+}
+
+async function removeSchedule(username, id) {
+  const res = await fetch("/api/schedule", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, id }),
+  });
+  return res.ok;
+}
+
 function normalizeInstagramToken(value) {
   return String(value || "").replace(/[\s\u200B-\u200D\uFEFF]+/g, "").trim();
 }
@@ -117,8 +143,8 @@ ${slideCount}장 카드뉴스 기획서를 JSON으로 작성해줘:
     {
       "num": 1,
       "part": "표지|본문|마무리",
-      "headline": "제목(한 줄, 12~15자 이내)",
-      "body": "본문 — 표지/마무리는 한 줄 요약. 본문 슬라이드는 반드시 줄바꿈(\\n)으로 구분된 5개 항목으로 작성: 첫째줄=핵심요약(20자 이내), 둘째줄=소제목(15자 이내), 셋째~다섯째줄=세부내용(각 15~20자 이내), 전체 80자 이내",
+      "headline": "제목(한 줄, 10~12자 이내)",
+      "body": "본문 — 표지/마무리는 한 줄 요약. 본문 슬라이드는 반드시 줄바꿈(\\n)으로 구분된 4개 항목으로 작성: 첫째줄=핵심요약(16자 이내), 둘째줄=소제목(12자 이내), 셋째~넷째줄=세부내용(각 12~16자 이내), 전체 64자 이내",
       "imagePrompt": "영어로 이미지 설명, 사실적 사진 스타일, no text, no watermark"
     }
   ]
@@ -144,6 +170,34 @@ function extractJsonObject(raw) {
 
 function normalizePlanData(planData) {
   const slides = Array.isArray(planData?.slides) ? planData.slides : [];
+  const shortenText = (value, maxLen) => {
+    const text = String(value || "").trim().replace(/\s+/g, " ");
+    if (!text) return "";
+    if (text.length <= maxLen) return text;
+    return `${text.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+  };
+  const shortenLines = (value, maxLenPerLine, maxLines, maxTotalLen) => {
+    const lines = String(value || "")
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, maxLines);
+    if (!lines.length) return "";
+    const trimmed = [];
+    let total = 0;
+    for (const line of lines) {
+      let next = shortenText(line, maxLenPerLine);
+      if (total + next.length > maxTotalLen) {
+        const remain = Math.max(0, maxTotalLen - total);
+        if (remain <= 1) break;
+        next = shortenText(next, remain);
+      }
+      trimmed.push(next);
+      total += next.length;
+      if (total >= maxTotalLen) break;
+    }
+    return trimmed.join("\n");
+  };
   return {
     ...planData,
     type: planData?.type || "카드뉴스",
@@ -155,9 +209,9 @@ function normalizePlanData(planData) {
         ...slide,
         num: Number(slide.num) || i + 1,
         part: slide.part || (i === 0 ? "도입" : i === slides.length - 1 ? "마무리" : "본문"),
-        headline: String(slide.headline || "").trim(),
+        headline: shortenText(slide.headline, 12),
         bodyLines,
-        body: bodyLines.length ? bodyLines.join("\n") : String(slide.body || "").trim(),
+        body: shortenLines(bodyLines.length ? bodyLines.join("\n") : slide.body, 16, 4, 64),
         imagePrompt: String(slide.imagePrompt || "").trim(),
       };
     }),
@@ -356,25 +410,25 @@ function buildHtmlCardNews(topic, cards, brandName, color1, color2, font) {
     align-items: flex-start;
   }
   .num {
-    font-size: 28px;
+    font-size: 22px;
     margin-bottom: 24px;
     letter-spacing: 0.05em;
   }
   .headline {
-    font-size: 72px;
+    font-size: 58px;
     font-weight: 700;
     line-height: 1.15;
     margin-bottom: 28px;
     word-break: keep-all;
   }
   .body {
-    font-size: 40px;
+    font-size: 32px;
     line-height: 1.7;
     word-break: keep-all;
     margin-bottom: 20px;
   }
   .brand-name {
-    font-size: 32px;
+    font-size: 26px;
     font-weight: 700;
     letter-spacing: 0.08em;
     margin-top: 20px;
@@ -395,6 +449,7 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const clampStyle = (lines) =>
     `display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:${lines};overflow:hidden;`;
+  const shrink = 0.8;
   // 액센트 컬러 → rgba 사용을 위해 RGB 추출
   const ah = accent.replace("#", "");
   const accentRgb = `${parseInt(ah.slice(0,2),16)},${parseInt(ah.slice(2,4),16)},${parseInt(ah.slice(4,6),16)}`;
@@ -420,9 +475,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
           <div style="width:32px;height:32px;background:${accent};border-radius:8px;
             display:flex;align-items:center;justify-content:center;
             font-size:15px;font-weight:800;color:#fff;flex-shrink:0;">${ci + 1}</div>
-          <span style="font-size:22px;font-weight:600;color:rgba(255,255,255,.85);line-height:1.25;
+          <span style="font-size:${Math.round(22 * shrink)}px;font-weight:600;color:rgba(255,255,255,.85);line-height:1.25;
             ${clampStyle(1)}flex:1;min-width:0;">${esc(bc.headline)}</span>
-          ${chipSub ? `<span style="font-size:17px;color:rgba(255,255,255,.35);line-height:1.25;white-space:nowrap;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(chipSub)}</span>` : ""}
+          ${chipSub ? `<span style="font-size:${Math.round(17 * shrink)}px;color:rgba(255,255,255,.35);line-height:1.25;white-space:nowrap;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(chipSub)}</span>` : ""}
         </div>`;
       }).join("");
 
@@ -457,15 +512,15 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     ${esc(brand).toUpperCase()}
   </div>
   <div style="position:relative;z-index:10;overflow:hidden;">
-    <div style="font-size:24px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:14px;
+    <div style="font-size:${Math.round(24 * shrink)}px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:14px;
       overflow:hidden;white-space:nowrap;letter-spacing:.03em;">${esc(topic)}</div>
-    <div style="font-size:82px;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.025em;
+    <div style="font-size:${Math.round(82 * shrink)}px;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.025em;
       word-break:keep-all;${clampStyle(2)}margin-bottom:32px;">${esc(card.headline)}</div>
     ${previewChips ? `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:40px;overflow:hidden;">${previewChips}</div>` : ""}
     <div style="display:inline-flex;align-items:center;gap:8px;
       background:linear-gradient(90deg,rgba(155,142,255,.2),rgba(100,70,220,.15));
       border:1px solid rgba(155,142,255,.3);border-radius:12px;padding:17px 26px;
-      color:rgba(255,255,255,.85);font-size:22px;font-weight:500;overflow:hidden;white-space:nowrap;max-width:100%;">
+      color:rgba(255,255,255,.85);font-size:${Math.round(22 * shrink)}px;font-weight:500;overflow:hidden;white-space:nowrap;max-width:100%;">
       ${card.body ? esc(card.body) : "댓글 &amp; 팔로우로 더 많은 콘텐츠를"}
       <span style="color:${accent};font-weight:700;margin-left:6px;">&gt;&gt;</span>
     </div>
@@ -504,8 +559,8 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     ${summaryChips}
   </div>
   <div style="text-align:center;margin-bottom:40px;overflow:hidden;">
-    <div style="font-size:30px;font-weight:700;color:#111;line-height:1.5;word-break:keep-all;${clampStyle(2)}">${esc(card.headline)}</div>
-    ${card.body ? `<div style="font-size:24px;color:#888;line-height:1.5;margin-top:8px;word-break:keep-all;${clampStyle(2)}">${esc(card.body)}</div>` : ""}
+    <div style="font-size:${Math.round(30 * shrink)}px;font-weight:700;color:#111;line-height:1.5;word-break:keep-all;${clampStyle(2)}">${esc(card.headline)}</div>
+    ${card.body ? `<div style="font-size:${Math.round(24 * shrink)}px;color:#888;line-height:1.5;margin-top:8px;word-break:keep-all;${clampStyle(2)}">${esc(card.body)}</div>` : ""}
   </div>
   <div style="background:#fff;border-radius:20px;padding:30px 36px;width:100%;
     box-shadow:0 4px 28px rgba(0,0,0,.08);overflow:hidden;">
@@ -517,20 +572,20 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         <span style="color:#fff;font-size:34px;font-weight:900;">${esc(brand).charAt(0)}</span>
       </div>
       <div style="flex:1;overflow:hidden;min-width:0;display:flex;flex-direction:column;gap:4px;">
-        <div style="font-size:28px;font-weight:900;color:#111;line-height:1.1;
+        <div style="font-size:${Math.round(28 * shrink)}px;font-weight:900;color:#111;line-height:1.1;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(brand)}</div>
-        <div style="font-size:16px;color:#666;line-height:1.25;word-break:keep-all;${clampStyle(1)}">${esc(topic)}</div>
+        <div style="font-size:${Math.round(16 * shrink)}px;color:#666;line-height:1.25;word-break:keep-all;${clampStyle(1)}">${esc(topic)}</div>
       </div>
-      <div style="background:#4c6ef5;color:#fff;font-size:21px;font-weight:700;
+      <div style="background:#4c6ef5;color:#fff;font-size:${Math.round(21 * shrink)}px;font-weight:700;
         padding:13px 26px;border-radius:11px;flex-shrink:0;white-space:nowrap;">Follow</div>
     </div>
   </div>
   <div style="border:2px solid #bbb;border-radius:50px;padding:13px 52px;
-    font-size:24px;font-weight:600;color:#555;white-space:nowrap;overflow:hidden;margin-top:32px;">
+    font-size:${Math.round(24 * shrink)}px;font-weight:600;color:#555;white-space:nowrap;overflow:hidden;margin-top:32px;">
     ${handle}
   </div>
   <div style="position:absolute;bottom:50px;left:0;right:0;text-align:center;
-    font-size:19px;color:#bbb;font-weight:400;overflow:hidden;white-space:nowrap;">
+    font-size:${Math.round(19 * shrink)}px;color:#bbb;font-weight:400;overflow:hidden;white-space:nowrap;">
     팔로우하고 더 많은 콘텐츠를 받아보세요
   </div>
 </div>`;
@@ -588,23 +643,23 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;">📁 구조 파악</div>
-          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">directory</div>
+          <div style="font-size:${Math.round(20 * shrink)}px;font-weight:700;color:#222;">📁 구조 파악</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:${Math.round(14 * shrink)}px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">directory</div>
         </div>
         <div style="flex:1;min-height:0;background:#0d1117;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;">
           <div style="height:36px;background:#161b22;display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
             <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
             <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
             <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
-            <div style="margin-left:10px;font-size:14px;color:#8b949e;font-family:'Courier New',monospace;">📁 ${rootName}</div>
+            <div style="margin-left:10px;font-size:${Math.round(14 * shrink)}px;color:#8b949e;font-family:'Courier New',monospace;">📁 ${rootName}</div>
           </div>
           <div style="flex:1;padding:14px 20px;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:4px;">
             ${items.map(t => `
             <div style="display:flex;align-items:center;gap:6px;height:28px;">
-              <span style="font-family:'Courier New',monospace;font-size:16px;color:${t.highlight ? '#ffa657' : '#4a5568'};flex-shrink:0;">${t.prefix}</span>
+              <span style="font-family:'Courier New',monospace;font-size:${Math.round(16 * shrink)}px;color:${t.highlight ? '#ffa657' : '#4a5568'};flex-shrink:0;">${t.prefix}</span>
               <span style="font-size:16px;flex-shrink:0;">${t.icon}</span>
-              <span style="font-family:'Courier New',monospace;font-size:16px;color:${t.highlight ? '#ffa657' : '#e6edf3'};font-weight:${t.highlight ? '700' : '400'};overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${t.name}</span>
-              ${t.highlight ? `<span style="font-family:'Courier New',monospace;font-size:14px;color:#28c840;margin-left:8px;font-weight:700;">← 핵심</span>` : ''}
+              <span style="font-family:'Courier New',monospace;font-size:${Math.round(16 * shrink)}px;color:${t.highlight ? '#ffa657' : '#e6edf3'};font-weight:${t.highlight ? '700' : '400'};overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${t.name}</span>
+              ${t.highlight ? `<span style="font-family:'Courier New',monospace;font-size:${Math.round(14 * shrink)}px;color:#28c840;margin-left:8px;font-weight:700;">← 핵심</span>` : ''}
             </div>`).join('')}
           </div>
         </div>
@@ -617,8 +672,8 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;">📊 핵심 수치</div>
-          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">stats</div>
+          <div style="font-size:${Math.round(20 * shrink)}px;font-weight:700;color:#222;">📊 핵심 수치</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:${Math.round(14 * shrink)}px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">stats</div>
         </div>
         <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
           ${statItems.map((b, ii) => {
@@ -626,8 +681,8 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
             const num = numMatch ? numMatch[1] : `0${ii+1}`;
             const label = b.replace(num, '').trim().slice(0, 28) || esc(b).slice(0, 28);
             return `<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:22px 16px 16px;display:flex;flex-direction:column;justify-content:flex-start;gap:10px;overflow:hidden;">
-              <div style="font-size:36px;font-weight:900;color:${statColors[ii % 4]};line-height:1;margin-bottom:6px;overflow:hidden;white-space:nowrap;">${esc(num)}</div>
-              <div style="font-size:16px;color:#aaa;word-break:keep-all;line-height:1.35;${clampStyle(1)}">${esc(label)}</div>
+              <div style="font-size:${Math.round(36 * shrink)}px;font-weight:900;color:${statColors[ii % 4]};line-height:1;margin-bottom:6px;overflow:hidden;white-space:nowrap;">${esc(num)}</div>
+              <div style="font-size:${Math.round(16 * shrink)}px;color:#aaa;word-break:keep-all;line-height:1.35;${clampStyle(1)}">${esc(label)}</div>
             </div>`;
           }).join('')}
         </div>
@@ -639,16 +694,16 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;">⚡ 실행 순서</div>
-          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">${stepItems.length} steps</div>
+          <div style="font-size:${Math.round(20 * shrink)}px;font-weight:700;color:#222;">⚡ 실행 순서</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:${Math.round(14 * shrink)}px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">${stepItems.length} steps</div>
         </div>
         <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:6px;overflow:hidden;">
           ${stepItems.map((b, ii) => `
           <div style="display:flex;align-items:flex-start;gap:12px;overflow:hidden;">
-            <div style="width:30px;height:30px;border-radius:50%;background:${accent};color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ii + 1}</div>
+            <div style="width:30px;height:30px;border-radius:50%;background:${accent};color:#fff;font-weight:700;font-size:${Math.round(15 * shrink)}px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ii + 1}</div>
             ${ii < stepItems.length - 1 ? `<div style="position:absolute;"></div>` : ''}
             <div style="flex:1;background:#f8f9fa;border-radius:10px;padding:8px 14px;min-height:30px;display:flex;align-items:center;overflow:hidden;">
-              <span style="font-size:17px;color:#222;font-weight:500;word-break:keep-all;line-height:1.25;${clampStyle(2)}">${esc(b)}</span>
+              <span style="font-size:${Math.round(17 * shrink)}px;color:#222;font-weight:500;word-break:keep-all;line-height:1.25;${clampStyle(2)}">${esc(b)}</span>
             </div>
           </div>`).join('')}
         </div>
@@ -662,17 +717,17 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;">⚖️ 비교 분석</div>
-          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">compare</div>
+          <div style="font-size:${Math.round(20 * shrink)}px;font-weight:700;color:#222;">⚖️ 비교 분석</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:${Math.round(14 * shrink)}px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">compare</div>
         </div>
         <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
           <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
-            <div style="font-size:14px;color:#ff7b72;font-weight:700;letter-spacing:.08em;flex-shrink:0;">Before</div>
-            ${leftItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;line-height:1.4;${clampStyle(2)}">· ${esc(b)}</div>`).join('')}
+            <div style="font-size:${Math.round(14 * shrink)}px;color:#ff7b72;font-weight:700;letter-spacing:.08em;flex-shrink:0;">Before</div>
+            ${leftItems.map(b => `<div style="font-size:${Math.round(15 * shrink)}px;color:#ccc;word-break:keep-all;line-height:1.4;${clampStyle(2)}">· ${esc(b)}</div>`).join('')}
           </div>
           <div style="background:linear-gradient(135deg,#0d2a1a,#0a2016);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
-            <div style="font-size:14px;color:#7ee787;font-weight:700;letter-spacing:.08em;flex-shrink:0;">After</div>
-            ${rightItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;line-height:1.4;${clampStyle(2)}">· ${esc(b)}</div>`).join('')}
+            <div style="font-size:${Math.round(14 * shrink)}px;color:#7ee787;font-weight:700;letter-spacing:.08em;flex-shrink:0;">After</div>
+            ${rightItems.map(b => `<div style="font-size:${Math.round(15 * shrink)}px;color:#ccc;word-break:keep-all;line-height:1.4;${clampStyle(2)}">· ${esc(b)}</div>`).join('')}
           </div>
         </div>
       </div>`;
@@ -697,9 +752,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         const n = lineNum++;
         const numHtml = `<span style="color:#4a5568;font-size:16px;font-family:'Courier New',monospace;width:32px;text-align:right;padding-right:16px;flex-shrink:0;user-select:none;">${n}</span>`;
         if (line.type === 'blank') return `<div style="display:flex;align-items:center;height:26px;">${numHtml}</div>`;
-        if (line.type === 'comment') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#6e7681;font-size:16px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span></div>`;
-        if (line.type === 'bool') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;">: </span><span style="color:#ff7b72;font-size:16px;font-family:'Courier New',monospace;">${line.value}</span></div>`;
-        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:15px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.45;${clampStyle(2)}flex:1;min-width:0;">&quot;${line.value}&quot;</span></div>`;
+        if (line.type === 'comment') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#6e7681;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span></div>`;
+        if (line.type === 'bool') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#79c0ff;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;">${line.key}</span><span style="color:#e6edf3;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;">: </span><span style="color:#ff7b72;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;">${line.value}</span></div>`;
+        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:${Math.round(15 * shrink)}px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.45;${clampStyle(2)}flex:1;min-width:0;">&quot;${line.value}&quot;</span></div>`;
       };
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
@@ -742,24 +797,24 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     </div>
     <div style="height:1130px;overflow:hidden;padding:36px 52px 0;
       display:flex;flex-direction:column;align-items:center;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-shrink:0;">
-        <div style="background:${accent};color:#fff;font-size:18px;font-weight:700;
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-shrink:0;">
+        <div style="background:${accent};color:#fff;font-size:${Math.round(18 * shrink)}px;font-weight:700;
           padding:7px 18px;border-radius:8px;letter-spacing:.05em;">Chapter ${chNum}</div>
         <div style="background:#1a1a2e;color:${accent};font-family:'Courier New',monospace;
-          font-size:16px;padding:7px 14px;border-radius:8px;white-space:nowrap;overflow:hidden;">
+          font-size:${Math.round(16 * shrink)}px;padding:7px 14px;border-radius:8px;white-space:nowrap;overflow:hidden;">
           ${esc(topic.slice(0, 12))}
         </div>
       </div>
-      <div style="font-size:52px;font-weight:900;color:#111;text-align:center;
+      <div style="font-size:${Math.round(52 * shrink)}px;font-weight:900;color:#111;text-align:center;
         margin-bottom:4px;word-break:keep-all;overflow:hidden;flex-shrink:0;line-height:1.1;">${esc(card.headline)}</div>
       ${pluginSub
-        ? `<div style="font-size:22px;font-weight:400;color:#666;text-align:center;
+        ? `<div style="font-size:${Math.round(22 * shrink)}px;font-weight:400;color:#666;text-align:center;
              margin-bottom:14px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(pluginSub)}</div>`
         : `<div style="margin-bottom:14px;flex-shrink:0;"></div>`}
     <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
         border-radius:16px;padding:18px 24px;margin-bottom:16px;overflow:hidden;flex-shrink:0;">
-        <div style="font-size:16px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 가치</div>
-        <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.45;
+        <div style="font-size:${Math.round(16 * shrink)}px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 가치</div>
+        <div style="font-size:${Math.round(24 * shrink)}px;font-weight:700;color:#fff;line-height:1.45;
           word-break:keep-all;${clampStyle(2)}">${esc(summaryText)}</div>
       </div>
       ${contentHtml}
@@ -767,14 +822,14 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         border:1.5px solid #c4b5fd;border-radius:12px;padding:12px 18px;
         margin-top:12px;margin-bottom:10px;
         display:flex;align-items:center;gap:12px;overflow:hidden;flex-shrink:0;">
-        <span style="font-size:20px;flex-shrink:0;">💡</span>
-        <div style="font-size:20px;color:#333;font-weight:600;word-break:keep-all;line-height:1.35;${clampStyle(2)}">${esc(effectText)}</div>
+        <span style="font-size:${Math.round(20 * shrink)}px;flex-shrink:0;">💡</span>
+        <div style="font-size:${Math.round(20 * shrink)}px;color:#333;font-weight:600;word-break:keep-all;line-height:1.35;${clampStyle(2)}">${esc(effectText)}</div>
       </div>
     </div>
     <div style="position:absolute;bottom:0;right:0;left:0;height:68px;
       background:linear-gradient(90deg,rgba(20,20,40,.93),rgba(50,30,120,.93));
       display:flex;align-items:center;justify-content:flex-end;padding:0 32px;
-      color:#fff;font-size:22px;font-weight:500;white-space:nowrap;overflow:hidden;">
+      color:#fff;font-size:${Math.round(22 * shrink)}px;font-weight:500;white-space:nowrap;overflow:hidden;">
       ${teaserText} <span style="color:#c4b5fd;margin-left:6px;font-weight:700;">&gt;&gt;</span>
     </div>
   </div>
@@ -899,6 +954,22 @@ export default function UnifiedPipelineTab() {
   );
   const [captionSaving, setCaptionSaving] = useState(false);
   const [captionGenerating, setCaptionGenerating] = useState(false);
+  const [igAutoConfig, setIgAutoConfig] = useState({
+    enabled: true,
+    keywords: "",
+    postTime: "09:00",
+    slideCount: 7,
+    captionTemplate: "",
+  });
+  const [igAutoSchedules, setIgAutoSchedules] = useState([]);
+  const [igAutoLoading, setIgAutoLoading] = useState(false);
+  const [igAutoSaving, setIgAutoSaving] = useState(false);
+  const [igAutoRunning, setIgAutoRunning] = useState(false);
+  const [igAutoScheduleAt, setIgAutoScheduleAt] = useState("");
+  const [igAutoMessage, setIgAutoMessage] = useState("");
+  const [igAutoMonitor, setIgAutoMonitor] = useState(null);
+  const [igAutoHistory, setIgAutoHistory] = useState([]);
+  const [igAutoMonitorLoading, setIgAutoMonitorLoading] = useState(false);
 
   useEffect(() => {
     emitEAttackContext({
@@ -932,6 +1003,60 @@ export default function UnifiedPipelineTab() {
     clearSession();
     setSession(null);
   };
+
+  const loadInstagramAutoMonitor = async (runId = null) => {
+    if (!session?.username) return null;
+    setIgAutoMonitorLoading(true);
+    try {
+      const url = runId
+        ? `/api/instagram-auto-monitor?username=${encodeURIComponent(session.username)}&runId=${encodeURIComponent(runId)}`
+        : `/api/instagram-auto-monitor?username=${encodeURIComponent(session.username)}`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "자동화 모니터 조회 실패");
+      setIgAutoMonitor(data.current || null);
+      setIgAutoHistory(Array.isArray(data.runs) ? data.runs : []);
+      return data;
+    } catch (e) {
+      setIgAutoMessage(`자동화 로그를 불러오지 못했습니다: ${e.message}`);
+      return null;
+    } finally {
+      setIgAutoMonitorLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!session?.username) return;
+    let canceled = false;
+    const loadAutoState = async () => {
+      setIgAutoLoading(true);
+      try {
+        const [configRes, schedules] = await Promise.all([
+          fetch(`/api/instagram-auto-config?username=${encodeURIComponent(session.username)}`).then((res) => res.json().catch(() => ({}))),
+          fetchSchedules(session.username),
+        ]);
+        if (canceled) return;
+        const config = configRes?.config || {};
+        setIgAutoConfig({
+          enabled: config.enabled ?? true,
+          keywords: Array.isArray(config.keywords) ? config.keywords.join(", ") : String(config.keywords || ""),
+          postTime: config.postTime || "09:00",
+          slideCount: Number(config.slideCount) || 7,
+          captionTemplate: config.captionTemplate || "",
+        });
+        setIgAutoSchedules(schedules.filter((item) => String(item.platform || "threads").toLowerCase() === "instagram"));
+        setIgAutoMessage("");
+        await loadInstagramAutoMonitor();
+      } catch {
+        if (!canceled) setIgAutoMessage("자동화 설정을 불러오지 못했습니다.");
+      } finally {
+        if (!canceled) setIgAutoLoading(false);
+      }
+    };
+
+    loadAutoState();
+    return () => { canceled = true; };
+  }, [session?.username]);
 
   // 로그인 안 된 경우 모달 표시
   if (!session) {
@@ -1288,6 +1413,226 @@ ${buildCaptionContext()}`,
       setError(e.message);
     } finally {
       setIgPosting(false);
+    }
+  };
+
+  const buildInstagramImages = async (logFn = null) => {
+    let images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
+    if (logFn) logFn(`카드 imageUrl 수집: ${images.length}개`);
+
+    if (images.length === 0 && cardHtmls.length > 0) {
+      if (logFn) logFn(`HTML 카드 감지 (${cardHtmls.length}장) → 브라우저 캡처 시작`);
+      const { default: html2canvas } = await import("html2canvas");
+      const targets = cardHtmls.slice(0, 10);
+      for (let i = 0; i < targets.length; i++) {
+        if (logFn) logFn(`카드 ${i + 1}/${targets.length} 캡처 중...`);
+        const dataUrl = await new Promise((resolve, reject) => {
+          const blob = new Blob([targets[i]], { type: "text/html" });
+          const blobUrl = URL.createObjectURL(blob);
+          const iframe = document.createElement("iframe");
+          iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
+          iframe.src = blobUrl;
+          iframe.onload = async () => {
+            try {
+              const doc = iframe.contentDocument;
+              await doc.fonts.ready;
+              await new Promise((r) => setTimeout(r, 1200));
+              const canvas = await html2canvas(doc.documentElement, {
+                width: 1080,
+                height: 1350,
+                windowWidth: 1080,
+                windowHeight: 1350,
+                scale: 1,
+                useCORS: true,
+                allowTaint: false,
+                backgroundColor: "#080814",
+                logging: false,
+                x: 0,
+                y: 0,
+              });
+              URL.revokeObjectURL(blobUrl);
+              iframe.remove();
+              resolve(canvas.toDataURL("image/jpeg", 0.92));
+            } catch (e) {
+              URL.revokeObjectURL(blobUrl);
+              iframe.remove();
+              reject(e);
+            }
+          };
+          iframe.onerror = () => {
+            URL.revokeObjectURL(blobUrl);
+            iframe.remove();
+            reject(new Error("iframe 로드 실패"));
+          };
+          document.body.appendChild(iframe);
+        });
+        images.push(dataUrl);
+      }
+      if (logFn) logFn(`브라우저 캡처 완료: ${images.length}장`);
+    }
+
+    return images;
+  };
+
+  const loadInstagramSchedules = async () => {
+    if (!session?.username) return;
+    const schedules = await fetchSchedules(session.username);
+    setIgAutoSchedules(schedules.filter((item) => String(item.platform || "threads").toLowerCase() === "instagram"));
+  };
+
+  const saveInstagramAutoConfig = async () => {
+    if (!session?.username) return;
+    if (!igConfig.accountId || !igConfig.accessToken) {
+      setError("Instagram 계정 연동 후 자동화 설정을 저장하세요");
+      return;
+    }
+
+    setIgAutoSaving(true);
+    setIgAutoMessage("");
+    try {
+      const payload = {
+        enabled: Boolean(igAutoConfig.enabled),
+        keywords: String(igAutoConfig.keywords || ""),
+        postTime: igAutoConfig.postTime || "09:00",
+        slideCount: Math.max(3, Math.min(10, Number(igAutoConfig.slideCount) || slideCount || 7)),
+        captionTemplate: String(igAutoConfig.captionTemplate || postCaption || topic || ""),
+        accountId: igConfig.accountId,
+        accessToken: igConfig.accessToken,
+        brandName,
+        tone,
+        purpose,
+      };
+      const res = await fetch("/api/instagram-auto-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: session.username, config: payload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "설정 저장 실패");
+      setIgAutoMessage("자동화 설정이 저장되었습니다.");
+      await loadInstagramSchedules();
+      await loadInstagramAutoMonitor();
+    } catch (e) {
+      setIgAutoMessage(`자동화 설정 저장 실패: ${e.message}`);
+    } finally {
+      setIgAutoSaving(false);
+    }
+  };
+
+  const runInstagramAutoResearch = async () => {
+    if (!session?.username) return;
+    if (!igConfig.accountId || !igConfig.accessToken) {
+      setError("Instagram 계정 연동 후 자동화를 실행하세요");
+      return;
+    }
+    setIgAutoRunning(true);
+    setIgAutoMessage("");
+    try {
+      const payload = {
+        enabled: Boolean(igAutoConfig.enabled),
+        keywords: String(igAutoConfig.keywords || ""),
+        postTime: igAutoConfig.postTime || "09:00",
+        slideCount: Math.max(3, Math.min(10, Number(igAutoConfig.slideCount) || slideCount || 7)),
+        captionTemplate: String(igAutoConfig.captionTemplate || postCaption || topic || ""),
+        accountId: igConfig.accountId,
+        accessToken: igConfig.accessToken,
+        brandName,
+        tone,
+        purpose,
+      };
+      const res = await fetch("/api/instagram-auto-research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: session.username,
+          config: payload,
+          scheduledAt: igAutoScheduleAt ? new Date(igAutoScheduleAt).toISOString() : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "자동화 실행 실패");
+      setIgAutoMessage("리서치와 예약 생성이 완료되었습니다.");
+      setIgAutoScheduleAt("");
+      await loadInstagramSchedules();
+      await loadInstagramAutoMonitor(data?.result?.runId || null);
+    } catch (e) {
+      setIgAutoMessage(`자동화 실행 실패: ${e.message}`);
+    } finally {
+      setIgAutoRunning(false);
+    }
+  };
+
+  const scheduleCurrentInstagramCarousel = async () => {
+    if (!session?.username) return;
+    if (!igConfig.accountId || !igConfig.accessToken) {
+      setError("Instagram 계정 연동 후 예약을 생성하세요");
+      return;
+    }
+    if (!igAutoScheduleAt) {
+      setError("예약 시간을 선택하세요");
+      return;
+    }
+
+    setIgAutoRunning(true);
+    setError("");
+    try {
+      const scheduledAt = new Date(igAutoScheduleAt).toISOString();
+      if (new Date(scheduledAt) <= new Date()) {
+        throw new Error("예약 시간은 현재보다 미래여야 합니다");
+      }
+      const rawImages = await buildInstagramImages();
+      if (!rawImages.length) throw new Error("예약할 이미지를 만들 수 없습니다");
+      const prepRes = await fetch("/api/instagram-prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: rawImages }),
+      });
+      const prepData = await prepRes.json().catch(() => ({}));
+      if (!prepRes.ok) throw new Error(prepData.error || "예약 이미지 준비 실패");
+      const imageUrls = Array.isArray(prepData.imageUrls) ? prepData.imageUrls : [];
+      if (!imageUrls.length) throw new Error("예약 이미지 URL을 준비하지 못했습니다");
+
+      const schedule = {
+        id: `ig-manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        platform: "instagram",
+        auto: false,
+        status: "pending",
+        text: postCaption || topic,
+        caption: postCaption || topic,
+        images: imageUrls,
+        imageUrls,
+        userId: igConfig.accountId,
+        accountId: igConfig.accountId,
+        accessToken: igConfig.accessToken,
+        scheduledAt,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        retryCount: 0,
+        retryAt: null,
+        lastAttemptAt: null,
+        lastError: null,
+        topic,
+        slideCount: imageUrls.length,
+      };
+      const result = await addSchedule(session.username, schedule);
+      if (!result.ok) throw new Error(result.error || "예약 저장 실패");
+      setIgAutoMessage(`예약이 생성되었습니다: ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
+      setIgAutoScheduleAt("");
+      await loadInstagramSchedules();
+      await loadInstagramAutoMonitor();
+    } catch (e) {
+      setIgAutoMessage(`예약 생성 실패: ${e.message}`);
+    } finally {
+      setIgAutoRunning(false);
+    }
+  };
+
+  const cancelInstagramSchedule = async (id) => {
+    if (!session?.username) return;
+    const ok = await removeSchedule(session.username, id);
+    if (ok) {
+      setIgAutoSchedules((prev) => prev.filter((item) => item.id !== id));
+      setIgAutoMessage("예약이 취소되었습니다.");
     }
   };
 
@@ -2224,6 +2569,245 @@ ${buildCaptionContext()}`,
               </div>
             </div>
           )}
+        </div>
+
+        {/* 자동화 / 예약 */}
+        <div className="space-y-3 bg-violet-50 border border-violet-100 rounded-2xl p-4">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-bold text-violet-800">인스타그램 자동화 · 예약</p>
+            <span className="ml-auto text-[10px] text-violet-600 bg-white border border-violet-200 rounded-full px-2 py-0.5">
+              쓰레드와 별도 관리
+            </span>
+          </div>
+          <p className="text-[11px] text-violet-700 leading-relaxed">
+            키워드를 저장해두면 매일 리서치 → 카드뉴스 생성 → 예약 등록까지 한 번에 이어집니다. 예약된 캐러셀은 Threads와 분리된 인스타그램 전용 큐로 관리됩니다.
+          </p>
+
+          <label className="flex items-center gap-2 text-xs font-medium text-violet-900">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-violet-500"
+              checked={Boolean(igAutoConfig.enabled)}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, enabled: e.target.checked }))}
+            />
+            자동화 활성화
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <input
+              type="text"
+              value={igAutoConfig.keywords}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, keywords: e.target.value }))}
+              placeholder="리서치 키워드 예: 인스타그램 마케팅, 카드뉴스, 바이럴"
+              className="w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white"
+            />
+            <input
+              type="time"
+              value={igAutoConfig.postTime}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, postTime: e.target.value }))}
+              className="w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white"
+            />
+            <div className="sm:col-span-2">
+              <div className="flex flex-wrap gap-2">
+                {[4, 5, 6, 7, 8, 10].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setIgAutoConfig((prev) => ({ ...prev, slideCount: n }))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                      Number(igAutoConfig.slideCount) === n
+                        ? "border-violet-400 bg-violet-100 text-violet-700"
+                        : "border-violet-200 bg-white text-violet-600 hover:bg-violet-50"
+                    }`}
+                  >
+                    {n}장
+                  </button>
+                ))}
+              </div>
+            </div>
+            <textarea
+              rows={2}
+              value={igAutoConfig.captionTemplate}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, captionTemplate: e.target.value }))}
+              placeholder="캡션 템플릿(선택). 비우면 현재 게시 캡션을 사용합니다."
+              className="sm:col-span-2 w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white resize-none leading-relaxed"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveInstagramAutoConfig}
+              disabled={igAutoSaving || igAutoLoading}
+              className="px-3 py-2 rounded-xl text-xs font-bold border border-violet-300 bg-white text-violet-700 hover:bg-violet-100 disabled:opacity-40"
+            >
+              {igAutoSaving ? "저장 중..." : "자동화 설정 저장"}
+            </button>
+            <button
+              type="button"
+              onClick={runInstagramAutoResearch}
+              disabled={igAutoRunning || igAutoLoading}
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40"
+            >
+              {igAutoRunning ? "리서치 중..." : "리서치 → 예약 생성"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-start">
+            <input
+              type="datetime-local"
+              value={igAutoScheduleAt}
+              onChange={(e) => setIgAutoScheduleAt(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white"
+            />
+            <button
+              type="button"
+              onClick={scheduleCurrentInstagramCarousel}
+              disabled={igAutoRunning || !igAutoScheduleAt}
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-fuchsia-600 text-white hover:bg-fuchsia-700 disabled:opacity-40"
+            >
+              현재 카드 예약
+            </button>
+          </div>
+
+          {igAutoMessage && (
+            <div className="px-3 py-2 rounded-xl bg-white border border-violet-200 text-[11px] text-violet-700 leading-relaxed">
+              {igAutoMessage}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold text-violet-800">최근 자동화 로그</p>
+              <button
+                type="button"
+                onClick={() => loadInstagramAutoMonitor()}
+                className="text-[10px] font-semibold text-violet-600 hover:text-violet-800"
+              >
+                새로고침
+              </button>
+            </div>
+            {igAutoMonitorLoading ? (
+              <div className="px-3 py-3 rounded-xl border border-violet-100 bg-white text-[11px] text-violet-500">
+                로그 불러오는 중...
+              </div>
+            ) : igAutoMonitor ? (
+              <div className="rounded-xl border border-violet-100 bg-white px-3 py-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    igAutoMonitor.status === "running"
+                      ? "bg-violet-50 text-violet-700 border-violet-200"
+                      : igAutoMonitor.status === "completed"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : igAutoMonitor.status === "failed"
+                          ? "bg-red-50 text-red-600 border-red-200"
+                          : "bg-gray-50 text-gray-600 border-gray-200"
+                  }`}>
+                    {igAutoMonitor.status || "idle"}
+                  </span>
+                  <span className="text-[10px] text-violet-500 font-mono">
+                    {igAutoMonitor.runId || "-"}
+                  </span>
+                  {igAutoMonitor.scheduledAt && (
+                    <span className="ml-auto text-[10px] text-violet-500">
+                      {new Date(igAutoMonitor.scheduledAt).toLocaleString("ko-KR")}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] text-gray-800 leading-relaxed">
+                  {igAutoMonitor.summary || igAutoMonitor.error || igAutoMonitor.skipReason || "실행 로그가 없습니다."}
+                </p>
+                {Array.isArray(igAutoMonitor.logs) && igAutoMonitor.logs.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg bg-violet-50/60 p-2">
+                    {igAutoMonitor.logs.slice(-8).map((entry, idx) => (
+                      <div key={`${entry?.time || idx}-${idx}`} className="text-[11px] leading-relaxed text-gray-700">
+                        <span className="font-mono text-violet-500 mr-2">
+                          {entry?.time ? new Date(entry.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "now"}
+                        </span>
+                        {entry?.msg || ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {igAutoHistory.length > 0 && (
+                  <div className="text-[10px] text-violet-500">
+                    최근 실행 {igAutoHistory.length}건 중 {Math.min(igAutoHistory.length, 5)}건 표시
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="px-3 py-3 rounded-xl border border-violet-100 bg-white text-[11px] text-violet-500">
+                아직 자동화 로그가 없습니다.
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold text-violet-800">예약 큐</p>
+              <button
+                type="button"
+                onClick={loadInstagramSchedules}
+                className="text-[10px] font-semibold text-violet-600 hover:text-violet-800"
+              >
+                새로고침
+              </button>
+            </div>
+            {igAutoSchedules.length === 0 ? (
+              <div className="px-3 py-3 rounded-xl border border-violet-100 bg-white text-[11px] text-violet-500">
+                예약된 인스타그램 캐러셀이 없습니다.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {igAutoSchedules
+                  .slice()
+                  .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+                  .map((item) => (
+                    <div key={item.id} className="rounded-xl border border-violet-100 bg-white px-3 py-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">
+                          {item.auto ? "자동" : "수동"}
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          item.status === "pending" && item.retryAt
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : item.status === "pending"
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : item.status === "posted"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-red-50 text-red-600 border-red-200"
+                        }`}>
+                          {item.status === "pending" && item.retryAt ? "retrying" : item.status}
+                        </span>
+                        <span className="ml-auto text-[10px] text-violet-500 font-mono">
+                          {item.images?.length || item.imageUrls?.length || 0}장
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-gray-800 leading-relaxed line-clamp-2">
+                        {item.caption || item.text || item.topic || "-"}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        예약: {new Date(item.scheduledAt).toLocaleString("ko-KR")}
+                      </p>
+                      {item.retryAt && item.status === "pending" && (
+                        <p className="text-[10px] text-blue-500">
+                          재시도: {new Date(item.retryAt).toLocaleString("ko-KR")}
+                        </p>
+                      )}
+                      {item.status === "pending" && (
+                        <button
+                          type="button"
+                          onClick={() => cancelInstagramSchedule(item.id)}
+                          className="text-[10px] font-semibold text-red-500 hover:text-red-700"
+                        >
+                          예약 취소
+                        </button>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Threads ── */}
