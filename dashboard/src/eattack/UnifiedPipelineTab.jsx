@@ -879,7 +879,6 @@ export default function UnifiedPipelineTab() {
   const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
-  const [igDirectUrls, setIgDirectUrls] = useState("");
 
   useEffect(() => {
     emitEAttackContext({
@@ -1933,38 +1932,6 @@ export default function UnifiedPipelineTab() {
             />
           </div>
 
-          <div className="space-y-2 bg-white border border-violet-100 rounded-xl p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-bold text-gray-700">공개 URL 업로드</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">공개로 접근 가능한 이미지 URL만 넣으면 바로 캐러셀 게시가 가능합니다.</p>
-              </div>
-              <button
-                type="button"
-                disabled
-                className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 rounded px-2 py-0.5 opacity-40 cursor-not-allowed"
-              >
-                현재 카드 URL 채우기
-              </button>
-            </div>
-            <textarea
-              rows={4}
-              placeholder={"https://example.com/1.jpg\nhttps://example.com/2.jpg\nhttps://example.com/3.jpg"}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white resize-none leading-relaxed font-mono"
-              value={igDirectUrls}
-              onChange={(e) => setIgDirectUrls(e.target.value)}
-            />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled
-                className="px-3 py-2 bg-white border border-violet-200 text-violet-700 opacity-40 cursor-not-allowed text-xs font-bold rounded-lg"
-              >
-                공개 URL로 업로드
-              </button>
-              <span className="text-[11px] text-gray-500">이미지 URL만 지원, 최대 10장</span>
-            </div>
-          </div>
 
           <p className="text-[11px] text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
             🔒 API 정보는 사용자별로 브라우저 로컬에 저장됩니다. 이미지는 서버에 임시 업로드 후 즉시 삭제됩니다.
