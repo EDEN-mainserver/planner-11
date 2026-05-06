@@ -1,0 +1,26 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+httpx>=0.27.0
+python-multipart>=0.0.9
+aiofiles>=24.1.0
+
+# AI 파이프라인
+openai>=1.40.0
+
+# 영상 처리
+yt-dlp>=2024.8.0
+ffmpeg-python>=0.2.0
+
+# DB
+supabase>=2.5.0
+
+# 인증
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# 작업 큐
+celery[redis]>=5.4.0
+redis>=5.0.0

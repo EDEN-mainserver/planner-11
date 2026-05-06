@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Sign · 문서 업로드</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+  <div class="layout">
+    <a href="/" class="global-home">
+      <div style="width:32px;height:32px;border-radius:8px;background:#455065;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">E</div>
+      <span>TEAM EDEN</span>
+    </a>
+
+    <main class="main">
+      <header class="topbar upload-topbar">
+        <a href="{{ url_for('home.index') }}" class="btn-prev"><i class="far fa-chevron-left"></i> 이전</a>
+        <button id="nextBtn" class="btn-next" disabled>
+          다음으로 <i class="far fa-chevron-right"></i>
+        </button>
+      </header>
+
+      <section class="content upload-content">
+        <h1 class="page-title">문서 업로드</h1>
+
+        <div class="upload-row single">
+          <ul id="fileList" class="file-list"></ul>
+
+          <div id="dropzone" class="dropzone">
+            <input type="file" id="fileInput" hidden multiple
+                   accept=".pdf,.hwp,.hwpx,.docx,.xlsx,.pptx,.jpg,.jpeg,.png" />
+            <div class="dropzone-inner">
+              <p class="dz-text">전송할 문서를 드래그 앤 드롭 또는 버<br/>튼 눌러 업로드</p>
+              <button type="button" class="btn-add" id="addBtn">
+                <i class="fas fa-plus"></i> 문서 추가
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <ul class="file-rules">
+          <li><span class="bullet"></span> PDF: 최대 10MB</li>
+          <li><span class="bullet"></span> HWP, HWPX, DOCX, XLSX, PPTX, JPG, PNG: 최대 5MB</li>
+        </ul>
+
+        <div id="uploadStatus" class="upload-status" hidden></div>
+
+        <!-- 템플릿 섹션 제거 -->
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const addBtn = document.getElementById('addBtn');
+    const status = document.getElementById('uploadStatus');
+    const fileList = document.getElementById('fileList');
+    const nextBtn = document.getElementById('nextBtn');
+
+    const uploaded = []; // {doc_id, filename}
+
+    addBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover'].forEach(ev =>
+      dropzone.addEventListener(ev, (e) => {
+        e.preventDefault(); e.stopPropagation();
+        dropzone.classList.add('dragover');
+      })
+    );
+    ['dragleave', 'drop'].forEach(ev =>
+      dropzone.addEventListener(ev, (e) => {
+        e.preventDefault(); e.stopPropagation();
+        dropzone.classList.remove('dragover');
+      })
+    );
+    dropzone.addEventListener('drop', (e) => {
+      handleFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+      fileInput.value = '';
+    });
+
+    async function handleFiles(files) {
+      for (const f of files) await uploadFile(f);
+    }
+
+    async function uploadFile(file) {
+      showStatus(`업로드 중... ${file.name}`, 'info');
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await fetch('/sign/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok) {
+          uploaded.push({ doc_id: data.doc_id, filename: data.filename });
+          renderList();
+          showStatus(`업로드 완료: ${data.filename}`, 'success');
+        } else {
+          showStatus(data.error || '업로드 실패', 'error');
+        }
+      } catch (err) {
+        showStatus('네트워크 오류: ' + err.message, 'error');
+      }
+    }
+
+    function renderList() {
+      fileList.innerHTML = '';
+      uploaded.forEach((u, i) => {
+        const li = document.createElement('li');
+        li.className = 'file-card';
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'file-remove';
+        removeBtn.dataset.idx = i;
+        removeBtn.title = '삭제';
+        removeBtn.innerHTML = '<i class="fas fa-xmark"></i>';
+
+        const thumb = document.createElement('div');
+        thumb.className = 'file-thumb';
+        thumb.innerHTML = '<i class="fas fa-file-lines"></i>';
+
+        const meta = document.createElement('div');
+        meta.className = 'file-meta';
+        const idxSpan = document.createElement('span');
+        idxSpan.className = 'file-index';
+        idxSpan.textContent = i + 1;
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'file-name';
+        nameSpan.textContent = u.filename;
+        meta.appendChild(idxSpan);
+        meta.appendChild(nameSpan);
+
+        li.appendChild(removeBtn);
+        li.appendChild(thumb);
+        li.appendChild(meta);
+        fileList.appendChild(li);
+      });
+      fileList.querySelectorAll('.file-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx, 10);
+          uploaded.splice(idx, 1);
+          renderList();
+        });
+      });
+      nextBtn.disabled = uploaded.length === 0;
+      // 0개일 때 중앙 배치
+      const row = document.getElementById('dropzone').parentElement;
+      row.classList.toggle('single', uploaded.length === 0);
+    }
+
+    nextBtn.addEventListener('click', () => {
+      if (uploaded.length === 0) return;
+      const ids = uploaded.map(u => u.doc_id).join(',');
+      window.location.href = `/sign/prepare/${ids}`;
+    });
+
+    function showStatus(msg, type) {
+      status.hidden = false;
+      status.textContent = msg;
+      status.className = 'upload-status ' + type;
+    }
+  </script>
+</body>
+</html>

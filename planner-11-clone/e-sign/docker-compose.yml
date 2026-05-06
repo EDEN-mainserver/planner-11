@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  esign:
+    build: .
+    container_name: esign-app
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    volumes:
+      - /volume1/eden-storage/esign:/data   # NAS 공유폴더 직접 마운트
+    env_file:
+      - .env
+    environment:
+      - UPLOAD_FOLDER=/data/uploads
+      - FLASK_DEBUG=0
+
+  # Cloudflare Named Tunnel — 고정 URL (계정 연동)
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: esign-tunnel
+    restart: unless-stopped
+    depends_on:
+      - esign
+    command: tunnel --no-autoupdate run --token eyJhIjoiNWEzOTEzNjEwMDA4ZTlmM2NmNzE1ZmI1ZTU5MDJiYjIiLCJ0IjoiNzNiZjhiMDItOWVhZi00MDBmLThiYjUtMDVkOTUwY2E1Nzk3IiwicyI6IlpqWTFPV05oTjJVdFpUZ3dNUzAwTVdGbUxUaGpZVGt0T1RVellXSmpZV0prWkdNeSJ9
+
+# 볼륨은 NAS 직접 마운트로 대체 (위 bind mount 사용)

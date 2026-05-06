@@ -1,0 +1,16 @@
+# 아래 파일들은 merged 핸들러로 통합됨 — 별도 함수로 배포 제외
+api/voices.js
+api/naver-blog-crawl.js
+api/full-auto-run.js
+api/full-auto-config.js
+api/iboss-post.js
+api/gif-proxy.js
+api/crawl-url.js
+
+# 프론트엔드에서 미사용
+api/auth.js
+api/iboss-crawl.js
+api/ig-serve.js
+api/naver-search.js
+api/x-crawl.js
+api/x-trends.js

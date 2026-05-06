@@ -1,0 +1,63 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/api/voices",         "destination": "/api/tts?_fn=voices" },
+    { "source": "/api/naver-blog-crawl", "destination": "/api/naver?_fn=blog-crawl" },
+    { "source": "/api/full-auto-run",  "destination": "/api/full-auto?_fn=run" },
+    { "source": "/api/full-auto-config", "destination": "/api/full-auto?_fn=config" },
+    { "source": "/api/iboss-post",     "destination": "/api/social-post?_fn=iboss" },
+    { "source": "/api/gif-proxy",      "destination": "/api/media?_fn=gif-proxy" },
+    { "source": "/api/crawl-url",      "destination": "/api/media?_fn=crawl" },
+    { "source": "/auth/instagram",      "destination": "/api/instagram-auth" },
+    { "source": "/auth/instagram/",    "destination": "/api/instagram-auth" },
+    { "source": "/api/youtube-refresh",      "destination": "/api/youtube?_fn=refresh" },
+    { "source": "/api/youtube-init",         "destination": "/api/youtube?_fn=init-upload" },
+    { "source": "/api/youtube-blob-token",   "destination": "/api/youtube?_fn=blob-token" },
+    { "source": "/api/youtube-blob-upload",  "destination": "/api/youtube?_fn=blob-upload" },
+    { "source": "/auth",               "destination": "/api/threads-auth" },
+    { "source": "/auth/",              "destination": "/api/threads-auth" },
+    { "source": "/((?!api/).*)",       "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/parse-pdf.js":    { "maxDuration": 60,  "memory": 1024 },
+    "api/image-generate.js": { "maxDuration": 60,  "memory": 1024 },
+    "api/gemini.js":       { "maxDuration": 60,  "memory": 1024 },
+    "api/tts.js":          { "maxDuration": 60,  "memory": 1024 },
+    "api/full-auto.js":    { "maxDuration": 300, "memory": 1024 },
+    "api/full-auto-cron.js": { "maxDuration": 300, "memory": 1024 },
+    "api/social-post.js":  { "maxDuration": 120, "memory": 1024 },
+    "api/media.js":        { "maxDuration": 120, "memory": 1024 },
+    "api/threads-auth.js":    { "maxDuration": 30,  "memory": 512  },
+    "api/instagram-auth.js":  { "maxDuration": 30,  "memory": 512  },
+    "api/youtube-auth.js":    { "maxDuration": 30,  "memory": 512  },
+    "api/youtube.js":         { "maxDuration": 120, "memory": 1024 },
+    "api/threads-crawl.js": { "maxDuration": 60,  "memory": 1024 },
+    "api/threads-post.js": { "maxDuration": 120, "memory": 1024 },
+    "api/instagram-post.js": { "maxDuration": 120, "memory": 1024 },
+    "api/naver-datalab.js": { "maxDuration": 60,  "memory": 1024 },
+    "api/html-screenshot.js": { "maxDuration": 120, "memory": 1024 },
+    "api/schedule.js": { "maxDuration": 30, "memory": 512 },
+    "api/threads-scheduler.js": { "maxDuration": 90, "memory": 512 },
+    "api/threads-auto-config.js": { "maxDuration": 15, "memory": 256 },
+    "api/threads-auto-research.js": { "maxDuration": 120, "memory": 512 },
+    "api/auth-google.js":  { "maxDuration": 30, "memory": 512 },
+    "api/users-db.js":     { "maxDuration": 15, "memory": 256 }
+  },
+  "crons": [
+    {
+      "path": "/api/full-auto-cron",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/threads-scheduler",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/threads-auto-research",
+      "schedule": "0 21 * * *"
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Sign · 홈</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+  <div class="layout">
+    <!-- 사이드바 -->
+    <aside class="sidebar">
+      <a href="/" class="sidebar-top" style="text-decoration:none;color:inherit;">
+        <div class="logo-box">
+          <div style="width:32px;height:32px;border-radius:8px;background:#455065;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;">E</div>
+        </div>
+        <div class="workspace">
+          <h2>TEAM EDEN</h2>
+        </div>
+      </a>
+      <nav class="sidebar-menu">
+        <a href="/" class="active"><i class="fas fa-house"></i> 홈</a>
+        <a href="/documents"><i class="fas fa-file-lines"></i> 문서함</a>
+        <a href="#"><i class="fas fa-folder"></i> 템플릿</a>
+        <a href="#"><i class="fas fa-address-book"></i> 주소록</a>
+        <a href="#"><i class="fas fa-gear"></i> 설정</a>
+      </nav>
+    </aside>
+
+    <!-- 메인 -->
+    <main class="main">
+      <header class="topbar">
+        <div class="search-box">
+          <i class="fas fa-magnifying-glass"></i>
+          <input type="text" placeholder="문서 검색" id="searchInput" />
+        </div>
+        <div class="topbar-right">
+          <button class="icon-btn"><i class="far fa-bell"></i></button>
+          <button class="icon-btn"><i class="far fa-circle-question"></i></button>
+          <div class="avatar">{{ user.name[0] }}</div>
+        </div>
+      </header>
+
+      <section class="content">
+        <!-- 인사말 + CTA -->
+        <div class="hero">
+          <div class="hero-text">
+            <span class="hero-name">{{ user.name }} 님,</span>
+            <span class="hero-sub">현재 진행 중인 문서가 없어요. 서명 요청을 시작할까요?</span>
+          </div>
+          <a class="btn-primary" href="{{ url_for('sign.new_request') }}">
+            <i class="fas fa-paper-plane"></i> 서명 요청 시작하기
+          </a>
+        </div>
+
+        <!-- 진행 현황 -->
+        <div class="card">
+          <div class="card-head">
+            <h3>진행 현황</h3>
+            <button class="period-btn">최근 30일 <i class="far fa-chevron-down"></i></button>
+          </div>
+          <ul class="stats-grid">
+            {% for s in stats %}
+            <li class="stat">
+              <div class="stat-label">
+                <span class="dot" style="background-color: {{ s.color }}"></span>
+                <span>{{ s.label }}</span>
+              </div>
+              <div class="stat-count">{{ s.count }}</div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <!-- 진행 현황 이후 여백 -->
+      </section>
+
+      <footer class="footer">
+        <div>(주) E-Sign · 사업자등록번호 : 000-00-00000</div>
+        <div>© 2026. E-Sign Inc. All rights reserved.</div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- 검색 드롭다운 -->
+  <style>
+    .search-box { position: relative; }
+    .search-dropdown {
+      position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
+      background: #fff; border: 1px solid #e2e2e2; border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100;
+      max-height: 300px; overflow-y: auto; display: none;
+    }
+    .search-dropdown.show { display: block; }
+    .search-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1px solid #f0f0f0;
+      cursor: pointer; font-size: 14px;
+    }
+    .search-item:hover { background: #f4f5f7; }
+    .search-item:last-child { border-bottom: none; }
+    .search-empty { padding: 20px; text-align: center; color: #999; font-size: 13px; }
+    .stat { cursor: pointer; transition: border-color 0.15s; }
+    .stat:hover { border-color: #3a4ed7; }
+  </style>
+
+  <script>
+    // 문서 검색
+    const searchInput = document.getElementById('searchInput');
+    let dropdown = document.createElement('div');
+    dropdown.className = 'search-dropdown';
+    document.querySelector('.search-box').appendChild(dropdown);
+
+    let debounce;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(debounce);
+      const q = searchInput.value.trim();
+      if (!q) { dropdown.classList.remove('show'); return; }
+      debounce = setTimeout(async () => {
+        const res = await fetch('/search?q=' + encodeURIComponent(q));
+        const data = await res.json();
+        if (data.length === 0) {
+          dropdown.innerHTML = '<div class="search-empty">검색 결과가 없습니다.</div>';
+        } else {
+          dropdown.innerHTML = data.map(d =>
+            `<a class="search-item" href="/sign/status/${d.batch_id}">
+              <span>${d.title}</span>
+              <span style="color:#888;font-size:12px;">${d.status === 'completed' ? '완료' : '진행중'}</span>
+            </a>`
+          ).join('');
+        }
+        dropdown.classList.add('show');
+      }, 300);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.search-box')) dropdown.classList.remove('show');
+    });
+
+    // 진행 현황 카드 클릭 → 문서함 이동
+    document.querySelectorAll('.stat').forEach(el => {
+      el.addEventListener('click', () => window.location.href = '/documents');
+    });
+  </script>
+</body>
+</html>
