@@ -2,7 +2,7 @@
 // ?_fn=run    → 수동 실행 (POST)
 // ?_fn=config → 팀 계정 설정 CRUD (GET / POST / DELETE)
 
-import { put, head, del } from "@vercel/blob";
+import { put, head } from "@vercel/blob";
 import { runFullAutoPipeline } from "./_pipeline.js";
 
 export const config = { maxDuration: 300 };

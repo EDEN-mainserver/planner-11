@@ -1,6 +1,7 @@
 // 풀가동화 콘텐츠 공유 파이프라인 (핸들러 아님 — 모듈)
 // 네이버 검색 → Gemini 기획 → Imagen 이미지 생성 → IG/Threads 게시
 
+import { Buffer } from "node:buffer";
 import { put } from "@vercel/blob";
 
 const IG_API = "https://graph.facebook.com/v19.0";
@@ -154,8 +155,8 @@ async function postToThreads(account, imageUrls, caption) {
   return { mediaId: publishData.id };
 }
 
-// ─── 메인 파이프라인 ───
-export async function runFullAutoPipeline(account, env) {
+// ─── 공통 생성 단계 ───
+export async function generateFullAutoAssets(account, env) {
   const settings = account.settings || {};
   const topics = (settings.topics || "마케팅 자동화").split(",").map((t) => t.trim());
   const topic = topics[Math.floor(Math.random() * topics.length)];
@@ -163,6 +164,7 @@ export async function runFullAutoPipeline(account, env) {
   const tone = settings.tone || "친근하고 전문적인";
   const slideCount = Math.min(Math.max(Number(settings.slideCount) || 5, 1), 10);
   const captionTemplate = settings.captionTemplate || "{title}\n\n{body}";
+  const runId = `run-${Date.now()}-${account.id}`;
 
   // 1. 네이버 검색 (리서치)
   console.log(`[pipeline] 네이버 검색: ${topic}`);
@@ -201,7 +203,6 @@ JSON 배열만 반환, 다른 텍스트 없음.
 
   // 3. Imagen: 이미지 생성 (serial, 슬라이드 수만큼)
   console.log(`[pipeline] 이미지 생성 (${slides.length}장)...`);
-  const runId = `run-${Date.now()}-${account.id}`;
   const imageUrls = [];
 
   for (let i = 0; i < slides.length; i++) {
@@ -221,20 +222,44 @@ JSON 배열만 반환, 다른 텍스트 없음.
     .replace("{title}", firstSlide.title || topic)
     .replace("{body}", captionBody);
 
-  // 5. Instagram 게시
-  console.log(`[pipeline] Instagram 게시...`);
-  const igResult = await postToInstagram(account, imageUrls, caption);
-
-  // 6. Threads 게시
-  console.log(`[pipeline] Threads 게시...`);
-  const threadsResult = await postToThreads(account, imageUrls, caption);
-
   return {
-    status: "success",
     runId,
     topic,
     slideCount: slides.length,
+    researchSummary,
+    slides,
     imageUrls,
+    caption,
+  };
+}
+
+// ─── 메인 파이프라인 ───
+export async function runFullAutoPipeline(account, env, options = {}) {
+  const generated = await generateFullAutoAssets(account, env);
+
+  // 5. Instagram 게시
+  console.log(`[pipeline] Instagram 게시...`);
+  const shouldPostInstagram =
+    options.publishInstagram !== false &&
+    options.targets?.instagram !== false &&
+    Boolean(account.igAccountId && account.igAccessToken);
+  const igResult = shouldPostInstagram
+    ? await postToInstagram(account, generated.imageUrls, generated.caption)
+    : { skipped: true, reason: "IG 게시 비활성" };
+
+  // 6. Threads 게시
+  console.log(`[pipeline] Threads 게시...`);
+  const shouldPostThreads =
+    options.publishThreads !== false &&
+    options.targets?.threads !== false &&
+    Boolean(account.threadsUserId && account.threadsAccessToken);
+  const threadsResult = shouldPostThreads
+    ? await postToThreads(account, generated.imageUrls, generated.caption)
+    : { skipped: true, reason: "Threads 게시 비활성" };
+
+  return {
+    status: "success",
+    ...generated,
     igPermalink: igResult?.permalink || null,
     igMediaId: igResult?.mediaId || null,
     threadsMediaId: threadsResult?.mediaId || null,

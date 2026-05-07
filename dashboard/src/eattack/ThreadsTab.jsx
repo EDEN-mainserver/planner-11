@@ -28,50 +28,50 @@ const CONVERSATION_FORMATS = [
   {
     key: "expert",
     label: "전문가 설명",
-    prompt: "차분한 전문가가 쉽게 풀어주는 말투. 주장 → 이유 → 적용 팁 → 낮은 허들 CTA 흐름.",
+    prompt: "짧고 강한 주장으로 시작하는 전문가 말투. 반전/숫자/단정형 훅 → 이유 → 적용 팁 → 낮은 허들 CTA 흐름.",
   },
   {
     key: "friend",
     label: "친구 조언",
-    prompt: "친한 친구가 옆에서 알려주는 말투. 공감 → 솔직한 경험 → 바로 해볼 행동 → 부드러운 CTA 흐름.",
+    prompt: "친한 친구가 옆에서 바로 찌르는 말투. 공감 → 솔직한 경험 → 의외의 한 방 → 바로 해볼 행동 → 부드러운 CTA 흐름.",
   },
   {
     key: "story",
     label: "경험담",
-    prompt: "개인 경험을 들려주는 말투. 상황 묘사 → 깨달음 → 바뀐 관점 → 독자에게 넘기는 CTA 흐름.",
+    prompt: "개인 경험을 짧고 선명하게 던지는 말투. 상황 묘사 → 예상 밖 깨달음 → 바뀐 관점 → 독자에게 넘기는 CTA 흐름.",
   },
   {
     key: "question",
     label: "질문 유도",
-    prompt: "독자에게 질문을 던지며 대화를 여는 말투. 문제 질문 → 선택지/오해 제시 → 관점 제안 → 댓글 CTA 흐름.",
+    prompt: "독자에게 질문을 던지며 대화를 여는 말투. 문제 질문 → 선택지/오해 제시 → 반전 관점 → 댓글 CTA 흐름.",
   },
   {
     key: "checklist",
     label: "체크리스트",
-    prompt: "짧고 실용적인 체크리스트 말투. 결론 선제시 → 3~5개 포인트 → 바로 적용 CTA 흐름.",
+    prompt: "짧고 실용적인 체크리스트 말투. 결론 선제시 → 3~5개 포인트 → 바로 적용 CTA 흐름. 첫 줄은 반드시 훅이어야 한다.",
   },
 ];
 const TONE_OPTIONS = [
-  { key: "template", label: "템플릿 말투", prompt: "분석된 템플릿의 원래 말투를 최대한 유지" },
-  { key: "direct", label: "직설적", prompt: "짧고 단정적인 문장, 군더더기 없는 확신형 말투" },
-  { key: "warm", label: "따뜻한 공감", prompt: "독자의 상황을 먼저 받아주고 부담 없이 권하는 말투" },
-  { key: "bold", label: "도발적", prompt: "익숙한 믿음을 살짝 뒤집고 강한 주장으로 끌고 가는 말투" },
-  { key: "casual", label: "캐주얼", prompt: "친근하고 가벼운 대화체, 과한 전문용어를 줄인 말투" },
+  { key: "template", label: "템플릿 말투", prompt: "분석된 템플릿의 원래 말투를 최대한 유지하되 첫 문장은 더 강하게 만든다" },
+  { key: "direct", label: "직설적", prompt: "짧고 단정적인 문장, 군더더기 없는 확신형 말투, 첫 문장은 설명문 금지" },
+  { key: "warm", label: "따뜻한 공감", prompt: "독자의 상황을 먼저 받아주되 첫 줄은 약하지 않게, 반전이나 찌르는 포인트를 넣는다" },
+  { key: "bold", label: "도발적", prompt: "익숙한 믿음을 살짝 뒤집고 강한 주장으로 끌고 가는 말투. 첫 줄이 글의 승부처다" },
+  { key: "casual", label: "캐주얼", prompt: "친근하고 가벼운 대화체, 과한 전문용어를 줄인 말투. 가볍더라도 첫 문장은 흥미를 줘야 한다" },
 ];
 const FLOW_OPTIONS = [
-  { key: "template", label: "템플릿 흐름", prompt: "저장된 템플릿의 흐름을 우선 적용" },
-  { key: "problem", label: "문제→해결", prompt: "문제 제기 → 공감 → 해결책 → 바로 할 행동 순서" },
-  { key: "value", label: "가치 선제시", prompt: "첫 줄에서 얻을 이득 제시 → 왜 필요한지 → 구성/근거 → CTA 순서" },
-  { key: "story", label: "상황→깨달음", prompt: "짧은 상황 묘사 → 시행착오 → 깨달음 → 독자 적용 순서" },
-  { key: "contrarian", label: "반전 주장", prompt: "통념 제시 → 반박 → 새로운 관점 → 확인/댓글 CTA 순서" },
+  { key: "template", label: "템플릿 흐름", prompt: "저장된 템플릿의 흐름을 우선 적용하되 첫 줄은 더 강하게 조정" },
+  { key: "problem", label: "문제→해결", prompt: "문제 제기 → 공감 → 해결책 → 바로 할 행동 순서. 첫 문장은 문제를 세게 찌른다" },
+  { key: "value", label: "가치 선제시", prompt: "첫 줄에서 얻을 이득 제시 → 왜 필요한지 → 구성/근거 → CTA 순서. 첫 줄은 숫자나 결과로 시작" },
+  { key: "story", label: "상황→깨달음", prompt: "짧은 상황 묘사 → 시행착오 → 깨달음 → 독자 적용 순서. 첫 줄은 상황 설명보다 충돌이 먼저다" },
+  { key: "contrarian", label: "반전 주장", prompt: "통념 제시 → 반박 → 새로운 관점 → 확인/댓글 CTA 순서. 첫 문장은 반드시 반전 주장으로 시작" },
 ];
 const CTA_OPTIONS = [
-  { key: "template", label: "템플릿 CTA", prompt: "저장된 템플릿의 CTA 방식을 우선 적용" },
-  { key: "comment", label: "댓글 유도", prompt: "댓글로 키워드나 의견을 남기게 하는 낮은 허들 CTA" },
+  { key: "template", label: "템플릿 CTA", prompt: "저장된 템플릿의 CTA 방식을 우선 적용하되, 마지막 문장은 반드시 행동을 유도" },
+  { key: "comment", label: "댓글 유도", prompt: "댓글로 키워드나 의견을 남기게 하는 낮은 허들 CTA. 끝을 질문으로 닫아도 좋다" },
   { key: "follow", label: "팔로우 유도", prompt: "비슷한 실전 팁을 계속 보고 싶으면 팔로우하도록 자연스럽게 유도하는 CTA" },
   { key: "save", label: "저장 유도", prompt: "나중에 다시 보도록 저장을 유도하는 실용형 CTA" },
   { key: "dm", label: "DM 유도", prompt: "자료/체크리스트를 받기 위한 DM 또는 키워드 요청 CTA" },
-  { key: "soft", label: "부드러운 권유", prompt: "강요 없이 오늘 바로 한 가지를 해보게 하는 CTA" },
+  { key: "soft", label: "부드러운 권유", prompt: "강요 없이 오늘 바로 한 가지를 해보게 하는 CTA. 하지만 문장은 흐리지 않는다" },
 ];
 const DEFAULT_TEMPLATE_OPTIONS = {
   format: CONVERSATION_FORMATS,
@@ -79,6 +79,42 @@ const DEFAULT_TEMPLATE_OPTIONS = {
   flow: FLOW_OPTIONS,
   cta: CTA_OPTIONS,
 };
+
+const NARROW_KEYWORD_MARKERS = [
+  "ai",
+  "chatgpt",
+  "claude",
+  "cloude",
+  "code",
+  "coding",
+  "개발",
+  "개발자",
+  "앱",
+  "자동화",
+  "생성형ai",
+];
+
+function looksNarrowKeywordSet(keywords) {
+  const cleaned = (Array.isArray(keywords) ? keywords : [])
+    .map((keyword) => String(keyword || "").toLowerCase().replace(/\s+/g, ""))
+    .filter(Boolean);
+  if (cleaned.length < 3) return false;
+  return cleaned.every((keyword) => NARROW_KEYWORD_MARKERS.some((marker) => keyword.includes(marker)));
+}
+
+function toDatetimeLocalValue(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function fromDatetimeLocalValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
 
 // ── 예약 스케줄 서버 API ──
 async function fetchSchedules(username) {
@@ -94,7 +130,13 @@ async function addSchedule(username, schedule) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, schedule }),
   });
-  return res.ok;
+  const data = await res.json().catch(() => ({}));
+  return {
+    ok: res.ok,
+    error: data?.error || "",
+    schedule: data?.schedule || null,
+    duplicate: data?.duplicate || null,
+  };
 }
 
 async function removeSchedule(username, id) {
@@ -113,6 +155,24 @@ async function clearDoneSchedulesServer(username) {
     body: JSON.stringify({ username }),
   });
   return res.ok;
+}
+
+async function updateSchedule(username, id, updates) {
+  const res = await fetch("/api/schedule", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, id, updates }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.schedule || null;
+}
+
+async function fetchAutoRunDetail(username, runId) {
+  const res = await fetch(`/api/threads-auto-monitor?username=${encodeURIComponent(username)}&runId=${encodeURIComponent(runId)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "실행 로그 조회 실패");
+  return data.current || null;
 }
 
 function loadThreadTemplate() {
@@ -152,6 +212,33 @@ function loadTemplateSelection(username) {
 }
 function saveTemplateSelection(username, data) {
   localStorage.setItem(templateSelectionKey(username), JSON.stringify(data));
+}
+
+function getBatchStartDateKst(postTime) {
+  const now = new Date();
+  const kstNow = new Date(now.getTime() + 9 * 3600 * 1000);
+  const kstToday = kstNow.toISOString().slice(0, 10);
+  const todayFirstSlot = new Date(`${kstToday}T${postTime}:00+09:00`);
+  if (todayFirstSlot.getTime() > now.getTime()) return kstToday;
+
+  const tomorrow = new Date(todayFirstSlot.getTime() + 24 * 60 * 60 * 1000);
+  return new Date(tomorrow.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function calcBatchScheduledAt(baseDateKst, postTime, dayOffset, slotIndex, intervalHours) {
+  const [hh, mm] = postTime.split(":").map(Number);
+  const base = new Date(`${baseDateKst}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00+09:00`);
+  base.setTime(base.getTime() + dayOffset * 24 * 60 * 60 * 1000 + slotIndex * intervalHours * 60 * 60 * 1000);
+  return base.toISOString();
+}
+
+async function parseResponsePayload(res) {
+  const raw = await res.text();
+  try {
+    return { data: JSON.parse(raw), raw };
+  } catch {
+    return { data: null, raw };
+  }
 }
 function loadAutoRunId(username) {
   try {
@@ -473,6 +560,14 @@ export default function ThreadsTab() {
   const [bulkImporting, setBulkImporting] = useState(false);
   const [bulkResult, setBulkResult] = useState(null); // { success, fail }
   const [scheduleView, setScheduleView] = useState("pending"); // "pending" | "all"
+  const [expandedScheduleId, setExpandedScheduleId] = useState("");
+  const [editingScheduleId, setEditingScheduleId] = useState("");
+  const [editingScheduleText, setEditingScheduleText] = useState("");
+  const [editingScheduleTime, setEditingScheduleTime] = useState("");
+  const [scheduleUpdating, setScheduleUpdating] = useState(false);
+  const [scheduleSourceOpenId, setScheduleSourceOpenId] = useState("");
+  const [scheduleSourceLoadingId, setScheduleSourceLoadingId] = useState("");
+  const [scheduleSourceMap, setScheduleSourceMap] = useState({});
 
   // 풀 자동화 설정
   const [showAutoPanel, setShowAutoPanel] = useState(false);
@@ -484,8 +579,12 @@ export default function ThreadsTab() {
   const [autoFlow, setAutoFlow] = useState("template");
   const [autoCta, setAutoCta] = useState("comment");
   const [autoSourceMode, setAutoSourceMode] = useState("random");
+  const [autoBatchDays, setAutoBatchDays] = useState(3);
+  const [autoBatchPostsPerDay, setAutoBatchPostsPerDay] = useState(2);
+  const [autoBatchIntervalHours, setAutoBatchIntervalHours] = useState(4);
   const [autoSaving, setAutoSaving] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
+  const [autoBatchRunning, setAutoBatchRunning] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoLastUpdated, setAutoLastUpdated] = useState(null);
   const [autoRunResult, setAutoRunResult] = useState(null); // { logs, text, scheduledAt, skipped, skipReason, error }
@@ -575,6 +674,49 @@ export default function ThreadsTab() {
     } finally {
       setAutoMonitorLoading(false);
     }
+  };
+
+  const openScheduleSource = async (schedule) => {
+    const nextId = scheduleSourceOpenId === schedule.id ? "" : schedule.id;
+    setExpandedScheduleId(schedule.id);
+    setScheduleSourceOpenId(nextId);
+    if (!nextId || scheduleSourceMap[schedule.id] || !schedule.runId) return;
+
+    setScheduleSourceLoadingId(schedule.id);
+    try {
+      const detail = await fetchAutoRunDetail(username, schedule.runId);
+      setScheduleSourceMap((prev) => ({ ...prev, [schedule.id]: detail }));
+    } catch (e) {
+      setScheduleSourceMap((prev) => ({
+        ...prev,
+        [schedule.id]: { error: e.message, logs: [] },
+      }));
+    } finally {
+      setScheduleSourceLoadingId("");
+    }
+  };
+
+  const getEffectiveSourceInfo = (schedule) => (
+    schedule?.sourceInfo || scheduleSourceMap[schedule?.id]?.sourceInfo || null
+  );
+
+  const isLegacyTrackedAutoSchedule = (schedule) => (
+    Boolean(schedule?.auto) &&
+    !getEffectiveSourceInfo(schedule)?.topicFingerprint &&
+    !getEffectiveSourceInfo(schedule)?.evidenceFingerprint
+  );
+
+  const getRepeatCheck = (schedule) => (
+    getEffectiveSourceInfo(schedule)?.provenance?.repeatCheck || null
+  );
+
+  const getRepeatCheckLabel = (schedule) => {
+    const repeatCheck = getRepeatCheck(schedule);
+    if (!repeatCheck) return isLegacyTrackedAutoSchedule(schedule) ? "논점 추적 도입 전 생성분" : "반복 검사 정보 없음";
+    if (repeatCheck.status === "passed") return "최근 반복 회피 통과";
+    if (repeatCheck.status === "reselected") return "중복 감지 후 후보 재선택";
+    if (repeatCheck.status === "skipped") return "대체 후보 없음으로 스킵";
+    return repeatCheck.status || "반복 검사 완료";
   };
 
   const updateTemplateOption = (group, key, field, value) => {
@@ -678,10 +820,10 @@ export default function ThreadsTab() {
         [
           {
             role: "user",
-            content: `주제: "${aiTopic}"\n\nThreads(인스타그램의 텍스트 SNS)에 올릴 게시글 최종안 1개만 작성해줘.\n\n규칙:\n- 안내문, 설명, 제목, A안/B안, 버전명 금지\n- 바로 게시할 본문만 출력\n- 최대 500자 이내\n- 줄바꿈을 활용한 읽기 쉬운 구조\n- 한 줄에 10~25자\n- 해시태그 2~4개 (마지막에)\n- 자연스럽고 공감 가는 톤\n- 마크다운, 따옴표 없이 순수 텍스트만`,
+            content: `주제: "${aiTopic}"\n\nThreads(인스타그램의 텍스트 SNS)에 올릴 게시글 최종안 1개만 작성해줘.\n\n규칙:\n- 안내문, 설명, 제목, A안/B안, 버전명 금지\n- 바로 게시할 본문만 출력\n- 최대 500자 이내\n- 줄바꿈을 활용한 읽기 쉬운 구조\n- 한 줄에 10~25자\n- 해시태그 2~4개 (마지막에)\n- 자연스럽고 공감 가는 톤\n- 첫 문장은 반드시 훅이어야 함\n- 첫 문장은 설명문, 요약문, 안내문이 아니라 단정/반전/숫자/질문/충격 중 하나로 시작\n- 마지막 줄은 완결된 문장이나 자연스러운 CTA로 닫기\n- 자연스럽고 공감 가는 톤이더라도 밋밋하게 끝내지 말 것\n- 마크다운, 따옴표 없이 순수 텍스트만`,
           },
         ],
-        "SNS 콘텐츠 전문가. 설명 없이 Threads에 바로 게시할 최종 본문 1개만 작성합니다."
+        "SNS 콘텐츠 전문가. 설명 없이 Threads에 바로 게시할 최종 본문 1개만 작성합니다. 첫 문장은 반드시 훅이어야 하고, 평범한 요약문이나 안내문으로 시작하면 안 됩니다."
       );
       setText(cleanThreadDraft(result));
       addLog("info", "AI 글 생성 완료");
@@ -711,26 +853,26 @@ export default function ThreadsTab() {
       checklist: "본문 중간을 3~5개의 짧은 항목처럼 읽히게 쓴다.",
     };
     const toneRules = {
-      template: "분석 템플릿의 말투를 유지한다.",
-      direct: "짧고 단정적인 문장으로 쓴다.",
-      warm: "독자를 먼저 이해해주는 표현을 넣는다.",
-      bold: "익숙한 생각을 강하게 뒤집는 문장을 넣는다.",
+      template: "분석 템플릿의 말투를 유지하되 첫 문장을 더 강하게 다시 쓴다.",
+      direct: "짧고 단정적인 문장으로 쓴다. 첫 문장은 설명문이 아니라 주장이어야 한다.",
+      warm: "독자를 먼저 이해해주는 표현을 넣되, 첫 줄은 약하지 않게 찌른다.",
+      bold: "익숙한 생각을 강하게 뒤집는 문장을 넣는다. 첫 문장이 승부처다.",
       casual: "친구에게 알려주듯 가볍고 쉬운 표현을 쓴다. '마법', '신세계', 과장 광고 표현은 피한다.",
     };
     const flowRules = {
-      template: "분석 템플릿의 흐름을 따른다.",
-      problem: "문제 제기 → 공감 → 해결책 → 바로 할 행동 순서로 쓴다.",
-      value: "얻을 이득 → 필요한 이유 → 구성/근거 → CTA 순서로 쓴다.",
-      story: "상황 → 시행착오 → 깨달음 → 독자 적용 순서로 쓴다.",
+      template: "분석 템플릿의 흐름을 따른다. 다만 첫 줄은 더 강하게 다시 쓴다.",
+      problem: "문제 제기 → 공감 → 해결책 → 바로 할 행동 순서로 쓴다. 첫 줄은 문제를 세게 찌른다.",
+      value: "얻을 이득 → 필요한 이유 → 구성/근거 → CTA 순서로 쓴다. 첫 줄은 숫자나 결과로 시작한다.",
+      story: "상황 → 시행착오 → 깨달음 → 독자 적용 순서로 쓴다. 첫 줄은 상황 설명보다 충돌이 먼저다.",
       contrarian: "통념/오해 제시 → 반박 → 새로운 관점 → 바로 적용할 방법 → CTA 순서로 쓴다. 첫 문장은 반드시 반전 주장으로 시작한다.",
     };
     const ctaRules = {
-      template: "분석 템플릿의 CTA를 따른다.",
-      comment: "마지막 문장에서 댓글을 남기게 한다.",
+      template: "분석 템플릿의 CTA를 따른다. 마지막 문장은 반드시 행동을 남긴다.",
+      comment: "마지막 문장에서 댓글을 남기게 한다. 가능하면 질문으로 닫는다.",
       follow: "마지막 문장에서 비슷한 팁을 더 보려면 팔로우하라고 자연스럽게 말한다.",
       save: "마지막 문장에서 저장을 유도한다.",
       dm: "마지막 문장에서 DM 또는 키워드 요청을 유도한다.",
-      soft: "마지막 문장에서 부담 없는 실행을 권한다.",
+      soft: "마지막 문장에서 부담 없는 실행을 권한다. 하지만 마무리가 흐려지지 않게 한다.",
     };
 
     if (!template) {
@@ -779,6 +921,7 @@ ${JSON.stringify(template, null, 2)}
 - 흐름 강제: ${flowRules[flow.key] || flow.prompt}
 - CTA 강제: ${ctaRules[cta.key] || cta.prompt}
 - 첫 문장은 선택한 흐름에 맞는 카피라이팅으로 재작성
+- 첫 문장은 설명문, 요약문, 안내문이 아니라 훅이어야 함
 - 선택한 흐름과 충돌하는 일반적인 공감/해결책 구조로 되돌아가지 말 것
 - 선택한 CTA와 다른 CTA로 마무리하지 말 것
 - 최대 500자 이내
@@ -889,6 +1032,9 @@ ${JSON.stringify(template, null, 2)}
         setAutoFlow(cfg.flow || "template");
         setAutoCta(cfg.cta || "comment");
         setAutoSourceMode(cfg.sourceMode || "random");
+        setAutoBatchDays(cfg.batchDays || 3);
+        setAutoBatchPostsPerDay(cfg.batchPostsPerDay || 2);
+        setAutoBatchIntervalHours(cfg.batchIntervalHours || 4);
         setAutoLastUpdated(cfg.updatedAt || null);
       })
       .catch(() => {})
@@ -948,6 +1094,9 @@ ${JSON.stringify(template, null, 2)}
             flow: autoFlow,
             cta: autoCta,
             sourceMode: autoSourceMode,
+            batchDays: Number(autoBatchDays) || 1,
+            batchPostsPerDay: Number(autoBatchPostsPerDay) || 1,
+            batchIntervalHours: Number(autoBatchIntervalHours) || 4,
             userId: userId.trim(),
             accessToken: accessToken.trim(),
           },
@@ -992,31 +1141,44 @@ ${JSON.stringify(template, null, 2)}
     addLog("info", "현재 설정 저장 후 자동화 실행 중...");
 
     try {
+      const currentConfig = {
+        enabled: true,
+        keywords,
+        postTime: autoPostTime,
+        format: autoFormat,
+        tone: autoTone,
+        flow: autoFlow,
+        cta: autoCta,
+        sourceMode: autoSourceMode,
+        batchDays: Number(autoBatchDays) || 1,
+        batchPostsPerDay: Number(autoBatchPostsPerDay) || 1,
+        batchIntervalHours: Number(autoBatchIntervalHours) || 4,
+        userId: userId.trim(),
+        accessToken: accessToken.trim(),
+      };
+
       // 1) 현재 UI 설정을 먼저 서버에 저장
       const saveRes = await fetch("/api/threads-auto-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username,
-          config: {
-            enabled: true, // 즉시 실행 시 강제 활성
-            keywords,
-            postTime: autoPostTime,
-            format: autoFormat,
-            tone: autoTone,
-            flow: autoFlow,
-            cta: autoCta,
-            sourceMode: autoSourceMode,
-            userId: userId.trim(),
-            accessToken: accessToken.trim(),
-          },
+          config: currentConfig,
         }),
       });
       if (!saveRes.ok) throw new Error("설정 저장 실패");
       setAutoLastUpdated(new Date().toISOString());
 
       // 2) 자동화 실행
-      const res = await fetch(`/api/threads-auto-research?username=${encodeURIComponent(username)}&runId=${encodeURIComponent(runId)}`);
+      const res = await fetch("/api/threads-auto-research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          runId,
+          config: currentConfig,
+        }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "실행 실패");
 
@@ -1042,6 +1204,114 @@ ${JSON.stringify(template, null, 2)}
       setAutoRunResult({ logs: [], error: e.message });
     } finally {
       setAutoRunning(false);
+    }
+  };
+
+  const handleGenerateAutoBatch = async () => {
+    if (!userId.trim() || !accessToken.trim()) {
+      addLog("error", "인증 설정에서 액세스 토큰과 사용자 ID를 먼저 저장하세요");
+      return;
+    }
+    const keywords = autoKeywords.split(",").map(k => k.trim()).filter(Boolean);
+    if (!keywords.length) {
+      addLog("error", "키워드를 하나 이상 입력하세요");
+      return;
+    }
+
+    const days = Math.max(1, Math.min(14, Number(autoBatchDays) || 1));
+    const postsPerDay = Math.max(1, Math.min(6, Number(autoBatchPostsPerDay) || 1));
+    const intervalHours = Math.max(1, Math.min(12, Number(autoBatchIntervalHours) || 4));
+    const totalPosts = days * postsPerDay;
+    if (totalPosts > 20) {
+      addLog("error", "한 번에 최대 20개까지만 선생성할 수 있습니다");
+      return;
+    }
+
+    setAutoBatchRunning(true);
+    addLog("info", `${days}일 x 하루 ${postsPerDay}개 예약 생성 시작 (${intervalHours}시간 간격)`);
+
+    try {
+      const currentConfig = {
+        enabled: autoEnabled,
+        keywords,
+        postTime: autoPostTime,
+        format: autoFormat,
+        tone: autoTone,
+        flow: autoFlow,
+        cta: autoCta,
+        sourceMode: autoSourceMode,
+        batchDays: days,
+        batchPostsPerDay: postsPerDay,
+        batchIntervalHours: intervalHours,
+        userId: userId.trim(),
+        accessToken: accessToken.trim(),
+      };
+
+      const saveRes = await fetch("/api/threads-auto-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          config: currentConfig,
+        }),
+      });
+      if (!saveRes.ok) throw new Error("설정 저장 실패");
+      setAutoLastUpdated(new Date().toISOString());
+
+      const runId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const baseDateKst = getBatchStartDateKst(autoPostTime);
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
+        for (let slotIndex = 0; slotIndex < postsPerDay; slotIndex += 1) {
+          const order = dayIndex * postsPerDay + slotIndex + 1;
+          const scheduledAt = calcBatchScheduledAt(baseDateKst, autoPostTime, dayIndex, slotIndex, intervalHours);
+          const slotRunId = `${runId}_d${dayIndex + 1}_s${slotIndex + 1}`;
+
+          addLog("info", `${order}/${totalPosts} 슬롯 생성 시작 → ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
+
+          const res = await fetch("/api/threads-auto-research", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username,
+              runId: slotRunId,
+              config: currentConfig,
+              options: {
+                scheduledAt,
+                allowExistingPendingAuto: true,
+                scheduleMeta: { dayIndex: dayIndex + 1, slotIndex: slotIndex + 1 },
+              },
+            }),
+          });
+
+          const { data, raw } = await parseResponsePayload(res);
+          if (!res.ok) {
+            failCount += 1;
+            const message = data?.error || raw.replace(/<[^>]*>/g, "").trim().slice(0, 180) || `HTTP ${res.status}`;
+            addLog("error", `${order}/${totalPosts} 슬롯 실패: ${message}`);
+            continue;
+          }
+
+          const result = data?.result;
+          if (result?.skipped) {
+            failCount += 1;
+            addLog("info", `${order}/${totalPosts} 슬롯 스킵: ${result.skipReason}`);
+          } else {
+            successCount += 1;
+            addLog("info", `${order}/${totalPosts} 슬롯 예약 완료`);
+          }
+        }
+      }
+
+      addLog("info", `일괄 예약 생성 완료: 성공 ${successCount}개 · 실패 ${failCount}개`);
+
+      fetchSchedules(username).then(setScheduledPosts).catch(() => {});
+    } catch (e) {
+      addLog("error", `일괄 예약 생성 실패: ${e.message}`);
+    } finally {
+      setAutoBatchRunning(false);
     }
   };
 
@@ -1098,9 +1368,9 @@ ${JSON.stringify(template, null, 2)}
       status: "pending",
       createdAt: new Date().toISOString(),
     };
-    const ok = await addSchedule(username, newPost);
+    const result = await addSchedule(username, newPost);
     setScheduleSaving(false);
-    if (!ok) { addLog("error", "예약 저장 실패"); return; }
+    if (!result.ok) { addLog("error", result.error || "예약 저장 실패"); return; }
     setScheduledPosts((prev) => [...prev, newPost]);
     addLog("info", `예약 완료: ${new Date(scheduledAtISO).toLocaleString("ko-KR")}`);
     setScheduleEnabled(false);
@@ -1120,6 +1390,54 @@ ${JSON.stringify(template, null, 2)}
   const clearDoneSchedules = async () => {
     const ok = await clearDoneSchedulesServer(username);
     if (ok) setScheduledPosts((prev) => prev.filter((p) => p.status === "pending"));
+  };
+
+  const openScheduleEditor = (post) => {
+    setExpandedScheduleId(post.id);
+    setEditingScheduleId(post.id);
+    setEditingScheduleText(post.text || "");
+    setEditingScheduleTime(toDatetimeLocalValue(post.scheduledAt || ""));
+  };
+
+  const closeScheduleEditor = () => {
+    setEditingScheduleId("");
+    setEditingScheduleText("");
+    setEditingScheduleTime("");
+  };
+
+  const handleUpdateSchedule = async (post) => {
+    if (!editingScheduleText.trim()) {
+      addLog("error", "예약 글 본문이 비어 있습니다");
+      return;
+    }
+    if (editingScheduleText.trim().length > TH_MAX_CHARS) {
+      addLog("error", `예약 글은 ${TH_MAX_CHARS}자 이하여야 합니다`);
+      return;
+    }
+    if (!editingScheduleTime) {
+      addLog("error", "예약 시간을 입력하세요");
+      return;
+    }
+    const nextScheduledAt = fromDatetimeLocalValue(editingScheduleTime);
+    if (!nextScheduledAt) {
+      addLog("error", "예약 시간 형식이 올바르지 않습니다");
+      return;
+    }
+    setScheduleUpdating(true);
+    try {
+      const updated = await updateSchedule(username, post.id, {
+        text: editingScheduleText.trim(),
+        scheduledAt: nextScheduledAt,
+      });
+      if (!updated) throw new Error("예약 수정 실패");
+      setScheduledPosts((prev) => prev.map((item) => (item.id === post.id ? updated : item)));
+      addLog("info", `예약 수정 완료: ${new Date(updated.scheduledAt).toLocaleString("ko-KR")}`);
+      closeScheduleEditor();
+    } catch (e) {
+      addLog("error", e.message || "예약 수정 실패");
+    } finally {
+      setScheduleUpdating(false);
+    }
   };
 
   // CSV 일괄 업로드
@@ -1176,9 +1494,14 @@ ${JSON.stringify(template, null, 2)}
     let success = 0;
     let fail = errors.length;
     for (const post of parsed) {
-      const ok = await addSchedule(username, post);
-      if (ok) { success++; setScheduledPosts((prev) => [...prev, post]); }
-      else fail++;
+      const result = await addSchedule(username, post);
+      if (result.ok) {
+        success++;
+        setScheduledPosts((prev) => [...prev, post]);
+      } else {
+        fail++;
+        addLog("error", `${new Date(post.scheduledAt).toLocaleString("ko-KR")} 예약 실패: ${result.error || "중복 또는 저장 오류"}`);
+      }
     }
 
     setBulkImporting(false);
@@ -1583,6 +1906,11 @@ ${JSON.stringify(template, null, 2)}
                 className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
               />
               <p className="text-[10px] text-violet-400">각 키워드로 네이버 블로그 5개씩 검색, 최신 AI 이슈를 자동 수집합니다</p>
+              {looksNarrowKeywordSet(autoKeywords.split(",")) && (
+                <p className="text-[10px] leading-relaxed text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  현재 키워드가 Claude / AI / 개발 계열로만 묶여 있습니다. 주제가 한 방향으로 반복될 수 있으니, 뉴스·업무·생활·툴 후기처럼 서로 다른 축을 섞는 편이 좋습니다.
+                </p>
+              )}
             </div>
 
             {/* 게시 시간 */}
@@ -1669,19 +1997,70 @@ ${JSON.stringify(template, null, 2)}
               <div className="flex gap-2">
                 <button
                   onClick={handleSaveAutoConfig}
-                  disabled={autoSaving || autoRunning}
+                  disabled={autoSaving || autoRunning || autoBatchRunning}
                   className="flex-1 py-2.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl transition-all"
                 >
                   {autoSaving ? "저장 중..." : "설정 저장"}
                 </button>
                 <button
                   onClick={handleRunAutoNow}
-                  disabled={autoRunning || autoSaving}
+                  disabled={autoRunning || autoSaving || autoBatchRunning}
                   className="px-4 py-2.5 text-xs font-bold text-violet-700 bg-white border border-violet-300 hover:bg-violet-50 disabled:opacity-40 rounded-xl transition-all whitespace-nowrap"
                   title="현재 설정을 저장하고 즉시 실행 (실제 크론은 매일 KST 06:00 자동 실행)"
                 >
                   {autoRunning ? "실행 중..." : "지금 실행"}
                 </button>
+              </div>
+
+              <div className="rounded-xl border border-violet-200 bg-white/80 px-3 py-3 space-y-3">
+                <p className="text-[11px] font-bold text-violet-700">여러 개 미리 예약 생성</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-violet-600">선생성 일수</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="14"
+                      value={autoBatchDays}
+                      onChange={e => setAutoBatchDays(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-violet-600">하루 업로드 수</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="6"
+                      value={autoBatchPostsPerDay}
+                      onChange={e => setAutoBatchPostsPerDay(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-violet-600">간격(시간)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={autoBatchIntervalHours}
+                      onChange={e => setAutoBatchIntervalHours(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={handleGenerateAutoBatch}
+                  disabled={autoBatchRunning || autoSaving}
+                  className="w-full py-2.5 text-xs font-bold text-violet-700 bg-violet-100 border border-violet-300 hover:bg-violet-200 disabled:opacity-40 rounded-xl transition-all"
+                >
+                  {autoBatchRunning
+                    ? "여러 예약 생성 중..."
+                    : `${Number(autoBatchDays) || 1}일 x ${Number(autoBatchPostsPerDay) || 1}개 미리 생성`}
+                </button>
+                <p className="text-[10px] text-violet-400 leading-relaxed">
+                  첫 슬롯은 기본 게시 시간부터 시작하고, 같은 날 추가 슬롯은 입력한 시간 간격으로 예약됩니다. 한 번에 최대 20개까지 생성합니다.
+                </p>
               </div>
 
               <div className="text-[11px] text-violet-500 bg-white border border-violet-100 rounded-xl px-3 py-2 leading-relaxed">
@@ -1721,27 +2100,290 @@ ${JSON.stringify(template, null, 2)}
                   예약된 콘텐츠가 없습니다
                 </div>
               ) : (
-                <div className="space-y-1 max-h-60 overflow-y-auto pr-0.5">
+                <div className="space-y-1 max-h-72 overflow-y-auto pr-0.5">
                   {scheduledPosts
                     .filter(p => scheduleView === "all" || p.status === "pending")
                     .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
                     .map(p => (
-                    <div key={p.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border
-                      ${p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0
-                        ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
-                      <span className="text-gray-500 flex-shrink-0 font-mono text-[11px]">
-                        {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      <span className="flex-1 text-gray-700 truncate">{p.text.slice(0, 30)}{p.text.length > 30 ? "..." : ""}</span>
-                      <span className={`flex-shrink-0 font-semibold text-[11px]
-                        ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
-                        {p.status === "pending" ? "대기" : p.status === "posted" ? "완료" : "실패"}
-                      </span>
-                      {p.status === "pending" && (
-                        <button onClick={() => cancelSchedule(p.id)} className="text-gray-300 hover:text-red-500 flex-shrink-0">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    <div key={p.id} className={`rounded-xl border text-xs ${
+                      p.status === "pending" ? "bg-amber-50 border-amber-200" : p.status === "posted" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                    }`}>
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0
+                          ${p.status === "pending" ? "bg-amber-400 animate-pulse" : p.status === "posted" ? "bg-emerald-500" : "bg-red-400"}`} />
+                        <span className="text-gray-500 flex-shrink-0 font-mono text-[11px]">
+                          {new Date(p.scheduledAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        <button
+                          onClick={() => setExpandedScheduleId(expandedScheduleId === p.id ? "" : p.id)}
+                          className="flex-1 text-left text-gray-700 truncate hover:text-gray-900"
+                          title="본문 보기"
+                        >
+                          {p.text.slice(0, 30)}{p.text.length > 30 ? "..." : ""}
                         </button>
+                        <span className={`flex-shrink-0 font-semibold text-[11px]
+                          ${p.status === "pending" ? "text-amber-600" : p.status === "posted" ? "text-emerald-600" : "text-red-500"}`}>
+                          {p.status === "pending" ? "대기" : p.status === "posted" ? "완료" : "실패"}
+                        </span>
+                        <button
+                          onClick={() => setExpandedScheduleId(expandedScheduleId === p.id ? "" : p.id)}
+                          className="text-[11px] font-semibold text-gray-400 hover:text-violet-600 flex-shrink-0"
+                        >
+                          {expandedScheduleId === p.id ? "닫기" : "보기"}
+                        </button>
+                        <button
+                          onClick={() => openScheduleSource(p)}
+                          className="text-[11px] font-semibold text-sky-600 hover:text-sky-700 flex-shrink-0"
+                        >
+                          {scheduleSourceOpenId === p.id ? "출처닫기" : "출처"}
+                        </button>
+                        {p.status === "pending" && (
+                          <>
+                            <button
+                              onClick={() => openScheduleEditor(p)}
+                              className="text-[11px] font-semibold text-violet-500 hover:text-violet-700 flex-shrink-0"
+                            >
+                              수정
+                            </button>
+                            <button onClick={() => cancelSchedule(p.id)} className="text-gray-300 hover:text-red-500 flex-shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {expandedScheduleId === p.id && (
+                        <div className="border-t border-white/70 px-3 py-3 space-y-3">
+                          {editingScheduleId === p.id ? (
+                            <>
+                              <textarea
+                                value={editingScheduleText}
+                                onChange={(e) => setEditingScheduleText(e.target.value)}
+                                rows={7}
+                                className="w-full px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                              />
+                              <div className="flex items-center justify-between gap-3">
+                                <input
+                                  type="datetime-local"
+                                  value={editingScheduleTime}
+                                  onChange={(e) => setEditingScheduleTime(e.target.value)}
+                                  className="px-3 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
+                                />
+                                <span className={`text-[11px] font-mono ${editingScheduleText.length > TH_MAX_CHARS ? "text-red-500" : "text-gray-400"}`}>
+                                  {editingScheduleText.length}/{TH_MAX_CHARS}
+                                </span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleUpdateSchedule(p)}
+                                  disabled={scheduleUpdating}
+                                  className="px-3 py-2 text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 rounded-xl"
+                                >
+                                  {scheduleUpdating ? "저장 중..." : "수정 저장"}
+                                </button>
+                                <button
+                                  onClick={closeScheduleEditor}
+                                  disabled={scheduleUpdating}
+                                  className="px-3 py-2 text-[11px] font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 rounded-xl"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="space-y-2">
+                              <pre className="whitespace-pre-wrap break-words text-[12px] leading-relaxed text-gray-700 bg-white rounded-xl border border-white/80 px-3 py-3">
+                                {p.text}
+                              </pre>
+                              {scheduleSourceOpenId === p.id && (
+                                <div className="rounded-xl border border-sky-100 bg-sky-50/70 px-3 py-3 space-y-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-[11px] font-bold text-sky-800">생성 출처 / 수집 정보</p>
+                                      <p className="text-[10px] text-sky-600">
+                                        {getEffectiveSourceInfo(p)?.label || (p.auto ? "기존 예약: 논점 추적 도입 전 생성분" : "수동 예약")}
+                                      </p>
+                                    </div>
+                                    {p.runId && (
+                                      <span className="text-[10px] font-mono text-sky-500">{p.runId}</span>
+                                    )}
+                                  </div>
+
+                                  {getEffectiveSourceInfo(p) ? (
+                                    <>
+                                      <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+                                        <span className={`px-2 py-1 rounded-full border ${
+                                          getEffectiveSourceInfo(p)?.provenance?.dataBacked
+                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                            : "bg-red-50 text-red-600 border-red-200"
+                                        }`}>
+                                          {getEffectiveSourceInfo(p)?.provenance?.dataBacked ? "데이터 기반 재구성" : "근거 없는 일반 생성"}
+                                        </span>
+                                        {getEffectiveSourceInfo(p)?.provenance?.strategy && (
+                                          <span className="px-2 py-1 rounded-full border bg-white text-sky-700 border-sky-200">
+                                            {getEffectiveSourceInfo(p).provenance.strategy === "pattern-reconstruction"
+                                              ? "잘된 Threads 구조 재구성"
+                                              : "외부 리서치 재구성"}
+                                          </span>
+                                        )}
+                                        {getEffectiveSourceInfo(p)?.choice === "threads" && (
+                                          <span className="px-2 py-1 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200">
+                                            Threads 소스 사용
+                                          </span>
+                                        )}
+                                        <span className="px-2 py-1 rounded-full border bg-white text-sky-700 border-sky-200">
+                                          근거 {Number(getEffectiveSourceInfo(p)?.provenance?.evidenceCount || getEffectiveSourceInfo(p)?.items?.length || 0)}건
+                                        </span>
+                                        <span className={`px-2 py-1 rounded-full border ${
+                                          getRepeatCheck(p)?.status === "skipped"
+                                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                                            : getRepeatCheck(p)?.status === "reselected"
+                                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                                              : "bg-white text-sky-700 border-sky-200"
+                                        }`}>
+                                          {getRepeatCheckLabel(p)}
+                                        </span>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">소스 선택</span>
+                                          <span className="font-semibold text-sky-900">{getEffectiveSourceInfo(p).label || getEffectiveSourceInfo(p).choice || "-"}</span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">수집 글 수</span>
+                                          <span className="font-semibold text-sky-900">
+                                            {Number(getEffectiveSourceInfo(p)?.items?.length || getEffectiveSourceInfo(p)?.sourceUrls?.length || 0)}건
+                                          </span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">키워드</span>
+                                          <span className="font-semibold text-sky-900">{(getEffectiveSourceInfo(p).keywords || []).join(", ") || "-"}</span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">핵심 주제</span>
+                                          <span className="font-semibold text-sky-900">{getEffectiveSourceInfo(p).topicLabel || "-"}</span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">선택 후보 ID</span>
+                                          <span className="font-mono font-semibold text-sky-900">{getEffectiveSourceInfo(p).candidateId || getEffectiveSourceInfo(p).candidateHash || "-"}</span>
+                                        </div>
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2 col-span-2">
+                                          <span className="block text-[10px] text-sky-500">출처 경로</span>
+                                          <span className="block font-mono text-[10px] leading-relaxed text-sky-900 break-all">
+                                            {getEffectiveSourceInfo(p).sourcePathFingerprint || "-"}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-1 gap-2 text-[11px]">
+                                        <div className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                          <span className="block text-[10px] text-sky-500">반복 검사 결과</span>
+                                          <span className="font-semibold text-sky-900">{getRepeatCheckLabel(p)}</span>
+                                          {getRepeatCheck(p)?.reason && (
+                                            <p className="mt-1 text-[10px] leading-relaxed text-amber-700">{getRepeatCheck(p).reason}</p>
+                                          )}
+                                          {getRepeatCheck(p)?.match && (
+                                            <p className="mt-1 text-[10px] leading-relaxed text-sky-700">
+                                              최근 이력과 비교: {getRepeatCheck(p).match.reason === "legacy-body" ? "레거시 본문 유사" : "같은 논점 + 근거"} 감지 후 재선택
+                                            </p>
+                                          )}
+                                          {typeof getRepeatCheck(p)?.attempts === "number" && (
+                                            <p className="mt-1 text-[10px] text-sky-600">
+                                              비교 {getRepeatCheck(p).comparedRecentCount || 0}건 · 생성 시도 {getRepeatCheck(p).attempts}회
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {Array.isArray(getEffectiveSourceInfo(p).items) && getEffectiveSourceInfo(p).items.length > 0 && (
+                                        <div className="space-y-2">
+                                          <p className="text-[10px] font-bold text-sky-700">실제 가져온 정보</p>
+                                          <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                            {getEffectiveSourceInfo(p).items.slice(0, 8).map((item, idx) => (
+                                              <div key={`${p.id}-source-${idx}`} className="rounded-lg border border-sky-100 bg-white px-2.5 py-2 text-[11px] text-gray-700">
+                                                {item.keyword && (
+                                                  <p className="text-[10px] font-mono text-sky-500 mb-1">{item.keyword}</p>
+                                                )}
+                                                {item.author && (
+                                                  <p className="text-[10px] font-mono text-sky-500 mb-1">
+                                                    @{item.author} · 조회 {Number(item.views || 0).toLocaleString()} · 좋아요 {Number(item.likes || 0).toLocaleString()} · 댓글 {Number(item.comments || 0).toLocaleString()}
+                                                  </p>
+                                                )}
+                                                <p className="font-semibold text-gray-800">{item.title || item.content || "-"}</p>
+                                                {item.description && (
+                                                  <p className="mt-1 text-gray-500 leading-relaxed">{item.description}</p>
+                                                )}
+                                                {(() => {
+                                                  const sourceUrl = Array.isArray(item.sourceUrls) && item.sourceUrls.length > 0
+                                                    ? item.sourceUrls[0]
+                                                    : (item.originallink || item.link || "");
+                                                  if (!sourceUrl) return null;
+                                                  const isLink = /^https?:\/\//i.test(sourceUrl);
+                                                  return isLink ? (
+                                                    <a
+                                                      href={sourceUrl}
+                                                      target="_blank"
+                                                      rel="noreferrer"
+                                                      className="mt-1 block text-[10px] font-mono leading-relaxed text-sky-500 break-all hover:text-sky-700 hover:underline"
+                                                    >
+                                                      원문 {sourceUrl}
+                                                    </a>
+                                                  ) : (
+                                                    <p className="mt-1 text-[10px] font-mono leading-relaxed text-sky-500 break-all">
+                                                      원문 {sourceUrl}
+                                                    </p>
+                                                  );
+                                                })()}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <div className="text-[11px] text-gray-500 bg-white border border-sky-100 rounded-lg px-3 py-2">
+                                      이 예약은 논점 추적 기능을 넣기 전에 만들어진 기존 예약이거나, 수동으로 등록된 예약입니다.
+                                    </div>
+                                  )}
+
+                                  <div className="space-y-2">
+                                    <p className="text-[10px] font-bold text-sky-700">생성 로그</p>
+                                    {scheduleSourceLoadingId === p.id ? (
+                                      <div className="text-[11px] text-sky-600 bg-white border border-sky-100 rounded-lg px-3 py-2">
+                                        실행 로그 불러오는 중...
+                                      </div>
+                                    ) : scheduleSourceMap[p.id]?.error ? (
+                                      <div className="text-[11px] text-red-500 bg-white border border-red-100 rounded-lg px-3 py-2">
+                                        {scheduleSourceMap[p.id].error}
+                                      </div>
+                                    ) : Array.isArray(scheduleSourceMap[p.id]?.logs) && scheduleSourceMap[p.id].logs.length > 0 ? (
+                                      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                                        {scheduleSourceMap[p.id].logs.map((entry, idx) => (
+                                          <div key={`${p.id}-log-${idx}`} className="rounded-lg border border-sky-100 bg-white px-2.5 py-2">
+                                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                                              <span className="font-mono">
+                                                {entry?.time ? new Date(entry.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "now"}
+                                              </span>
+                                              <span className="font-semibold uppercase">{entry?.phase || entry?.level || "log"}</span>
+                                            </div>
+                                            <p className="mt-1 text-[11px] text-gray-700 leading-relaxed">{entry?.msg || ""}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="text-[11px] text-gray-500 bg-white border border-sky-100 rounded-lg px-3 py-2">
+                                        실행 로그가 없거나, 이 예약은 수동으로 만들어졌습니다.
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              <p className="text-[11px] text-gray-400">
+                                예약 시간: {new Date(p.scheduledAt).toLocaleString("ko-KR")}
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}

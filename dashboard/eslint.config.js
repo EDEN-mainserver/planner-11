@@ -23,7 +23,18 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', caughtErrorsIgnorePattern: '^_' }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: ['api/**/*.{js,jsx}', 'google-sheets-script.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        SpreadsheetApp: 'readonly',
+        ContentService: 'readonly',
+      },
     },
   },
 ])

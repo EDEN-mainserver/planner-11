@@ -38,6 +38,15 @@ function findRowByEmail(sheet, email) {
   return -1;
 }
 
+function findRow(sheet, payload) {
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (payload.id && data[i][0] === payload.id) return i + 1;
+    if (payload.email && data[i][1] === payload.email) return i + 1;
+  }
+  return -1;
+}
+
 function doPost(e) {
   try {
     const payload = JSON.parse(e.postData.contents);
@@ -53,14 +62,28 @@ function doPost(e) {
       payload.picture     || "",
     ];
 
-    const existingRow = findRowByEmail(sheet, payload.email);
+    const existingRow = findRow(sheet, payload);
+
+    if (payload.action === "delete") {
+      if (existingRow > 0) sheet.deleteRow(existingRow);
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, deleted: existingRow > 0 }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     if (existingRow > 0) {
-      // 기존 회원: 역할·최근 로그인만 업데이트
-      sheet.getRange(existingRow, 4).setValue(payload.role        || "user");
+      // 기존 회원: 전체 주요 컬럼 업데이트
+      sheet.getRange(existingRow, 1).setValue(payload.id || "");
+      sheet.getRange(existingRow, 2).setValue(payload.email || "");
+      sheet.getRange(existingRow, 3).setValue(payload.displayName || "");
+      sheet.getRange(existingRow, 4).setValue(payload.role || "user");
+      if (payload.createdAt) {
+        sheet.getRange(existingRow, 5).setValue(new Date(payload.createdAt).toLocaleString("ko-KR"));
+      }
       sheet.getRange(existingRow, 6).setValue(
         payload.lastLoginAt ? new Date(payload.lastLoginAt).toLocaleString("ko-KR") : ""
       );
+      sheet.getRange(existingRow, 7).setValue(payload.picture || "");
     } else {
       // 신규 회원: 행 추가
       sheet.appendRow(row);

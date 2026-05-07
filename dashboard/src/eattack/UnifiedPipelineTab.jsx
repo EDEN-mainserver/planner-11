@@ -1,6 +1,6 @@
 // 통합 카드뉴스 파이프라인
 // 크롤링/리서치 → 기획 → 이미지 생성 → 카드 조립 → 배포
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { callGemini, generateImage } from "../utils/gemini";
 import LoginModal from "./LoginModal";
 import { getSession, clearSession } from "../utils/authSession";
@@ -33,21 +33,10 @@ const PURPOSE_OPTS = [
   { v: "review", l: "고객 후기" },
 ];
 const STEP_LABELS = ["설정", "리서치", "기획", "이미지", "조립", "배포"];
-const UPLOAD_POST_MAX_CAROUSEL_ITEMS = 10;
-
 const threadsKey = (u) => `eden_threads_${u}_v1`;
-
-function getUploadPostValidationMessage({ title, user, platforms, cardsCount, cardHtmlCount }) {
-  const mediaCount = cardHtmlCount || cardsCount;
-  if (mediaCount <= 0) return "업로드할 카드가 없습니다. 카드를 먼저 조립해주세요";
-  if (mediaCount > UPLOAD_POST_MAX_CAROUSEL_ITEMS) {
-    return "캐러셀은 최대 10장까지 업로드할 수 있습니다";
-  }
-  if (!title.trim()) return "게시 제목을 입력해주세요";
-  if (!user.trim()) return "Upload Post managed user 값을 입력해주세요";
-  if (!platforms.length) return "게시할 플랫폼을 하나 이상 선택해주세요";
-  return "";
-}
+const captionPromptKey = (u) => `eden_caption_prompt_${u}_v1`;
+const DEFAULT_CAPTION_PROMPT =
+  "기획을 바탕으로 인스타그램 게시용 캡션을 작성해줘. 첫 문장은 시선을 끌고, 본문은 2~4문장으로 자연스럽게 풀어 쓰고, 마지막에는 관련 해시태그 5~8개를 붙여줘.";
 
 // ── 소셜 설정 로드/저장 (사용자별) ──
 function loadSocial(keyFn, username) {
@@ -56,6 +45,39 @@ function loadSocial(keyFn, username) {
 }
 function saveSocial(keyFn, username, data) {
   localStorage.setItem(keyFn(username), JSON.stringify(data));
+}
+function loadLocalText(key) {
+  try { return localStorage.getItem(key) || ""; }
+  catch { return ""; }
+}
+function saveLocalText(key, value) {
+  localStorage.setItem(key, value);
+}
+
+async function fetchSchedules(username) {
+  const res = await fetch(`/api/schedule?username=${encodeURIComponent(username)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.schedules || [];
+}
+
+async function addSchedule(username, schedule) {
+  const res = await fetch("/api/schedule", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, schedule }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, error: data?.error || "", schedule: data?.schedule || null };
+}
+
+async function removeSchedule(username, id) {
+  const res = await fetch("/api/schedule", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, id }),
+  });
+  return res.ok;
 }
 
 function normalizeInstagramToken(value) {
@@ -67,6 +89,7 @@ function normalizeInstagramConfig(config = {}) {
     ...config,
     accessToken: normalizeInstagramToken(config.accessToken),
     accountId: String(config.accountId || "").trim(),
+    username: String(config.username || "").trim(),
   };
 }
 
@@ -120,8 +143,8 @@ ${slideCount}장 카드뉴스 기획서를 JSON으로 작성해줘:
     {
       "num": 1,
       "part": "표지|본문|마무리",
-      "headline": "제목(15자이내)",
-      "body": "본문 — 표지/마무리는 한 줄 요약. 본문 슬라이드는 반드시 줄바꿈(\\n)으로 구분된 5개 항목으로 작성: 첫째줄=핵심요약(20자이내), 둘째줄=소제목(15자이내), 셋째~다섯째줄=세부내용(각 20자이내), 다섯째줄=효과/결론(20자이내)",
+      "headline": "제목(한 줄, 10~12자 이내)",
+      "body": "본문 — 표지/마무리는 한 줄 요약. 본문 슬라이드는 반드시 줄바꿈(\\n)으로 구분된 4개 항목으로 작성: 첫째줄=핵심요약(16자 이내), 둘째줄=소제목(12자 이내), 셋째~넷째줄=세부내용(각 12~16자 이내), 전체 64자 이내",
       "imagePrompt": "영어로 이미지 설명, 사실적 사진 스타일, no text, no watermark"
     }
   ]
@@ -133,10 +156,93 @@ JSON만 반환.`,
   );
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("기획서 파싱 실패 — 다시 시도해주세요");
-  return JSON.parse(match[0]);
+  return parsePlanningJson(raw);
 }
 
 // ── 벤치마킹 디자인 → HTML 템플릿 추출 ──
+function extractJsonObject(raw) {
+  const text = String(raw || "").trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+  const match = text.match(/\{[\s\S]*\}/);
+  return match ? match[0] : "";
+}
+
+function normalizePlanData(planData) {
+  const slides = Array.isArray(planData?.slides) ? planData.slides : [];
+  const shortenText = (value, maxLen) => {
+    const text = String(value || "").trim().replace(/\s+/g, " ");
+    if (!text) return "";
+    if (text.length <= maxLen) return text;
+    return `${text.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+  };
+  const shortenLines = (value, maxLenPerLine, maxLines, maxTotalLen) => {
+    const lines = String(value || "")
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, maxLines);
+    if (!lines.length) return "";
+    const trimmed = [];
+    let total = 0;
+    for (const line of lines) {
+      let next = shortenText(line, maxLenPerLine);
+      if (total + next.length > maxTotalLen) {
+        const remain = Math.max(0, maxTotalLen - total);
+        if (remain <= 1) break;
+        next = shortenText(next, remain);
+      }
+      trimmed.push(next);
+      total += next.length;
+      if (total >= maxTotalLen) break;
+    }
+    return trimmed.join("\n");
+  };
+  return {
+    ...planData,
+    type: planData?.type || "카드뉴스",
+    slides: slides.map((slide, i) => {
+      const bodyLines = Array.isArray(slide.bodyLines)
+        ? slide.bodyLines.map((line) => String(line || "").trim()).filter(Boolean)
+        : [];
+      return {
+        ...slide,
+        num: Number(slide.num) || i + 1,
+        part: slide.part || (i === 0 ? "도입" : i === slides.length - 1 ? "마무리" : "본문"),
+        headline: shortenText(slide.headline, 12),
+        bodyLines,
+        body: shortenLines(bodyLines.length ? bodyLines.join("\n") : slide.body, 16, 4, 64),
+        imagePrompt: String(slide.imagePrompt || "").trim(),
+      };
+    }),
+  };
+}
+
+async function parsePlanningJson(raw) {
+  const jsonText = extractJsonObject(raw);
+  if (!jsonText) throw new Error("기획서 파싱 실패 - JSON 응답이 없습니다. 다시 시도해주세요.");
+
+  try {
+    return normalizePlanData(JSON.parse(jsonText));
+  } catch (firstError) {
+    const repaired = await callGemini(
+      [
+        {
+          role: "user",
+          content: `다음 텍스트를 유효한 JSON으로 고쳐줘. 설명 없이 JSON만 반환해.\n\n${jsonText}`,
+        },
+      ],
+      "JSON 복구 전문가. 유효한 JSON만 반환합니다."
+    );
+    const repairedJson = extractJsonObject(repaired);
+    try {
+      return normalizePlanData(JSON.parse(repairedJson));
+    } catch {
+      throw new Error(`기획서 JSON 파싱 실패: ${firstError.message}`);
+    }
+  }
+}
+
 async function analyzeDesignToTemplate(base64, mimeType) {
   const raw = await callGemini(
     [
@@ -304,25 +410,25 @@ function buildHtmlCardNews(topic, cards, brandName, color1, color2, font) {
     align-items: flex-start;
   }
   .num {
-    font-size: 28px;
+    font-size: 22px;
     margin-bottom: 24px;
     letter-spacing: 0.05em;
   }
   .headline {
-    font-size: 72px;
+    font-size: 58px;
     font-weight: 700;
     line-height: 1.15;
     margin-bottom: 28px;
     word-break: keep-all;
   }
   .body {
-    font-size: 40px;
+    font-size: 32px;
     line-height: 1.7;
     word-break: keep-all;
     margin-bottom: 20px;
   }
   .brand-name {
-    font-size: 32px;
+    font-size: 26px;
     font-weight: 700;
     letter-spacing: 0.08em;
     margin-top: 20px;
@@ -341,6 +447,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
   const brand = brandName || "브랜드";
   const esc = (s) =>
     String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const clampStyle = (lines) =>
+    `display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:${lines};overflow:hidden;`;
+  const shrink = 0.8;
   // 액센트 컬러 → rgba 사용을 위해 RGB 추출
   const ah = accent.replace("#", "");
   const accentRgb = `${parseInt(ah.slice(0,2),16)},${parseInt(ah.slice(2,4),16)},${parseInt(ah.slice(4,6),16)}`;
@@ -366,9 +475,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
           <div style="width:32px;height:32px;background:${accent};border-radius:8px;
             display:flex;align-items:center;justify-content:center;
             font-size:15px;font-weight:800;color:#fff;flex-shrink:0;">${ci + 1}</div>
-          <span style="font-size:22px;font-weight:600;color:rgba(255,255,255,.85);
-            overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1;">${esc(bc.headline)}</span>
-          ${chipSub ? `<span style="font-size:17px;color:rgba(255,255,255,.35);white-space:nowrap;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(chipSub)}</span>` : ""}
+          <span style="font-size:${Math.round(22 * shrink)}px;font-weight:600;color:rgba(255,255,255,.85);line-height:1.25;
+            ${clampStyle(1)}flex:1;min-width:0;">${esc(bc.headline)}</span>
+          ${chipSub ? `<span style="font-size:${Math.round(17 * shrink)}px;color:rgba(255,255,255,.35);line-height:1.25;white-space:nowrap;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(chipSub)}</span>` : ""}
         </div>`;
       }).join("");
 
@@ -403,15 +512,15 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     ${esc(brand).toUpperCase()}
   </div>
   <div style="position:relative;z-index:10;overflow:hidden;">
-    <div style="font-size:24px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:14px;
+    <div style="font-size:${Math.round(24 * shrink)}px;font-weight:500;color:rgba(255,255,255,.5);margin-bottom:14px;
       overflow:hidden;white-space:nowrap;letter-spacing:.03em;">${esc(topic)}</div>
-    <div style="font-size:82px;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.025em;
-      word-break:keep-all;overflow:hidden;margin-bottom:32px;">${esc(card.headline)}</div>
+    <div style="font-size:${Math.round(82 * shrink)}px;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-.025em;
+      word-break:keep-all;${clampStyle(2)}margin-bottom:32px;">${esc(card.headline)}</div>
     ${previewChips ? `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:40px;overflow:hidden;">${previewChips}</div>` : ""}
     <div style="display:inline-flex;align-items:center;gap:8px;
       background:linear-gradient(90deg,rgba(155,142,255,.2),rgba(100,70,220,.15));
       border:1px solid rgba(155,142,255,.3);border-radius:12px;padding:17px 26px;
-      color:rgba(255,255,255,.85);font-size:22px;font-weight:500;overflow:hidden;white-space:nowrap;">
+      color:rgba(255,255,255,.85);font-size:${Math.round(22 * shrink)}px;font-weight:500;overflow:hidden;white-space:nowrap;max-width:100%;">
       ${card.body ? esc(card.body) : "댓글 &amp; 팔로우로 더 많은 콘텐츠를"}
       <span style="color:${accent};font-weight:700;margin-left:6px;">&gt;&gt;</span>
     </div>
@@ -450,8 +559,8 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     ${summaryChips}
   </div>
   <div style="text-align:center;margin-bottom:40px;overflow:hidden;">
-    <div style="font-size:30px;font-weight:700;color:#111;line-height:1.9;word-break:keep-all;">${esc(card.headline)}</div>
-    ${card.body ? `<div style="font-size:24px;color:#888;line-height:1.7;margin-top:8px;word-break:keep-all;">${esc(card.body)}</div>` : ""}
+    <div style="font-size:${Math.round(30 * shrink)}px;font-weight:700;color:#111;line-height:1.5;word-break:keep-all;${clampStyle(2)}">${esc(card.headline)}</div>
+    ${card.body ? `<div style="font-size:${Math.round(24 * shrink)}px;color:#888;line-height:1.5;margin-top:8px;word-break:keep-all;${clampStyle(2)}">${esc(card.body)}</div>` : ""}
   </div>
   <div style="background:#fff;border-radius:20px;padding:30px 36px;width:100%;
     box-shadow:0 4px 28px rgba(0,0,0,.08);overflow:hidden;">
@@ -462,21 +571,21 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         flex-shrink:0;border:2px solid rgba(155,142,255,.3);">
         <span style="color:#fff;font-size:34px;font-weight:900;">${esc(brand).charAt(0)}</span>
       </div>
-      <div style="flex:1;overflow:hidden;">
-        <div style="font-size:28px;font-weight:900;color:#111;margin-bottom:4px;
+      <div style="flex:1;overflow:hidden;min-width:0;display:flex;flex-direction:column;gap:4px;">
+        <div style="font-size:${Math.round(28 * shrink)}px;font-weight:900;color:#111;line-height:1.1;
           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(brand)}</div>
-        <div style="font-size:19px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(topic)}</div>
+        <div style="font-size:${Math.round(16 * shrink)}px;color:#666;line-height:1.25;word-break:keep-all;${clampStyle(1)}">${esc(topic)}</div>
       </div>
-      <div style="background:#4c6ef5;color:#fff;font-size:21px;font-weight:700;
+      <div style="background:#4c6ef5;color:#fff;font-size:${Math.round(21 * shrink)}px;font-weight:700;
         padding:13px 26px;border-radius:11px;flex-shrink:0;white-space:nowrap;">Follow</div>
     </div>
   </div>
   <div style="border:2px solid #bbb;border-radius:50px;padding:13px 52px;
-    font-size:24px;font-weight:600;color:#555;white-space:nowrap;overflow:hidden;margin-top:32px;">
+    font-size:${Math.round(24 * shrink)}px;font-weight:600;color:#555;white-space:nowrap;overflow:hidden;margin-top:32px;">
     ${handle}
   </div>
   <div style="position:absolute;bottom:50px;left:0;right:0;text-align:center;
-    font-size:19px;color:#bbb;font-weight:400;overflow:hidden;white-space:nowrap;">
+    font-size:${Math.round(19 * shrink)}px;color:#bbb;font-weight:400;overflow:hidden;white-space:nowrap;">
     팔로우하고 더 많은 콘텐츠를 받아보세요
   </div>
 </div>`;
@@ -534,23 +643,23 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;">📁 구조 파악</div>
-          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">directory</div>
+          <div style="font-size:${Math.round(20 * shrink)}px;font-weight:700;color:#222;">📁 구조 파악</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:${Math.round(14 * shrink)}px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">directory</div>
         </div>
         <div style="flex:1;min-height:0;background:#0d1117;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;">
           <div style="height:36px;background:#161b22;display:flex;align-items:center;padding:0 16px;gap:8px;flex-shrink:0;border-bottom:1px solid #21262d;">
             <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
             <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
             <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
-            <div style="margin-left:10px;font-size:14px;color:#8b949e;font-family:'Courier New',monospace;">📁 ${rootName}</div>
+            <div style="margin-left:10px;font-size:${Math.round(14 * shrink)}px;color:#8b949e;font-family:'Courier New',monospace;">📁 ${rootName}</div>
           </div>
           <div style="flex:1;padding:14px 20px;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:4px;">
             ${items.map(t => `
             <div style="display:flex;align-items:center;gap:6px;height:28px;">
-              <span style="font-family:'Courier New',monospace;font-size:16px;color:${t.highlight ? '#ffa657' : '#4a5568'};flex-shrink:0;">${t.prefix}</span>
+              <span style="font-family:'Courier New',monospace;font-size:${Math.round(16 * shrink)}px;color:${t.highlight ? '#ffa657' : '#4a5568'};flex-shrink:0;">${t.prefix}</span>
               <span style="font-size:16px;flex-shrink:0;">${t.icon}</span>
-              <span style="font-family:'Courier New',monospace;font-size:16px;color:${t.highlight ? '#ffa657' : '#e6edf3'};font-weight:${t.highlight ? '700' : '400'};overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${t.name}</span>
-              ${t.highlight ? `<span style="font-family:'Courier New',monospace;font-size:14px;color:#28c840;margin-left:8px;font-weight:700;">← 핵심</span>` : ''}
+              <span style="font-family:'Courier New',monospace;font-size:${Math.round(16 * shrink)}px;color:${t.highlight ? '#ffa657' : '#e6edf3'};font-weight:${t.highlight ? '700' : '400'};overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${t.name}</span>
+              ${t.highlight ? `<span style="font-family:'Courier New',monospace;font-size:${Math.round(14 * shrink)}px;color:#28c840;margin-left:8px;font-weight:700;">← 핵심</span>` : ''}
             </div>`).join('')}
           </div>
         </div>
@@ -563,17 +672,17 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;">📊 핵심 수치</div>
-          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">stats</div>
+          <div style="font-size:${Math.round(20 * shrink)}px;font-weight:700;color:#222;">📊 핵심 수치</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:${Math.round(14 * shrink)}px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">stats</div>
         </div>
         <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
           ${statItems.map((b, ii) => {
             const numMatch = b.match(/(\d[\d,]*%?|\d+배|\d+만|\d+억|\d+개|\d+명|\d+시간)/);
             const num = numMatch ? numMatch[1] : `0${ii+1}`;
-            const label = b.replace(num, '').trim().slice(0, 18) || esc(b).slice(0, 18);
-            return `<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:16px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;">
-              <div style="font-size:36px;font-weight:900;color:${statColors[ii % 4]};line-height:1;margin-bottom:6px;overflow:hidden;white-space:nowrap;">${esc(num)}</div>
-              <div style="font-size:15px;color:#aaa;word-break:keep-all;overflow:hidden;line-height:1.3;">${esc(label)}</div>
+            const label = b.replace(num, '').trim().slice(0, 28) || esc(b).slice(0, 28);
+            return `<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:22px 16px 16px;display:flex;flex-direction:column;justify-content:flex-start;gap:10px;overflow:hidden;">
+              <div style="font-size:${Math.round(36 * shrink)}px;font-weight:900;color:${statColors[ii % 4]};line-height:1;margin-bottom:6px;overflow:hidden;white-space:nowrap;">${esc(num)}</div>
+              <div style="font-size:${Math.round(16 * shrink)}px;color:#aaa;word-break:keep-all;line-height:1.35;${clampStyle(1)}">${esc(label)}</div>
             </div>`;
           }).join('')}
         </div>
@@ -585,16 +694,16 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;">⚡ 실행 순서</div>
-          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">${stepItems.length} steps</div>
+          <div style="font-size:${Math.round(20 * shrink)}px;font-weight:700;color:#222;">⚡ 실행 순서</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:${Math.round(14 * shrink)}px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">${stepItems.length} steps</div>
         </div>
         <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:6px;overflow:hidden;">
           ${stepItems.map((b, ii) => `
           <div style="display:flex;align-items:flex-start;gap:12px;overflow:hidden;">
-            <div style="width:30px;height:30px;border-radius:50%;background:${accent};color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ii + 1}</div>
+            <div style="width:30px;height:30px;border-radius:50%;background:${accent};color:#fff;font-weight:700;font-size:${Math.round(15 * shrink)}px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${ii + 1}</div>
             ${ii < stepItems.length - 1 ? `<div style="position:absolute;"></div>` : ''}
             <div style="flex:1;background:#f8f9fa;border-radius:10px;padding:8px 14px;min-height:30px;display:flex;align-items:center;overflow:hidden;">
-              <span style="font-size:17px;color:#222;font-weight:500;word-break:keep-all;overflow:hidden;line-height:1.35;">${esc(b)}</span>
+              <span style="font-size:${Math.round(17 * shrink)}px;color:#222;font-weight:500;word-break:keep-all;line-height:1.25;${clampStyle(2)}">${esc(b)}</span>
             </div>
           </div>`).join('')}
         </div>
@@ -608,17 +717,17 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-          <div style="font-size:20px;font-weight:700;color:#222;">⚖️ 비교 분석</div>
-          <div style="background:#1a1a2e;color:#9b8eff;font-size:14px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">compare</div>
+          <div style="font-size:${Math.round(20 * shrink)}px;font-weight:700;color:#222;">⚖️ 비교 분석</div>
+          <div style="background:#1a1a2e;color:#9b8eff;font-size:${Math.round(14 * shrink)}px;font-weight:600;padding:4px 12px;border-radius:6px;white-space:nowrap;">compare</div>
         </div>
         <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:hidden;">
           <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
-            <div style="font-size:14px;color:#ff7b72;font-weight:700;letter-spacing:.08em;flex-shrink:0;">Before</div>
-            ${leftItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;overflow:hidden;line-height:1.4;">· ${esc(b)}</div>`).join('')}
+            <div style="font-size:${Math.round(14 * shrink)}px;color:#ff7b72;font-weight:700;letter-spacing:.08em;flex-shrink:0;">Before</div>
+            ${leftItems.map(b => `<div style="font-size:${Math.round(15 * shrink)}px;color:#ccc;word-break:keep-all;line-height:1.4;${clampStyle(2)}">· ${esc(b)}</div>`).join('')}
           </div>
           <div style="background:linear-gradient(135deg,#0d2a1a,#0a2016);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
-            <div style="font-size:14px;color:#7ee787;font-weight:700;letter-spacing:.08em;flex-shrink:0;">After</div>
-            ${rightItems.map(b => `<div style="font-size:15px;color:#ccc;word-break:keep-all;overflow:hidden;line-height:1.4;">· ${esc(b)}</div>`).join('')}
+            <div style="font-size:${Math.round(14 * shrink)}px;color:#7ee787;font-weight:700;letter-spacing:.08em;flex-shrink:0;">After</div>
+            ${rightItems.map(b => `<div style="font-size:${Math.round(15 * shrink)}px;color:#ccc;word-break:keep-all;line-height:1.4;${clampStyle(2)}">· ${esc(b)}</div>`).join('')}
           </div>
         </div>
       </div>`;
@@ -643,9 +752,9 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
         const n = lineNum++;
         const numHtml = `<span style="color:#4a5568;font-size:16px;font-family:'Courier New',monospace;width:32px;text-align:right;padding-right:16px;flex-shrink:0;user-select:none;">${n}</span>`;
         if (line.type === 'blank') return `<div style="display:flex;align-items:center;height:26px;">${numHtml}</div>`;
-        if (line.type === 'comment') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#6e7681;font-size:16px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span></div>`;
-        if (line.type === 'bool') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;">: </span><span style="color:#ff7b72;font-size:16px;font-family:'Courier New',monospace;">${line.value}</span></div>`;
-        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:16px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:16px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.5;">&quot;${line.value}&quot;</span></div>`;
+        if (line.type === 'comment') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#6e7681;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${line.text}</span></div>`;
+        if (line.type === 'bool') return `<div style="display:flex;align-items:center;height:28px;">${numHtml}<span style="color:#79c0ff;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;">${line.key}</span><span style="color:#e6edf3;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;">: </span><span style="color:#ff7b72;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;">${line.value}</span></div>`;
+        return `<div style="display:flex;align-items:flex-start;min-height:28px;padding:2px 0;">${numHtml}<span style="color:#79c0ff;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;flex-shrink:0;">${line.key}</span><span style="color:#e6edf3;font-size:${Math.round(16 * shrink)}px;font-family:'Courier New',monospace;flex-shrink:0;">: </span><span style="color:${line.valColor};font-size:${Math.round(15 * shrink)}px;font-family:'Courier New',monospace;word-break:keep-all;line-height:1.45;${clampStyle(2)}flex:1;min-width:0;">&quot;${line.value}&quot;</span></div>`;
       };
       contentHtml = `
       <div style="width:100%;flex:1;min-height:180px;display:flex;flex-direction:column;gap:10px;overflow:hidden;margin-bottom:14px;">
@@ -688,39 +797,39 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
     </div>
     <div style="height:1130px;overflow:hidden;padding:36px 52px 0;
       display:flex;flex-direction:column;align-items:center;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-shrink:0;">
-        <div style="background:${accent};color:#fff;font-size:18px;font-weight:700;
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-shrink:0;">
+        <div style="background:${accent};color:#fff;font-size:${Math.round(18 * shrink)}px;font-weight:700;
           padding:7px 18px;border-radius:8px;letter-spacing:.05em;">Chapter ${chNum}</div>
         <div style="background:#1a1a2e;color:${accent};font-family:'Courier New',monospace;
-          font-size:16px;padding:7px 14px;border-radius:8px;white-space:nowrap;overflow:hidden;">
+          font-size:${Math.round(16 * shrink)}px;padding:7px 14px;border-radius:8px;white-space:nowrap;overflow:hidden;">
           ${esc(topic.slice(0, 12))}
         </div>
       </div>
-      <div style="font-size:52px;font-weight:900;color:#111;text-align:center;
+      <div style="font-size:${Math.round(52 * shrink)}px;font-weight:900;color:#111;text-align:center;
         margin-bottom:4px;word-break:keep-all;overflow:hidden;flex-shrink:0;line-height:1.1;">${esc(card.headline)}</div>
       ${pluginSub
-        ? `<div style="font-size:22px;font-weight:400;color:#666;text-align:center;
+        ? `<div style="font-size:${Math.round(22 * shrink)}px;font-weight:400;color:#666;text-align:center;
              margin-bottom:14px;word-break:keep-all;overflow:hidden;flex-shrink:0;">${esc(pluginSub)}</div>`
         : `<div style="margin-bottom:14px;flex-shrink:0;"></div>`}
-      <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
+    <div style="width:100%;background:linear-gradient(135deg,#1a1a2e,#16213e);
         border-radius:16px;padding:18px 24px;margin-bottom:16px;overflow:hidden;flex-shrink:0;">
-        <div style="font-size:16px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 가치</div>
-        <div style="font-size:24px;font-weight:700;color:#fff;line-height:1.55;
-          word-break:keep-all;overflow:hidden;">${esc(summaryText)}</div>
+        <div style="font-size:${Math.round(16 * shrink)}px;color:${accent};font-weight:700;letter-spacing:.08em;margin-bottom:8px;">✦ 핵심 가치</div>
+        <div style="font-size:${Math.round(24 * shrink)}px;font-weight:700;color:#fff;line-height:1.45;
+          word-break:keep-all;${clampStyle(2)}">${esc(summaryText)}</div>
       </div>
       ${contentHtml}
       <div style="width:100%;background:linear-gradient(90deg,#f0eeff,#e8e4ff);
         border:1.5px solid #c4b5fd;border-radius:12px;padding:12px 18px;
         margin-top:12px;margin-bottom:10px;
         display:flex;align-items:center;gap:12px;overflow:hidden;flex-shrink:0;">
-        <span style="font-size:20px;flex-shrink:0;">💡</span>
-        <div style="font-size:20px;color:#333;font-weight:600;word-break:keep-all;overflow:hidden;">${esc(effectText)}</div>
+        <span style="font-size:${Math.round(20 * shrink)}px;flex-shrink:0;">💡</span>
+        <div style="font-size:${Math.round(20 * shrink)}px;color:#333;font-weight:600;word-break:keep-all;line-height:1.35;${clampStyle(2)}">${esc(effectText)}</div>
       </div>
     </div>
     <div style="position:absolute;bottom:0;right:0;left:0;height:68px;
       background:linear-gradient(90deg,rgba(20,20,40,.93),rgba(50,30,120,.93));
       display:flex;align-items:center;justify-content:flex-end;padding:0 32px;
-      color:#fff;font-size:22px;font-weight:500;white-space:nowrap;overflow:hidden;">
+      color:#fff;font-size:${Math.round(22 * shrink)}px;font-weight:500;white-space:nowrap;overflow:hidden;">
       ${teaserText} <span style="color:#c4b5fd;margin-left:6px;font-weight:700;">&gt;&gt;</span>
     </div>
   </div>
@@ -835,25 +944,32 @@ export default function UnifiedPipelineTab() {
   const [igConfig, setIgConfig]   = useState(() => normalizeInstagramConfig(loadSocial(igKey, getSession()?.username || "__guest")));
   const [thConfig, setThConfig]   = useState(() => loadSocial(threadsKey, getSession()?.username || "__guest"));
   const [igPosting, setIgPosting] = useState(false);
-  const [igCaptureProgress, setIgCaptureProgress] = useState({ step: "", done: 0, total: 0 });
+  const [igResult,  setIgResult]  = useState(null);
+  const [igLogs,    setIgLogs]    = useState([]);
   const [thPosting, setThPosting] = useState(false);
-  const [igResult, setIgResult]   = useState(null);
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
-  const [igDirectUrls, setIgDirectUrls] = useState("");
-  const [igLogs, setIgLogs] = useState([]);
-  const [uploadPostTitle, setUploadPostTitle] = useState("");
-  const [uploadPostUser, setUploadPostUser] = useState(() => getSession()?.username || "");
-  const [uploadPostPlatforms, setUploadPostPlatforms] = useState(["tiktok"]);
-  const [uploadPostPosting, setUploadPostPosting] = useState(false);
-  const [uploadPostResult, setUploadPostResult] = useState(null);
-  const uploadPostValidationMessage = getUploadPostValidationMessage({
-    title: uploadPostTitle,
-    user: uploadPostUser,
-    platforms: uploadPostPlatforms,
-    cardsCount: cards.length,
-    cardHtmlCount: cardHtmls.length,
+  const [captionPrompt, setCaptionPrompt] = useState(() =>
+    loadLocalText(captionPromptKey(getSession()?.username || "__guest")) || DEFAULT_CAPTION_PROMPT
+  );
+  const [captionSaving, setCaptionSaving] = useState(false);
+  const [captionGenerating, setCaptionGenerating] = useState(false);
+  const [igAutoConfig, setIgAutoConfig] = useState({
+    enabled: true,
+    keywords: "",
+    postTime: "09:00",
+    slideCount: 7,
+    captionTemplate: "",
   });
+  const [igAutoSchedules, setIgAutoSchedules] = useState([]);
+  const [igAutoLoading, setIgAutoLoading] = useState(false);
+  const [igAutoSaving, setIgAutoSaving] = useState(false);
+  const [igAutoRunning, setIgAutoRunning] = useState(false);
+  const [igAutoScheduleAt, setIgAutoScheduleAt] = useState("");
+  const [igAutoMessage, setIgAutoMessage] = useState("");
+  const [igAutoMonitor, setIgAutoMonitor] = useState(null);
+  const [igAutoHistory, setIgAutoHistory] = useState([]);
+  const [igAutoMonitorLoading, setIgAutoMonitorLoading] = useState(false);
 
   useEffect(() => {
     emitEAttackContext({
@@ -870,30 +986,77 @@ export default function UnifiedPipelineTab() {
         `목적 ${purpose}`,
         `슬라이드 ${slideCount}장`,
         `카드 ${cards.length}개`,
-        igPosting ? "IG 게시 중" : "",
         thPosting ? "Threads 게시 중" : "",
       ].filter(Boolean).join(" · "),
     });
-  }, [step, running, useTemplate, topic, brandName, tone, purpose, slideCount, cards.length, igPosting, thPosting]);
-
-  const addLog = (level, msg, detail = null) => {
-    const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
-    setIgLogs(prev => [...prev.slice(-49), entry]); // 최대 50줄
-    console[level === "error" ? "error" : "log"](`[IG] ${msg}`, detail || "");
-  };
+  }, [step, running, useTemplate, topic, brandName, tone, purpose, slideCount, cards.length, thPosting]);
 
   // 로그인 핸들러
   const handleLogin = (s) => {
     setSession(s);
     setIgConfig(normalizeInstagramConfig(loadSocial(igKey, s.username)));
     setThConfig(loadSocial(threadsKey, s.username));
-    setUploadPostUser(s.username || "");
+    setCaptionPrompt(loadLocalText(captionPromptKey(s.username)) || DEFAULT_CAPTION_PROMPT);
   };
 
   const handleLogout = () => {
     clearSession();
     setSession(null);
   };
+
+  const loadInstagramAutoMonitor = useCallback(async (runId = null) => {
+    if (!session?.username) return null;
+    setIgAutoMonitorLoading(true);
+    try {
+      const url = runId
+        ? `/api/instagram-auto-monitor?username=${encodeURIComponent(session.username)}&runId=${encodeURIComponent(runId)}`
+        : `/api/instagram-auto-monitor?username=${encodeURIComponent(session.username)}`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "자동화 모니터 조회 실패");
+      setIgAutoMonitor(data.current || null);
+      setIgAutoHistory(Array.isArray(data.runs) ? data.runs : []);
+      return data;
+    } catch (e) {
+      setIgAutoMessage(`자동화 로그를 불러오지 못했습니다: ${e.message}`);
+      return null;
+    } finally {
+      setIgAutoMonitorLoading(false);
+    }
+  }, [session?.username]);
+
+  useEffect(() => {
+    if (!session?.username) return;
+    let canceled = false;
+    const loadAutoState = async () => {
+      setIgAutoLoading(true);
+      try {
+        const [configRes, schedules] = await Promise.all([
+          fetch(`/api/instagram-auto-config?username=${encodeURIComponent(session.username)}`).then((res) => res.json().catch(() => ({}))),
+          fetchSchedules(session.username),
+        ]);
+        if (canceled) return;
+        const config = configRes?.config || {};
+        setIgAutoConfig({
+          enabled: config.enabled ?? true,
+          keywords: Array.isArray(config.keywords) ? config.keywords.join(", ") : String(config.keywords || ""),
+          postTime: config.postTime || "09:00",
+          slideCount: Number(config.slideCount) || 7,
+          captionTemplate: config.captionTemplate || "",
+        });
+        setIgAutoSchedules(schedules.filter((item) => String(item.platform || "threads").toLowerCase() === "instagram"));
+        setIgAutoMessage("");
+        await loadInstagramAutoMonitor();
+      } catch {
+        if (!canceled) setIgAutoMessage("자동화 설정을 불러오지 못했습니다.");
+      } finally {
+        if (!canceled) setIgAutoLoading(false);
+      }
+    };
+
+    loadAutoState();
+    return () => { canceled = true; };
+  }, [session?.username, loadInstagramAutoMonitor]);
 
   // 로그인 안 된 경우 모달 표시
   if (!session) {
@@ -993,6 +1156,89 @@ export default function UnifiedPipelineTab() {
     });
   };
 
+  const persistCaptionPrompt = async () => {
+    const username = session?.username || "__guest";
+    setCaptionSaving(true);
+    try {
+      const nextPrompt = String(captionPrompt || "").trim() || DEFAULT_CAPTION_PROMPT;
+      saveLocalText(captionPromptKey(username), nextPrompt);
+      setCaptionPrompt(nextPrompt);
+    } finally {
+      setCaptionSaving(false);
+    }
+  };
+
+  const buildCaptionContext = () => {
+    const sourceCards = cards.length > 0 ? cards : plan?.slides || [];
+    const cardLines = sourceCards.map((card, i) => {
+      const headline = String(card.headline || "").trim();
+      const body = String(card.body || "").trim().replace(/\n+/g, " | ");
+      return `${i + 1}. ${headline}${body ? ` / ${body}` : ""}`;
+    }).filter(Boolean).join("\n");
+
+    const researchText = String(research || "").trim();
+    return [
+      `주제: ${topic || ""}`,
+      `브랜드: ${brandName || "브랜드"}`,
+      `톤: ${tone}`,
+      `목적: ${purpose}`,
+      researchText ? `리서치 요약:\n${researchText}` : "",
+      cardLines ? `카드 요약:\n${cardLines}` : "",
+    ].filter(Boolean).join("\n\n");
+  };
+
+  const generateCaptionFromPrompt = async () => {
+    if (!topic?.trim()) {
+      setError("캡션을 만들 주제를 먼저 입력해주세요");
+      return;
+    }
+    setCaptionGenerating(true);
+    setError("");
+    try {
+      await persistCaptionPrompt();
+
+      const sourceCards = cards.length > 0 ? cards : plan?.slides || [];
+      const cardLines = sourceCards.map((card, i) => {
+        const headline = String(card.headline || "").trim();
+        const body = String(card.body || "").trim().replace(/\n+/g, " | ");
+        return `${i + 1}. ${headline}${body ? ` / ${body}` : ""}`;
+      }).join("\n");
+
+      const rawPrompt = String(captionPrompt || "").trim() || DEFAULT_CAPTION_PROMPT;
+      const filledPrompt = rawPrompt
+        .replaceAll("{topic}", topic || "")
+        .replaceAll("{brand}", brandName || "브랜드")
+        .replaceAll("{tone}", tone || "")
+        .replaceAll("{purpose}", purpose || "")
+        .replaceAll("{research}", String(research || "").trim())
+        .replaceAll("{cards}", cardLines);
+
+      const result = await callGemini(
+        [
+          {
+            role: "user",
+            content: `아래 캡션 작성 지시를 가장 우선으로 따르고, 문맥을 참고해 게시용 캡션만 작성해줘.
+추가 설명, 머리말, 따옴표, 코드블록 없이 캡션 본문만 출력해.
+줄바꿈과 해시태그는 지시에 맞게 자연스럽게 포함해.
+
+캡션 작성 지시:
+${filledPrompt}
+
+문맥:
+${buildCaptionContext()}`,
+          },
+        ],
+        "SNS 게시용 캡션 카피라이터. 사용자의 스타일 지시를 최우선으로 따르고, 결과물만 출력합니다."
+      );
+
+      setPostCaption(String(result || "").trim());
+    } catch (e) {
+      setError(e.message || "캡션 생성 실패");
+    } finally {
+      setCaptionGenerating(false);
+    }
+  };
+
   // 벤치마킹 이미지 업로드
   const handleBenchmarkFile = (e) => {
     const file = e.target.files?.[0];
@@ -1027,16 +1273,6 @@ export default function UnifiedPipelineTab() {
       setImgProg({ done: plan.slides.length, total: plan.slides.length });
       setStep("assembly");
     });
-
-  const downloadHtml = () => {
-    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${topic.slice(0, 20)}-카드뉴스.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   const postToThreads = async () => {
     if (!thConfig.userId || !thConfig.accessToken) {
@@ -1090,339 +1326,6 @@ export default function UnifiedPipelineTab() {
     }
   };
 
-  // 카드 HTML → 브라우저에서 직접 JPEG base64 캡처 (puppeteer 없음)
-  const captureCardHtmls = async (htmlArray) => {
-    const { default: html2canvas } = await import("html2canvas");
-    const images = [];
-    const targets = htmlArray.slice(0, 10);
-
-    for (let i = 0; i < targets.length; i++) {
-      setIgCaptureProgress({ step: "capture", done: i, total: targets.length });
-
-      const html = targets[i];
-      const base64 = await new Promise((resolve, reject) => {
-        const blob = new Blob([html], { type: "text/html" });
-        const blobUrl = URL.createObjectURL(blob);
-
-        const iframe = document.createElement("iframe");
-        iframe.style.cssText =
-          "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
-        iframe.src = blobUrl;
-
-        iframe.onload = async () => {
-          try {
-            const doc = iframe.contentDocument;
-            // 폰트 로드 대기 (fonts.ready + 실제 글리프 로드 확인)
-            await doc.fonts.ready;
-            // 한글 폰트 글리프 강제 로드 — 'Noto Sans KR'이 실제로 렌더 가능한 상태인지 확인
-            await Promise.allSettled([
-              doc.fonts.load('700 48px "Noto Sans KR"', "가나다라마바사"),
-              doc.fonts.load('400 24px "Noto Sans KR"', "가나다라마바사"),
-            ]);
-            // 렌더링 안정화 대기 (1.5초로 증가)
-            await new Promise((r) => setTimeout(r, 1500));
-
-            const canvas = await html2canvas(doc.documentElement, {
-              width: 1080,
-              height: 1350,
-              windowWidth: 1080,
-              windowHeight: 1350,
-              scale: 2,
-              useCORS: true,
-              allowTaint: false,
-              backgroundColor: "#080814",
-              logging: false,
-              x: 0,
-              y: 0,
-              imageTimeout: 15000,
-            });
-
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-            URL.revokeObjectURL(blobUrl);
-            iframe.remove();
-            resolve(dataUrl);
-          } catch (e) {
-            URL.revokeObjectURL(blobUrl);
-            iframe.remove();
-            reject(e);
-          }
-        };
-
-        iframe.onerror = () => {
-          URL.revokeObjectURL(blobUrl);
-          iframe.remove();
-          reject(new Error("iframe 로드 실패"));
-        };
-
-        document.body.appendChild(iframe);
-      });
-
-      images.push(base64);
-    }
-
-    return images;
-  };
-
-  const dataUrlToFile = async (dataUrl, filename) => {
-    const response = await fetch(dataUrl);
-    const blob = await response.blob();
-    return new File([blob], filename, { type: blob.type || "image/jpeg" });
-  };
-
-  const imageUrlToFile = async (url, filename) => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`이미지 다운로드 실패: ${response.status}`);
-    const blob = await response.blob();
-    return new File([blob], filename, { type: blob.type || "image/jpeg" });
-  };
-
-  const buildUploadPostCarouselFiles = async () => {
-    if (cardHtmls.length > 0) {
-      addLog("info", `Upload Post 캐러셀 캡처 시작: ${Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS)}장`);
-      setIgCaptureProgress({ step: "capture", done: 0, total: Math.min(cardHtmls.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS) });
-      const captured = await captureCardHtmls(cardHtmls);
-      const files = await Promise.all(
-        captured.map((dataUrl, index) => dataUrlToFile(dataUrl, `carousel-${String(index + 1).padStart(2, "0")}.jpg`))
-      );
-      setIgCaptureProgress({ step: "uploading", done: files.length, total: files.length });
-      return files;
-    }
-
-    const sourceImages = cards
-      .map((card) => card.imageUrl)
-      .filter((url) => typeof url === "string" && url.length > 0)
-      .slice(0, UPLOAD_POST_MAX_CAROUSEL_ITEMS);
-
-    if (sourceImages.length === 0) {
-      throw new Error("업로드할 카드가 없습니다. 카드를 먼저 조립해주세요.");
-    }
-
-    addLog("info", `Upload Post 원본 이미지 수집: ${sourceImages.length}장`);
-    setIgCaptureProgress({ step: "uploading", done: 0, total: sourceImages.length });
-
-    const files = [];
-    for (let i = 0; i < sourceImages.length; i += 1) {
-      const file = await imageUrlToFile(sourceImages[i], `carousel-${String(i + 1).padStart(2, "0")}.jpg`);
-      files.push(file);
-      setIgCaptureProgress({ step: "uploading", done: i + 1, total: sourceImages.length });
-    }
-
-    return files;
-  };
-
-  const postToInstagram = async () => {
-    const accountId = String(igConfig.accountId || "").trim();
-    const accessToken = normalizeInstagramToken(igConfig.accessToken);
-
-    if (!accountId || !accessToken) {
-      setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
-      return;
-    }
-    setIgPosting(true);
-    setIgResult(null);
-    setError("");
-    setIgLogs([]);
-    setIgCaptureProgress({ step: "", done: 0, total: 0 });
-    try {
-      addLog("info", `계정 ID: ${accountId}`);
-      addLog("info", `토큰: ${accessToken.slice(0, 12)}...${accessToken.slice(-4)}`);
-
-      // 1. cards[].imageUrl 우선 — AI 이미지 생성한 경우
-      let imageList = cards.map((c) => c.imageUrl).filter(Boolean);
-      addLog("info", `AI 이미지: ${imageList.length}장`);
-
-      // 2. imageUrl 없으면 브라우저에서 직접 카드 HTML 캡처
-      if (imageList.length === 0) {
-        if (cardHtmls.length === 0) {
-          throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
-        }
-        addLog("info", `HTML 카드 캡처 시작: ${cardHtmls.length}장`);
-        setIgCaptureProgress({ step: "capture", done: 0, total: cardHtmls.length });
-        imageList = await captureCardHtmls(cardHtmls);
-        addLog("info", `캡처 완료: ${imageList.length}장`);
-        setIgCaptureProgress({ step: "uploading", done: imageList.length, total: imageList.length });
-      }
-
-      if (imageList.length === 0) throw new Error("캡처된 이미지가 없습니다.");
-
-      addLog("info", `API 호출: POST /api/instagram-post (이미지 ${imageList.length}장)`);
-
-      const res = await fetch("/api/instagram-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId,
-          accessToken,
-          images: imageList,
-          caption: postCaption || topic,
-        }),
-      });
-
-      const data = await res.json();
-
-      // 서버 로그 병합
-      if (data.logs?.length) {
-        data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
-      }
-      addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
-
-      if (!res.ok) throw new Error(data.error || "게시 실패");
-
-      addLog("info", `게시 성공! mediaId: ${data.mediaId}`);
-      if (data.permalink) addLog("info", `URL: ${data.permalink}`);
-
-      setIgResult({
-        status: "success",
-        message: `게시 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
-        permalink: data.permalink,
-      });
-    } catch (e) {
-      addLog("error", `오류: ${e.message}`);
-      setError(e.message);
-    } finally {
-      setIgPosting(false);
-      setIgCaptureProgress({ step: "", done: 0, total: 0 });
-    }
-  };
-
-  const fillDirectUrlsFromCards = () => {
-    const urls = cards
-      .map((c) => c.imageUrl)
-      .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url));
-    setIgDirectUrls(urls.join("\n"));
-    addLog("info", `공개 URL ${urls.length}개를 채웠습니다`);
-  };
-
-  const postDirectInstagramUrls = async () => {
-    const accountId = String(igConfig.accountId || "").trim();
-    const accessToken = normalizeInstagramToken(igConfig.accessToken);
-
-    if (!accountId || !accessToken) {
-      setError("인스타그램 계정 ID와 액세스 토큰을 입력해주세요");
-      return;
-    }
-    const urls = igDirectUrls
-      .split(/\n+/)
-      .map((u) => u.trim())
-      .filter(Boolean);
-
-    if (urls.length === 0) {
-      setError("공개 이미지 URL을 한 줄에 하나씩 입력해주세요");
-      return;
-    }
-
-    if (urls.length > 10) {
-      setError("인스타그램 캐러셀은 최대 10장까지 업로드할 수 있습니다");
-      return;
-    }
-
-    setIgPosting(true);
-    setIgResult(null);
-    setError("");
-    setIgLogs([]);
-    setIgCaptureProgress({ step: "uploading", done: 0, total: urls.length });
-
-    try {
-      addLog("info", `공개 URL 업로드 시작: ${urls.length}개`);
-      const res = await fetch("/api/instagram-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId,
-          accessToken,
-          images: urls,
-          caption: postCaption || topic,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.logs?.length) data.logs.forEach(l => addLog("info", `[서버] ${l.msg}`, l.data));
-      addLog(res.ok ? "info" : "error", `서버 응답 [${res.status}]`, res.ok ? undefined : data);
-      if (!res.ok) throw new Error(data.error || "게시 실패");
-
-      setIgResult({
-        status: "success",
-        message: `공개 URL 업로드 완료!${data.permalink ? ` → ${data.permalink}` : ""}`,
-        permalink: data.permalink,
-      });
-    } catch (e) {
-      addLog("error", `오류: ${e.message}`);
-      setError(e.message);
-    } finally {
-      setIgPosting(false);
-      setIgCaptureProgress({ step: "", done: 0, total: 0 });
-    }
-  };
-
-  const toggleUploadPostPlatform = (platform) => {
-    setUploadPostPlatforms((prev) =>
-      prev.includes(platform)
-        ? prev.filter((item) => item !== platform)
-        : [...prev, platform]
-    );
-  };
-
-  const uploadCarouselToUploadPost = async () => {
-    if (uploadPostValidationMessage) {
-      setError(uploadPostValidationMessage);
-      return;
-    }
-
-    setUploadPostPosting(true);
-    setUploadPostResult(null);
-    setError("");
-
-    try {
-      const carouselFiles = await buildUploadPostCarouselFiles();
-      addLog("info", `Upload Post 캐러셀 업로드 시작`, {
-        items: carouselFiles.length,
-        platforms: uploadPostPlatforms,
-        user: uploadPostUser.trim(),
-      });
-      const form = new FormData();
-      form.append("title", uploadPostTitle.trim());
-      form.append("user", uploadPostUser.trim());
-      uploadPostPlatforms.forEach((platform) => form.append("platform[]", platform));
-      carouselFiles.forEach((file) => form.append("photos[]", file));
-
-      const res = await fetch("/api/upload-post", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json().catch(() => ({}));
-      addLog(res.ok ? "info" : "error", `Upload Post 응답 [${res.status}]`, data);
-      if (!res.ok) {
-        throw new Error(data.error || data.upstream?.message || data.data?.message || "Upload Post 업로드 실패");
-      }
-
-      setUploadPostResult({
-        status: "success",
-        message: data.message || "Upload Post 캐러셀 업로드 요청을 완료했습니다.",
-        data: {
-          status: data.upstream?.status || data.status,
-          jobId: data.jobId || data.data?.jobId || data.data?.data?.jobId || null,
-          message: data.upstream?.message || data.message || "",
-          title: uploadPostTitle.trim(),
-          user: uploadPostUser.trim(),
-          platforms: [...uploadPostPlatforms],
-          items: carouselFiles.length,
-          raw: data.data || data,
-        },
-      });
-    } catch (e) {
-      addLog("error", `Upload Post 오류: ${e.message}`);
-      setError(e.message);
-      setUploadPostResult({
-        status: "error",
-        message: e.message,
-        data: null,
-      });
-    } finally {
-      setUploadPostPosting(false);
-      setIgCaptureProgress({ step: "", done: 0, total: 0 });
-    }
-  };
-
   const reset = () => {
     setStep("setup");
     setTopic("");
@@ -1433,6 +1336,304 @@ export default function UnifiedPipelineTab() {
     setHtmlContent("");
     setError("");
     setIgResult(null);
+  };
+
+  const postToInstagram = async () => {
+    setIgPosting(true);
+    setIgResult(null);
+    setError("");
+    setIgLogs([]);
+    const log = (msg) => setIgLogs((p) => [...p, `[${new Date().toLocaleTimeString("ko-KR")}] ${msg}`]);
+
+    try {
+      log(`계정: @${igConfig.username || igConfig.accountId}`);
+
+      // 1. imageUrl 있는 카드 먼저 수집
+      let images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
+      log(`카드 imageUrl 수집: ${images.length}개`);
+
+      // 2. imageUrl 없으면 cardHtmls → 브라우저에서 html2canvas로 직접 캡처
+      if (images.length === 0 && cardHtmls.length > 0) {
+        log(`HTML 카드 감지 (${cardHtmls.length}장) → 브라우저 캡처 시작`);
+        const { default: html2canvas } = await import("html2canvas");
+        const targets = cardHtmls.slice(0, 10);
+        for (let i = 0; i < targets.length; i++) {
+          log(`카드 ${i + 1}/${targets.length} 캡처 중...`);
+          const dataUrl = await new Promise((resolve, reject) => {
+            const blob = new Blob([targets[i]], { type: "text/html" });
+            const blobUrl = URL.createObjectURL(blob);
+            const iframe = document.createElement("iframe");
+            iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
+            iframe.src = blobUrl;
+            iframe.onload = async () => {
+              try {
+                const doc = iframe.contentDocument;
+                await doc.fonts.ready;
+                await new Promise((r) => setTimeout(r, 1200));
+                const canvas = await html2canvas(doc.documentElement, {
+                  width: 1080, height: 1350, windowWidth: 1080, windowHeight: 1350,
+                  scale: 1, useCORS: true, allowTaint: false, backgroundColor: "#080814",
+                  logging: false, x: 0, y: 0,
+                });
+                URL.revokeObjectURL(blobUrl);
+                iframe.remove();
+                resolve(canvas.toDataURL("image/jpeg", 0.92));
+              } catch (e) { URL.revokeObjectURL(blobUrl); iframe.remove(); reject(e); }
+            };
+            iframe.onerror = () => { URL.revokeObjectURL(blobUrl); iframe.remove(); reject(new Error("iframe 로드 실패")); };
+            document.body.appendChild(iframe);
+          });
+          images.push(dataUrl);
+        }
+        log(`브라우저 캡처 완료: ${images.length}장`);
+      }
+
+      if (images.length === 0) {
+        throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
+      }
+
+      log(`instagram-post API 호출 (이미지 ${images.length}장)`);
+      const res = await fetch("/api/instagram-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: igConfig.accountId,
+          accessToken: igConfig.accessToken,
+          images,
+          caption: postCaption || topic,
+        }),
+      });
+      const data = await res.json();
+      log(`instagram-post 응답: ${res.status} / ${JSON.stringify(data).slice(0, 120)}`);
+      if (!res.ok) throw new Error(data.error || "게시 실패");
+      log(`게시 완료! permalink: ${data.permalink}`);
+      setIgResult({ ok: true, permalink: data.permalink });
+    } catch (e) {
+      log(`오류: ${e.message}`);
+      setError(e.message);
+    } finally {
+      setIgPosting(false);
+    }
+  };
+
+  const buildInstagramImages = async (logFn = null) => {
+    let images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
+    if (logFn) logFn(`카드 imageUrl 수집: ${images.length}개`);
+
+    if (images.length === 0 && cardHtmls.length > 0) {
+      if (logFn) logFn(`HTML 카드 감지 (${cardHtmls.length}장) → 브라우저 캡처 시작`);
+      const { default: html2canvas } = await import("html2canvas");
+      const targets = cardHtmls.slice(0, 10);
+      for (let i = 0; i < targets.length; i++) {
+        if (logFn) logFn(`카드 ${i + 1}/${targets.length} 캡처 중...`);
+        const dataUrl = await new Promise((resolve, reject) => {
+          const blob = new Blob([targets[i]], { type: "text/html" });
+          const blobUrl = URL.createObjectURL(blob);
+          const iframe = document.createElement("iframe");
+          iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
+          iframe.src = blobUrl;
+          iframe.onload = async () => {
+            try {
+              const doc = iframe.contentDocument;
+              await doc.fonts.ready;
+              await new Promise((r) => setTimeout(r, 1200));
+              const canvas = await html2canvas(doc.documentElement, {
+                width: 1080,
+                height: 1350,
+                windowWidth: 1080,
+                windowHeight: 1350,
+                scale: 1,
+                useCORS: true,
+                allowTaint: false,
+                backgroundColor: "#080814",
+                logging: false,
+                x: 0,
+                y: 0,
+              });
+              URL.revokeObjectURL(blobUrl);
+              iframe.remove();
+              resolve(canvas.toDataURL("image/jpeg", 0.92));
+            } catch (e) {
+              URL.revokeObjectURL(blobUrl);
+              iframe.remove();
+              reject(e);
+            }
+          };
+          iframe.onerror = () => {
+            URL.revokeObjectURL(blobUrl);
+            iframe.remove();
+            reject(new Error("iframe 로드 실패"));
+          };
+          document.body.appendChild(iframe);
+        });
+        images.push(dataUrl);
+      }
+      if (logFn) logFn(`브라우저 캡처 완료: ${images.length}장`);
+    }
+
+    return images;
+  };
+
+  const loadInstagramSchedules = async () => {
+    if (!session?.username) return;
+    const schedules = await fetchSchedules(session.username);
+    setIgAutoSchedules(schedules.filter((item) => String(item.platform || "threads").toLowerCase() === "instagram"));
+  };
+
+  const saveInstagramAutoConfig = async () => {
+    if (!session?.username) return;
+    if (!igConfig.accountId || !igConfig.accessToken) {
+      setError("Instagram 계정 연동 후 자동화 설정을 저장하세요");
+      return;
+    }
+
+    setIgAutoSaving(true);
+    setIgAutoMessage("");
+    try {
+      const payload = {
+        enabled: Boolean(igAutoConfig.enabled),
+        keywords: String(igAutoConfig.keywords || ""),
+        postTime: igAutoConfig.postTime || "09:00",
+        slideCount: Math.max(3, Math.min(10, Number(igAutoConfig.slideCount) || slideCount || 7)),
+        captionTemplate: String(igAutoConfig.captionTemplate || postCaption || topic || ""),
+        accountId: igConfig.accountId,
+        accessToken: igConfig.accessToken,
+        brandName,
+        tone,
+        purpose,
+      };
+      const res = await fetch("/api/instagram-auto-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: session.username, config: payload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "설정 저장 실패");
+      setIgAutoMessage("자동화 설정이 저장되었습니다.");
+      await loadInstagramSchedules();
+      await loadInstagramAutoMonitor();
+    } catch (e) {
+      setIgAutoMessage(`자동화 설정 저장 실패: ${e.message}`);
+    } finally {
+      setIgAutoSaving(false);
+    }
+  };
+
+  const runInstagramAutoResearch = async () => {
+    if (!session?.username) return;
+    if (!igConfig.accountId || !igConfig.accessToken) {
+      setError("Instagram 계정 연동 후 자동화를 실행하세요");
+      return;
+    }
+    setIgAutoRunning(true);
+    setIgAutoMessage("");
+    try {
+      const payload = {
+        enabled: Boolean(igAutoConfig.enabled),
+        keywords: String(igAutoConfig.keywords || ""),
+        postTime: igAutoConfig.postTime || "09:00",
+        slideCount: Math.max(3, Math.min(10, Number(igAutoConfig.slideCount) || slideCount || 7)),
+        captionTemplate: String(igAutoConfig.captionTemplate || postCaption || topic || ""),
+        accountId: igConfig.accountId,
+        accessToken: igConfig.accessToken,
+        brandName,
+        tone,
+        purpose,
+      };
+      const res = await fetch("/api/instagram-auto-research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: session.username,
+          config: payload,
+          scheduledAt: igAutoScheduleAt ? new Date(igAutoScheduleAt).toISOString() : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "자동화 실행 실패");
+      setIgAutoMessage("리서치와 예약 생성이 완료되었습니다.");
+      setIgAutoScheduleAt("");
+      await loadInstagramSchedules();
+      await loadInstagramAutoMonitor(data?.result?.runId || null);
+    } catch (e) {
+      setIgAutoMessage(`자동화 실행 실패: ${e.message}`);
+    } finally {
+      setIgAutoRunning(false);
+    }
+  };
+
+  const scheduleCurrentInstagramCarousel = async () => {
+    if (!session?.username) return;
+    if (!igConfig.accountId || !igConfig.accessToken) {
+      setError("Instagram 계정 연동 후 예약을 생성하세요");
+      return;
+    }
+    if (!igAutoScheduleAt) {
+      setError("예약 시간을 선택하세요");
+      return;
+    }
+
+    setIgAutoRunning(true);
+    setError("");
+    try {
+      const scheduledAt = new Date(igAutoScheduleAt).toISOString();
+      if (new Date(scheduledAt) <= new Date()) {
+        throw new Error("예약 시간은 현재보다 미래여야 합니다");
+      }
+      const rawImages = await buildInstagramImages();
+      if (!rawImages.length) throw new Error("예약할 이미지를 만들 수 없습니다");
+      const prepRes = await fetch("/api/instagram-prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: rawImages }),
+      });
+      const prepData = await prepRes.json().catch(() => ({}));
+      if (!prepRes.ok) throw new Error(prepData.error || "예약 이미지 준비 실패");
+      const imageUrls = Array.isArray(prepData.imageUrls) ? prepData.imageUrls : [];
+      if (!imageUrls.length) throw new Error("예약 이미지 URL을 준비하지 못했습니다");
+
+      const schedule = {
+        id: `ig-manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        platform: "instagram",
+        auto: false,
+        status: "pending",
+        text: postCaption || topic,
+        caption: postCaption || topic,
+        images: imageUrls,
+        imageUrls,
+        userId: igConfig.accountId,
+        accountId: igConfig.accountId,
+        accessToken: igConfig.accessToken,
+        scheduledAt,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        retryCount: 0,
+        retryAt: null,
+        lastAttemptAt: null,
+        lastError: null,
+        topic,
+        slideCount: imageUrls.length,
+      };
+      const result = await addSchedule(session.username, schedule);
+      if (!result.ok) throw new Error(result.error || "예약 저장 실패");
+      setIgAutoMessage(`예약이 생성되었습니다: ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
+      setIgAutoScheduleAt("");
+      await loadInstagramSchedules();
+      await loadInstagramAutoMonitor();
+    } catch (e) {
+      setIgAutoMessage(`예약 생성 실패: ${e.message}`);
+    } finally {
+      setIgAutoRunning(false);
+    }
+  };
+
+  const cancelInstagramSchedule = async (id) => {
+    if (!session?.username) return;
+    const ok = await removeSchedule(session.username, id);
+    if (ok) {
+      setIgAutoSchedules((prev) => prev.filter((item) => item.id !== id));
+      setIgAutoMessage("예약이 취소되었습니다.");
+    }
   };
 
   // ── 스텝 인디케이터 ──
@@ -2178,164 +2379,112 @@ export default function UnifiedPipelineTab() {
         <UserBar />
         <StepBar />
 
-        {/* 상단: 제목 + HTML 다운로드 */}
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-gray-800">배포</p>
-            <p className="text-xs text-gray-400">{cards.length}장 · {topic}</p>
-          </div>
-          <button
-            onClick={downloadHtml}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-gray-700 transition-all shadow-sm"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            HTML 다운로드
-          </button>
+        {/* 상단: 제목 */}
+        <div>
+          <p className="text-sm font-bold text-gray-800">배포</p>
+          <p className="text-xs text-gray-400">{cards.length}장 · {topic}</p>
         </div>
 
         {/* 인스타그램 설정 */}
         <div className="space-y-3 bg-gray-50 border border-gray-100 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-1">
-            {/* 인스타그램 아이콘 */}
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-500">
               <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
               <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
               <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
             </svg>
             <p className="text-xs font-bold text-gray-700">인스타그램 자동 게시</p>
-            <span className="text-[10px] text-violet-600 font-semibold bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5">
-              {session.displayName} 계정
-            </span>
+            {igConfig.accessToken && igConfig.accountId
+              ? <span className="ml-auto text-[10px] font-bold bg-green-100 text-green-600 border border-green-200 rounded-full px-2 py-0.5">연동됨 · @{igConfig.username || igConfig.accountId}</span>
+              : <span className="ml-auto text-[10px] text-gray-400">미연동</span>
+            }
           </div>
 
-          {/* 액세스 토큰 — 먼저 입력 */}
-          <div>
-            <label className="text-xs font-bold text-gray-600 block mb-1.5">
-              ① 액세스 토큰 (Access Token)
-            </label>
-            <input
-              type="password"
-              placeholder="EAAxxxxxxxxxxxxxxx..."
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
-              value={igConfig.accessToken}
-              onChange={(e) => {
-                const next = { ...igConfig, accessToken: normalizeInstagramToken(e.target.value) };
-                setIgConfig(next);
-                saveSocial(igKey, session.username, next);
-              }}
-            />
-          </div>
-
-          {/* 계정 ID — 토큰 입력 후 자동 조회 */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-gray-600">
-                ② 비즈니스 계정 ID
-              </label>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={async () => {
-                    const imgUrls = cards.map((c) => c.imageUrl).filter(Boolean);
-                    if (imgUrls.length === 0 && cardHtmls.length === 0) {
-                      addLog("error", "다운로드할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
-                      return;
-                    }
-                    try {
-                      addLog("info", "이미지 다운로드 준비 중...");
-                      let downloadList = imgUrls;
-                      if (downloadList.length === 0) {
-                        addLog("info", `HTML 캡처 시작: ${cardHtmls.length}장`);
-                        downloadList = await captureCardHtmls(cardHtmls);
-                      }
-                      downloadList.forEach((src, i) => {
-                        const a = document.createElement("a");
-                        a.href = src;
-                        a.download = `card-${String(i + 1).padStart(2, "0")}.jpg`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      });
-                      addLog("info", `✅ ${downloadList.length}장 다운로드 완료`);
-                    } catch (e) {
-                      addLog("error", `다운로드 실패: ${e.message}`);
-                    }
-                  }}
-                  className="text-[10px] font-bold text-emerald-600 hover:text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5"
-                >
-                  📥 이미지 다운로드
-                </button>
-                <button
-                  onClick={async () => {
-                    const accessToken = normalizeInstagramToken(igConfig.accessToken);
-                    if (!accessToken) {
-                      addLog("error", "토큰을 먼저 입력하세요");
-                      return;
-                    }
-                    try {
-                      addLog("info", "Facebook 페이지 → Instagram 계정 ID 조회 중...");
-                      // Facebook 페이지 목록 조회
-                      const pagesRes = await fetch(
-                        `https://graph.facebook.com/v21.0/me/accounts?access_token=${accessToken}`
-                      );
-                      const pagesData = await pagesRes.json();
-                      if (pagesData.error) throw new Error(pagesData.error.message);
-                      if (!pagesData.data?.length) throw new Error("연결된 Facebook 페이지가 없습니다. Facebook 페이지와 Instagram 비즈니스 계정을 연결해주세요.");
-
-                      // 각 페이지에서 Instagram 비즈니스 계정 찾기
-                      let foundId = null, foundUsername = null;
-                      for (const page of pagesData.data) {
-                        const igRes = await fetch(
-                          `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${accessToken}`
-                        );
-                        const igData = await igRes.json();
-                        if (igData.instagram_business_account?.id) {
-                          foundId = igData.instagram_business_account.id;
-                          // username 조회
-                          const uRes = await fetch(
-                            `https://graph.facebook.com/v21.0/${foundId}?fields=username&access_token=${accessToken}`
-                          );
-                          const uData = await uRes.json();
-                          foundUsername = uData.username || foundId;
-                          break;
-                        }
-                      }
-                      if (!foundId) throw new Error("Facebook 페이지에 연결된 Instagram 비즈니스 계정을 찾을 수 없습니다.");
-                      const next = { ...igConfig, accountId: foundId, accessToken };
-                      setIgConfig(next);
-                      saveSocial(igKey, session.username, next);
-                      addLog("info", `✅ 조회 성공: @${foundUsername} → ${foundId}`);
-                    } catch (e) {
-                      addLog("error", `계정 ID 조회 실패: ${e.message}`);
-                    }
-                  }}
-                  className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
-                >
-                  🔍 토큰으로 자동 조회
-                </button>
-              </div>
+          {/* OAuth 연동 버튼 */}
+          {igConfig.accessToken && igConfig.accountId ? (
+            <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-xl px-3 py-2.5">
+              <p className="text-xs text-green-700">Instagram 계정이 연동되었습니다.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  const cleared = { accessToken: "", accountId: "", username: "" };
+                  setIgConfig(cleared);
+                  saveSocial(igKey, session.username, cleared);
+                }}
+                className="text-[10px] text-red-400 hover:text-red-600 font-semibold"
+              >
+                연동 해제
+              </button>
             </div>
-            <input
-              type="text"
-              placeholder="예: 17841400000000000"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white font-mono"
-              value={igConfig.accountId || ""}
-              onChange={(e) => {
-                const next = { ...igConfig, accountId: e.target.value.trim() };
-                setIgConfig(next);
-                saveSocial(igKey, session.username, next);
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const SCOPES = "instagram_business_basic,instagram_business_content_publish";
+                const oauthUrl = `https://www.instagram.com/oauth/authorize?force_reauth=true&client_id=1657867098880562&redirect_uri=https://planforge-ui.vercel.app/auth/instagram/&scope=${SCOPES}&response_type=code&enable_fb_login=0&hide_fb_login=1`;
+                const popup = window.open(oauthUrl, "instagram-auth", "width=580,height=720,left=200,top=100");
+                const onMessage = (e) => {
+                  if (e.data?.type !== "instagram_auth") return;
+                  window.removeEventListener("message", onMessage);
+                  if (e.data.error) { setError("Instagram 연동 실패: " + e.data.error); return; }
+                  const next = { accessToken: e.data.accessToken, accountId: e.data.userId, username: e.data.username || "" };
+                  setIgConfig(next);
+                  saveSocial(igKey, session.username, next);
+                };
+                window.addEventListener("message", onMessage);
+                const timer = setInterval(() => { if (popup?.closed) { clearInterval(timer); window.removeEventListener("message", onMessage); } }, 500);
               }}
-            />
-          </div>
+              className="w-full py-2.5 bg-gradient-to-r from-pink-500 to-fuchsia-500 hover:from-pink-600 hover:to-fuchsia-600 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+              </svg>
+              Instagram 계정 연동하기
+            </button>
+          )}
 
           {/* 캡션 */}
           <div>
             <label className="text-xs font-bold text-gray-600 block mb-1.5">
               게시 캡션 <span className="font-normal text-gray-400">(선택 — 비우면 주제 사용)</span>
             </label>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col md:flex-row md:items-stretch gap-2">
+                <button
+                  type="button"
+                  onClick={generateCaptionFromPrompt}
+                  disabled={captionGenerating || !topic?.trim()}
+                  className="px-3 py-2 rounded-lg text-[11px] font-bold border border-pink-200 text-pink-600 bg-pink-50 hover:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {captionGenerating ? "캡션 생성 중..." : "기획 기반 캡션 작성"}
+                </button>
+                <textarea
+                  rows={2}
+                  placeholder={`캡션 생성 프롬프트 예시:\n{topic} 중심으로 3문장 + CTA + 해시태그 5개`}
+                  className="flex-1 w-full px-3 py-2 text-[11px] border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white resize-none leading-relaxed"
+                  value={captionPrompt}
+                  onChange={(e) => setCaptionPrompt(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={persistCaptionPrompt}
+                  disabled={captionSaving}
+                  className="px-3 py-2 rounded-lg text-[11px] font-bold border border-gray-200 text-gray-700 bg-gray-50 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {captionSaving ? "저장 중..." : "저장"}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                <code className="text-gray-500">{'{topic}'}</code>,{" "}
+                <code className="text-gray-500">{'{brand}'}</code>,{" "}
+                <code className="text-gray-500">{'{tone}'}</code>,{" "}
+                <code className="text-gray-500">{'{purpose}'}</code>,{" "}
+                <code className="text-gray-500">{'{research}'}</code>,{" "}
+                <code className="text-gray-500">{'{cards}'}</code> 를 사용할 수 있습니다.
+              </p>
+            </div>
             <textarea
               rows={3}
               placeholder={`예: ${topic}\n\n#카드뉴스 #정보 #트렌드`}
@@ -2345,39 +2494,6 @@ export default function UnifiedPipelineTab() {
             />
           </div>
 
-          <div className="space-y-2 bg-white border border-violet-100 rounded-xl p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-bold text-gray-700">공개 URL 업로드</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">공개로 접근 가능한 이미지 URL만 넣으면 바로 캐러셀 게시가 가능합니다.</p>
-              </div>
-              <button
-                type="button"
-                onClick={fillDirectUrlsFromCards}
-                className="text-[10px] font-bold text-violet-600 hover:text-violet-800 bg-violet-50 border border-violet-200 rounded px-2 py-0.5"
-              >
-                현재 카드 URL 채우기
-              </button>
-            </div>
-            <textarea
-              rows={4}
-              placeholder={"https://example.com/1.jpg\nhttps://example.com/2.jpg\nhttps://example.com/3.jpg"}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-violet-400 bg-white resize-none leading-relaxed font-mono"
-              value={igDirectUrls}
-              onChange={(e) => setIgDirectUrls(e.target.value)}
-            />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={postDirectInstagramUrls}
-                disabled={igPosting || !igConfig.accountId || !igConfig.accessToken}
-                className="px-3 py-2 bg-white border border-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold rounded-lg transition-all"
-              >
-                공개 URL로 업로드
-              </button>
-              <span className="text-[11px] text-gray-500">이미지 URL만 지원, 최대 10장</span>
-            </div>
-          </div>
 
           <p className="text-[11px] text-gray-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed">
             🔒 API 정보는 사용자별로 브라우저 로컬에 저장됩니다. 이미지는 서버에 임시 업로드 후 즉시 삭제됩니다.
@@ -2394,11 +2510,7 @@ export default function UnifiedPipelineTab() {
                 <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
                 </svg>
-                {igCaptureProgress.step === "capture" && igCaptureProgress.total > 0
-                  ? `카드 캡처 중... (${igCaptureProgress.done + 1}/${igCaptureProgress.total})`
-                  : igCaptureProgress.step === "uploading"
-                  ? "인스타그램 업로드 중..."
-                  : "게시 중..."}
+                게시 중...
               </>
             ) : (
               <>
@@ -2412,23 +2524,13 @@ export default function UnifiedPipelineTab() {
             )}
           </button>
 
-          {/* 게시 결과 */}
-          {igResult && (
-            <div className={`px-3 py-2.5 rounded-xl text-xs font-medium flex items-start gap-2 ${
-              igResult.status === "success"
-                ? "bg-green-50 border border-green-200 text-green-700"
-                : "bg-blue-50 border border-blue-200 text-blue-700"
-            }`}>
-              <span>{igResult.status === "success" ? "✅" : "ℹ️"}</span>
+          {igResult?.ok && (
+            <div className="px-3 py-2.5 rounded-xl text-xs font-medium bg-green-50 border border-green-200 text-green-700 flex items-start gap-2">
+              <span>✅</span>
               <div>
-                <span>{igResult.message}</span>
+                <span>게시 완료!</span>
                 {igResult.permalink && (
-                  <a
-                    href={igResult.permalink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block mt-1 underline"
-                  >
+                  <a href={igResult.permalink} target="_blank" rel="noopener noreferrer" className="block mt-1 underline">
                     게시물 보기
                   </a>
                 )}
@@ -2436,167 +2538,276 @@ export default function UnifiedPipelineTab() {
             </div>
           )}
 
-          <div className="space-y-3 bg-white border border-pink-100 rounded-xl p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-bold text-gray-700">Upload Post 캐러셀 게시</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">현재 조립된 카드 1~10장을 캡처해 캐러셀로 업로드합니다.</p>
-              </div>
-              <span className="text-[10px] text-pink-600 font-semibold bg-pink-50 border border-pink-200 rounded px-1.5 py-0.5">
-                서버 API 키 사용
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">캐러셀 소스</label>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs text-gray-600">
-                  <p>조립된 카드: <span className="font-semibold text-gray-800">{cards.length}장</span></p>
-                  <p className="mt-1">캡처 가능 카드: <span className="font-semibold text-gray-800">{Math.min(cardHtmls.length || cards.length, UPLOAD_POST_MAX_CAROUSEL_ITEMS)}장</span></p>
-                  <p className="mt-1 text-[11px] text-gray-500">Upload Post `photos[]` 엔드포인트로 전송됩니다.</p>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">게시 제목</label>
-                <input
-                  type="text"
-                  value={uploadPostTitle}
-                  onChange={(e) => {
-                    setUploadPostTitle(e.target.value);
-                    setUploadPostResult(null);
-                  }}
-                  placeholder={topic || "Your Video Title"}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">Managed User</label>
-                <input
-                  type="text"
-                  value={uploadPostUser}
-                  onChange={(e) => {
-                    setUploadPostUser(e.target.value);
-                    setUploadPostResult(null);
-                  }}
-                  placeholder="upload-post managed user"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-pink-400 bg-white font-mono"
-                />
-                <p className="mt-1.5 text-[11px] text-gray-500">
-                  Upload Post managed users 페이지에서 만든 `user` 값을 그대로 입력합니다.
-                </p>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-600 block mb-1.5">플랫폼</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {["tiktok", "instagram", "youtube", "facebook"].map((platform) => (
-                    <button
-                      key={platform}
-                      type="button"
-                      onClick={() => {
-                        toggleUploadPostPlatform(platform);
-                        setUploadPostResult(null);
-                      }}
-                      className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
-                        uploadPostPlatforms.includes(platform)
-                          ? "bg-pink-500 border-pink-500 text-white"
-                          : "bg-white border-gray-200 text-gray-500 hover:border-pink-200 hover:text-pink-600"
-                      }`}
-                    >
-                      {platform}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {uploadPostValidationMessage && (
-              <div className="px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-[11px] text-amber-700">
-                {uploadPostValidationMessage}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={uploadCarouselToUploadPost}
-              disabled={uploadPostPosting || Boolean(uploadPostValidationMessage)}
-              className="w-full py-3 bg-gray-900 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2"
-            >
-              {uploadPostPosting ? (
-                <>
-                  <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                  </svg>
-                  Upload Post 캐러셀 업로드 중...
-                </>
-              ) : (
-                "Upload Post로 캐러셀 게시"
-              )}
-            </button>
-
-            {uploadPostResult && (
-              <div className={`px-3 py-2.5 rounded-xl text-xs font-medium ${
-                uploadPostResult.status === "success"
-                  ? "bg-green-50 border border-green-200 text-green-700"
-                  : "bg-red-50 border border-red-200 text-red-600"
-              }`}>
-                <p>{uploadPostResult.message}</p>
-                {uploadPostResult.data?.jobId && <p className="mt-1 font-mono">jobId: {uploadPostResult.data.jobId}</p>}
-                {uploadPostResult.data?.status && <p className="mt-1">status: {uploadPostResult.data.status}</p>}
-                {uploadPostResult.data?.title && <p className="mt-1">title: {uploadPostResult.data.title}</p>}
-                {uploadPostResult.data?.user && <p className="mt-1">user: {uploadPostResult.data.user}</p>}
-                {uploadPostResult.data?.items && <p className="mt-1">items: {uploadPostResult.data.items}</p>}
-                {uploadPostResult.data?.platforms?.length > 0 && (
-                  <p className="mt-1">platforms: {uploadPostResult.data.platforms.join(", ")}</p>
-                )}
-                {uploadPostResult.data?.message && <p className="mt-1 opacity-90">upstream: {uploadPostResult.data.message}</p>}
-                {uploadPostResult.data?.raw && (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-[11px] font-semibold">원문 응답 보기</summary>
-                    <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap font-mono text-[10px] opacity-80">
-                      {JSON.stringify(uploadPostResult.data.raw, null, 2)}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* ── 실행 로그 패널 ── */}
+          {/* 실행 로그 패널 */}
           {igLogs.length > 0 && (
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900">
+            <div className="rounded-xl border border-gray-800 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-900">
                 <span className="text-[11px] font-bold text-gray-300 font-mono">실행 로그</span>
-                <button
-                  onClick={() => setIgLogs([])}
-                  className="text-[10px] text-gray-500 hover:text-gray-300"
-                >
-                  지우기
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(igLogs.join("\n"));
+                    }}
+                    className="text-[10px] text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded transition-colors"
+                  >
+                    복사
+                  </button>
+                  <button
+                    onClick={() => setIgLogs([])}
+                    className="text-[10px] text-gray-500 hover:text-gray-300"
+                  >
+                    지우기
+                  </button>
+                </div>
               </div>
-              <div className="bg-gray-950 p-3 max-h-52 overflow-y-auto space-y-1 font-mono">
-                {igLogs.map((log, i) => (
-                  <div key={i} className="flex gap-2 text-[11px] leading-relaxed">
-                    <span className="text-gray-600 flex-shrink-0">{log.time}</span>
-                    <span className={`flex-shrink-0 font-bold ${
-                      log.level === "error" ? "text-red-400" : "text-emerald-400"
-                    }`}>
-                      {log.level === "error" ? "ERR" : "LOG"}
-                    </span>
-                    <span className={log.level === "error" ? "text-red-300" : "text-gray-200"}>
-                      {log.msg}
-                    </span>
-                    {log.detail && (
-                      <span className="text-gray-500 truncate">
-                        {typeof log.detail === "object"
-                          ? JSON.stringify(log.detail)
-                          : String(log.detail)}
-                      </span>
-                    )}
+              <div className="bg-gray-950 p-3 max-h-48 overflow-y-auto space-y-0.5 font-mono">
+                {igLogs.map((line, i) => (
+                  <div key={i} className={`text-[11px] leading-relaxed ${line.includes("오류") ? "text-red-400" : "text-gray-300"}`}>
+                    {line}
                   </div>
                 ))}
               </div>
             </div>
           )}
+        </div>
+
+        {/* 자동화 / 예약 */}
+        <div className="space-y-3 bg-violet-50 border border-violet-100 rounded-2xl p-4">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-bold text-violet-800">인스타그램 자동화 · 예약</p>
+            <span className="ml-auto text-[10px] text-violet-600 bg-white border border-violet-200 rounded-full px-2 py-0.5">
+              쓰레드와 별도 관리
+            </span>
+          </div>
+          <p className="text-[11px] text-violet-700 leading-relaxed">
+            키워드를 저장해두면 매일 리서치 → 카드뉴스 생성 → 예약 등록까지 한 번에 이어집니다. 예약된 캐러셀은 Threads와 분리된 인스타그램 전용 큐로 관리됩니다.
+          </p>
+
+          <label className="flex items-center gap-2 text-xs font-medium text-violet-900">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-violet-500"
+              checked={Boolean(igAutoConfig.enabled)}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, enabled: e.target.checked }))}
+            />
+            자동화 활성화
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <input
+              type="text"
+              value={igAutoConfig.keywords}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, keywords: e.target.value }))}
+              placeholder="리서치 키워드 예: 인스타그램 마케팅, 카드뉴스, 바이럴"
+              className="w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white"
+            />
+            <input
+              type="time"
+              value={igAutoConfig.postTime}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, postTime: e.target.value }))}
+              className="w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white"
+            />
+            <div className="sm:col-span-2">
+              <div className="flex flex-wrap gap-2">
+                {[4, 5, 6, 7, 8, 10].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setIgAutoConfig((prev) => ({ ...prev, slideCount: n }))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                      Number(igAutoConfig.slideCount) === n
+                        ? "border-violet-400 bg-violet-100 text-violet-700"
+                        : "border-violet-200 bg-white text-violet-600 hover:bg-violet-50"
+                    }`}
+                  >
+                    {n}장
+                  </button>
+                ))}
+              </div>
+            </div>
+            <textarea
+              rows={2}
+              value={igAutoConfig.captionTemplate}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, captionTemplate: e.target.value }))}
+              placeholder="캡션 템플릿(선택). 비우면 현재 게시 캡션을 사용합니다."
+              className="sm:col-span-2 w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white resize-none leading-relaxed"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveInstagramAutoConfig}
+              disabled={igAutoSaving || igAutoLoading}
+              className="px-3 py-2 rounded-xl text-xs font-bold border border-violet-300 bg-white text-violet-700 hover:bg-violet-100 disabled:opacity-40"
+            >
+              {igAutoSaving ? "저장 중..." : "자동화 설정 저장"}
+            </button>
+            <button
+              type="button"
+              onClick={runInstagramAutoResearch}
+              disabled={igAutoRunning || igAutoLoading}
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40"
+            >
+              {igAutoRunning ? "리서치 중..." : "리서치 → 예약 생성"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-start">
+            <input
+              type="datetime-local"
+              value={igAutoScheduleAt}
+              onChange={(e) => setIgAutoScheduleAt(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white"
+            />
+            <button
+              type="button"
+              onClick={scheduleCurrentInstagramCarousel}
+              disabled={igAutoRunning || !igAutoScheduleAt}
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-fuchsia-600 text-white hover:bg-fuchsia-700 disabled:opacity-40"
+            >
+              현재 카드 예약
+            </button>
+          </div>
+
+          {igAutoMessage && (
+            <div className="px-3 py-2 rounded-xl bg-white border border-violet-200 text-[11px] text-violet-700 leading-relaxed">
+              {igAutoMessage}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold text-violet-800">최근 자동화 로그</p>
+              <button
+                type="button"
+                onClick={() => loadInstagramAutoMonitor()}
+                className="text-[10px] font-semibold text-violet-600 hover:text-violet-800"
+              >
+                새로고침
+              </button>
+            </div>
+            {igAutoMonitorLoading ? (
+              <div className="px-3 py-3 rounded-xl border border-violet-100 bg-white text-[11px] text-violet-500">
+                로그 불러오는 중...
+              </div>
+            ) : igAutoMonitor ? (
+              <div className="rounded-xl border border-violet-100 bg-white px-3 py-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    igAutoMonitor.status === "running"
+                      ? "bg-violet-50 text-violet-700 border-violet-200"
+                      : igAutoMonitor.status === "completed"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : igAutoMonitor.status === "failed"
+                          ? "bg-red-50 text-red-600 border-red-200"
+                          : "bg-gray-50 text-gray-600 border-gray-200"
+                  }`}>
+                    {igAutoMonitor.status || "idle"}
+                  </span>
+                  <span className="text-[10px] text-violet-500 font-mono">
+                    {igAutoMonitor.runId || "-"}
+                  </span>
+                  {igAutoMonitor.scheduledAt && (
+                    <span className="ml-auto text-[10px] text-violet-500">
+                      {new Date(igAutoMonitor.scheduledAt).toLocaleString("ko-KR")}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] text-gray-800 leading-relaxed">
+                  {igAutoMonitor.summary || igAutoMonitor.error || igAutoMonitor.skipReason || "실행 로그가 없습니다."}
+                </p>
+                {Array.isArray(igAutoMonitor.logs) && igAutoMonitor.logs.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg bg-violet-50/60 p-2">
+                    {igAutoMonitor.logs.slice(-8).map((entry, idx) => (
+                      <div key={`${entry?.time || idx}-${idx}`} className="text-[11px] leading-relaxed text-gray-700">
+                        <span className="font-mono text-violet-500 mr-2">
+                          {entry?.time ? new Date(entry.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "now"}
+                        </span>
+                        {entry?.msg || ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {igAutoHistory.length > 0 && (
+                  <div className="text-[10px] text-violet-500">
+                    최근 실행 {igAutoHistory.length}건 중 {Math.min(igAutoHistory.length, 5)}건 표시
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="px-3 py-3 rounded-xl border border-violet-100 bg-white text-[11px] text-violet-500">
+                아직 자동화 로그가 없습니다.
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold text-violet-800">예약 큐</p>
+              <button
+                type="button"
+                onClick={loadInstagramSchedules}
+                className="text-[10px] font-semibold text-violet-600 hover:text-violet-800"
+              >
+                새로고침
+              </button>
+            </div>
+            {igAutoSchedules.length === 0 ? (
+              <div className="px-3 py-3 rounded-xl border border-violet-100 bg-white text-[11px] text-violet-500">
+                예약된 인스타그램 캐러셀이 없습니다.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {igAutoSchedules
+                  .slice()
+                  .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+                  .map((item) => (
+                    <div key={item.id} className="rounded-xl border border-violet-100 bg-white px-3 py-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">
+                          {item.auto ? "자동" : "수동"}
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          item.status === "pending" && item.retryAt
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : item.status === "pending"
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : item.status === "posted"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-red-50 text-red-600 border-red-200"
+                        }`}>
+                          {item.status === "pending" && item.retryAt ? "재시도 대기" : item.status}
+                        </span>
+                        <span className="ml-auto text-[10px] text-violet-500 font-mono">
+                          {item.images?.length || item.imageUrls?.length || 0}장
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-gray-800 leading-relaxed line-clamp-2">
+                        {item.caption || item.text || item.topic || "-"}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        예약: {new Date(item.scheduledAt).toLocaleString("ko-KR")}
+                      </p>
+                      {item.retryAt && item.status === "pending" && (
+                        <p className="text-[10px] text-blue-500">
+                          재시도: {new Date(item.retryAt).toLocaleString("ko-KR")}
+                        </p>
+                      )}
+                      {item.status === "pending" && (
+                        <button
+                          type="button"
+                          onClick={() => cancelInstagramSchedule(item.id)}
+                          className="text-[10px] font-semibold text-red-500 hover:text-red-700"
+                        >
+                          예약 취소
+                        </button>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Threads ── */}

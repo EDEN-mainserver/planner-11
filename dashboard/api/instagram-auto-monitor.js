@@ -1,6 +1,6 @@
 import { list, put } from "@vercel/blob";
 
-const PREFIX_MONITOR = "threads-auto-monitor";
+const PREFIX_MONITOR = "instagram-auto-monitor";
 
 function monitorPath(username, runId) {
   return `${PREFIX_MONITOR}/${username}/${runId}.json`;
@@ -16,15 +16,11 @@ function summarizeRun(run) {
     startedAt: run.startedAt || null,
     updatedAt: run.updatedAt || null,
     scheduledAt: run.scheduledAt || null,
-    summary: run.summary || null,
-    error: run.error || null,
-    skipReason: run.skipReason || null,
-    sourceLabel: run.sourceLabel || null,
-    sourceInfo: run.sourceInfo || null,
-    repeatHistory: Array.isArray(run.repeatHistory) ? run.repeatHistory : [],
+    topic: run.topic || null,
+    slideCount: run.slideCount || null,
     text: run.text || "",
-    textLength: run.text ? String(run.text).length : 0,
     logs: Array.isArray(run.logs) ? run.logs : [],
+    error: run.error || null,
     control: run.control || {},
   };
 }

@@ -5,10 +5,13 @@
 // 환경변수:
 //   CRON_SECRET  — Vercel이 자동 주입 (Vercel 크론 사용 시), 외부 크론은 Authorization: Bearer {값} 헤더 전송
 
-import { list, put, del } from "@vercel/blob";
+import {
+  listScheduleUsernames,
+  readAllSchedules,
+  updateScheduleRecord,
+} from "./_schedule-storage.js";
 
 const TH_API = "https://graph.threads.net/v1.0";
-const PREFIX = "threads-schedule";
 
 function normalizeScheduledAt(value) {
   const raw = String(value || "").trim();
@@ -26,25 +29,6 @@ function normalizeScheduledAt(value) {
 }
 
 export const config = { maxDuration: 90, memory: 512 };
-
-// Blob에서 스케줄 파일 읽기
-async function readSchedules(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return [];
-  return await res.json();
-}
-
-// Blob 스케줄 파일 덮어쓰기
-async function writeSchedules(username, schedules, oldUrl) {
-  if (oldUrl) {
-    await del(oldUrl).catch(() => {});
-  }
-  await put(`${PREFIX}/${username}.json`, JSON.stringify(schedules), {
-    access: "public",
-    contentType: "application/json",
-    addRandomSuffix: false,
-  });
-}
 
 // Threads 텍스트 게시 (threads-post.js와 동일 로직)
 async function postText(userId, accessToken, text) {
@@ -100,59 +84,40 @@ export default async function handler(req, res) {
   let checked = 0;
 
   try {
-    // 모든 사용자의 스케줄 파일 조회
-    const { blobs } = await list({ prefix: `${PREFIX}/` });
-    checked = blobs.length;
+    const usernames = await listScheduleUsernames();
+    checked = usernames.length;
 
-    for (const blob of blobs) {
-      // 파일명에서 username 추출: threads-schedule/username.json
-      const username = blob.pathname
-        .replace(`${PREFIX}/`, "")
-        .replace(/\.json$/, "");
-
-      let schedules;
-      try {
-        schedules = await readSchedules(blob.url);
-      } catch {
-        continue;
-      }
+    for (const username of usernames) {
+      const schedules = await readAllSchedules(username);
 
       // 현재 시각 이전인 pending 항목 추출
       const due = schedules.filter(
         (s) => {
+          const platform = String(s.platform || "threads").toLowerCase();
           const scheduled = normalizeScheduledAt(s.scheduledAt);
-          return s.status === "pending" && scheduled && scheduled <= now;
+          return platform === "threads" && s.status === "pending" && scheduled && scheduled <= now;
         }
       );
       if (!due.length) continue;
 
-      let modified = false;
-
       for (const post of due) {
-        const idx = schedules.findIndex((s) => s.id === post.id);
         try {
-          const mediaId = await postText(post.userId, post.accessToken, post.text);
-          schedules[idx] = {
-            ...schedules[idx],
+          const posted = { mediaId: await postText(post.userId, post.accessToken, post.text) };
+          await updateScheduleRecord(username, post.id, {
             status: "posted",
             postedAt: new Date().toISOString(),
-            mediaId,
-          };
-          results.push({ id: post.id, username, status: "posted", mediaId });
+            mediaId: posted.mediaId,
+            permalink: posted.permalink || post.permalink || null,
+          });
+          results.push({ id: post.id, username, status: "posted", mediaId: posted.mediaId, platform: "threads" });
         } catch (e) {
-          schedules[idx] = {
-            ...schedules[idx],
+          await updateScheduleRecord(username, post.id, {
             status: "failed",
             failedAt: new Date().toISOString(),
             error: e.message,
-          };
+          });
           results.push({ id: post.id, username, status: "failed", error: e.message });
         }
-        modified = true;
-      }
-
-      if (modified) {
-        await writeSchedules(username, schedules, blob.url);
       }
     }
 

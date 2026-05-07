@@ -3,44 +3,16 @@
 // POST /api/schedule               → 예약 추가   { username, schedule }
 // DELETE /api/schedule             → 예약 취소   { username, id }
 // PATCH  /api/schedule             → 완료 항목 일괄 삭제 { username }
+// PATCH  /api/schedule             → 예약 수정 { username, id, updates }
 
-import { put, list, del } from "@vercel/blob";
-
-const PREFIX = "threads-schedule";
-
-function normalizeScheduledAt(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)) return new Date(raw).toISOString();
-  const parsed = new Date(raw);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString();
-  return raw;
-}
-
-async function readSchedules(username) {
-  try {
-    const { blobs } = await list({ prefix: `${PREFIX}/${username}.json` });
-    if (!blobs.length) return [];
-    const res = await fetch(blobs[0].url, { cache: "no-store" });
-    if (!res.ok) return [];
-    return await res.json();
-  } catch {
-    return [];
-  }
-}
-
-async function writeSchedules(username, schedules) {
-  // 기존 파일 삭제 후 새로 작성 (Blob 누적 방지)
-  const { blobs } = await list({ prefix: `${PREFIX}/${username}.json` });
-  if (blobs.length) {
-    await Promise.allSettled(blobs.map((b) => del(b.url)));
-  }
-  await put(`${PREFIX}/${username}.json`, JSON.stringify(schedules), {
-    access: "public",
-    contentType: "application/json",
-    addRandomSuffix: false,
-  });
-}
+import {
+  clearNonPendingSchedules,
+  deleteScheduleRecord,
+  isDuplicateScheduleTextError,
+  readAllSchedules,
+  saveSchedule,
+  updateScheduleRecord,
+} from "./_schedule-storage.js";
 
 export const config = { api: { bodyParser: { sizeLimit: "2mb" } } };
 
@@ -54,7 +26,7 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     const username = req.query?.username;
     if (!username) return res.status(400).json({ error: "username 필요" });
-    const schedules = await readSchedules(username);
+    const schedules = await readAllSchedules(username);
     return res.status(200).json({ schedules });
   }
 
@@ -62,30 +34,45 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const { username, schedule } = req.body || {};
     if (!username || !schedule) return res.status(400).json({ error: "username, schedule 필요" });
-    const schedules = await readSchedules(username);
-    schedules.push({ ...schedule, scheduledAt: normalizeScheduledAt(schedule.scheduledAt) });
-    await writeSchedules(username, schedules);
-    return res.status(200).json({ ok: true });
+    try {
+      const saved = await saveSchedule(username, schedule);
+      return res.status(200).json({ ok: true, schedule: saved });
+    } catch (error) {
+      if (isDuplicateScheduleTextError(error)) {
+        return res.status(409).json({ error: error.message, duplicate: error.duplicate || null });
+      }
+      throw error;
+    }
   }
 
   // DELETE — 예약 취소 (단건)
   if (req.method === "DELETE") {
     const { username, id } = req.body || {};
     if (!username || !id) return res.status(400).json({ error: "username, id 필요" });
-    const schedules = await readSchedules(username);
-    const updated = schedules.filter((s) => s.id !== id);
-    await writeSchedules(username, updated);
+    await deleteScheduleRecord(username, id);
     return res.status(200).json({ ok: true });
   }
 
   // PATCH — 완료/실패 항목 일괄 삭제
   if (req.method === "PATCH") {
-    const { username } = req.body || {};
+    const { username, id, updates } = req.body || {};
     if (!username) return res.status(400).json({ error: "username 필요" });
-    const schedules = await readSchedules(username);
-    const updated = schedules.filter((s) => s.status === "pending");
-    await writeSchedules(username, updated);
-    return res.status(200).json({ ok: true, remaining: updated.length });
+
+    if (id && updates && typeof updates === "object") {
+      try {
+        const schedule = await updateScheduleRecord(username, id, updates);
+        if (!schedule) return res.status(404).json({ error: "예약을 찾을 수 없습니다" });
+        return res.status(200).json({ ok: true, schedule });
+      } catch (error) {
+        if (isDuplicateScheduleTextError(error)) {
+          return res.status(409).json({ error: error.message, duplicate: error.duplicate || null });
+        }
+        throw error;
+      }
+    }
+
+    const remaining = await clearNonPendingSchedules(username);
+    return res.status(200).json({ ok: true, remaining });
   }
 
   return res.status(405).json({ error: "Method Not Allowed" });

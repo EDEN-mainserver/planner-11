@@ -1,10 +1,10 @@
-// Threads 자동화 설정 관리 API
-// GET  /api/threads-auto-config?username=xxx  → 설정 조회
-// POST /api/threads-auto-config               → 설정 저장 { username, config }
+// Instagram 자동화 설정 관리 API
+// GET  /api/instagram-auto-config?username=xxx  → 설정 조회
+// POST /api/instagram-auto-config               → 설정 저장 { username, config }
 
 import { put, list } from "@vercel/blob";
 
-const PREFIX = "threads-auto";
+const PREFIX = "instagram-auto";
 
 async function readConfig(username) {
   try {
