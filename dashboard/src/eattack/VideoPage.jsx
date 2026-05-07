@@ -9,7 +9,7 @@
 import { useState, useCallback, useEffect } from "react";
 import CommunityTab from "./community/index";
 import AutoEditTab from "./autoedit/index";
-import FullGraphicWorkflow from "../../../Motiongraphic/fullgraphic-ui/index";
+import FullGraphicWorkflow from "./fullgraphic-ui/index";
 import { emitEAttackContext, onEAttackCommand } from "./eattackContext";
 import {
   getNasConfig,
