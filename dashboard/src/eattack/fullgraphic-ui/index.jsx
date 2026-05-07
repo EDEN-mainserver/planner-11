@@ -602,35 +602,24 @@ function StagePreview({ project, planData, onNext }) {
         </div>
       ) : (
         <>
-          {/* Studio 미리보기 — 로컬 전용 안내 */}
-          <div className="border border-fuchsia-200 rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between bg-gray-900 px-4 py-2">
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-              </div>
-              <div className="flex items-center gap-2 bg-gray-800 px-3 py-1 rounded-md">
-                <span className="text-gray-400 text-xs">🔒</span>
-                <span className="text-gray-300 text-xs font-mono">localhost:3002</span>
-              </div>
-              <a href="http://localhost:3002" target="_blank" rel="noreferrer"
-                className="text-xs text-gray-400 hover:text-white transition-colors">↗ 새 탭</a>
+          {/* Studio 미리보기 — 준비 중 안내 */}
+          <div className="border border-gray-200 rounded-2xl overflow-hidden">
+            <div className="bg-gray-50 border-b border-gray-100 px-4 py-2.5 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-amber-400" />
+              <p className="text-xs font-medium text-gray-500">미리보기 준비 중</p>
             </div>
-            <div className="bg-gray-950 flex flex-col items-center justify-center gap-3 py-10 px-6 text-center" style={{ height: 280 }}>
-              <div className="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center text-2xl">🖥️</div>
+            <div className="flex flex-col items-center justify-center gap-4 py-12 px-6 text-center bg-white" style={{ height: 280 }}>
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-fuchsia-100 to-pink-100 flex items-center justify-center text-3xl">🎨</div>
               <div>
-                <p className="text-sm font-semibold text-gray-200">Hyperframes Studio</p>
-                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  미리보기는 로컬 환경에서만 동작합니다.<br/>
-                  로컬에서 <code className="bg-gray-800 px-1.5 py-0.5 rounded text-fuchsia-400 font-mono">npx hyperframes dev</code> 실행 후<br/>
-                  아래 링크로 직접 확인하세요.
+                <p className="text-sm font-bold text-gray-700">컴포지션 생성 완료</p>
+                <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                  플랜 기반으로 모션 그래픽 컴포지션을 생성했습니다.<br/>
+                  실시간 미리보기 기능은 준비 중입니다.
                 </p>
               </div>
-              <a href="http://localhost:3002" target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-semibold transition-colors">
-                localhost:3002 열기 ↗
-              </a>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-xs font-medium text-amber-600">
+                Coming soon — Hyperframes Studio 연동 예정
+              </div>
             </div>
           </div>
 
