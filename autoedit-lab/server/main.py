@@ -14,7 +14,7 @@ app = FastAPI(title="AutoEdit Lab API", version="0.1.0")
 # ── CORS (Vite 개발 서버 허용) ───────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5174", "http://localhost:5175", "http://localhost:5173"],
+    allow_origins=["*"],   # 내부 도구 — 모든 출처 허용
     allow_methods=["*"],
     allow_headers=["*"],
 )

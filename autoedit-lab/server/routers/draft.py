@@ -1,11 +1,16 @@
 """
 캡컷 초안 생성 라우터
-타임라인 아이템(이미지/자막/나레이션)을 받아 캡컷 초안 파일을 생성
+타임라인 아이템(영상/자막/나레이션)을 받아 캡컷 초안 폴더를 zip으로 반환.
+원격 서버 배포 기준 — 로컬 CapCut 폴더 불필요.
 """
 import os
 import uuid
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 from services.capcut_builder import build_draft
@@ -13,8 +18,7 @@ from services.tts_service import generate_tts
 
 router = APIRouter()
 
-UPLOAD_DIR  = Path(os.getenv("UPLOAD_DIR",       "./uploads"))
-CAPCUT_DIR  = os.getenv("CAPCUT_DRAFT_DIR", "")
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads"))
 
 
 # ── 아이템 스키마 ────────────────────────────────────────────────────
@@ -29,83 +33,74 @@ class ImageItem(BaseModel):
     file_path:    str
     start:        float
     duration:     float
-    silence_cuts: list[SilenceCutSegment] | None = None  # 무음 제거 구간
+    silence_cuts: list[SilenceCutSegment] | None = None
 
 class SubtitleItem(BaseModel):
     type:           Literal["subtitle"]
     text:           str
     start:          float
     duration:       float
-    font_size:      float      = 5.0
-    color:          list[float]= Field(default=[1.0, 1.0, 1.0])  # RGB 0~1
-    bold:           bool       = False
-    italic:         bool       = False
-    underline:      bool       = False
-    alpha:          float      = 1.0
-    align:          int        = 1        # 0=왼쪽 1=가운데 2=오른쪽
-    letter_spacing: int        = 0
-    line_spacing:   int        = 0
-    transform_x:    float      = 0.0
-    transform_y:    float      = -0.8    # 캡컷 자막 기본 위치 (하단)
-    font:           Optional[str] = None  # cc.FontType 이름 (None=시스템 기본)
-    border_enabled: bool       = False
-    border_color:   list[float]= Field(default=[0.0, 0.0, 0.0])  # RGB 0~1
-    border_width:   float      = 40.0    # 0~100 (캡컷 기준)
+    font_size:      float       = 5.0
+    color:          list[float] = Field(default=[1.0, 1.0, 1.0])
+    bold:           bool        = False
+    italic:         bool        = False
+    underline:      bool        = False
+    alpha:          float       = 1.0
+    align:          int         = 1
+    letter_spacing: int         = 0
+    line_spacing:   int         = 0
+    transform_x:    float       = 0.0
+    transform_y:    float       = -0.8
+    font:           Optional[str] = None
+    border_enabled: bool        = False
+    border_color:   list[float] = Field(default=[0.0, 0.0, 0.0])
+    border_width:   float       = 40.0
 
 class NarrationItem(BaseModel):
-    type:       Literal["narration"]
-    text:       str
-    start:      float
-    voice:      str   = "nova"
-    speed:      float = 1.0
+    type:  Literal["narration"]
+    text:  str
+    start: float
+    voice: str   = "nova"
+    speed: float = 1.0
 
 class BgmItem(BaseModel):
-    type:      Literal["bgm"]
+    type:       Literal["bgm"]
     audio_path: str
-    volume:    float = 0.5
-    start:     float = 0.0
-    fade_in:   float = 0.5   # 페이드인 길이 (초)
-    fade_out:  float = 0.5   # 페이드아웃 길이 (초)
+    volume:     float = 0.5
+    start:      float = 0.0
+    fade_in:    float = 0.5
+    fade_out:   float = 0.5
 
-# union
 TimelineItem = ImageItem | SubtitleItem | NarrationItem | BgmItem
 
 
 class DraftRequest(BaseModel):
     project_name:  str
-    width:         int   = 1920
-    height:        int   = 1080
-    fps:           int   = 30
+    width:         int  = 1920
+    height:        int  = 1080
+    fps:           int  = 30
     items:         list[TimelineItem]
-    allow_replace: bool  = True
+    allow_replace: bool = True
 
 
 # ── 엔드포인트 ──────────────────────────────────────────────────────
 
 @router.post("/draft/generate")
-async def generate_draft(req: DraftRequest):
+async def generate_draft(req: DraftRequest, background_tasks: BackgroundTasks):
     """
-    캡컷 초안 생성
+    캡컷 초안 생성 → zip 파일로 반환
 
     1. narration 아이템 → TTS mp3 생성
-    2. pyCapCut으로 초안 파일 빌드
-    3. 캡컷 앱에서 확인 가능한 초안 이름 반환
-    """
-    if not CAPCUT_DIR:
-        raise HTTPException(
-            500,
-            "CAPCUT_DRAFT_DIR 환경변수가 설정되지 않았습니다. "
-            "server/.env 파일을 확인하세요."
-        )
-    if not Path(CAPCUT_DIR).exists():
-        raise HTTPException(
-            500,
-            f"캡컷 초안 폴더를 찾을 수 없습니다: {CAPCUT_DIR}"
-        )
+    2. pyCapCut으로 임시 폴더에 초안 빌드
+    3. 초안 폴더를 zip 압축 후 다운로드 응답
+    4. 응답 후 임시 폴더 자동 삭제
 
+    사용법: 다운로드된 zip을 다음 경로에 압축 해제
+    C:\\Users\\[계정]\\AppData\\Local\\CapCut\\User Data\\Projects\\com.lveditor.draft\\
+    """
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── 아이템을 dict로 변환 후 narration은 TTS 먼저 처리 ───────────
+    # ── TTS 생성 ────────────────────────────────────────────────────
     resolved_items = []
     for item in req.items:
         d = item.model_dump()
@@ -125,33 +120,50 @@ async def generate_draft(req: DraftRequest):
 
         resolved_items.append(d)
 
-    # ── pyCapCut으로 초안 생성 ───────────────────────────────────────
+    # ── 임시 폴더에 초안 생성 ────────────────────────────────────────
+    tmp_dir = Path(tempfile.mkdtemp())
+
     try:
         name = build_draft(
             project_name=req.project_name,
             items=resolved_items,
-            draft_dir=CAPCUT_DIR,
+            draft_dir=str(tmp_dir),
             width=req.width,
             height=req.height,
             fps=req.fps,
             allow_replace=req.allow_replace,
         )
     except Exception as e:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         raise HTTPException(500, f"초안 생성 실패: {e}")
 
-    return {
-        "ok":           True,
-        "project_name": name,
-        "item_count":   len(resolved_items),
-        "message":      f"캡컷을 열어 '{name}' 초안을 확인하세요.",
-    }
+    # ── zip 압축 ─────────────────────────────────────────────────────
+    draft_folder = tmp_dir / name
+    zip_path     = tmp_dir / f"{name}.zip"
+
+    try:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for f in draft_folder.rglob("*"):
+                if f.is_file():
+                    zf.write(f, f.relative_to(tmp_dir))
+    except Exception as e:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise HTTPException(500, f"zip 압축 실패: {e}")
+
+    # ── 응답 후 임시 폴더 삭제 ───────────────────────────────────────
+    background_tasks.add_task(shutil.rmtree, str(tmp_dir), True)
+
+    return FileResponse(
+        path=str(zip_path),
+        filename=f"{name}.zip",
+        media_type="application/zip",
+    )
 
 
 @router.get("/draft/config")
 async def get_config():
-    """현재 서버 설정 확인용"""
+    """서버 설정 확인용"""
     return {
-        "capcut_dir":    CAPCUT_DIR or "(미설정)",
-        "upload_dir":    str(UPLOAD_DIR.resolve()),
-        "capcut_exists": Path(CAPCUT_DIR).exists() if CAPCUT_DIR else False,
+        "upload_dir": str(UPLOAD_DIR.resolve()),
+        "mode":       "remote (zip download)",
     }

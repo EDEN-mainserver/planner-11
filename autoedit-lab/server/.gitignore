@@ -1,0 +1,6 @@
+uploads/
+tmp_*.txt
+__pycache__/
+*.pyc
+.env
+*.zip
