@@ -265,7 +265,9 @@ function StageCut({ project, onNext }) {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      text: `**${project.projectName}** 프로젝트가 준비됐습니다.\n\n원본 영상 \`${project.videoFile.name}\`을 분석합니다. 어떻게 컷 편집할까요?`,
+      text: project.videoFile
+        ? `**${project.projectName}** 프로젝트가 준비됐습니다.\n\n원본 영상 \`${project.videoFile.name}\`을 분석합니다. 어떻게 컷 편집할까요?`
+        : `**${project.projectName}** 프로젝트가 준비됐습니다.\n\n${[project.topic && `주제: ${project.topic}`, project.sourceUrl && `URL: ${project.sourceUrl}`, project.prompt && `프롬프트 입력됨`].filter(Boolean).join(" · ")}\n\n어떻게 구성할까요?`,
     },
   ]);
   const [input,    setInput]    = useState("");
