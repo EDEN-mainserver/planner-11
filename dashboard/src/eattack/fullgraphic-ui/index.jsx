@@ -715,6 +715,105 @@ html,body{width:100%;height:100%;overflow:hidden;background:${s.bg1};}
 // ═══════════════════════════════════════════════════════════════════
 // STAGE 6 — 미리보기 & 반복 수정
 // ═══════════════════════════════════════════════════════════════════
+// ── 비트 설명 → 실제 CSS 모션 애니메이션 오버레이 ─────────────────
+function MotionOverlay({ beat, accent, beatKey }) {
+  const full = ((beat?.label || "") + " " + (beat?.desc || "")).toLowerCase();
+  const is = (...kws) => kws.some(k => full.includes(k));
+
+  const A = (name, dur = "0.65s", delay = "0s") =>
+    ({ animation: `${name} ${dur} cubic-bezier(0.22,1,0.36,1) ${delay} both` });
+
+  const CHROME = {
+    background: "linear-gradient(90deg,#fff 0%,#d0d0d0 30%,#fff 55%,#a8a8a8 75%,#fff 100%)",
+    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+  };
+  const GLOW   = { textShadow: `0 0 28px ${accent}99` };
+  const FONT   = { fontFamily: "'Noto Sans KR',Arial,sans-serif" };
+  const BAR    = { width: 44, height: 3, borderRadius: 2, background: accent, boxShadow: `0 0 10px ${accent}` };
+
+  // 공통 keyframe CSS
+  const KF = `
+    @keyframes whipPan  { 0%{transform:translateX(-90vw) skewX(-14deg);opacity:0} 65%{transform:translateX(4px) skewX(1deg);opacity:1} 82%{transform:translateX(-2px)} 100%{transform:none} }
+    @keyframes slideL   { from{transform:translateX(-110%);opacity:0} to{transform:translateX(0);opacity:1} }
+    @keyframes slideUp  { from{transform:translateY(28px);opacity:0} to{transform:translateY(0);opacity:1} }
+    @keyframes popIn    { 0%{transform:scale(.55);opacity:0} 70%{transform:scale(1.06);opacity:1} 100%{transform:scale(1)} }
+    @keyframes fadeIn   { from{opacity:0} to{opacity:1} }
+    @keyframes pulse    { 0%,100%{box-shadow:0 0 0 0 ${accent}99} 50%{box-shadow:0 0 0 10px transparent} }
+    @keyframes shimmer  { 0%{background-position:200% center} 100%{background-position:-200% center} }
+  `;
+
+  /* ── 오프닝 / 로고 리빌 / whip-pan ── */
+  if (is("오프닝","로고","리빌","whip","인트로","reveal")) return (
+    <div key={beatKey} style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"0 24px", ...FONT }}>
+      <style>{KF}</style>
+      <div style={{ ...A("fadeIn","0.4s","0s"), fontSize:10, letterSpacing:4, textTransform:"uppercase", color:accent, fontWeight:700, marginBottom:12 }}>
+        {beat?.time}
+      </div>
+      <div style={{ ...A("whipPan","0.7s","0.05s"), fontSize:27, fontWeight:900, lineHeight:1.15, textAlign:"center", ...CHROME }}>
+        {beat?.label}
+      </div>
+      <div style={{ ...A("slideUp","0.4s","0.55s"), marginTop:14, ...BAR }} />
+    </div>
+  );
+
+  /* ── 키 메시지 / 키워드 슬라이드인 ── */
+  if (is("키 메시지","키워드","슬라이드","slide","메시지")) return (
+    <div key={beatKey} style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", justifyContent:"center", padding:"0 20px", ...FONT }}>
+      <style>{KF}</style>
+      {(beat?.label || "").split(/[\s·]+/).filter(Boolean).map((w, i) => (
+        <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, ...A("slideL","0.5s",`${i * 0.13}s`) }}>
+          <span style={{ background:accent, color:"#000", fontWeight:900, fontSize:9, padding:"2px 7px", borderRadius:4, flexShrink:0 }}>
+            {String(i+1).padStart(2,"0")}
+          </span>
+          <span style={{ fontSize: i===0?18:14, fontWeight:900, color:"#fff", textShadow:"0 2px 8px rgba(0,0,0,0.8)" }}>{w}</span>
+        </div>
+      ))}
+      <div style={{ ...A("slideL","0.4s","0.4s"), ...BAR }} />
+    </div>
+  );
+
+  /* ── 소셜 / 팔로우 카드 ── */
+  if (is("소셜","팔로우","social","follow","인스타","유튜브")) return (
+    <div key={beatKey} style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:10, ...FONT }}>
+      <style>{KF}</style>
+      <div style={{ ...A("fadeIn","0.3s","0s"), color:"rgba(255,255,255,0.5)", fontSize:10, marginBottom:4 }}>팔로우해주세요</div>
+      {["YouTube","Instagram"].map((p,i) => (
+        <div key={p} style={{ background:"rgba(0,0,0,0.75)", border:`1.5px solid ${accent}66`, borderRadius:12, padding:"9px 20px", display:"flex", alignItems:"center", gap:10, ...A("popIn","0.5s",`${i*0.14}s`) }}>
+          <div style={{ width:8, height:8, borderRadius:"50%", background:accent, boxShadow:`0 0 8px ${accent}` }} />
+          <span style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{p} 팔로우</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  /* ── 아웃트로 / CTA / 버튼 ── */
+  if (is("아웃트로","cta","버튼","outro","마무리","홀드")) return (
+    <div key={beatKey} style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16, ...FONT }}>
+      <style>{KF}</style>
+      <div style={{ ...A("fadeIn","0.5s","0s"), fontSize:20, fontWeight:900, color:"#fff", textAlign:"center", ...GLOW }}>
+        {beat?.label}
+      </div>
+      <div style={{ background:accent, color:"#000", fontWeight:900, fontSize:12, padding:"10px 24px", borderRadius:24, animation:`pulse 1.6s ease infinite, popIn 0.5s cubic-bezier(0.22,1,0.36,1) 0.3s both`, cursor:"default" }}>
+        지금 바로 시작하기 →
+      </div>
+    </div>
+  );
+
+  /* ── B-롤 / 영상 클립 / 자막 스타일 (기본) ── */
+  return (
+    <div key={beatKey} style={{ position:"absolute", bottom:0, left:0, right:0, padding:"36px 18px 20px", background:"linear-gradient(transparent,rgba(0,0,0,0.92))", ...FONT }}>
+      <style>{KF}</style>
+      <div style={{ ...A("slideUp","0.35s","0s"), fontSize:9, letterSpacing:3, textTransform:"uppercase", color:accent, fontWeight:700, marginBottom:6 }}>
+        {beat?.time}
+      </div>
+      <div style={{ ...A("slideUp","0.35s","0.08s"), fontSize:16, fontWeight:900, color:"#fff", lineHeight:1.25, marginBottom:4, ...GLOW }}>
+        {beat?.label}
+      </div>
+      <div style={{ ...A("slideUp","0.35s","0.18s"), ...BAR, marginTop:10 }} />
+    </div>
+  );
+}
+
 // ── 비트 시간 문자열 → 초 변환 ("0:03" → 3)
 function parseTimeToSec(str) {
   if (!str) return 0;
@@ -860,26 +959,8 @@ function StagePreview({ project, planData, motionData, onNext }) {
                       onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
                     />
 
-                    {/* 하단 그라디언트 + 비트 오버레이 */}
-                    <div style={{
-                      position: "absolute", bottom: 0, left: 0, right: 0,
-                      background: "linear-gradient(transparent, rgba(0,0,0,0.92))",
-                      padding: "32px 16px 20px",
-                      transition: "all 0.3s ease",
-                      fontFamily: "Noto Sans KR, Arial, sans-serif",
-                    }}>
-                      <p style={{ fontSize: 9, letterSpacing: 3, textTransform: "uppercase", color: ACCENT, fontWeight: 700, marginBottom: 5 }}>
-                        {activeBeat.time}
-                      </p>
-                      <p style={{ fontSize: 15, fontWeight: 900, color: "#fff", lineHeight: 1.25, marginBottom: 5, textShadow: `0 0 20px ${ACCENT}88` }}>
-                        {activeBeat.label}
-                      </p>
-                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>
-                        {activeBeat.desc}
-                      </p>
-                      {/* 액센트 바 */}
-                      <div style={{ width: 36, height: 2, borderRadius: 2, background: ACCENT, marginTop: 10, boxShadow: `0 0 8px ${ACCENT}` }} />
-                    </div>
+                    {/* 비트별 실제 모션 오버레이 */}
+                    <MotionOverlay beat={activeBeat} accent={ACCENT} beatKey={beatIdx} />
 
                     {/* 상단: 비트 카운터 */}
                     <div style={{ position: "absolute", top: 10, right: 12, fontSize: 9, color: "rgba(255,255,255,0.4)", fontFamily: "monospace", letterSpacing: 1 }}>
