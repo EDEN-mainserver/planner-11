@@ -57,7 +57,8 @@
     "api/payment/confirm.js":  { "maxDuration": 30, "memory": 512 },
     "api/payment/webhook.js":  { "maxDuration": 30, "memory": 512 },
     "api/subscription/status.js": { "maxDuration": 15, "memory": 256 },
-    "api/subscription/usage.js":  { "maxDuration": 15, "memory": 256 }
+    "api/subscription/usage.js":  { "maxDuration": 15, "memory": 256 },
+    "api/fullgraphic-plan.js":    { "maxDuration": 60, "memory": 512 }
   },
   "crons": [
     {

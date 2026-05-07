@@ -459,19 +459,60 @@ function StageApprove({ cutData, onNext }) {
 // ═══════════════════════════════════════════════════════════════════
 // STAGE 4 — 모션 설명
 // ═══════════════════════════════════════════════════════════════════
-function StageMotion({ onNext }) {
-  const [desc,  setDesc]  = useState("");
-  const [style, setStyle] = useState("corporate"); // corporate | hype | storytelling | social
+function StageMotion({ project, onNext }) {
+  // prompt 모드면 project.prompt를 초기값으로 사용
+  const [desc,    setDesc]    = useState(project?.prompt || "");
+  const [style,   setStyle]   = useState("social");
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
 
   const STYLES = [
-    { key: "corporate",    label: "기업·제품",  emoji: "🏢" },
+    { key: "corporate",    label: "기업·제품",     emoji: "🏢" },
     { key: "hype",         label: "하이프·에너지", emoji: "⚡" },
-    { key: "storytelling", label: "스토리텔링",  emoji: "📖" },
-    { key: "social",       label: "소셜·숏폼",  emoji: "📱" },
+    { key: "storytelling", label: "스토리텔링",    emoji: "📖" },
+    { key: "social",       label: "소셜·숏폼",     emoji: "📱" },
   ];
+
+  const isPromptMode = project?.mode === "prompt";
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/fullgraphic-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic:     project?.topic     || null,
+          sourceUrl: project?.sourceUrl || null,
+          prompt:    project?.prompt    || null,
+          motionDesc: desc.trim() || null,
+          style,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "플랜 생성 실패");
+      // beats를 바로 넘겨서 Stage 5에서 표시
+      onNext({ motionDesc: desc, style, beats: json.beats });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
+      {/* prompt 모드 안내 */}
+      {isPromptMode && (
+        <div className="rounded-xl bg-fuchsia-50 border border-fuchsia-200 px-4 py-3 text-xs text-fuchsia-700 space-y-1">
+          <p className="font-semibold">✍️ 프롬프트 기반 플랜 생성</p>
+          {project.topic     && <p>📌 주제: {project.topic}</p>}
+          {project.sourceUrl && <p>🔗 URL: <span className="font-mono break-all">{project.sourceUrl}</span></p>}
+          <p className="text-fuchsia-500">아래 설명을 보완하거나 그대로 생성하세요.</p>
+        </div>
+      )}
+
       {/* 스타일 선택 */}
       <div>
         <label className="block text-xs font-semibold text-gray-600 mb-2">영상 스타일</label>
@@ -490,7 +531,9 @@ function StageMotion({ onNext }) {
 
       {/* 모션 설명 텍스트 */}
       <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-2">모션 그래픽 설명 (자연어)</label>
+        <label className="block text-xs font-semibold text-gray-600 mb-2">
+          모션 그래픽 설명 <span className="text-gray-400 font-normal">(자연어)</span>
+        </label>
         <textarea
           value={desc}
           onChange={e => setDesc(e.target.value)}
@@ -503,25 +546,53 @@ function StageMotion({ onNext }) {
         </div>
       </div>
 
-      {/* 예시 프롬프트 */}
-      <div>
-        <p className="text-xs text-gray-400 mb-2">예시 프롬프트 (클릭하여 사용)</p>
-        <div className="space-y-2">
-          {MOTION_EXAMPLES.map((ex, i) => (
-            <button key={i} onClick={() => setDesc(ex)}
-              className="w-full text-left text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 hover:bg-purple-50 hover:border-purple-200 transition-colors leading-relaxed">
-              {ex}
-            </button>
-          ))}
+      {/* 예시 프롬프트 (prompt 모드가 아닐 때만) */}
+      {!isPromptMode && (
+        <div>
+          <p className="text-xs text-gray-400 mb-2">예시 프롬프트 (클릭하여 사용)</p>
+          <div className="space-y-2">
+            {MOTION_EXAMPLES.map((ex, i) => (
+              <button key={i} onClick={() => setDesc(ex)}
+                className="w-full text-left text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 hover:bg-purple-50 hover:border-purple-200 transition-colors leading-relaxed">
+                {ex}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      <button
-        disabled={!desc.trim()}
-        onClick={() => onNext({ motionDesc: desc, style })}
-        className="w-full py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-r from-fuchsia-500 to-pink-600 shadow-md hover:shadow-lg transition-all disabled:opacity-40">
-        플랜 생성 →
-      </button>
+      {/* 오류 */}
+      {error && (
+        <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-xs text-red-600">
+          ⚠ {error}
+        </div>
+      )}
+
+      {isPromptMode ? (
+        /* prompt 모드: Claude API로 beats 생성 */
+        <button
+          disabled={loading}
+          onClick={handleGenerate}
+          className="w-full py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-r from-fuchsia-500 to-pink-600 shadow-md hover:shadow-lg transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+          {loading ? (
+            <>
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              AI가 플랜 생성 중...
+            </>
+          ) : "✨ AI 플랜 생성 →"}
+        </button>
+      ) : (
+        /* upload 모드: 기존 흐름 */
+        <button
+          disabled={!desc.trim()}
+          onClick={() => onNext({ motionDesc: desc, style, beats: null })}
+          className="w-full py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-r from-fuchsia-500 to-pink-600 shadow-md hover:shadow-lg transition-all disabled:opacity-40">
+          플랜 생성 →
+        </button>
+      )}
     </div>
   );
 }
@@ -541,7 +612,8 @@ function defaultBeats(motionDesc) {
 }
 
 function StagePlan({ motionData, onNext }) {
-  const [beats,    setBeats]    = useState(() => defaultBeats(motionData.motionDesc));
+  // motionData.beats가 있으면 AI 생성 beats, 없으면 기본값
+  const [beats,    setBeats]    = useState(() => motionData?.beats?.length ? motionData.beats : defaultBeats(motionData?.motionDesc));
   const [editing,  setEditing]  = useState(null); // beat.id or null
   const [editText, setEditText] = useState("");
 
@@ -1277,7 +1349,11 @@ export default function FullGraphicWorkflow({ nasState, onGoToNas }) {
 
       <div className="max-w-xl mx-auto">
         {stage === 1 && (
-          <StageSetup onNext={data => { setProject(data); setStage(2); }} />
+          <StageSetup onNext={data => {
+            setProject(data);
+            // prompt 모드면 컷 편집·승인 건너뛰고 바로 모션 설명으로
+            setStage(data.mode === "prompt" ? 4 : 2);
+          }} />
         )}
         {stage === 2 && (
           <StageCut
@@ -1292,7 +1368,10 @@ export default function FullGraphicWorkflow({ nasState, onGoToNas }) {
           />
         )}
         {stage === 4 && (
-          <StageMotion onNext={data => { setMotionData(data); setStage(5); }} />
+          <StageMotion
+            project={project}
+            onNext={data => { setMotionData(data); setStage(5); }}
+          />
         )}
         {stage === 5 && (
           <StagePlan
