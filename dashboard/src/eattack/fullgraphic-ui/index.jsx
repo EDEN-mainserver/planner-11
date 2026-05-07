@@ -533,7 +533,7 @@ function StagePlan({ motionData, onNext }) {
 function StagePreview({ project, planData, onNext }) {
   const [generating, setGenerating] = useState(true);
   const [progress,   setProgress]   = useState(0);
-  const [iframeUrl,  setIframeUrl]  = useState(null);
+  const [previewReady, setPreviewReady] = useState(false);
   const [chatInput,  setChatInput]  = useState("");
   const [chatMsgs,   setChatMsgs]   = useState([]);
   const [chatLoading,setChatLoading]= useState(false);
@@ -547,7 +547,7 @@ function StagePreview({ project, planData, onNext }) {
         if (p >= 100) {
           clearInterval(interval);
           setGenerating(false);
-          setIframeUrl("http://localhost:3002");
+          setPreviewReady(true);
           return 100;
         }
         return Math.min(100, p + Math.random() * 8);
@@ -602,7 +602,7 @@ function StagePreview({ project, planData, onNext }) {
         </div>
       ) : (
         <>
-          {/* Studio 미리보기 iframe */}
+          {/* Studio 미리보기 — 로컬 전용 안내 */}
           <div className="border border-fuchsia-200 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between bg-gray-900 px-4 py-2">
               <div className="flex gap-1.5">
@@ -617,13 +617,21 @@ function StagePreview({ project, planData, onNext }) {
               <a href="http://localhost:3002" target="_blank" rel="noreferrer"
                 className="text-xs text-gray-400 hover:text-white transition-colors">↗ 새 탭</a>
             </div>
-            <iframe
-              src={iframeUrl}
-              className="w-full"
-              style={{ height: 280 }}
-              title="Hyperframes Studio"
-              sandbox="allow-scripts allow-same-origin allow-forms"
-            />
+            <div className="bg-gray-950 flex flex-col items-center justify-center gap-3 py-10 px-6 text-center" style={{ height: 280 }}>
+              <div className="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center text-2xl">🖥️</div>
+              <div>
+                <p className="text-sm font-semibold text-gray-200">Hyperframes Studio</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  미리보기는 로컬 환경에서만 동작합니다.<br/>
+                  로컬에서 <code className="bg-gray-800 px-1.5 py-0.5 rounded text-fuchsia-400 font-mono">npx hyperframes dev</code> 실행 후<br/>
+                  아래 링크로 직접 확인하세요.
+                </p>
+              </div>
+              <a href="http://localhost:3002" target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-semibold transition-colors">
+                localhost:3002 열기 ↗
+              </a>
+            </div>
           </div>
 
           {/* 반복 수정 채팅 */}
