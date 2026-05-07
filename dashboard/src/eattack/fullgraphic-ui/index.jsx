@@ -74,10 +74,16 @@ function StageIndicator({ current }) {
 // STAGE 1 — 프로젝트 설정
 // ═══════════════════════════════════════════════════════════════════
 function StageSetup({ onNext }) {
+  const [mode,        setMode]        = useState("upload"); // "upload" | "prompt"
   const [projectName, setProjectName] = useState("");
+  // 영상 업로드 모드
   const [videoFile,   setVideoFile]   = useState(null);
   const [dragging,    setDragging]    = useState(false);
   const inputRef = useRef();
+  // URL·주제·프롬프트 모드
+  const [url,     setUrl]     = useState("");
+  const [topic,   setTopic]   = useState("");
+  const [prompt,  setPrompt]  = useState("");
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -86,7 +92,25 @@ function StageSetup({ onNext }) {
     if (f && f.type.startsWith("video/")) setVideoFile(f);
   }, []);
 
-  const canNext = projectName.trim() && videoFile;
+  const canNext = projectName.trim() && (
+    mode === "upload" ? !!videoFile : !!(url.trim() || topic.trim() || prompt.trim())
+  );
+
+  const handleNext = () => {
+    onNext({
+      projectName: projectName.trim(),
+      videoFile:   mode === "upload" ? videoFile : null,
+      sourceUrl:   url.trim()    || null,
+      topic:       topic.trim()  || null,
+      prompt:      prompt.trim() || null,
+      mode,
+    });
+  };
+
+  const TABS = [
+    { key: "upload", label: "영상 업로드", icon: "🎬" },
+    { key: "prompt", label: "URL · 주제 · 프롬프트", icon: "✍️" },
+  ];
 
   return (
     <div className="space-y-5">
@@ -101,53 +125,127 @@ function StageSetup({ onNext }) {
         />
       </div>
 
-      {/* 영상 드롭존 */}
-      <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1.5">원본 영상 업로드</label>
-        <div
-          onDragOver={e => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => inputRef.current.click()}
-          className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all
-            ${dragging ? "border-fuchsia-400 bg-fuchsia-50" :
-              videoFile ? "border-purple-300 bg-purple-50" :
-                          "border-gray-200 hover:border-fuchsia-300 hover:bg-gray-50"}`}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept="video/*"
-            className="hidden"
-            onChange={e => { if (e.target.files[0]) setVideoFile(e.target.files[0]); }}
-          />
-          {videoFile ? (
-            <div className="space-y-1">
-              <div className="w-10 h-10 mx-auto rounded-xl bg-purple-100 flex items-center justify-center text-xl">🎬</div>
-              <p className="text-sm font-semibold text-purple-700">{videoFile.name}</p>
-              <p className="text-xs text-gray-400">{fmtBytes(videoFile.size)}</p>
-              <button
-                onClick={e => { e.stopPropagation(); setVideoFile(null); }}
-                className="text-xs text-red-400 hover:text-red-600 mt-1"
-              >✕ 파일 변경</button>
+      {/* 모드 탭 */}
+      <div className="flex rounded-xl border border-gray-200 overflow-hidden">
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setMode(t.key)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-all
+              ${mode === t.key
+                ? "bg-fuchsia-500 text-white"
+                : "bg-white text-gray-500 hover:bg-gray-50"}`}
+          >
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── 영상 업로드 모드 ── */}
+      {mode === "upload" && (
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">원본 영상 업로드</label>
+          <div
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => inputRef.current.click()}
+            className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all
+              ${dragging ? "border-fuchsia-400 bg-fuchsia-50" :
+                videoFile ? "border-purple-300 bg-purple-50" :
+                            "border-gray-200 hover:border-fuchsia-300 hover:bg-gray-50"}`}
+          >
+            <input
+              ref={inputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={e => { if (e.target.files[0]) setVideoFile(e.target.files[0]); }}
+            />
+            {videoFile ? (
+              <div className="space-y-1">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-purple-100 flex items-center justify-center text-xl">🎬</div>
+                <p className="text-sm font-semibold text-purple-700">{videoFile.name}</p>
+                <p className="text-xs text-gray-400">{fmtBytes(videoFile.size)}</p>
+                <button
+                  onClick={e => { e.stopPropagation(); setVideoFile(null); }}
+                  className="text-xs text-red-400 hover:text-red-600 mt-1"
+                >✕ 파일 변경</button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gray-100 flex items-center justify-center text-xl">📹</div>
+                <p className="text-sm text-gray-500">원본 영상을 여기에 드래그하거나 클릭해서 선택</p>
+                <p className="text-xs text-gray-400">MP4, MOV, AVI, MKV 지원</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── URL · 주제 · 프롬프트 모드 ── */}
+      {mode === "prompt" && (
+        <div className="space-y-4">
+          {/* URL */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">참고 URL <span className="text-gray-400 font-normal">(선택)</span></label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔗</span>
+              <input
+                type="url"
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                placeholder="https://example.com/product"
+                className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400"
+              />
             </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="w-10 h-10 mx-auto rounded-xl bg-gray-100 flex items-center justify-center text-xl">📹</div>
-              <p className="text-sm text-gray-500">원본 영상을 여기에 드래그하거나 클릭해서 선택</p>
-              <p className="text-xs text-gray-400">MP4, MOV, AVI, MKV 지원</p>
+            <p className="text-[11px] text-gray-400 mt-1">제품 페이지, 브랜드 사이트, 레퍼런스 영상 URL 등</p>
+          </div>
+
+          {/* 주제 */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">주제 <span className="text-gray-400 font-normal">(선택)</span></label>
+            <input
+              type="text"
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              placeholder="예: 신제품 런칭 홍보 · 브랜드 스토리 · 이벤트 안내"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400"
+            />
+          </div>
+
+          {/* 프롬프트 */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">프롬프트 <span className="text-gray-400 font-normal">(선택)</span></label>
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              placeholder={"예: 30초 세로형 숏폼 영상으로 만들어줘.\n크롬 그라디언트 타이틀로 시작하고, 핵심 기능 3가지를 슬라이드인으로 보여준 뒤\n마지막에 CTA 버튼으로 마무리해줘."}
+              rows={5}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400 resize-none"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">영상 스타일, 길이, 포함할 내용, 분위기 등 자유롭게 입력</p>
+          </div>
+
+          {/* 입력 요약 프리뷰 */}
+          {(url || topic || prompt) && (
+            <div className="rounded-xl bg-fuchsia-50 border border-fuchsia-100 p-3 space-y-1.5 text-xs text-fuchsia-700">
+              <p className="font-semibold text-fuchsia-600 mb-1">입력 요약</p>
+              {url    && <p>🔗 <span className="font-mono break-all">{url}</span></p>}
+              {topic  && <p>📌 주제: {topic}</p>}
+              {prompt && <p>✍️ 프롬프트: {prompt.slice(0, 60)}{prompt.length > 60 ? "…" : ""}</p>}
             </div>
           )}
         </div>
-      </div>
+      )}
 
       <button
         disabled={!canNext}
-        onClick={() => onNext({ projectName: projectName.trim(), videoFile })}
+        onClick={handleNext}
         className="w-full py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-r from-fuchsia-500 to-pink-600
           shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        컷 편집 시작 →
+        {mode === "upload" ? "컷 편집 시작 →" : "플랜 생성 시작 →"}
       </button>
     </div>
   );
