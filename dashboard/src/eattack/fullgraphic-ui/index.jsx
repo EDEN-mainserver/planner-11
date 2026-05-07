@@ -766,15 +766,23 @@ function StageRender({ project }) {
           <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-center space-y-3">
             <div className="w-12 h-12 mx-auto rounded-full bg-green-100 flex items-center justify-center text-2xl">✅</div>
             <div>
-              <p className="font-bold text-green-700">렌더 완료!</p>
+              <p className="font-bold text-green-700">렌더 시뮬레이션 완료</p>
               <p className="text-xs text-green-600 mt-1 font-mono">{outputPath}</p>
             </div>
+            <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-700 text-left space-y-1">
+              <p className="font-semibold">⚠ 현재는 데모 모드입니다</p>
+              <p>실제 영상 파일이 생성되지 않았습니다. Hyperframes 렌더 엔진 연동 후 실제 파일 다운로드 및 NAS 저장이 가능합니다.</p>
+            </div>
             <div className="flex gap-2 justify-center">
-              <button className="px-4 py-2 text-xs font-bold text-white bg-green-500 rounded-xl hover:bg-green-600 transition-colors">
-                📁 파일 열기
+              <button
+                onClick={() => alert("실제 렌더 엔진 연동 후 사용 가능합니다.\n현재는 데모 모드입니다.")}
+                className="px-4 py-2 text-xs font-bold text-gray-400 bg-gray-100 rounded-xl cursor-not-allowed border border-gray-200">
+                📁 파일 열기 (준비 중)
               </button>
-              <button className="px-4 py-2 text-xs font-bold text-green-700 border border-green-300 rounded-xl hover:bg-green-50 transition-colors">
-                📤 NAS에 저장
+              <button
+                onClick={() => alert("실제 렌더 엔진 연동 후 사용 가능합니다.\n현재는 데모 모드입니다.")}
+                className="px-4 py-2 text-xs font-bold text-gray-400 border border-gray-200 rounded-xl cursor-not-allowed">
+                📤 NAS에 저장 (준비 중)
               </button>
             </div>
           </div>
