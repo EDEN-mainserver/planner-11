@@ -9,6 +9,7 @@
 import { useState, useCallback, useEffect } from "react";
 import CommunityTab from "./community/index";
 import AutoEditTab from "./autoedit/index";
+import FullGraphicWorkflow from "./fullgraphic-ui/index";
 import { emitEAttackContext, onEAttackCommand } from "./eattackContext";
 import {
   getNasConfig,
@@ -833,25 +834,7 @@ function NasTab({ nasState, onConnect, onDisconnect }) {
 
 // ── 풀그래픽영상 탭 ───────────────────────────────────────────────
 function FullGraphicTab({ nasState, onGoToNas }) {
-  return (
-    <div>
-      <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-pink-600 flex items-center justify-center mb-5 shadow-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="13.5" cy="6.5" r=".5" fill="white"/><circle cx="17.5" cy="10.5" r=".5" fill="white"/>
-            <circle cx="8.5" cy="7.5" r=".5" fill="white"/><circle cx="6.5" cy="12.5" r=".5" fill="white"/>
-            <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
-          </svg>
-        </div>
-        <h4 className="text-base font-semibold text-gray-700 mb-2">풀그래픽영상</h4>
-        <p className="text-sm text-gray-400 max-w-xs">
-          텍스트와 이미지만 입력하면 AI가<br />모션그래픽 기반 풀그래픽 영상을 자동 생성합니다.<br />
-          <span className="text-fuchsia-500 font-medium">준비 중입니다</span>
-        </p>
-      </div>
-      <NasSaveFooter nasState={nasState} subfolder="풀그래픽" onGoToNas={onGoToNas} />
-    </div>
-  );
+  return <FullGraphicWorkflow nasState={nasState} onGoToNas={onGoToNas} />;
 }
 
 // ── 커뮤니티 영상 탭은 ./community/index.jsx 로 분리됨 ────────────
