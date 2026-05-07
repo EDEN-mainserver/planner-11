@@ -662,12 +662,21 @@ function StagePreview({ project, planData, onNext }) {
         </>
       )}
 
-      <button
-        disabled={generating}
-        onClick={onNext}
-        className="w-full py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-r from-fuchsia-500 to-pink-600 shadow-md hover:shadow-lg transition-all disabled:opacity-40">
-        확인 완료 — 최종 렌더로 →
-      </button>
+      <div className="flex gap-2">
+        {generating && (
+          <button
+            onClick={() => { setGenerating(false); setPreviewReady(true); setProgress(100); }}
+            className="flex-1 py-3 rounded-2xl text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition-all">
+            건너뛰기 →
+          </button>
+        )}
+        <button
+          disabled={generating}
+          onClick={onNext}
+          className="flex-1 py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-r from-fuchsia-500 to-pink-600 shadow-md hover:shadow-lg transition-all disabled:opacity-40">
+          확인 완료 — 최종 렌더로 →
+        </button>
+      </div>
     </div>
   );
 }
