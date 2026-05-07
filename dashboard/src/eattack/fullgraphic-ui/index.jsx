@@ -613,13 +613,14 @@ function defaultBeats(motionDesc) {
 
 function StagePlan({ motionData, onNext }) {
   // motionData.beats가 있으면 AI 생성 beats, 없으면 기본값
-  const [beats,    setBeats]    = useState(() => motionData?.beats?.length ? motionData.beats : defaultBeats(motionData?.motionDesc));
-  const [editing,  setEditing]  = useState(null); // beat.id or null
-  const [editText, setEditText] = useState("");
+  const [beats,     setBeats]     = useState(() => motionData?.beats?.length ? motionData.beats : defaultBeats(motionData?.motionDesc));
+  const [editing,   setEditing]   = useState(null); // beat.id or null
+  const [editLabel, setEditLabel] = useState("");
+  const [editDesc,  setEditDesc]  = useState("");
 
-  const startEdit = (b) => { setEditing(b.id); setEditText(b.desc); };
+  const startEdit = (b) => { setEditing(b.id); setEditLabel(b.label); setEditDesc(b.desc); };
   const saveEdit  = (id) => {
-    setBeats(prev => prev.map(b => b.id === id ? { ...b, desc: editText } : b));
+    setBeats(prev => prev.map(b => b.id === id ? { ...b, label: editLabel, desc: editDesc } : b));
     setEditing(null);
   };
 
@@ -658,30 +659,46 @@ function StagePlan({ motionData, onNext }) {
                 {b.keep && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 5l2.5 2.5L8.5 2" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>}
               </button>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs text-fuchsia-500 font-mono">{b.time}</span>
-                  <span className="text-xs font-semibold text-gray-700">{b.label}</span>
-                </div>
                 {editing === b.id ? (
-                  <div className="flex gap-2">
+                  /* ── 편집 모드 ── */
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-fuchsia-500 font-mono flex-shrink-0">{b.time}</span>
+                      <input
+                        value={editLabel}
+                        onChange={e => setEditLabel(e.target.value)}
+                        placeholder="비트 이름"
+                        className="flex-1 text-xs font-semibold border border-fuchsia-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
+                        autoFocus
+                      />
+                    </div>
                     <input
-                      value={editText}
-                      onChange={e => setEditText(e.target.value)}
+                      value={editDesc}
+                      onChange={e => setEditDesc(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && saveEdit(b.id)}
-                      className="flex-1 text-xs border border-fuchsia-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
-                      autoFocus
+                      placeholder="효과 설명"
+                      className="w-full text-xs border border-fuchsia-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-fuchsia-400 text-gray-600"
                     />
-                    <button onClick={() => saveEdit(b.id)}
-                      className="text-xs px-2 py-1 bg-fuchsia-500 text-white rounded-lg">저장</button>
-                    <button onClick={() => setEditing(null)}
-                      className="text-xs px-2 py-1 border border-gray-200 rounded-lg text-gray-500">취소</button>
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setEditing(null)}
+                        className="text-xs px-2 py-1 border border-gray-200 rounded-lg text-gray-500">취소</button>
+                      <button onClick={() => saveEdit(b.id)}
+                        className="text-xs px-2 py-1 bg-fuchsia-500 text-white rounded-lg">저장</button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs text-gray-500 leading-relaxed">{b.desc}</p>
-                    <button onClick={() => startEdit(b)}
-                      className="text-xs text-gray-400 hover:text-fuchsia-500 flex-shrink-0">✎</button>
-                  </div>
+                  /* ── 보기 모드 ── */
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs text-fuchsia-500 font-mono">{b.time}</span>
+                      <span className="text-xs font-semibold text-gray-700">{b.label}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs text-gray-500 leading-relaxed">{b.desc}</p>
+                      <button onClick={() => startEdit(b)}
+                        className="text-xs text-gray-400 hover:text-fuchsia-500 flex-shrink-0">✎</button>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
