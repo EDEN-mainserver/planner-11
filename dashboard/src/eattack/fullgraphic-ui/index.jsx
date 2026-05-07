@@ -527,10 +527,113 @@ function StagePlan({ motionData, onNext }) {
   );
 }
 
+// ── 비트 데이터로 인라인 HTML 컴포지션 생성 ──────────────────────
+function buildCompositionHTML(beats, style) {
+  const BEAT_DURATION = 3500; // ms per beat
+
+  const STYLES = {
+    corporate:    { bg: "#0d1117", accent: "#4f8ef7", sub: "#8ba3c7", title: "#ffffff", grad: "linear-gradient(135deg,#0d1117,#1a2332)" },
+    hype:         { bg: "#000000", accent: "#ff6b6b", sub: "#ffd93d", title: "#ffffff", grad: "linear-gradient(135deg,#0a0010,#1a0020)" },
+    storytelling: { bg: "#13100a", accent: "#f5c842", sub: "#c8a96e", title: "#fff8ee", grad: "linear-gradient(135deg,#13100a,#2a1f0f)" },
+    social:       { bg: "#0f0a1e", accent: "#c77dff", sub: "#e0aaff", title: "#ffffff", grad: "linear-gradient(135deg,#0f0a1e,#1a0a3e)" },
+  };
+  const s = STYLES[style] || STYLES.corporate;
+  const total = beats.length * BEAT_DURATION;
+
+  const keyframes = beats.map((b, i) => {
+    const start  = (i * BEAT_DURATION) / total * 100;
+    const fadeIn = start + (300 / total * 100);
+    const hold   = start + (BEAT_DURATION * 0.8 / total * 100);
+    const end    = start + (BEAT_DURATION / total * 100);
+    return `
+      @keyframes beat${i} {
+        0%,${start.toFixed(1)}%                          { opacity:0; transform:translateY(18px); }
+        ${fadeIn.toFixed(1)}%,${hold.toFixed(1)}%        { opacity:1; transform:translateY(0); }
+        ${end.toFixed(1)}%,100%                          { opacity:0; transform:translateY(-10px); }
+      }`;
+  }).join("\n");
+
+  const scenes = beats.map((b, i) => `
+    <div class="scene" style="animation:beat${i} ${total}ms ease forwards infinite;">
+      <div class="time">${b.time}</div>
+      <div class="label">${b.label}</div>
+      <div class="desc">${b.desc}</div>
+      <div class="bar"></div>
+    </div>`).join("\n");
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    width:100%;height:100%;
+    background:${s.grad};
+    font-family:'Noto Sans KR',sans-serif;
+    overflow:hidden;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .wrap{position:relative;width:100%;height:100%;}
+  /* 배경 그리드 */
+  .grid{
+    position:absolute;inset:0;
+    background-image:linear-gradient(${s.accent}18 1px,transparent 1px),
+                     linear-gradient(90deg,${s.accent}18 1px,transparent 1px);
+    background-size:40px 40px;
+  }
+  .scene{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:24px 28px;
+    text-align:center;
+    opacity:0;
+  }
+  .time{
+    font-size:11px;letter-spacing:3px;text-transform:uppercase;
+    color:${s.accent};opacity:0.8;margin-bottom:12px;
+    font-weight:700;
+  }
+  .label{
+    font-size:22px;font-weight:900;color:${s.title};
+    line-height:1.2;margin-bottom:10px;
+    text-shadow:0 0 30px ${s.accent}66;
+  }
+  .desc{
+    font-size:11px;color:${s.sub};line-height:1.6;
+    max-width:280px;
+  }
+  .bar{
+    width:48px;height:3px;border-radius:2px;
+    background:${s.accent};margin-top:16px;
+    box-shadow:0 0 12px ${s.accent};
+  }
+  /* 코너 데코 */
+  .corner{position:absolute;width:16px;height:16px;border-color:${s.accent};border-style:solid;opacity:0.5;}
+  .tl{top:12px;left:12px;border-width:2px 0 0 2px;}
+  .tr{top:12px;right:12px;border-width:2px 2px 0 0;}
+  .bl{bottom:12px;left:12px;border-width:0 0 2px 2px;}
+  .br{bottom:12px;right:12px;border-width:0 2px 2px 0;}
+  ${keyframes}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="grid"></div>
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+  ${scenes}
+</div>
+</body>
+</html>`;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // STAGE 6 — 미리보기 & 반복 수정
 // ═══════════════════════════════════════════════════════════════════
-function StagePreview({ project, planData, onNext }) {
+function StagePreview({ project, planData, motionData, onNext }) {
   const [generating, setGenerating] = useState(true);
   const [progress,   setProgress]   = useState(0);
   const [previewReady, setPreviewReady] = useState(false);
@@ -538,6 +641,15 @@ function StagePreview({ project, planData, onNext }) {
   const [chatMsgs,   setChatMsgs]   = useState([]);
   const [chatLoading,setChatLoading]= useState(false);
   const bottomRef = useRef();
+
+  // planData가 없을 때 기본 beats 사용
+  const beats = planData?.beats || [
+    { time: "0:00–0:05", label: "오프닝", desc: "타이틀 화면" },
+    { time: "0:05–0:15", label: "핵심 메시지", desc: "주요 내용 전달" },
+    { time: "0:15–0:25", label: "마무리", desc: "아웃트로" },
+  ];
+  const style = motionData?.style || "corporate";
+  const compositionHTML = buildCompositionHTML(beats, style);
 
   // 생성 진행 시뮬레이션
   useEffect(() => {
@@ -602,25 +714,24 @@ function StagePreview({ project, planData, onNext }) {
         </div>
       ) : (
         <>
-          {/* Studio 미리보기 — 준비 중 안내 */}
-          <div className="border border-gray-200 rounded-2xl overflow-hidden">
-            <div className="bg-gray-50 border-b border-gray-100 px-4 py-2.5 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-amber-400" />
-              <p className="text-xs font-medium text-gray-500">미리보기 준비 중</p>
-            </div>
-            <div className="flex flex-col items-center justify-center gap-4 py-12 px-6 text-center bg-white" style={{ height: 280 }}>
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-fuchsia-100 to-pink-100 flex items-center justify-center text-3xl">🎨</div>
-              <div>
-                <p className="text-sm font-bold text-gray-700">컴포지션 생성 완료</p>
-                <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
-                  플랜 기반으로 모션 그래픽 컴포지션을 생성했습니다.<br/>
-                  실시간 미리보기 기능은 준비 중입니다.
-                </p>
+          {/* 인라인 컴포지션 미리보기 */}
+          <div className="border border-fuchsia-200 rounded-2xl overflow-hidden shadow-md">
+            <div className="flex items-center justify-between bg-gray-900 px-4 py-2">
+              <div className="flex gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <div className="w-3 h-3 rounded-full bg-green-500" />
               </div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-xs font-medium text-amber-600">
-                Coming soon — Hyperframes Studio 연동 예정
-              </div>
+              <span className="text-gray-400 text-xs font-mono">composition-preview · {beats.length} beats</span>
+              <span className="text-xs text-fuchsia-400 font-medium">{style}</span>
             </div>
+            <iframe
+              srcDoc={compositionHTML}
+              className="w-full"
+              style={{ height: 320, border: "none", display: "block" }}
+              title="컴포지션 미리보기"
+              sandbox="allow-scripts"
+            />
           </div>
 
           {/* 반복 수정 채팅 */}
@@ -842,6 +953,7 @@ export default function FullGraphicWorkflow({ nasState, onGoToNas }) {
           <StagePreview
             project={project}
             planData={planData}
+            motionData={motionData}
             onNext={() => setStage(7)}
           />
         )}
