@@ -26,11 +26,74 @@ const STAGES = [
   { id: 7, key: "render",   label: "최종 렌더",      icon: "🎬" },
 ];
 
-// ── 모션 예시 프롬프트 ────────────────────────────────────────────
-const MOTION_EXAMPLES = [
-  "검은 배경에서 크롬 그라디언트 타이틀이 whip-pan으로 등장하고, 3개의 핵심 키워드가 순차적으로 팝인되는 30초 인트로",
-  "제품 이미지가 중앙에서 줌인되며 왼쪽에 가격·스펙 텍스트가 슬라이드인, 마지막에 CTA 버튼 펄스 효과",
-  "상단 로고 리빌 → 중간 풀스크린 배경 영상 + 자막 오버레이 → 하단 소셜 팔로우 카드 순서의 세로 영상",
+// ── 모션 예시 프롬프트 카테고리별 ────────────────────────────────
+const MOTION_PRESETS = [
+  {
+    category: "인트로 / 오프닝",
+    icon: "🎬",
+    items: [
+      "검은 배경에서 크롬 그라디언트 타이틀이 whip-pan으로 등장하고, 3개의 핵심 키워드가 순차적으로 팝인되는 30초 인트로",
+      "글리치 효과로 로고가 깨졌다 복원되며 등장, 배경은 노이즈 텍스처 + 스캔라인 오버레이",
+      "타이틀이 아래에서 위로 슬라이드업되며 등장, 배경은 시네마틱 블러 + 렌즈플레어",
+      "숫자 카운트다운 3·2·1 후 메인 타이틀 팝인, 배경 파티클 폭발 효과",
+      "화면이 세로로 쪼개지며 왼쪽·오른쪽에서 동시에 타이틀 슬라이드인",
+    ],
+  },
+  {
+    category: "제품 / 서비스 소개",
+    icon: "📦",
+    items: [
+      "제품 이미지가 중앙에서 줌인되며 왼쪽에 가격·스펙 텍스트가 슬라이드인, 마지막에 CTA 버튼 펄스 효과",
+      "3개 핵심 기능이 아이콘 + 텍스트로 순차 팝인, 각 기능 사이에 0.3초 딜레이",
+      "Before / After 화면 분할 슬라이드, 왼쪽 비포 오른쪽 애프터 동시 등장",
+      "제품 스펙을 숫자 카운트업 애니메이션으로 표시, 배경은 그리드 오버레이",
+      "스크롤 틱톡 스타일 — 텍스트 카드가 위에서 아래로 흘러내리며 기능 나열",
+    ],
+  },
+  {
+    category: "SNS / 숏폼",
+    icon: "📱",
+    items: [
+      "상단 로고 리빌 → 중간 풀스크린 배경 영상 + 자막 오버레이 → 하단 소셜 팔로우 카드 순서의 세로 영상",
+      "릴스 스타일 — 훅 문장 중앙 팝인 → 3초 유지 → 본문 텍스트 슬라이드업 → CTA 펄스",
+      "텍스트 타이핑 효과로 한 글자씩 등장, 배경은 그라디언트 컬러 플로우",
+      "Instagram 스토리 스타일 — 상단 진행바 + 중앙 이미지 페이드인 + 하단 스와이프 유도",
+      "댓글 반응 카드가 화면 아래서 팝업되며 소셜 증거 표시, 배경 흐릿한 영상",
+    ],
+  },
+  {
+    category: "정보 전달 / 교육",
+    icon: "📊",
+    items: [
+      "단계별 번호 1·2·3이 왼쪽에서 순차 슬라이드인, 오른쪽 설명 텍스트는 페이드인",
+      "그래프·차트가 0%에서 목표값까지 애니메이션 드로잉, 수치 카운트업 병행",
+      "Q&A 형식 — 질문 팝인 → 2초 유지 → 답변 슬라이드업, 반복 3회",
+      "타임라인 수평 스크롤 — 날짜·이벤트가 왼쪽에서 오른쪽으로 순차 등장",
+      "비교표 — 두 컬럼이 동시에 위에서 내려오며 항목별 체크 아이콘 팝인",
+    ],
+  },
+  {
+    category: "브랜드 / 감성",
+    icon: "✨",
+    items: [
+      "슬로우모션 영상 위에 얇은 세리프 폰트 가사 자막, 하단 로고 페이드인",
+      "필름 그레인 + 빈티지 컬러그레이딩, 타이틀은 손글씨 느낌 폰트로 나타남",
+      "황금빛 파티클이 흩날리며 럭셔리 로고 리빌, 배경 딥 블랙",
+      "자연 영상 B-롤 위에 미니멀 흰 텍스트 오버레이, 여백 강조한 고급 무드",
+      "네온 컬러 아웃라인 텍스트 글리치 효과, 사이버펑크 그리드 배경",
+    ],
+  },
+  {
+    category: "아웃트로 / CTA",
+    icon: "🎯",
+    items: [
+      "로고 페이드아웃 후 구독·팔로우 버튼 펄스, 소셜 아이콘 순차 팝인",
+      "화면 전체 CTA 버튼이 중앙에서 줌인 + 펄스, 배경 블러 처리",
+      "링크·QR코드 슬라이드인, 손가락 클릭 애니메이션 아이콘 반복",
+      "엔딩 카드 — 채널 로고 중앙, 추천 영상 썸네일 좌우 슬라이드인",
+      "카운트다운 타이머 원형 프로그레스바 + '지금 바로' 텍스트 펄스",
+    ],
+  },
 ];
 
 // ── 유틸 ─────────────────────────────────────────────────────────
@@ -456,6 +519,48 @@ function StageApprove({ cutData, onNext }) {
   );
 }
 
+// ── 모션 프리셋 피커 ─────────────────────────────────────────────
+function MotionPresetPicker({ onSelect }) {
+  const [openCat, setOpenCat] = useState(null);
+
+  return (
+    <div>
+      <p className="text-xs text-gray-400 mb-2">모션 프리셋 <span className="text-gray-300">(카테고리 선택 후 클릭하여 적용)</span></p>
+      <div className="space-y-1.5">
+        {MOTION_PRESETS.map((cat) => (
+          <div key={cat.category} className="border border-gray-200 rounded-xl overflow-hidden">
+            {/* 카테고리 헤더 */}
+            <button
+              onClick={() => setOpenCat(openCat === cat.category ? null : cat.category)}
+              className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 hover:bg-purple-50 transition-colors text-left"
+            >
+              <span className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                <span>{cat.icon}</span>{cat.category}
+              </span>
+              <span className="text-gray-400 text-xs">{openCat === cat.category ? "▲" : "▼"}</span>
+            </button>
+
+            {/* 프리셋 목록 */}
+            {openCat === cat.category && (
+              <div className="divide-y divide-gray-100">
+                {cat.items.map((item, i) => (
+                  <button
+                    key={i}
+                    onClick={() => onSelect(item)}
+                    className="w-full text-left text-xs text-gray-600 px-3 py-2.5 hover:bg-fuchsia-50 hover:text-fuchsia-700 transition-colors leading-relaxed"
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // STAGE 4 — 모션 설명
 // ═══════════════════════════════════════════════════════════════════
@@ -546,19 +651,9 @@ function StageMotion({ project, onNext }) {
         </div>
       </div>
 
-      {/* 예시 프롬프트 (prompt 모드가 아닐 때만) */}
+      {/* 모션 프리셋 (prompt 모드가 아닐 때만) */}
       {!isPromptMode && (
-        <div>
-          <p className="text-xs text-gray-400 mb-2">예시 프롬프트 (클릭하여 사용)</p>
-          <div className="space-y-2">
-            {MOTION_EXAMPLES.map((ex, i) => (
-              <button key={i} onClick={() => setDesc(ex)}
-                className="w-full text-left text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 hover:bg-purple-50 hover:border-purple-200 transition-colors leading-relaxed">
-                {ex}
-              </button>
-            ))}
-          </div>
-        </div>
+        <MotionPresetPicker onSelect={setDesc} />
       )}
 
       {/* 오류 */}
