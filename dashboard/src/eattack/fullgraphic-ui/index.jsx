@@ -796,24 +796,27 @@ function StagePreview({ project, planData, motionData, onNext }) {
         </div>
       ) : (
         <>
-          {/* 인라인 컴포지션 미리보기 */}
-          <div className="border border-fuchsia-200 rounded-2xl overflow-hidden shadow-md">
+          {/* 인라인 컴포지션 미리보기 — 9:16 */}
+          <div className="rounded-2xl overflow-hidden border border-fuchsia-200 shadow-md bg-gray-950">
+            {/* 상단 바 */}
             <div className="flex items-center justify-between bg-gray-900 px-4 py-2">
               <div className="flex gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-red-500" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
                 <div className="w-3 h-3 rounded-full bg-green-500" />
               </div>
-              <span className="text-gray-400 text-xs font-mono">composition-preview · {beats.length} beats</span>
+              <span className="text-gray-400 text-xs font-mono">9:16 · {beats.length} beats</span>
               <span className="text-xs text-fuchsia-400 font-medium">{style}</span>
             </div>
-            <iframe
-              srcDoc={compositionHTML}
-              className="w-full"
-              style={{ height: 380, border: "none", display: "block" }}
-              title="컴포지션 미리보기"
-              sandbox="allow-scripts"
-            />
+            {/* 9:16 iframe — 중앙 정렬 */}
+            <div className="flex justify-center items-center py-4 bg-gray-950">
+              <iframe
+                srcDoc={compositionHTML}
+                style={{ width: 270, height: 480, border: "none", display: "block", borderRadius: 12, overflow: "hidden" }}
+                title="컴포지션 미리보기"
+                sandbox="allow-scripts"
+              />
+            </div>
           </div>
 
           {/* 반복 수정 채팅 */}
