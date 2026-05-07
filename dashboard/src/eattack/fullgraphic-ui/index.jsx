@@ -715,44 +715,76 @@ html,body{width:100%;height:100%;overflow:hidden;background:${s.bg1};}
 // ═══════════════════════════════════════════════════════════════════
 // STAGE 6 — 미리보기 & 반복 수정
 // ═══════════════════════════════════════════════════════════════════
+// ── 비트 시간 문자열 → 초 변환 ("0:03" → 3)
+function parseTimeToSec(str) {
+  if (!str) return 0;
+  const m = str.match(/(\d+):(\d+)/);
+  return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : 0;
+}
+
 function StagePreview({ project, planData, motionData, onNext }) {
-  const [generating, setGenerating] = useState(true);
-  const [progress,   setProgress]   = useState(0);
-  const [previewReady, setPreviewReady] = useState(false);
-  const [chatInput,  setChatInput]  = useState("");
-  const [chatMsgs,   setChatMsgs]   = useState([]);
-  const [chatLoading,setChatLoading]= useState(false);
+  const videoRef  = useRef();
   const bottomRef = useRef();
 
-  // planData가 없을 때 기본 beats 사용
-  const beats = planData?.beats || [
-    { time: "0:00–0:05", label: "오프닝", desc: "타이틀 화면" },
+  const [generating,   setGenerating]   = useState(true);
+  const [progress,     setProgress]     = useState(0);
+  const [videoUrl,     setVideoUrl]     = useState(null);
+  const [currentTime,  setCurrentTime]  = useState(0);
+  const [duration,     setDuration]     = useState(0);
+  const [beatIdx,      setBeatIdx]      = useState(0);
+  const [chatInput,    setChatInput]    = useState("");
+  const [chatMsgs,     setChatMsgs]     = useState([]);
+  const [chatLoading,  setChatLoading]  = useState(false);
+
+  const beats   = planData?.beats || [
+    { time: "0:00–0:05", label: "오프닝",     desc: "타이틀 화면" },
     { time: "0:05–0:15", label: "핵심 메시지", desc: "주요 내용 전달" },
-    { time: "0:15–0:25", label: "마무리", desc: "아웃트로" },
+    { time: "0:15–0:25", label: "마무리",     desc: "아웃트로" },
   ];
-  const style = motionData?.style || "corporate";
-  const compositionHTML = buildCompositionHTML(beats, style);
+  const style    = motionData?.style || "corporate";
+  const hasVideo = !!project?.videoFile;
+
+  // 업로드 영상 blob URL 생성
+  useEffect(() => {
+    if (!project?.videoFile) return;
+    const url = URL.createObjectURL(project.videoFile);
+    setVideoUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, []);
+
+  // 영상 없을 때 fallback: 캔버스 애니메이션
+  const compositionHTML = !hasVideo ? buildCompositionHTML(beats, style) : null;
+
+  // 스타일별 accent 색상
+  const ACCENT = { corporate:"#4f8ef7", hype:"#ff4466", storytelling:"#f5c842", social:"#c77dff" }[style] || "#4f8ef7";
 
   // 생성 진행 시뮬레이션
   useEffect(() => {
     if (!generating) return;
     const interval = setInterval(() => {
       setProgress(p => {
-        if (p >= 100) {
-          clearInterval(interval);
-          setGenerating(false);
-          setPreviewReady(true);
-          return 100;
-        }
+        if (p >= 100) { clearInterval(interval); setGenerating(false); return 100; }
         return Math.min(100, p + Math.random() * 8);
       });
     }, 200);
     return () => clearInterval(interval);
   }, [generating]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMsgs]);
+  // 영상 재생 시간 → 현재 비트 계산
+  const onTimeUpdate = () => {
+    const t = videoRef.current?.currentTime || 0;
+    setCurrentTime(t);
+    for (let i = 0; i < beats.length; i++) {
+      const parts = (beats[i].time || "").split("–");
+      const s = parseTimeToSec(parts[0]);
+      const e = parseTimeToSec(parts[1]) || s + 5;
+      if (t >= s && t < e) { setBeatIdx(i); return; }
+    }
+    // 범위 밖이면 비율로 계산
+    setBeatIdx(Math.floor((t / (duration || 1)) * beats.length) % beats.length);
+  };
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMsgs]);
 
   const sendChat = async () => {
     if (!chatInput.trim() || chatLoading) return;
@@ -763,10 +795,13 @@ function StagePreview({ project, planData, motionData, onNext }) {
     await new Promise(r => setTimeout(r, 1400));
     setChatMsgs(prev => [...prev, {
       role: "assistant",
-      text: `적용했습니다. 타이틀 색상·애니메이션을 수정하고 Hyperframes를 다시 빌드합니다. localhost:3002에서 변경사항을 확인하세요.`,
+      text: "적용했습니다. 오버레이 스타일을 수정했습니다.",
     }]);
     setChatLoading(false);
   };
+
+  const activeBeat = beats[beatIdx] || beats[0];
+  const vidPct = duration ? (currentTime / duration) * 100 : 0;
 
   return (
     <div className="space-y-4">
@@ -778,7 +813,7 @@ function StagePreview({ project, planData, motionData, onNext }) {
               <span className="text-white text-sm animate-spin inline-block">⚙</span>
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-700">Hyperframes 컴포지션 생성 중...</p>
+              <p className="text-sm font-semibold text-gray-700">컴포지션 생성 중...</p>
               <p className="text-xs text-gray-400">{Math.round(progress)}% 완료</p>
             </div>
           </div>
@@ -787,35 +822,85 @@ function StagePreview({ project, planData, motionData, onNext }) {
               style={{ width: `${progress}%` }} />
           </div>
           <div className="text-xs text-gray-400 space-y-0.5">
-            {progress > 10  && <p className="text-green-600">✓ GSAP 타임라인 생성</p>}
-            {progress > 35  && <p className="text-green-600">✓ 컴포지션 HTML 빌드</p>}
-            {progress > 60  && <p className="text-green-600">✓ 에셋 최적화</p>}
-            {progress > 80  && <p className="text-green-600">✓ Studio 서버 시작</p>}
-            {progress < 100 && <p className="text-gray-400">… 빌드 완료 대기 중</p>}
+            {progress > 10 && <p className="text-green-600">✓ 비트 타임라인 파싱</p>}
+            {progress > 35 && <p className="text-green-600">✓ 오버레이 레이어 빌드</p>}
+            {progress > 60 && <p className="text-green-600">✓ 스타일 적용</p>}
+            {progress > 80 && <p className="text-green-600">✓ 미리보기 준비 완료</p>}
+            {progress < 100 && <p className="text-gray-400">… 완료 대기 중</p>}
           </div>
         </div>
       ) : (
         <>
-          {/* 인라인 컴포지션 미리보기 — 9:16 */}
+          {/* ── 9:16 미리보기 ── */}
           <div className="rounded-2xl overflow-hidden border border-fuchsia-200 shadow-md bg-gray-950">
-            {/* 상단 바 */}
             <div className="flex items-center justify-between bg-gray-900 px-4 py-2">
               <div className="flex gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-red-500" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
                 <div className="w-3 h-3 rounded-full bg-green-500" />
               </div>
-              <span className="text-gray-400 text-xs font-mono">9:16 · {beats.length} beats</span>
-              <span className="text-xs text-fuchsia-400 font-medium">{style}</span>
+              <span className="text-gray-400 text-xs font-mono">
+                9:16 · {beats.length} beats{hasVideo ? " · " + (project.videoFile?.name || "") : " · demo"}
+              </span>
+              <span className="text-xs font-medium" style={{ color: ACCENT }}>{style}</span>
             </div>
-            {/* 9:16 iframe — 중앙 정렬 */}
+
             <div className="flex justify-center items-center py-4 bg-gray-950">
-              <iframe
-                srcDoc={compositionHTML}
-                style={{ width: 270, height: 480, border: "none", display: "block", borderRadius: 12, overflow: "hidden" }}
-                title="컴포지션 미리보기"
-                sandbox="allow-scripts"
-              />
+              <div style={{ width: 270, height: 480, position: "relative", borderRadius: 12, overflow: "hidden", background: "#000", flexShrink: 0 }}>
+
+                {hasVideo ? (
+                  <>
+                    {/* 실제 업로드 영상 */}
+                    <video
+                      ref={videoRef}
+                      src={videoUrl}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      autoPlay loop muted playsInline
+                      onTimeUpdate={onTimeUpdate}
+                      onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+                    />
+
+                    {/* 하단 그라디언트 + 비트 오버레이 */}
+                    <div style={{
+                      position: "absolute", bottom: 0, left: 0, right: 0,
+                      background: "linear-gradient(transparent, rgba(0,0,0,0.92))",
+                      padding: "32px 16px 20px",
+                      transition: "all 0.3s ease",
+                      fontFamily: "Noto Sans KR, Arial, sans-serif",
+                    }}>
+                      <p style={{ fontSize: 9, letterSpacing: 3, textTransform: "uppercase", color: ACCENT, fontWeight: 700, marginBottom: 5 }}>
+                        {activeBeat.time}
+                      </p>
+                      <p style={{ fontSize: 15, fontWeight: 900, color: "#fff", lineHeight: 1.25, marginBottom: 5, textShadow: `0 0 20px ${ACCENT}88` }}>
+                        {activeBeat.label}
+                      </p>
+                      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>
+                        {activeBeat.desc}
+                      </p>
+                      {/* 액센트 바 */}
+                      <div style={{ width: 36, height: 2, borderRadius: 2, background: ACCENT, marginTop: 10, boxShadow: `0 0 8px ${ACCENT}` }} />
+                    </div>
+
+                    {/* 상단: 비트 카운터 */}
+                    <div style={{ position: "absolute", top: 10, right: 12, fontSize: 9, color: "rgba(255,255,255,0.4)", fontFamily: "monospace", letterSpacing: 1 }}>
+                      {beatIdx + 1} / {beats.length}
+                    </div>
+
+                    {/* 하단 영상 진행 바 */}
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.1)" }}>
+                      <div style={{ height: "100%", background: ACCENT, width: `${vidPct}%`, transition: "width 0.2s linear", boxShadow: `0 0 6px ${ACCENT}` }} />
+                    </div>
+                  </>
+                ) : (
+                  /* 영상 없을 때: 캔버스 애니메이션 fallback */
+                  <iframe
+                    srcDoc={compositionHTML}
+                    style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+                    title="컴포지션 미리보기"
+                    sandbox="allow-scripts"
+                  />
+                )}
+              </div>
             </div>
           </div>
 
