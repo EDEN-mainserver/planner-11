@@ -529,37 +529,19 @@ function StagePlan({ motionData, onNext }) {
 
 // ── 비트 데이터로 인라인 HTML 컴포지션 생성 ──────────────────────
 function buildCompositionHTML(beats, style) {
-  const BEAT_DURATION = 3500; // ms per beat
-
   const STYLES = {
-    corporate:    { bg: "#0d1117", accent: "#4f8ef7", sub: "#8ba3c7", title: "#ffffff", grad: "linear-gradient(135deg,#0d1117,#1a2332)" },
-    hype:         { bg: "#000000", accent: "#ff6b6b", sub: "#ffd93d", title: "#ffffff", grad: "linear-gradient(135deg,#0a0010,#1a0020)" },
-    storytelling: { bg: "#13100a", accent: "#f5c842", sub: "#c8a96e", title: "#fff8ee", grad: "linear-gradient(135deg,#13100a,#2a1f0f)" },
-    social:       { bg: "#0f0a1e", accent: "#c77dff", sub: "#e0aaff", title: "#ffffff", grad: "linear-gradient(135deg,#0f0a1e,#1a0a3e)" },
+    corporate:    { accent: "#4f8ef7", sub: "#8ba3c7", title: "#ffffff", grad: "linear-gradient(135deg,#0d1117 0%,#1a2332 100%)" },
+    hype:         { accent: "#ff6b6b", sub: "#ffd93d", title: "#ffffff", grad: "linear-gradient(135deg,#0a0010 0%,#1a0020 100%)" },
+    storytelling: { accent: "#f5c842", sub: "#c8a96e", title: "#fff8ee", grad: "linear-gradient(135deg,#13100a 0%,#2a1f0f 100%)" },
+    social:       { accent: "#c77dff", sub: "#e0aaff", title: "#ffffff", grad: "linear-gradient(135deg,#0f0a1e 0%,#1a0a3e 100%)" },
   };
   const s = STYLES[style] || STYLES.corporate;
-  const total = beats.length * BEAT_DURATION;
 
-  const keyframes = beats.map((b, i) => {
-    const start  = (i * BEAT_DURATION) / total * 100;
-    const fadeIn = start + (300 / total * 100);
-    const hold   = start + (BEAT_DURATION * 0.8 / total * 100);
-    const end    = start + (BEAT_DURATION / total * 100);
-    return `
-      @keyframes beat${i} {
-        0%,${start.toFixed(1)}%                          { opacity:0; transform:translateY(18px); }
-        ${fadeIn.toFixed(1)}%,${hold.toFixed(1)}%        { opacity:1; transform:translateY(0); }
-        ${end.toFixed(1)}%,100%                          { opacity:0; transform:translateY(-10px); }
-      }`;
-  }).join("\n");
-
-  const scenes = beats.map((b, i) => `
-    <div class="scene" style="animation:beat${i} ${total}ms ease forwards infinite;">
-      <div class="time">${b.time}</div>
-      <div class="label">${b.label}</div>
-      <div class="desc">${b.desc}</div>
-      <div class="bar"></div>
-    </div>`).join("\n");
+  const scenesJSON = JSON.stringify(beats.map(b => ({
+    time:  b.time  || "",
+    label: b.label || "",
+    desc:  b.desc  || "",
+  })));
 
   return `<!DOCTYPE html>
 <html>
@@ -567,65 +549,130 @@ function buildCompositionHTML(beats, style) {
 <meta charset="utf-8"/>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;}
   body{
-    width:100%;height:100%;
     background:${s.grad};
-    font-family:'Noto Sans KR',sans-serif;
+    font-family:'Noto Sans KR',Arial,sans-serif;
     overflow:hidden;
+  }
+  .wrap{
+    position:relative;
+    width:100%;height:100vh;
     display:flex;align-items:center;justify-content:center;
   }
-  .wrap{position:relative;width:100%;height:100%;}
   /* 배경 그리드 */
   .grid{
-    position:absolute;inset:0;
-    background-image:linear-gradient(${s.accent}18 1px,transparent 1px),
-                     linear-gradient(90deg,${s.accent}18 1px,transparent 1px);
+    position:absolute;inset:0;pointer-events:none;
+    background-image:
+      linear-gradient(${s.accent}1a 1px,transparent 1px),
+      linear-gradient(90deg,${s.accent}1a 1px,transparent 1px);
     background-size:40px 40px;
   }
-  .scene{
-    position:absolute;inset:0;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    padding:24px 28px;
-    text-align:center;
-    opacity:0;
-  }
-  .time{
-    font-size:11px;letter-spacing:3px;text-transform:uppercase;
-    color:${s.accent};opacity:0.8;margin-bottom:12px;
-    font-weight:700;
-  }
-  .label{
-    font-size:22px;font-weight:900;color:${s.title};
-    line-height:1.2;margin-bottom:10px;
-    text-shadow:0 0 30px ${s.accent}66;
-  }
-  .desc{
-    font-size:11px;color:${s.sub};line-height:1.6;
-    max-width:280px;
-  }
-  .bar{
-    width:48px;height:3px;border-radius:2px;
-    background:${s.accent};margin-top:16px;
-    box-shadow:0 0 12px ${s.accent};
-  }
   /* 코너 데코 */
-  .corner{position:absolute;width:16px;height:16px;border-color:${s.accent};border-style:solid;opacity:0.5;}
-  .tl{top:12px;left:12px;border-width:2px 0 0 2px;}
-  .tr{top:12px;right:12px;border-width:2px 2px 0 0;}
-  .bl{bottom:12px;left:12px;border-width:0 0 2px 2px;}
-  .br{bottom:12px;right:12px;border-width:0 2px 2px 0;}
-  ${keyframes}
+  .corner{position:absolute;width:18px;height:18px;border-color:${s.accent};border-style:solid;opacity:0.4;}
+  .tl{top:14px;left:14px;border-width:2px 0 0 2px;}
+  .tr{top:14px;right:14px;border-width:2px 2px 0 0;}
+  .bl{bottom:14px;left:14px;border-width:0 0 2px 2px;}
+  .br{bottom:14px;right:14px;border-width:0 2px 2px 0;}
+  /* 진행 바 */
+  #progress-bar{
+    position:absolute;bottom:0;left:0;height:3px;
+    background:${s.accent};box-shadow:0 0 8px ${s.accent};
+    transition:width 0.1s linear;
+  }
+  /* 슬라이드 */
+  .slide{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    padding:28px 32px;text-align:center;
+    opacity:0;
+    transform:translateY(14px);
+    transition:opacity 0.4s ease,transform 0.4s ease;
+    pointer-events:none;
+  }
+  .slide.active{opacity:1;transform:translateY(0);}
+  .s-time{
+    font-size:10px;letter-spacing:3px;text-transform:uppercase;
+    color:${s.accent};font-weight:700;margin-bottom:14px;opacity:0.9;
+  }
+  .s-label{
+    font-size:20px;font-weight:900;color:${s.title};
+    line-height:1.25;margin-bottom:10px;
+    text-shadow:0 0 24px ${s.accent}55;
+  }
+  .s-desc{
+    font-size:11px;color:${s.sub};line-height:1.65;max-width:280px;
+  }
+  .s-bar{
+    width:44px;height:3px;border-radius:2px;margin-top:18px;
+    background:${s.accent};box-shadow:0 0 10px ${s.accent};
+  }
+  /* 슬라이드 카운터 */
+  #counter{
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    font-size:9px;color:${s.accent};opacity:0.5;letter-spacing:2px;
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="grid"></div>
-  <div class="corner tl"></div>
-  <div class="corner tr"></div>
-  <div class="corner bl"></div>
-  <div class="corner br"></div>
-  ${scenes}
+  <div class="corner tl"></div><div class="corner tr"></div>
+  <div class="corner bl"></div><div class="corner br"></div>
+  <div id="counter"></div>
+  <div id="slides"></div>
+  <div id="progress-bar" style="width:0%"></div>
 </div>
+<script>
+(function(){
+  var beats = ${scenesJSON};
+  var DURATION = 3200;
+  var container = document.getElementById('slides');
+  var counter   = document.getElementById('counter');
+  var bar       = document.getElementById('progress-bar');
+  var current   = 0;
+  var startTime = null;
+  var slides    = [];
+
+  // 슬라이드 DOM 생성
+  beats.forEach(function(b, i){
+    var el = document.createElement('div');
+    el.className = 'slide';
+    el.innerHTML =
+      '<div class="s-time">' + b.time + '</div>' +
+      '<div class="s-label">' + b.label + '</div>' +
+      '<div class="s-desc">' + b.desc + '</div>' +
+      '<div class="s-bar"></div>';
+    container.appendChild(el);
+    slides.push(el);
+  });
+
+  function show(idx){
+    slides.forEach(function(s){ s.classList.remove('active'); });
+    if(slides[idx]) slides[idx].classList.add('active');
+    counter.textContent = (idx+1) + ' / ' + beats.length;
+  }
+
+  show(0);
+  startTime = performance.now();
+
+  function tick(now){
+    var elapsed = now - startTime;
+    var beatIdx = Math.floor(elapsed / DURATION) % beats.length;
+    var beatElapsed = elapsed % DURATION;
+    var pct = (beatElapsed / DURATION * 100).toFixed(1);
+
+    if(beatIdx !== current){
+      current = beatIdx;
+      show(current);
+    }
+    bar.style.width = pct + '%';
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
 </body>
 </html>`;
 }
