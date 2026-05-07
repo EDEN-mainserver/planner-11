@@ -530,17 +530,14 @@ function StagePlan({ motionData, onNext }) {
 // ── 비트 데이터로 인라인 HTML 컴포지션 생성 ──────────────────────
 function buildCompositionHTML(beats, style) {
   const STYLES = {
-    corporate:    { accent: "#4f8ef7", sub: "#8ba3c7", title: "#ffffff", grad: "linear-gradient(135deg,#0d1117 0%,#1a2332 100%)" },
-    hype:         { accent: "#ff6b6b", sub: "#ffd93d", title: "#ffffff", grad: "linear-gradient(135deg,#0a0010 0%,#1a0020 100%)" },
-    storytelling: { accent: "#f5c842", sub: "#c8a96e", title: "#fff8ee", grad: "linear-gradient(135deg,#13100a 0%,#2a1f0f 100%)" },
-    social:       { accent: "#c77dff", sub: "#e0aaff", title: "#ffffff", grad: "linear-gradient(135deg,#0f0a1e 0%,#1a0a3e 100%)" },
+    corporate:    { accent:"#4f8ef7", sub:"#8ba3c7", title:"#ffffff", bg1:"#0d1117", bg2:"#0a1628" },
+    hype:         { accent:"#ff4466", sub:"#ffaa00", title:"#ffffff", bg1:"#0a0010", bg2:"#200010" },
+    storytelling: { accent:"#f5c842", sub:"#c8a96e", title:"#fff8ee", bg1:"#13100a", bg2:"#2a1f0f" },
+    social:       { accent:"#c77dff", sub:"#e0aaff", title:"#ffffff", bg1:"#0f0a1e", bg2:"#1a0a3e" },
   };
   const s = STYLES[style] || STYLES.corporate;
-
-  const scenesJSON = JSON.stringify(beats.map(b => ({
-    time:  b.time  || "",
-    label: b.label || "",
-    desc:  b.desc  || "",
+  const beatsJSON = JSON.stringify(beats.map(b => ({
+    time: b.time||"", label: b.label||"", desc: b.desc||""
   })));
 
   return `<!DOCTYPE html>
@@ -548,129 +545,167 @@ function buildCompositionHTML(beats, style) {
 <head>
 <meta charset="utf-8"/>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box;}
-  html,body{width:100%;height:100%;}
-  body{
-    background:${s.grad};
-    font-family:'Noto Sans KR',Arial,sans-serif;
-    overflow:hidden;
-  }
-  .wrap{
-    position:relative;
-    width:100%;height:100vh;
-    display:flex;align-items:center;justify-content:center;
-  }
-  /* 배경 그리드 */
-  .grid{
-    position:absolute;inset:0;pointer-events:none;
-    background-image:
-      linear-gradient(${s.accent}1a 1px,transparent 1px),
-      linear-gradient(90deg,${s.accent}1a 1px,transparent 1px);
-    background-size:40px 40px;
-  }
-  /* 코너 데코 */
-  .corner{position:absolute;width:18px;height:18px;border-color:${s.accent};border-style:solid;opacity:0.4;}
-  .tl{top:14px;left:14px;border-width:2px 0 0 2px;}
-  .tr{top:14px;right:14px;border-width:2px 2px 0 0;}
-  .bl{bottom:14px;left:14px;border-width:0 0 2px 2px;}
-  .br{bottom:14px;right:14px;border-width:0 2px 2px 0;}
-  /* 진행 바 */
-  #progress-bar{
-    position:absolute;bottom:0;left:0;height:3px;
-    background:${s.accent};box-shadow:0 0 8px ${s.accent};
-    transition:width 0.1s linear;
-  }
-  /* 슬라이드 */
-  .slide{
-    position:absolute;inset:0;
-    display:flex;flex-direction:column;
-    align-items:center;justify-content:center;
-    padding:28px 32px;text-align:center;
-    opacity:0;
-    transform:translateY(14px);
-    transition:opacity 0.4s ease,transform 0.4s ease;
-    pointer-events:none;
-  }
-  .slide.active{opacity:1;transform:translateY(0);}
-  .s-time{
-    font-size:10px;letter-spacing:3px;text-transform:uppercase;
-    color:${s.accent};font-weight:700;margin-bottom:14px;opacity:0.9;
-  }
-  .s-label{
-    font-size:20px;font-weight:900;color:${s.title};
-    line-height:1.25;margin-bottom:10px;
-    text-shadow:0 0 24px ${s.accent}55;
-  }
-  .s-desc{
-    font-size:11px;color:${s.sub};line-height:1.65;max-width:280px;
-  }
-  .s-bar{
-    width:44px;height:3px;border-radius:2px;margin-top:18px;
-    background:${s.accent};box-shadow:0 0 10px ${s.accent};
-  }
-  /* 슬라이드 카운터 */
-  #counter{
-    position:absolute;top:14px;left:50%;transform:translateX(-50%);
-    font-size:9px;color:${s.accent};opacity:0.5;letter-spacing:2px;
-  }
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:${s.bg1};}
+#bg{position:fixed;inset:0;width:100%;height:100%;}
+#ui{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Noto Sans KR',Arial,sans-serif;}
+/* 시네마틱 바 */
+.cin{position:fixed;left:0;right:0;height:36px;background:#000;z-index:10;}
+.cin.top{top:0;} .cin.bottom{bottom:0;}
+/* 코너 데코 */
+.corner{position:fixed;width:20px;height:20px;border-color:${s.accent};border-style:solid;opacity:0.5;z-index:11;}
+.tl{top:44px;left:12px;border-width:2px 0 0 2px;}
+.tr{top:44px;right:12px;border-width:2px 2px 0 0;}
+.bl{bottom:44px;left:12px;border-width:0 0 2px 2px;}
+.br{bottom:44px;right:12px;border-width:0 2px 2px 0;}
+/* 콘텐츠 */
+#content{
+  text-align:center;padding:0 32px;
+  transition:opacity .35s ease,transform .35s ease;
+  position:relative;z-index:5;
+}
+#content.hidden{opacity:0;transform:translateY(16px);}
+#content.visible{opacity:1;transform:translateY(0);}
+#tc{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:${s.accent};font-weight:700;margin-bottom:14px;opacity:.85;}
+#ttl{font-size:22px;font-weight:900;color:${s.title};line-height:1.2;margin-bottom:10px;text-shadow:0 0 32px ${s.accent}66;}
+#dsc{font-size:11px;color:${s.sub};line-height:1.7;max-width:300px;margin:0 auto;}
+#acbar{width:48px;height:3px;border-radius:2px;background:${s.accent};box-shadow:0 0 12px ${s.accent};margin:16px auto 0;}
+/* 타임라인 */
+#timeline{position:fixed;bottom:36px;left:0;right:0;height:3px;background:rgba(255,255,255,.08);z-index:10;}
+#tl-fill{height:100%;width:0%;background:${s.accent};box-shadow:0 0 6px ${s.accent};transition:width .1s linear;}
+/* 카운터 */
+#ctr{position:fixed;top:10px;left:50%;transform:translateX(-50%);font-size:9px;color:${s.accent};opacity:.5;letter-spacing:2px;z-index:11;font-family:monospace;}
+/* 타임코드 */
+#clock{position:fixed;bottom:10px;right:12px;font-size:9px;color:rgba(255,255,255,.3);font-family:monospace;z-index:11;}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="grid"></div>
+<canvas id="bg"></canvas>
+<div id="ui">
+  <div class="cin top"></div>
+  <div class="cin bottom"></div>
   <div class="corner tl"></div><div class="corner tr"></div>
   <div class="corner bl"></div><div class="corner br"></div>
-  <div id="counter"></div>
-  <div id="slides"></div>
-  <div id="progress-bar" style="width:0%"></div>
+  <div id="ctr"></div>
+  <div id="content" class="hidden">
+    <div id="tc"></div>
+    <div id="ttl"></div>
+    <div id="dsc"></div>
+    <div id="acbar"></div>
+  </div>
+  <div id="timeline"><div id="tl-fill"></div></div>
+  <div id="clock">00:00:00</div>
 </div>
 <script>
 (function(){
-  var beats = ${scenesJSON};
-  var DURATION = 3200;
-  var container = document.getElementById('slides');
-  var counter   = document.getElementById('counter');
-  var bar       = document.getElementById('progress-bar');
-  var current   = 0;
-  var startTime = null;
-  var slides    = [];
+  var BEATS    = ${beatsJSON};
+  var BEAT_MS  = 4000;
+  var ACCENT   = '${s.accent}';
+  var BG1      = '${s.bg1}';
+  var BG2      = '${s.bg2}';
 
-  // 슬라이드 DOM 생성
-  beats.forEach(function(b, i){
-    var el = document.createElement('div');
-    el.className = 'slide';
-    el.innerHTML =
-      '<div class="s-time">' + b.time + '</div>' +
-      '<div class="s-label">' + b.label + '</div>' +
-      '<div class="s-desc">' + b.desc + '</div>' +
-      '<div class="s-bar"></div>';
-    container.appendChild(el);
-    slides.push(el);
+  /* ── 캔버스 배경 ── */
+  var canvas = document.getElementById('bg');
+  var ctx    = canvas.getContext('2d');
+  var W, H;
+  function resize(){
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  /* 파티클 */
+  var PTS = Array.from({length:35},function(){
+    return {x:Math.random(),y:Math.random(),r:Math.random()*1.2+.4,vx:(Math.random()-.5)*.0004,vy:(Math.random()-.5)*.0004,o:Math.random()*.4+.1};
   });
 
-  function show(idx){
-    slides.forEach(function(s){ s.classList.remove('active'); });
-    if(slides[idx]) slides[idx].classList.add('active');
-    counter.textContent = (idx+1) + ' / ' + beats.length;
+  /* hex → rgba */
+  function hexRgb(h,a){
+    var r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);
+    return 'rgba('+r+','+g+','+b+','+a+')';
   }
 
-  show(0);
-  startTime = performance.now();
+  function drawBg(t){
+    /* 베이스 그라디언트 */
+    var grd = ctx.createLinearGradient(0,0,W,H);
+    grd.addColorStop(0,BG1); grd.addColorStop(1,BG2);
+    ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
 
-  function tick(now){
-    var elapsed = now - startTime;
-    var beatIdx = Math.floor(elapsed / DURATION) % beats.length;
-    var beatElapsed = elapsed % DURATION;
-    var pct = (beatElapsed / DURATION * 100).toFixed(1);
+    /* 움직이는 글로우 */
+    var gx = W*.5 + Math.sin(t*.0007)*W*.35;
+    var gy = H*.5 + Math.cos(t*.0005)*H*.35;
+    var rg = ctx.createRadialGradient(gx,gy,0,W*.5,H*.5,Math.max(W,H)*.7);
+    rg.addColorStop(0, hexRgb(ACCENT,.13));
+    rg.addColorStop(1, 'transparent');
+    ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
 
-    if(beatIdx !== current){
-      current = beatIdx;
-      show(current);
-    }
-    bar.style.width = pct + '%';
-    requestAnimationFrame(tick);
+    /* 그리드 */
+    ctx.strokeStyle = hexRgb(ACCENT,.06);
+    ctx.lineWidth = 1;
+    for(var x=0;x<W;x+=44){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(var y=0;y<H;y+=44){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+    /* 파티클 */
+    PTS.forEach(function(p){
+      p.x=(p.x+p.vx+1)%1; p.y=(p.y+p.vy+1)%1;
+      ctx.beginPath();
+      ctx.arc(p.x*W,p.y*H,p.r,0,Math.PI*2);
+      ctx.fillStyle=hexRgb(ACCENT,p.o);
+      ctx.fill();
+    });
+
+    /* 스캔라인 (영상감) */
+    ctx.fillStyle='rgba(0,0,0,.04)';
+    for(var sy=0;sy<H;sy+=2){ ctx.fillRect(0,sy,W,1); }
   }
-  requestAnimationFrame(tick);
+
+  /* ── 콘텐츠 전환 ── */
+  var content = document.getElementById('content');
+  var tcEl    = document.getElementById('tc');
+  var ttlEl   = document.getElementById('ttl');
+  var dscEl   = document.getElementById('dsc');
+  var ctrEl   = document.getElementById('ctr');
+  var tlFill  = document.getElementById('tl-fill');
+  var clockEl = document.getElementById('clock');
+  var curBeat = -1;
+
+  function setContent(idx){
+    if(idx===curBeat) return;
+    curBeat=idx;
+    content.classList.remove('visible'); content.classList.add('hidden');
+    setTimeout(function(){
+      var b=BEATS[idx];
+      tcEl.textContent  = b.time;
+      ttlEl.textContent = b.label;
+      dscEl.textContent = b.desc;
+      ctrEl.textContent = (idx+1)+' / '+BEATS.length;
+      content.classList.remove('hidden'); content.classList.add('visible');
+    },350);
+  }
+
+  function fmtClock(ms){
+    var s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);
+    return [h,m%60,s%60].map(function(v){return String(v).padStart(2,'0');}).join(':');
+  }
+
+  /* ── 메인 루프 ── */
+  var start = performance.now();
+  function loop(now){
+    var elapsed = now - start;
+    var t       = elapsed;
+    var beatIdx = Math.floor(elapsed/BEAT_MS) % BEATS.length;
+    var pct     = (elapsed%BEAT_MS)/BEAT_MS*100;
+
+    drawBg(t);
+    setContent(beatIdx);
+    tlFill.style.width = pct+'%';
+    clockEl.textContent = fmtClock(elapsed);
+
+    requestAnimationFrame(loop);
+  }
+  setContent(0);
+  requestAnimationFrame(loop);
 })();
 </script>
 </body>
@@ -775,7 +810,7 @@ function StagePreview({ project, planData, motionData, onNext }) {
             <iframe
               srcDoc={compositionHTML}
               className="w-full"
-              style={{ height: 320, border: "none", display: "block" }}
+              style={{ height: 380, border: "none", display: "block" }}
               title="컴포지션 미리보기"
               sandbox="allow-scripts"
             />
