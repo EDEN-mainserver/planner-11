@@ -618,9 +618,9 @@ function StagePlan({ motionData, onNext }) {
   const [editLabel, setEditLabel] = useState("");
   const [editDesc,  setEditDesc]  = useState("");
 
-  const startEdit = (b) => { setEditing(b.id); setEditLabel(b.label); setEditDesc(b.desc); };
+  const startEdit = (b) => { setEditing(b.id); setEditDesc(b.desc); };
   const saveEdit  = (id) => {
-    setBeats(prev => prev.map(b => b.id === id ? { ...b, label: editLabel, desc: editDesc } : b));
+    setBeats(prev => prev.map(b => b.id === id ? { ...b, desc: editDesc } : b));
     setEditing(null);
   };
 
@@ -659,24 +659,26 @@ function StagePlan({ motionData, onNext }) {
                 {b.keep && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 5l2.5 2.5L8.5 2" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>}
               </button>
               <div className="flex-1 min-w-0">
+                {/* 시간 + 화면 텍스트 (항상 표시·편집 가능) */}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs text-fuchsia-500 font-mono flex-shrink-0">{b.time}</span>
+                  <input
+                    value={b.label}
+                    onChange={e => setBeats(prev => prev.map(x => x.id === b.id ? { ...x, label: e.target.value } : x))}
+                    placeholder="화면에 표시될 텍스트"
+                    className="flex-1 text-xs font-semibold bg-transparent border-b border-gray-200 focus:border-fuchsia-400 outline-none py-0.5 text-gray-700 placeholder-gray-300"
+                  />
+                </div>
+
+                {/* 효과 설명 (✎ 클릭 시 편집) */}
                 {editing === b.id ? (
-                  /* ── 편집 모드 ── */
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-fuchsia-500 font-mono flex-shrink-0">{b.time}</span>
-                      <input
-                        value={editLabel}
-                        onChange={e => setEditLabel(e.target.value)}
-                        placeholder="비트 이름"
-                        className="flex-1 text-xs font-semibold border border-fuchsia-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
-                        autoFocus
-                      />
-                    </div>
+                  <div className="space-y-1.5">
                     <input
                       value={editDesc}
                       onChange={e => setEditDesc(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && saveEdit(b.id)}
                       placeholder="효과 설명"
+                      autoFocus
                       className="w-full text-xs border border-fuchsia-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-fuchsia-400 text-gray-600"
                     />
                     <div className="flex gap-2 justify-end">
@@ -687,18 +689,11 @@ function StagePlan({ motionData, onNext }) {
                     </div>
                   </div>
                 ) : (
-                  /* ── 보기 모드 ── */
-                  <>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs text-fuchsia-500 font-mono">{b.time}</span>
-                      <span className="text-xs font-semibold text-gray-700">{b.label}</span>
-                    </div>
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs text-gray-500 leading-relaxed">{b.desc}</p>
-                      <button onClick={() => startEdit(b)}
-                        className="text-xs text-gray-400 hover:text-fuchsia-500 flex-shrink-0">✎</button>
-                    </div>
-                  </>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs text-gray-400 leading-relaxed">{b.desc}</p>
+                    <button onClick={() => startEdit(b)}
+                      className="text-xs text-gray-400 hover:text-fuchsia-500 flex-shrink-0">✎</button>
+                  </div>
                 )}
               </div>
             </div>
