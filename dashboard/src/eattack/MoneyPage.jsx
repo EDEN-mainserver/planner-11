@@ -1,6 +1,7 @@
 // ── 이걸 돈내고 써? — Windows 앱 센터 스타일 ──
 import { useState } from "react";
 import EdenCanvas from "./EdenCanvas";
+import EdenFlowPanel from "./EdenFlowPanel";
 
 // ── 툴 데이터 ──
 const FREE_TOOLS = [
@@ -218,8 +219,13 @@ export default function MoneyPage({ onBack }) {
     return <EdenCanvas onBack={() => setActiveTool(null)} />;
   }
 
+  // 에덴플로우는 iframe 임베드
+  if (activeTool?.key === "edenflow") {
+    return <EdenFlowPanel onBack={() => setActiveTool(null)} />;
+  }
+
   const filteredTools = FREE_TOOLS.filter(t =>
-    (category === "all" || t.key === "canvas") &&
+    (category === "all" || t.isInternal) &&
     (search === "" || t.label.toLowerCase().includes(search.toLowerCase()) || t.category.includes(search))
   );
 
@@ -407,15 +413,9 @@ function ToolRow({ tool, onClick }) {
 
       {/* 실행 버튼 */}
       <div className="flex-shrink-0">
-        {tool.key === "edenflow" ? (
-          <span className="inline-flex items-center gap-1.5 px-5 py-1.5 bg-gray-200 text-gray-400 text-sm font-semibold rounded-lg cursor-not-allowed">
-            준비 중
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 px-5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
-            실행
-          </span>
-        )}
+        <span className="inline-flex items-center gap-1.5 px-5 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+          실행
+        </span>
       </div>
     </button>
   );
@@ -436,11 +436,7 @@ function ToolDetail({ tool, onBack }) {
           <p className="text-sm text-gray-400">{tool.category}</p>
         </div>
         <div className="flex-shrink-0">
-          {tool.key === "edenflow" ? (
-            <span className="px-7 py-2 bg-gray-200 text-gray-400 text-sm font-bold rounded-xl cursor-not-allowed">
-              준비 중
-            </span>
-          ) : tool.isInternal ? (
+          {tool.isInternal ? (
             <button
               onClick={onBack}
               className="px-7 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition-colors shadow-sm"

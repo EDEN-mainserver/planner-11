@@ -1,5 +1,6 @@
 """API 요청/응답 스키마"""
 from pydantic import BaseModel, Field
+from typing import Any
 
 
 # --- 프로젝트 ---
@@ -17,6 +18,7 @@ class ProjectResponse(BaseModel):
     youtube_url: str | None = None
     duration_seconds: int | None = None
     status: str
+    shorts: list[dict[str, Any]] = Field(default_factory=list)
     shorts_count: int = 0
     thumbnail_url: str | None = None
 

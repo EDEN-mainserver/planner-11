@@ -24,6 +24,7 @@ async def list_projects():
             youtube_url=p.get("youtube_url"),
             duration_seconds=p.get("duration_seconds"),
             status=p["status"],
+            shorts=p.get("shorts", []),
             shorts_count=len(p.get("shorts", [])),
             thumbnail_url=p.get("thumbnail_url"),
         )

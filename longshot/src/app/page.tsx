@@ -7,7 +7,7 @@ import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-type SubtitleSource = "youtube_auto" | "srt" | "none";
+type SubtitleSource = "whisper" | "youtube_auto" | "srt" | "none";
 type Segment = { start: number; end: number; text: string };
 
 function parseSRTTime(t: string): number {
@@ -53,7 +53,7 @@ export default function Home() {
   const [subtitleStyle, setSubtitleStyle] = useState("karaoke");
 
   // 자막 소스 상태
-  const [subtitleSource, setSubtitleSource] = useState<SubtitleSource>("youtube_auto");
+  const [subtitleSource, setSubtitleSource] = useState<SubtitleSource>("whisper");
   const [srtFile, setSrtFile] = useState<File | null>(null);
   const [srtSegments, setSrtSegments] = useState<Segment[] | null>(null);
 
@@ -73,8 +73,16 @@ export default function Home() {
     setActiveTab(tab);
     // 업로드 탭은 youtube_auto 사용 불가
     if (tab === "upload" && subtitleSource === "youtube_auto") {
-      setSubtitleSource("srt");
+      setSubtitleSource("whisper");
     }
+  };
+
+  const readJsonResponse = async (res: Response, fallbackMessage: string) => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || data.detail || fallbackMessage);
+    }
+    return data;
   };
 
   const handleYoutubeSubmit = async () => {
@@ -119,10 +127,10 @@ export default function Home() {
           youtube_url: youtubeUrl,
         }),
       });
-      const project = await res.json();
+      const project = await readJsonResponse(res, "프로젝트 생성에 실패했습니다");
 
       // 2. 쇼츠 생성 시작
-      await fetch(`${API_URL}/api/shorts/${project.id}/generate`, {
+      const generateRes = await fetch(`${API_URL}/api/shorts/${project.id}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -135,6 +143,7 @@ export default function Home() {
           },
         }),
       });
+      await readJsonResponse(generateRes, "쇼츠 생성 시작에 실패했습니다");
 
       // 3. 대시보드로 이동
       router.push("/dashboard");
@@ -154,13 +163,14 @@ export default function Home() {
       setError("파일을 선택해주세요");
       return;
     }
-    setIsSubmitting(true);
-    setError("");
 
     if (subtitleSource === "srt" && !srtSegments) {
       setError("SRT 파일을 첨부해주세요");
       return;
     }
+
+    setIsSubmitting(true);
+    setError("");
 
     try {
       // 1. 파일 업로드 + 프로젝트 생성
@@ -171,10 +181,10 @@ export default function Home() {
         method: "POST",
         body: formData,
       });
-      const project = await res.json();
+      const project = await readJsonResponse(res, "프로젝트 생성에 실패했습니다");
 
       // 2. 쇼츠 생성 시작
-      await fetch(`${API_URL}/api/shorts/${project.id}/generate`, {
+      const generateRes = await fetch(`${API_URL}/api/shorts/${project.id}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -187,6 +197,7 @@ export default function Home() {
           },
         }),
       });
+      await readJsonResponse(generateRes, "쇼츠 생성 시작에 실패했습니다");
 
       // 3. 대시보드로 이동
       router.push("/dashboard");
@@ -380,6 +391,17 @@ export default function Home() {
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground text-left">자막 소스</p>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSubtitleSource("whisper")}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                      subtitleSource === "whisper"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                    }`}
+                  >
+                    AI 자동자막
+                  </button>
                   {activeTab === "youtube" && (
                     <button
                       type="button"

@@ -35,7 +35,7 @@ interface Project {
   source_type: string;
   youtube_url?: string;
   status: string;
-  shorts: Short[];
+  shorts?: Short[];
   duration_seconds?: number;
   thumbnail_url?: string;
 }
@@ -57,21 +57,30 @@ export default function DashboardPage() {
     Record<string, PipelineStatus>
   >({});
 
-  // 프로젝트 목록 로드
-  const fetchProjects = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/projects/`);
-      const data = await res.json();
-      setProjects(data.projects || []);
-    } catch {
-      console.error("프로젝트 목록 로드 실패");
-    } finally {
-      setLoading(false);
-    }
+  const fetchProjects = useCallback(async (): Promise<Project[]> => {
+    const res = await fetch(`${API_URL}/api/projects/`);
+    if (!res.ok) throw new Error("프로젝트 목록 로드 실패");
+    const data = await res.json();
+    return data.projects || [];
   }, []);
 
   useEffect(() => {
-    fetchProjects();
+    let ignore = false;
+
+    fetchProjects()
+      .then((nextProjects) => {
+        if (!ignore) setProjects(nextProjects);
+      })
+      .catch(() => {
+        console.error("프로젝트 목록 로드 실패");
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
   }, [fetchProjects]);
 
   // 처리 중인 프로젝트 상태 폴링
@@ -89,7 +98,9 @@ export default function DashboardPage() {
           setProcessingStatuses((prev) => ({ ...prev, [p.id]: status }));
 
           if (status.status === "completed" || status.status === "error") {
-            fetchProjects();
+            fetchProjects()
+              .then(setProjects)
+              .catch(() => console.error("프로젝트 목록 로드 실패"));
           }
         } catch {
           // 무시
@@ -103,7 +114,9 @@ export default function DashboardPage() {
   const handleDelete = async (projectId: string) => {
     if (!confirm("프로젝트를 삭제하시겠습니까?")) return;
     await fetch(`${API_URL}/api/projects/${projectId}`, { method: "DELETE" });
-    fetchProjects();
+    fetchProjects()
+      .then(setProjects)
+      .catch(() => console.error("프로젝트 목록 로드 실패"));
   };
 
   const handleDownload = (projectId: string, shortId: string) => {
@@ -275,9 +288,9 @@ export default function DashboardPage() {
                 )}
 
                 {/* 쇼츠 카드 그리드 */}
-                {project.shorts.length > 0 && (
+                {(project.shorts?.length || 0) > 0 && (
                   <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {project.shorts.map((short) => (
+                    {project.shorts?.map((short) => (
                       <div
                         key={short.id}
                         className="border rounded-lg overflow-hidden group hover:shadow-md transition-shadow"
@@ -339,7 +352,7 @@ export default function DashboardPage() {
 
                 {/* 완료 상태인데 쇼츠 없음 */}
                 {project.status === "completed" &&
-                  project.shorts.length === 0 && (
+                  (project.shorts?.length || 0) === 0 && (
                     <div className="p-6 text-center text-sm text-muted-foreground">
                       생성된 쇼츠가 없습니다
                     </div>
