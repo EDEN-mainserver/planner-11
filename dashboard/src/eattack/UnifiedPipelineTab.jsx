@@ -12,6 +12,7 @@ import StepBar from "./pipeline/StepBar";
 import UserBar from "./pipeline/UserBar";
 import { STEP_KEYS } from "./pipeline/steps";
 import { runResearch } from "../services/pipeline/research";
+import { incrementUsage } from "../services/subscription";
 import { runPlanning, parsePlanningJson } from "../services/pipeline/planning";
 import { generateOneImage, analyzeDesignToTemplate } from "../services/pipeline/imageGen";
 import { fetchSchedules, addSchedule, removeSchedule } from "../services/pipeline/schedule";
@@ -242,6 +243,10 @@ export default function UnifiedPipelineTab() {
   // ── 단계 핸들러 ──
   const startResearch = () =>
     run(async () => {
+      // quota 확인 + 1회 차감 (INTERNAL_USERS는 서버에서 무제한 처리)
+      if (session?.username) {
+        await incrementUsage(session.username);
+      }
       setStep("research");
       const summary = await runResearch(topic);
       setResearch(summary);
@@ -815,6 +820,7 @@ ${buildCaptionContext()}`,
         toneOpts={TONE_OPTS}
         purposeOpts={PURPOSE_OPTS}
         startResearch={startResearch}
+        error={error}
       />
     );
 

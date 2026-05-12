@@ -1,3 +1,4 @@
+import ErrorBox from "../ErrorBox";
 import StepBar from "../StepBar";
 import UserBar from "../UserBar";
 import TopicPicker from "../../TopicPicker";
@@ -30,11 +31,13 @@ export default function SetupStep({
   toneOpts,
   purposeOpts,
   startResearch,
+  error,
 }) {
   return (
     <div className="p-6 space-y-5">
       <UserBar session={session} onLogout={onLogout} />
       <StepBar step={step} />
+      {error && <ErrorBox msg={error} />}
 
       <div className="bg-gradient-to-r from-violet-50 to-pink-50 border border-violet-200 rounded-xl px-4 py-3">
         <p className="text-xs font-bold text-violet-700 mb-0.5">🚀 통합 카드뉴스 파이프라인</p>
