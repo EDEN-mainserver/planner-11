@@ -7,6 +7,7 @@ import { getSession, clearSession } from "../utils/authSession";
 import TopicPicker from "./TopicPicker";
 import { emitEAttackContext, summarizeText } from "./eattackContext";
 import Spinner from "./pipeline/Spinner";
+import ErrorBox from "./pipeline/ErrorBox";
 
 // ── 상수 ──
 const BATCH_SIZE = 3;
@@ -861,25 +862,6 @@ function buildPremiumTemplate(topic, cards, brandName, accentColor) {
 </head>
 <body>${blocks.join("\n")}</body>
 </html>`;
-}
-
-// ── 공통 UI ──
-function ErrorBox({ msg, onRetry }) {
-  return (
-    <div className="space-y-3">
-      <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
-        {msg}
-      </div>
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          className="w-full py-2.5 bg-pink-500 text-white text-sm font-bold rounded-xl hover:bg-pink-600 transition-all"
-        >
-          다시 시도
-        </button>
-      )}
-    </div>
-  );
 }
 
 // ── 메인 컴포넌트 ──
