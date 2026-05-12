@@ -8,6 +8,8 @@ import TopicPicker from "./TopicPicker";
 import { emitEAttackContext, summarizeText } from "./eattackContext";
 import Spinner from "./pipeline/Spinner";
 import ErrorBox from "./pipeline/ErrorBox";
+import StepBar from "./pipeline/StepBar";
+import { STEP_KEYS } from "./pipeline/steps";
 
 // ── 상수 ──
 const BATCH_SIZE = 3;
@@ -34,7 +36,6 @@ const PURPOSE_OPTS = [
   { v: "event", l: "이벤트" },
   { v: "review", l: "고객 후기" },
 ];
-const STEP_LABELS = ["설정", "리서치", "기획", "이미지", "조립", "배포"];
 const threadsKey = (u) => `eden_threads_${u}_v1`;
 const captionPromptKey = (u) => `eden_caption_prompt_${u}_v1`;
 const DEFAULT_CAPTION_PROMPT =
@@ -1599,40 +1600,6 @@ ${buildCaptionContext()}`,
     }
   };
 
-  // ── 스텝 인디케이터 ──
-  const STEP_KEYS = ["setup", "research", "planning", "images", "assembly", "deploy"];
-  function StepBar() {
-    const cur = STEP_KEYS.indexOf(step);
-    return (
-      <div className="flex items-center">
-        {STEP_LABELS.map((label, i) => (
-          <div key={i} className="flex items-center flex-1 last:flex-none">
-            <div
-              className={`flex flex-col items-center gap-1 flex-shrink-0 transition-opacity ${i <= cur ? "opacity-100" : "opacity-30"}`}
-            >
-              <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 transition-all
-                ${i < cur ? "bg-violet-500 border-violet-500 text-white" : i === cur ? "border-violet-500 text-violet-600 bg-violet-50" : "border-gray-300 text-gray-400 bg-white"}`}
-              >
-                {i < cur ? "✓" : i + 1}
-              </div>
-              <span
-                className={`text-[9px] font-medium whitespace-nowrap hidden sm:block ${i === cur ? "text-violet-600" : "text-gray-400"}`}
-              >
-                {label}
-              </span>
-            </div>
-            {i < STEP_LABELS.length - 1 && (
-              <div
-                className={`flex-1 h-0.5 mx-1 mb-5 sm:mb-3 transition-colors ${i < cur ? "bg-violet-400" : "bg-gray-200"}`}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   // ── 공통: 사용자 상태바 ──
   function UserBar() {
     return (
@@ -1659,7 +1626,7 @@ ${buildCaptionContext()}`,
     return (
       <div className="p-6 space-y-5">
         <UserBar />
-        <StepBar />
+        <StepBar step={step} />
 
         <div className="bg-gradient-to-r from-violet-50 to-pink-50 border border-violet-200 rounded-xl px-4 py-3">
           <p className="text-xs font-bold text-violet-700 mb-0.5">🚀 통합 카드뉴스 파이프라인</p>
@@ -1862,7 +1829,7 @@ ${buildCaptionContext()}`,
     return (
       <div className="p-6 space-y-4">
         <UserBar />
-        <StepBar />
+        <StepBar step={step} />
         {running ? (
           <Spinner
             label={`"${topic}" 리서치 중...`}
@@ -1906,7 +1873,7 @@ ${buildCaptionContext()}`,
     return (
       <div className="p-6 space-y-4">
         <UserBar />
-        <StepBar />
+        <StepBar step={step} />
         {running ? (
           <Spinner label="카드뉴스 기획 중..." gradient="from-purple-500 to-violet-600" />
         ) : plan ? (
@@ -2033,7 +2000,7 @@ ${buildCaptionContext()}`,
     return (
       <div className="p-6 space-y-4">
         <UserBar />
-        <StepBar />
+        <StepBar step={step} />
 
         <div className="flex items-center justify-between">
           <p className="text-sm font-bold text-gray-700">
@@ -2137,7 +2104,7 @@ ${buildCaptionContext()}`,
     return (
       <div className="p-6 space-y-4">
         <UserBar />
-        <StepBar />
+        <StepBar step={step} />
 
         <div className="flex items-center justify-between">
           <div>
@@ -2342,7 +2309,7 @@ ${buildCaptionContext()}`,
     return (
       <div className="p-6 space-y-5">
         <UserBar />
-        <StepBar />
+        <StepBar step={step} />
 
         {/* 상단: 제목 */}
         <div>
