@@ -9,6 +9,7 @@ import { emitEAttackContext, summarizeText } from "./eattackContext";
 import Spinner from "./pipeline/Spinner";
 import ErrorBox from "./pipeline/ErrorBox";
 import StepBar from "./pipeline/StepBar";
+import UserBar from "./pipeline/UserBar";
 import { STEP_KEYS } from "./pipeline/steps";
 
 // ── 상수 ──
@@ -1600,32 +1601,11 @@ ${buildCaptionContext()}`,
     }
   };
 
-  // ── 공통: 사용자 상태바 ──
-  function UserBar() {
-    return (
-      <div className="flex items-center justify-between px-4 py-2 bg-violet-50 border border-violet-100 rounded-xl mb-1">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold">
-            {session.displayName.charAt(0)}
-          </div>
-          <span className="text-xs font-semibold text-violet-700">{session.displayName}</span>
-        </div>
-        <button
-          onClick={handleLogout}
-          aria-label="로그아웃"
-          className="px-2 py-1 text-[10px] text-gray-500 border border-transparent rounded-md hover:text-red-500 hover:bg-red-50 hover:border-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 transition-colors cursor-pointer"
-        >
-          로그아웃
-        </button>
-      </div>
-    );
-  }
-
   // ══ STEP: setup ══
   if (step === "setup")
     return (
       <div className="p-6 space-y-5">
-        <UserBar />
+        <UserBar session={session} onLogout={handleLogout} />
         <StepBar step={step} />
 
         <div className="bg-gradient-to-r from-violet-50 to-pink-50 border border-violet-200 rounded-xl px-4 py-3">
@@ -1828,7 +1808,7 @@ ${buildCaptionContext()}`,
   if (step === "research")
     return (
       <div className="p-6 space-y-4">
-        <UserBar />
+        <UserBar session={session} onLogout={handleLogout} />
         <StepBar step={step} />
         {running ? (
           <Spinner
@@ -1872,7 +1852,7 @@ ${buildCaptionContext()}`,
   if (step === "planning")
     return (
       <div className="p-6 space-y-4">
-        <UserBar />
+        <UserBar session={session} onLogout={handleLogout} />
         <StepBar step={step} />
         {running ? (
           <Spinner label="카드뉴스 기획 중..." gradient="from-purple-500 to-violet-600" />
@@ -1999,7 +1979,7 @@ ${buildCaptionContext()}`,
   if (step === "images")
     return (
       <div className="p-6 space-y-4">
-        <UserBar />
+        <UserBar session={session} onLogout={handleLogout} />
         <StepBar step={step} />
 
         <div className="flex items-center justify-between">
@@ -2103,7 +2083,7 @@ ${buildCaptionContext()}`,
   if (step === "assembly")
     return (
       <div className="p-6 space-y-4">
-        <UserBar />
+        <UserBar session={session} onLogout={handleLogout} />
         <StepBar step={step} />
 
         <div className="flex items-center justify-between">
@@ -2308,7 +2288,7 @@ ${buildCaptionContext()}`,
   if (step === "deploy")
     return (
       <div className="p-6 space-y-5">
-        <UserBar />
+        <UserBar session={session} onLogout={handleLogout} />
         <StepBar step={step} />
 
         {/* 상단: 제목 */}
