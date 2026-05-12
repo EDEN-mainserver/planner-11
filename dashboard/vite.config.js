@@ -13,6 +13,12 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/naver-api/, '/v1'),
         secure: true,
       },
+      // dev에서 /api/* 호출을 라이브 Vercel 배포로 포워딩 (production에는 영향 없음)
+      '/api': {
+        target: 'https://planforge-ui.vercel.app',
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
 })
