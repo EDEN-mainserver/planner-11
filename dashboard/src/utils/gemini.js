@@ -92,7 +92,9 @@ export async function callGemini(history, systemPrompt) {
       });
       if (resp.ok) {
         const data = await resp.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        // Gemini 2.5 Pro는 thinking part를 먼저 반환할 수 있으므로 모든 part의 text를 합친다.
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        return parts.map(p => p?.text || '').filter(Boolean).join('\n').trim();
       }
 
       const err = await resp.json().catch(() => ({}));

@@ -113,7 +113,9 @@ export default async function handler(req, res) {
       const resp = await callModel(model, requestBody, GEMINI_KEY);
       if (resp.ok) {
         const data = await resp.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        // Gemini 2.5 Pro는 thinking part를 먼저 반환할 수 있으므로 모든 part의 text를 합친다.
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        const text = parts.map(p => p?.text || '').filter(Boolean).join('\n').trim();
         return res.status(200).json({ text, model });
       }
       const raw = await resp.text();

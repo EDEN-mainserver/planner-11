@@ -116,7 +116,7 @@ async function runResearch(topic) {
     // 검색 실패 시 Gemini 단독 생성으로 진행한다.
   }
 
-  return callGemini(
+  const summary = await callGemini(
     [
       {
         role: "user",
@@ -125,6 +125,10 @@ async function runResearch(topic) {
     ],
     "콘텐츠 리서처. 카드뉴스 제작을 위한 핵심 정보를 추출·요약합니다."
   );
+  if (!summary || !summary.trim()) {
+    throw new Error("리서치 결과가 비어있습니다. 잠시 후 다시 시도하거나 Gemini API 키/모델을 확인하세요.");
+  }
+  return summary;
 }
 
 async function runPlanning(topic, research, slideCount, tone, purpose, brandName) {
@@ -1930,8 +1934,10 @@ ${buildCaptionContext()}`,
               </button>
             </div>
           </>
+        ) : error ? (
+          <ErrorBox msg={error} onRetry={startResearch} />
         ) : (
-          error && <ErrorBox msg={error} onRetry={startResearch} />
+          <ErrorBox msg="리서치 결과를 받지 못했습니다. 다시 시도해주세요." onRetry={startResearch} />
         )}
       </div>
     );
