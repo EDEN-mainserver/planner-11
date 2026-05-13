@@ -403,6 +403,7 @@ export default function UnifiedPipelineTab() {
         session={session}
         onLogout={handleLogout}
         step={step}
+        onStepClick={setStep}
         topic={topic}
         setTopic={setTopic}
         showTopicPicker={showTopicPicker}
@@ -435,6 +436,7 @@ export default function UnifiedPipelineTab() {
         session={session}
         onLogout={handleLogout}
         step={step}
+        onStepClick={setStep}
         running={running}
         topic={topic}
         research={research}
@@ -451,6 +453,7 @@ export default function UnifiedPipelineTab() {
         session={session}
         onLogout={handleLogout}
         step={step}
+        onStepClick={setStep}
         running={running}
         plan={plan}
         topic={topic}
@@ -473,6 +476,7 @@ export default function UnifiedPipelineTab() {
         session={session}
         onLogout={handleLogout}
         step={step}
+        onStepClick={setStep}
         running={running}
         imgProg={imgProg}
         images={images}
@@ -493,6 +497,7 @@ export default function UnifiedPipelineTab() {
         session={session}
         onLogout={handleLogout}
         step={step}
+        onStepClick={setStep}
         cards={cards}
         color1={color1}
         color2={color2}
@@ -514,6 +519,7 @@ export default function UnifiedPipelineTab() {
         session={session}
         onLogout={handleLogout}
         step={step}
+        onStepClick={setStep}
         cards={cards}
         topic={topic}
         error={error}

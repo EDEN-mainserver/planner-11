@@ -7,6 +7,7 @@ export default function ResearchStep({
   session,
   onLogout,
   step,
+  onStepClick,
   running,
   topic,
   research,
@@ -17,7 +18,7 @@ export default function ResearchStep({
   return (
     <div className="p-6 space-y-4">
       <UserBar session={session} onLogout={onLogout} />
-      <StepBar step={step} />
+      <StepBar step={step} onStepClick={onStepClick} />
       {running ? (
         <Spinner
           label={`"${topic}" 리서치 중...`}

@@ -7,6 +7,7 @@ export default function PlanningStep({
   session,
   onLogout,
   step,
+  onStepClick,
   running,
   plan,
   topic,
@@ -29,7 +30,7 @@ export default function PlanningStep({
   return (
     <div className="p-6 space-y-4">
       <UserBar session={session} onLogout={onLogout} />
-      <StepBar step={step} />
+      <StepBar step={step} onStepClick={onStepClick} />
       {running ? (
         <Spinner label="카드뉴스 기획 중..." gradient="from-purple-500 to-violet-600" />
       ) : plan ? (

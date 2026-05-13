@@ -6,6 +6,7 @@ export default function AssemblyStep({
   session,
   onLogout,
   step,
+  onStepClick,
   cards,
   color1,
   color2,
@@ -21,7 +22,7 @@ export default function AssemblyStep({
   return (
     <div className="p-6 space-y-4">
       <UserBar session={session} onLogout={onLogout} />
-      <StepBar step={step} />
+      <StepBar step={step} onStepClick={onStepClick} />
 
       <div className="flex items-center justify-between">
         <div>

@@ -26,6 +26,7 @@ export default function SetupStep({
   session,
   onLogout,
   step,
+  onStepClick,
   topic,
   setTopic,
   showTopicPicker,
@@ -52,7 +53,7 @@ export default function SetupStep({
   return (
     <div className="p-6 space-y-5">
       <UserBar session={session} onLogout={onLogout} />
-      <StepBar step={step} />
+      <StepBar step={step} onStepClick={onStepClick} />
       {error && <ErrorBox msg={error} />}
 
       <div className="bg-gradient-to-r from-violet-50 to-pink-50 border border-violet-200 rounded-xl px-4 py-3">

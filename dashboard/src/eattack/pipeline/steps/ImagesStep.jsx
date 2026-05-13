@@ -6,6 +6,7 @@ export default function ImagesStep({
   session,
   onLogout,
   step,
+  onStepClick,
   running,
   imgProg,
   images,
@@ -20,7 +21,7 @@ export default function ImagesStep({
   return (
     <div className="p-6 space-y-4">
       <UserBar session={session} onLogout={onLogout} />
-      <StepBar step={step} />
+      <StepBar step={step} onStepClick={onStepClick} />
 
       <div className="flex items-center justify-between">
         <p className="text-sm font-bold text-gray-700">

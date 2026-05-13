@@ -6,6 +6,7 @@ export default function DeployStep({
   session,
   onLogout,
   step,
+  onStepClick,
   cards,
   topic,
   error,
@@ -54,7 +55,7 @@ export default function DeployStep({
   return (
     <div className="p-6 space-y-5">
       <UserBar session={session} onLogout={onLogout} />
-      <StepBar step={step} />
+      <StepBar step={step} onStepClick={onStepClick} />
 
       {/* 상단: 제목 */}
       <div>
