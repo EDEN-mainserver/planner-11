@@ -1,6 +1,6 @@
 // Threads 자동 게시 탭
 // 텍스트(+선택적 이미지) → Threads Graph API → 게시
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { callGemini } from "../utils/gemini";
 import LoginModal from "./LoginModal";
 import { getSession } from "../utils/authSession";
@@ -22,7 +22,6 @@ import {
   looksNarrowKeywordSet,
   toDatetimeLocalValue,
   fromDatetimeLocalValue,
-  parseResponsePayload,
   cleanThreadDraft,
 } from "../services/threads/helpers";
 import {
@@ -41,14 +40,8 @@ import {
   saveTemplateSelection,
   resolveSavedSelection,
 } from "../services/threads/template";
-import {
-  loadAutoRunId,
-  saveAutoRunId,
-  loadAutoMonitorCache,
-  saveAutoMonitorCache,
-} from "../services/threads/autoRun";
-import { getBatchStartDateKst, calcBatchScheduledAt } from "../services/threads/batch";
 import AutoMonitorDock from "./threads/AutoMonitorDockInline";
+import { useThreadsAuto } from "../hooks/useThreadsAuto";
 
 export default function ThreadsTab() {
   const [session] = useState(() => getSession());
@@ -101,31 +94,49 @@ export default function ThreadsTab() {
   const [scheduleSourceLoadingId, setScheduleSourceLoadingId] = useState("");
   const [scheduleSourceMap, setScheduleSourceMap] = useState({});
 
-  // 풀 자동화 설정
-  const [showAutoPanel, setShowAutoPanel] = useState(false);
-  const [autoEnabled, setAutoEnabled] = useState(false);
-  const [autoKeywords, setAutoKeywords] = useState("AI,클로드코드,ChatGPT");
-  const [autoPostTime, setAutoPostTime] = useState("09:00");
-  const [autoFormat, setAutoFormat] = useState("expert");
-  const [autoTone, setAutoTone] = useState("template");
-  const [autoFlow, setAutoFlow] = useState("template");
-  const [autoCta, setAutoCta] = useState("comment");
-  const [autoSourceMode, setAutoSourceMode] = useState("random");
-  const [autoBatchDays, setAutoBatchDays] = useState(3);
-  const [autoBatchPostsPerDay, setAutoBatchPostsPerDay] = useState(2);
-  const [autoBatchIntervalHours, setAutoBatchIntervalHours] = useState(4);
-  const [autoSaving, setAutoSaving] = useState(false);
-  const [autoRunning, setAutoRunning] = useState(false);
-  const [autoBatchRunning, setAutoBatchRunning] = useState(false);
-  const [autoLoading, setAutoLoading] = useState(false);
-  const [autoLastUpdated, setAutoLastUpdated] = useState(null);
-  const [autoRunResult, setAutoRunResult] = useState(null); // { logs, text, scheduledAt, skipped, skipReason, error }
-  const [autoRunId, setAutoRunId] = useState("");
-  const [autoMonitor, setAutoMonitor] = useState(null);
-  const [autoHistory, setAutoHistory] = useState([]);
-  const [autoMonitorLoading, setAutoMonitorLoading] = useState(false);
-  const [autoCanceling, setAutoCanceling] = useState(false);
-  const autoPollRef = useRef(null);
+  // 풀 자동화 — useThreadsAuto 훅이 모든 자동화 state·핸들러·폴링을 관리.
+  // setLogs는 위에서 정의되어 있어 addLog를 인라인으로 만들어 훅에 전달.
+  const autoAddLog = (level, msg, detail = null) => {
+    const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
+    setLogs((prev) => [...prev.slice(-49), entry]);
+  };
+  const {
+    showAutoPanel, setShowAutoPanel,
+    autoEnabled, setAutoEnabled,
+    autoKeywords, setAutoKeywords,
+    autoPostTime, setAutoPostTime,
+    autoFormat, setAutoFormat,
+    autoTone, setAutoTone,
+    autoFlow, setAutoFlow,
+    autoCta, setAutoCta,
+    autoSourceMode, setAutoSourceMode,
+    autoBatchDays, setAutoBatchDays,
+    autoBatchPostsPerDay, setAutoBatchPostsPerDay,
+    autoBatchIntervalHours, setAutoBatchIntervalHours,
+    autoSaving,
+    autoRunning,
+    autoBatchRunning,
+    autoLoading,
+    autoLastUpdated,
+    autoRunResult,
+    autoRunId,
+    autoMonitor,
+    autoHistory,
+    autoMonitorLoading,
+    autoCanceling,
+    syncAutoMonitorState,
+    loadAutoMonitor,
+    handleSaveAutoConfig,
+    handleRunAutoNow,
+    handleGenerateAutoBatch,
+    handleCancelAutoRun,
+  } = useThreadsAuto({
+    session,
+    userId,
+    accessToken,
+    addLog: autoAddLog,
+    onSchedulesRefresh: () => fetchSchedules(username).then(setScheduledPosts).catch(() => {}),
+  });
 
   useEffect(() => {
     emitEAttackContext({
@@ -162,50 +173,6 @@ export default function ThreadsTab() {
   const addLog = (level, msg, detail = null) => {
     const entry = { time: new Date().toLocaleTimeString("ko-KR"), level, msg, detail };
     setLogs(prev => [...prev.slice(-49), entry]);
-  };
-
-  const syncAutoMonitorState = (snapshot, runs = null, nextRunId = null) => {
-    if (nextRunId !== null) {
-      setAutoRunId(nextRunId);
-      saveAutoRunId(username, nextRunId);
-    }
-    setAutoMonitor(snapshot);
-    const nextRuns = Array.isArray(runs) ? runs : (autoHistory || []);
-    if (Array.isArray(runs)) setAutoHistory(runs);
-    saveAutoMonitorCache(username, {
-      current: snapshot,
-      runs: nextRuns,
-    });
-    setAutoRunResult(snapshot ? {
-      logs: snapshot.logs?.map((l) => l.msg || l) || [],
-      text: snapshot.text || "",
-      scheduledAt: snapshot.scheduledAt || null,
-      skipped: snapshot.status === "skipped",
-      skipReason: snapshot.skipReason || null,
-      error: snapshot.error || null,
-    } : null);
-    const active = snapshot && (snapshot.status === "running" || snapshot.status === "canceling");
-    setAutoRunning(active);
-  };
-
-  const loadAutoMonitor = async (runIdOverride = null) => {
-    const runId = runIdOverride || autoRunId || loadAutoRunId(username);
-    setAutoMonitorLoading(true);
-    try {
-      const url = runId
-        ? `/api/threads-auto-monitor?username=${encodeURIComponent(username)}&runId=${encodeURIComponent(runId)}`
-        : `/api/threads-auto-monitor?username=${encodeURIComponent(username)}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "모니터 조회 실패");
-      syncAutoMonitorState(data.current || null, data.runs || [], data.current?.runId || runId || "");
-      return data;
-    } catch (e) {
-      addLog("error", `자동화 모니터 조회 실패: ${e.message}`);
-      return null;
-    } finally {
-      setAutoMonitorLoading(false);
-    }
   };
 
   const openScheduleSource = async (schedule) => {
@@ -526,350 +493,6 @@ ${JSON.stringify(template, null, 2)}
     const interval = setInterval(load, 60000);
     return () => clearInterval(interval);
   }, [username]);
-
-  // 풀 자동화 설정 로드
-  useEffect(() => {
-    if (!username || username === "__guest") return;
-    const cached = loadAutoMonitorCache(username);
-    if (cached?.current) {
-      setAutoRunId(cached.current.runId || "");
-      setAutoMonitor(cached.current);
-      setAutoHistory(Array.isArray(cached.runs) ? cached.runs : []);
-      setAutoRunResult({
-        logs: cached.current.logs?.map((l) => l.msg || l) || [],
-        text: cached.current.text || "",
-        scheduledAt: cached.current.scheduledAt || null,
-        skipped: cached.current.status === "skipped",
-        skipReason: cached.current.skipReason || null,
-        error: cached.current.error || null,
-      });
-      setAutoRunning(cached.current.status === "running" || cached.current.status === "canceling");
-    }
-    const storedRunId = loadAutoRunId(username);
-    if (!autoRunId && storedRunId) {
-      setAutoRunId(storedRunId);
-    }
-    loadAutoMonitor(storedRunId || cached?.current?.runId || null);
-    setAutoLoading(true);
-    fetch(`/api/threads-auto-config?username=${encodeURIComponent(username)}`)
-      .then(r => r.json())
-      .then(data => {
-        const cfg = data?.config;
-        if (!cfg) return;
-        setAutoEnabled(cfg.enabled ?? false);
-        setAutoKeywords((cfg.keywords || []).join(","));
-        setAutoPostTime(cfg.postTime || "09:00");
-        setAutoFormat(cfg.format || "expert");
-        setAutoTone(cfg.tone || "template");
-        setAutoFlow(cfg.flow || "template");
-        setAutoCta(cfg.cta || "comment");
-        setAutoSourceMode(cfg.sourceMode || "random");
-        setAutoBatchDays(cfg.batchDays || 3);
-        setAutoBatchPostsPerDay(cfg.batchPostsPerDay || 2);
-        setAutoBatchIntervalHours(cfg.batchIntervalHours || 4);
-        setAutoLastUpdated(cfg.updatedAt || null);
-      })
-      .catch(() => {})
-      .finally(() => setAutoLoading(false));
-  }, [username]);
-
-  useEffect(() => {
-    if (!username || username === "__guest") return;
-    const runId = autoRunId || loadAutoRunId(username);
-    if (!runId) return;
-    let canceled = false;
-    const tick = async () => {
-      if (canceled) return;
-      const data = await loadAutoMonitor(runId);
-      if (canceled || !data?.current) return;
-      const status = data.current.status;
-      if (status !== "running" && status !== "canceling") {
-        clearInterval(autoPollRef.current);
-        autoPollRef.current = null;
-      }
-    };
-    tick();
-    autoPollRef.current = setInterval(tick, 2500);
-    return () => {
-      canceled = true;
-      if (autoPollRef.current) {
-        clearInterval(autoPollRef.current);
-        autoPollRef.current = null;
-      }
-    };
-  }, [username, autoRunId]);
-
-  // 자동화 설정 저장
-  const handleSaveAutoConfig = async () => {
-    if (!userId.trim() || !accessToken.trim()) {
-      addLog("error", "인증 설정에서 액세스 토큰과 사용자 ID를 먼저 저장하세요");
-      return;
-    }
-    const keywords = autoKeywords.split(",").map(k => k.trim()).filter(Boolean);
-    if (!keywords.length) {
-      addLog("error", "키워드를 하나 이상 입력하세요");
-      return;
-    }
-    setAutoSaving(true);
-    try {
-      const res = await fetch("/api/threads-auto-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          config: {
-            enabled: autoEnabled,
-            keywords,
-            postTime: autoPostTime,
-            format: autoFormat,
-            tone: autoTone,
-            flow: autoFlow,
-            cta: autoCta,
-            sourceMode: autoSourceMode,
-            batchDays: Number(autoBatchDays) || 1,
-            batchPostsPerDay: Number(autoBatchPostsPerDay) || 1,
-            batchIntervalHours: Number(autoBatchIntervalHours) || 4,
-            userId: userId.trim(),
-            accessToken: accessToken.trim(),
-          },
-        }),
-      });
-      if (!res.ok) throw new Error("저장 실패");
-      setAutoLastUpdated(new Date().toISOString());
-      addLog("info", `풀 자동화 설정 저장 완료 (${autoEnabled ? "활성" : "비활성"})`);
-    } catch (e) {
-      addLog("error", `자동화 설정 저장 실패: ${e.message}`);
-    } finally {
-      setAutoSaving(false);
-    }
-  };
-
-  // 자동화 즉시 실행 (테스트) — 현재 UI 설정을 먼저 저장한 뒤 실행
-  const handleRunAutoNow = async () => {
-    if (!userId.trim() || !accessToken.trim()) {
-      addLog("error", "인증 설정에서 액세스 토큰과 사용자 ID를 먼저 저장하세요");
-      return;
-    }
-    const keywords = autoKeywords.split(",").map(k => k.trim()).filter(Boolean);
-    if (!keywords.length) {
-      addLog("error", "키워드를 하나 이상 입력하세요");
-      return;
-    }
-
-    setAutoRunning(true);
-    setAutoRunResult(null);
-    const runId = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    setAutoRunId(runId);
-    saveAutoRunId(username, runId);
-    syncAutoMonitorState({
-      username,
-      runId,
-      status: "running",
-      phase: "starting",
-      logs: [],
-      startedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }, autoHistory, runId);
-    addLog("info", "현재 설정 저장 후 자동화 실행 중...");
-
-    try {
-      const currentConfig = {
-        enabled: true,
-        keywords,
-        postTime: autoPostTime,
-        format: autoFormat,
-        tone: autoTone,
-        flow: autoFlow,
-        cta: autoCta,
-        sourceMode: autoSourceMode,
-        batchDays: Number(autoBatchDays) || 1,
-        batchPostsPerDay: Number(autoBatchPostsPerDay) || 1,
-        batchIntervalHours: Number(autoBatchIntervalHours) || 4,
-        userId: userId.trim(),
-        accessToken: accessToken.trim(),
-      };
-
-      // 1) 현재 UI 설정을 먼저 서버에 저장
-      const saveRes = await fetch("/api/threads-auto-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          config: currentConfig,
-        }),
-      });
-      if (!saveRes.ok) throw new Error("설정 저장 실패");
-      setAutoLastUpdated(new Date().toISOString());
-
-      // 2) 자동화 실행
-      const res = await fetch("/api/threads-auto-research", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          runId,
-          config: currentConfig,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "실행 실패");
-
-      addLog("info", "실행 요청 전송 완료");
-      if (data?.result?.logs?.length) {
-        data.result.logs.forEach((l) => addLog("info", `  ↳ ${typeof l === "string" ? l : l?.msg || JSON.stringify(l)}`));
-      }
-
-      await loadAutoMonitor(runId);
-
-      fetchSchedules(username).then(setScheduledPosts).catch(() => {});
-    } catch (e) {
-      addLog("error", `자동화 실행 실패: ${e.message}`);
-      syncAutoMonitorState({
-        username,
-        runId,
-        status: "failed",
-        phase: "done",
-        error: e.message,
-        logs: [{ time: new Date().toISOString(), msg: e.message }],
-        updatedAt: new Date().toISOString(),
-      }, autoHistory, runId);
-      setAutoRunResult({ logs: [], error: e.message });
-    } finally {
-      setAutoRunning(false);
-    }
-  };
-
-  const handleGenerateAutoBatch = async () => {
-    if (!userId.trim() || !accessToken.trim()) {
-      addLog("error", "인증 설정에서 액세스 토큰과 사용자 ID를 먼저 저장하세요");
-      return;
-    }
-    const keywords = autoKeywords.split(",").map(k => k.trim()).filter(Boolean);
-    if (!keywords.length) {
-      addLog("error", "키워드를 하나 이상 입력하세요");
-      return;
-    }
-
-    const days = Math.max(1, Math.min(14, Number(autoBatchDays) || 1));
-    const postsPerDay = Math.max(1, Math.min(6, Number(autoBatchPostsPerDay) || 1));
-    const intervalHours = Math.max(1, Math.min(12, Number(autoBatchIntervalHours) || 4));
-    const totalPosts = days * postsPerDay;
-    if (totalPosts > 20) {
-      addLog("error", "한 번에 최대 20개까지만 선생성할 수 있습니다");
-      return;
-    }
-
-    setAutoBatchRunning(true);
-    addLog("info", `${days}일 x 하루 ${postsPerDay}개 예약 생성 시작 (${intervalHours}시간 간격)`);
-
-    try {
-      const currentConfig = {
-        enabled: autoEnabled,
-        keywords,
-        postTime: autoPostTime,
-        format: autoFormat,
-        tone: autoTone,
-        flow: autoFlow,
-        cta: autoCta,
-        sourceMode: autoSourceMode,
-        batchDays: days,
-        batchPostsPerDay: postsPerDay,
-        batchIntervalHours: intervalHours,
-        userId: userId.trim(),
-        accessToken: accessToken.trim(),
-      };
-
-      const saveRes = await fetch("/api/threads-auto-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          config: currentConfig,
-        }),
-      });
-      if (!saveRes.ok) throw new Error("설정 저장 실패");
-      setAutoLastUpdated(new Date().toISOString());
-
-      const runId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const baseDateKst = getBatchStartDateKst(autoPostTime);
-      let successCount = 0;
-      let failCount = 0;
-
-      for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
-        for (let slotIndex = 0; slotIndex < postsPerDay; slotIndex += 1) {
-          const order = dayIndex * postsPerDay + slotIndex + 1;
-          const scheduledAt = calcBatchScheduledAt(baseDateKst, autoPostTime, dayIndex, slotIndex, intervalHours);
-          const slotRunId = `${runId}_d${dayIndex + 1}_s${slotIndex + 1}`;
-
-          addLog("info", `${order}/${totalPosts} 슬롯 생성 시작 → ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
-
-          const res = await fetch("/api/threads-auto-research", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              username,
-              runId: slotRunId,
-              config: currentConfig,
-              options: {
-                scheduledAt,
-                allowExistingPendingAuto: true,
-                scheduleMeta: { dayIndex: dayIndex + 1, slotIndex: slotIndex + 1 },
-              },
-            }),
-          });
-
-          const { data, raw } = await parseResponsePayload(res);
-          if (!res.ok) {
-            failCount += 1;
-            const message = data?.error || raw.replace(/<[^>]*>/g, "").trim().slice(0, 180) || `HTTP ${res.status}`;
-            addLog("error", `${order}/${totalPosts} 슬롯 실패: ${message}`);
-            continue;
-          }
-
-          const result = data?.result;
-          if (result?.skipped) {
-            failCount += 1;
-            addLog("info", `${order}/${totalPosts} 슬롯 스킵: ${result.skipReason}`);
-          } else {
-            successCount += 1;
-            addLog("info", `${order}/${totalPosts} 슬롯 예약 완료`);
-          }
-        }
-      }
-
-      addLog("info", `일괄 예약 생성 완료: 성공 ${successCount}개 · 실패 ${failCount}개`);
-
-      fetchSchedules(username).then(setScheduledPosts).catch(() => {});
-    } catch (e) {
-      addLog("error", `일괄 예약 생성 실패: ${e.message}`);
-    } finally {
-      setAutoBatchRunning(false);
-    }
-  };
-
-  const handleCancelAutoRun = async () => {
-    const currentRunId = autoRunId || loadAutoRunId(username);
-    if (!currentRunId) return;
-    setAutoCanceling(true);
-    try {
-      const res = await fetch("/api/threads-auto-monitor", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, runId: currentRunId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "취소 실패");
-      if (data?.current) {
-        syncAutoMonitorState(data.current, data.runs || autoHistory, data.current.runId || currentRunId);
-      }
-      addLog("info", "자동화 취소 요청 전송됨");
-      await loadAutoMonitor(currentRunId);
-    } catch (e) {
-      addLog("error", `자동화 취소 실패: ${e.message}`);
-    } finally {
-      setAutoCanceling(false);
-    }
-  };
 
   // 예약 등록
   const handleSchedule = async () => {
