@@ -1,24 +1,24 @@
 // 통합 카드뉴스 파이프라인
 // 크롤링/리서치 → 기획 → 이미지 생성 → 카드 조립 → 배포
 import { useEffect, useState, useCallback } from "react";
-import { callGemini, generateImage } from "../utils/gemini";
 import LoginModal from "./LoginModal";
 import { getSession, clearSession } from "../utils/authSession";
-import TopicPicker from "./TopicPicker";
 import { emitEAttackContext, summarizeText } from "./eattackContext";
-import Spinner from "./pipeline/Spinner";
-import ErrorBox from "./pipeline/ErrorBox";
-import StepBar from "./pipeline/StepBar";
-import UserBar from "./pipeline/UserBar";
-import { STEP_KEYS } from "./pipeline/steps";
 import { runResearch } from "../services/pipeline/research";
 import { incrementUsage } from "../services/subscription";
-import { runPlanning, parsePlanningJson } from "../services/pipeline/planning";
+import { runPlanning } from "../services/pipeline/planning";
 import { generateOneImage, analyzeDesignToTemplate } from "../services/pipeline/imageGen";
 import { fetchSchedules, addSchedule, removeSchedule } from "../services/pipeline/schedule";
-import { normalizeInstagramToken, normalizeInstagramConfig } from "../services/pipeline/instagram";
-import { loadSocial, saveSocial, loadLocalText, saveLocalText } from "../services/pipeline/socialStorage";
+import { normalizeInstagramConfig } from "../services/pipeline/instagram";
+import { loadSocial, saveSocial } from "../services/pipeline/socialStorage";
 import { buildHtmlFromTemplate, buildHtmlCardNews, buildPremiumTemplate } from "../services/pipeline/cardNews";
+import { collectPostImages } from "../services/pipeline/cardCapture";
+import { postToThreadsAPI } from "../services/pipeline/threadsPost";
+import {
+  loadCaptionPrompt,
+  persistCaptionPrompt as persistCaptionPromptToStorage,
+  generateCaption,
+} from "../services/pipeline/caption";
 import { FONTS, FONT_LABELS, FONT_CSS } from "./pipeline/fonts";
 import SetupStep from "./pipeline/steps/SetupStep";
 import ResearchStep from "./pipeline/steps/ResearchStep";
@@ -46,9 +46,6 @@ const PURPOSE_OPTS = [
   { v: "review", l: "고객 후기" },
 ];
 const threadsKey = (u) => `eden_threads_${u}_v1`;
-const captionPromptKey = (u) => `eden_caption_prompt_${u}_v1`;
-const DEFAULT_CAPTION_PROMPT =
-  "기획을 바탕으로 인스타그램 게시용 캡션을 작성해줘. 첫 문장은 시선을 끌고, 본문은 2~4문장으로 자연스럽게 풀어 쓰고, 마지막에는 관련 해시태그 5~8개를 붙여줘.";
 
 
 // ── 메인 컴포넌트 ──
@@ -100,7 +97,7 @@ export default function UnifiedPipelineTab() {
   const [thResult, setThResult]   = useState(null);
   const [postCaption, setPostCaption] = useState("");
   const [captionPrompt, setCaptionPrompt] = useState(() =>
-    loadLocalText(captionPromptKey(getSession()?.username || "__guest")) || DEFAULT_CAPTION_PROMPT
+    loadCaptionPrompt(getSession()?.username)
   );
   const [captionSaving, setCaptionSaving] = useState(false);
   const [captionGenerating, setCaptionGenerating] = useState(false);
@@ -146,7 +143,7 @@ export default function UnifiedPipelineTab() {
     setSession(s);
     setIgConfig(normalizeInstagramConfig(loadSocial(igKey, s.username)));
     setThConfig(loadSocial(threadsKey, s.username));
-    setCaptionPrompt(loadLocalText(captionPromptKey(s.username)) || DEFAULT_CAPTION_PROMPT);
+    setCaptionPrompt(loadCaptionPrompt(s.username));
   };
 
   const handleLogout = () => {
@@ -311,81 +308,24 @@ export default function UnifiedPipelineTab() {
   };
 
   const persistCaptionPrompt = async () => {
-    const username = session?.username || "__guest";
     setCaptionSaving(true);
     try {
-      const nextPrompt = String(captionPrompt || "").trim() || DEFAULT_CAPTION_PROMPT;
-      saveLocalText(captionPromptKey(username), nextPrompt);
+      const nextPrompt = persistCaptionPromptToStorage(session?.username, captionPrompt);
       setCaptionPrompt(nextPrompt);
     } finally {
       setCaptionSaving(false);
     }
   };
 
-  const buildCaptionContext = () => {
-    const sourceCards = cards.length > 0 ? cards : plan?.slides || [];
-    const cardLines = sourceCards.map((card, i) => {
-      const headline = String(card.headline || "").trim();
-      const body = String(card.body || "").trim().replace(/\n+/g, " | ");
-      return `${i + 1}. ${headline}${body ? ` / ${body}` : ""}`;
-    }).filter(Boolean).join("\n");
-
-    const researchText = String(research || "").trim();
-    return [
-      `주제: ${topic || ""}`,
-      `브랜드: ${brandName || "브랜드"}`,
-      `톤: ${tone}`,
-      `목적: ${purpose}`,
-      researchText ? `리서치 요약:\n${researchText}` : "",
-      cardLines ? `카드 요약:\n${cardLines}` : "",
-    ].filter(Boolean).join("\n\n");
-  };
-
   const generateCaptionFromPrompt = async () => {
-    if (!topic?.trim()) {
-      setError("캡션을 만들 주제를 먼저 입력해주세요");
-      return;
-    }
     setCaptionGenerating(true);
     setError("");
     try {
       await persistCaptionPrompt();
-
-      const sourceCards = cards.length > 0 ? cards : plan?.slides || [];
-      const cardLines = sourceCards.map((card, i) => {
-        const headline = String(card.headline || "").trim();
-        const body = String(card.body || "").trim().replace(/\n+/g, " | ");
-        return `${i + 1}. ${headline}${body ? ` / ${body}` : ""}`;
-      }).join("\n");
-
-      const rawPrompt = String(captionPrompt || "").trim() || DEFAULT_CAPTION_PROMPT;
-      const filledPrompt = rawPrompt
-        .replaceAll("{topic}", topic || "")
-        .replaceAll("{brand}", brandName || "브랜드")
-        .replaceAll("{tone}", tone || "")
-        .replaceAll("{purpose}", purpose || "")
-        .replaceAll("{research}", String(research || "").trim())
-        .replaceAll("{cards}", cardLines);
-
-      const result = await callGemini(
-        [
-          {
-            role: "user",
-            content: `아래 캡션 작성 지시를 가장 우선으로 따르고, 문맥을 참고해 게시용 캡션만 작성해줘.
-추가 설명, 머리말, 따옴표, 코드블록 없이 캡션 본문만 출력해.
-줄바꿈과 해시태그는 지시에 맞게 자연스럽게 포함해.
-
-캡션 작성 지시:
-${filledPrompt}
-
-문맥:
-${buildCaptionContext()}`,
-          },
-        ],
-        "SNS 게시용 캡션 카피라이터. 사용자의 스타일 지시를 최우선으로 따르고, 결과물만 출력합니다."
-      );
-
-      setPostCaption(String(result || "").trim());
+      const caption = await generateCaption({
+        topic, brandName, tone, purpose, research, cards, plan, captionPrompt,
+      });
+      setPostCaption(caption);
     } catch (e) {
       setError(e.message || "캡션 생성 실패");
     } finally {
@@ -429,50 +369,17 @@ ${buildCaptionContext()}`,
     });
 
   const postToThreads = async () => {
-    if (!thConfig.userId || !thConfig.accessToken) {
-      setError("스레드 사용자 ID와 액세스 토큰을 입력해주세요");
-      return;
-    }
     setThPosting(true);
     setThResult(null);
     setError("");
     try {
-      // 1. cards[].imageUrl 우선 — AI 이미지 생성한 경우
-      let imageList = cards.map((c) => c.imageUrl).filter(Boolean);
-
-      // 2. imageUrl 없으면 cardHtmls(조립된 카드 HTML)를 스크린샷으로 변환
-      if (imageList.length === 0) {
-        const htmlsToShot = cardHtmls.length > 0 ? cardHtmls : null;
-        if (!htmlsToShot) {
-          throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
-        }
-        const shotRes = await fetch("/api/html-screenshot", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ htmls: htmlsToShot }),
-        });
-        const shotData = await shotRes.json();
-        if (!shotRes.ok) throw new Error(shotData.error || "카드 이미지 변환 실패");
-        imageList = shotData.images;
-      }
-
-      if (imageList.length === 0) {
-        throw new Error("변환된 이미지가 없습니다.");
-      }
-
-      const res = await fetch("/api/threads-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: thConfig.userId,
-          accessToken: thConfig.accessToken,
-          images: imageList,
-          caption: postCaption || topic,
-        }),
+      const result = await postToThreadsAPI({
+        thConfig,
+        cards,
+        cardHtmls,
+        caption: postCaption || topic,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "스레드 게시 실패");
-      setThResult({ status: "success", message: `스레드 게시 완료!${data.permalink ? ` → ${data.permalink}` : ""}`, permalink: data.permalink });
+      setThResult(result);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -502,46 +409,7 @@ ${buildCaptionContext()}`,
     try {
       log(`계정: @${igConfig.username || igConfig.accountId}`);
 
-      // 1. imageUrl 있는 카드 먼저 수집
-      let images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
-      log(`카드 imageUrl 수집: ${images.length}개`);
-
-      // 2. imageUrl 없으면 cardHtmls → 브라우저에서 html2canvas로 직접 캡처
-      if (images.length === 0 && cardHtmls.length > 0) {
-        log(`HTML 카드 감지 (${cardHtmls.length}장) → 브라우저 캡처 시작`);
-        const { default: html2canvas } = await import("html2canvas");
-        const targets = cardHtmls.slice(0, 10);
-        for (let i = 0; i < targets.length; i++) {
-          log(`카드 ${i + 1}/${targets.length} 캡처 중...`);
-          const dataUrl = await new Promise((resolve, reject) => {
-            const blob = new Blob([targets[i]], { type: "text/html" });
-            const blobUrl = URL.createObjectURL(blob);
-            const iframe = document.createElement("iframe");
-            iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
-            iframe.src = blobUrl;
-            iframe.onload = async () => {
-              try {
-                const doc = iframe.contentDocument;
-                await doc.fonts.ready;
-                await new Promise((r) => setTimeout(r, 1200));
-                const canvas = await html2canvas(doc.documentElement, {
-                  width: 1080, height: 1350, windowWidth: 1080, windowHeight: 1350,
-                  scale: 1, useCORS: true, allowTaint: false, backgroundColor: "#080814",
-                  logging: false, x: 0, y: 0,
-                });
-                URL.revokeObjectURL(blobUrl);
-                iframe.remove();
-                resolve(canvas.toDataURL("image/jpeg", 0.92));
-              } catch (e) { URL.revokeObjectURL(blobUrl); iframe.remove(); reject(e); }
-            };
-            iframe.onerror = () => { URL.revokeObjectURL(blobUrl); iframe.remove(); reject(new Error("iframe 로드 실패")); };
-            document.body.appendChild(iframe);
-          });
-          images.push(dataUrl);
-        }
-        log(`브라우저 캡처 완료: ${images.length}장`);
-      }
-
+      const images = await collectPostImages({ cards, cardHtmls, logFn: log });
       if (images.length === 0) {
         throw new Error("게시할 이미지가 없습니다. 카드를 먼저 조립해주세요.");
       }
@@ -568,64 +436,6 @@ ${buildCaptionContext()}`,
     } finally {
       setIgPosting(false);
     }
-  };
-
-  const buildInstagramImages = async (logFn = null) => {
-    let images = cards.map((c) => c.imageUrl).filter((u) => typeof u === "string" && u.length > 0);
-    if (logFn) logFn(`카드 imageUrl 수집: ${images.length}개`);
-
-    if (images.length === 0 && cardHtmls.length > 0) {
-      if (logFn) logFn(`HTML 카드 감지 (${cardHtmls.length}장) → 브라우저 캡처 시작`);
-      const { default: html2canvas } = await import("html2canvas");
-      const targets = cardHtmls.slice(0, 10);
-      for (let i = 0; i < targets.length; i++) {
-        if (logFn) logFn(`카드 ${i + 1}/${targets.length} 캡처 중...`);
-        const dataUrl = await new Promise((resolve, reject) => {
-          const blob = new Blob([targets[i]], { type: "text/html" });
-          const blobUrl = URL.createObjectURL(blob);
-          const iframe = document.createElement("iframe");
-          iframe.style.cssText = "position:fixed;left:-9999px;top:0;width:1080px;height:1350px;border:none;z-index:-999;pointer-events:none;";
-          iframe.src = blobUrl;
-          iframe.onload = async () => {
-            try {
-              const doc = iframe.contentDocument;
-              await doc.fonts.ready;
-              await new Promise((r) => setTimeout(r, 1200));
-              const canvas = await html2canvas(doc.documentElement, {
-                width: 1080,
-                height: 1350,
-                windowWidth: 1080,
-                windowHeight: 1350,
-                scale: 1,
-                useCORS: true,
-                allowTaint: false,
-                backgroundColor: "#080814",
-                logging: false,
-                x: 0,
-                y: 0,
-              });
-              URL.revokeObjectURL(blobUrl);
-              iframe.remove();
-              resolve(canvas.toDataURL("image/jpeg", 0.92));
-            } catch (e) {
-              URL.revokeObjectURL(blobUrl);
-              iframe.remove();
-              reject(e);
-            }
-          };
-          iframe.onerror = () => {
-            URL.revokeObjectURL(blobUrl);
-            iframe.remove();
-            reject(new Error("iframe 로드 실패"));
-          };
-          document.body.appendChild(iframe);
-        });
-        images.push(dataUrl);
-      }
-      if (logFn) logFn(`브라우저 캡처 완료: ${images.length}장`);
-    }
-
-    return images;
   };
 
   const loadInstagramSchedules = async () => {
@@ -734,7 +544,7 @@ ${buildCaptionContext()}`,
       if (new Date(scheduledAt) <= new Date()) {
         throw new Error("예약 시간은 현재보다 미래여야 합니다");
       }
-      const rawImages = await buildInstagramImages();
+      const rawImages = await collectPostImages({ cards, cardHtmls });
       if (!rawImages.length) throw new Error("예약할 이미지를 만들 수 없습니다");
       const prepRes = await fetch("/api/instagram-prepare", {
         method: "POST",
