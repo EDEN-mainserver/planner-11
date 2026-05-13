@@ -3,6 +3,8 @@ import ErrorBox from "../ErrorBox";
 import StepBar from "../StepBar";
 import UserBar from "../UserBar";
 
+import { useState } from "react";
+
 export default function PlanningStep({
   session,
   onLogout,
@@ -21,7 +23,13 @@ export default function PlanningStep({
   startImages,
   startAssembly,
   updateSlide,
+  planningPrompt,
+  setPlanningPrompt,
+  planningPromptSaving,
+  persistPlanningPrompt,
+  startPlanningWithCustom,
 }) {
+  const [showCustomPrompt, setShowCustomPrompt] = useState(false);
   const isHighest = templateId === "highest";
   const templateLabel = isHighest ? "🔥 이미지 생성 + HIGHEST 조립 →" : "✨ 프리미엄 템플릿으로 조립 →";
   const templateBtnClass = isHighest
@@ -41,6 +49,59 @@ export default function PlanningStep({
               📋 {plan.type} · {plan.slides?.length}장 <span className="font-normal text-purple-500">— 직접 수정 가능</span>
             </p>
             <span className="text-[10px] text-purple-500">{topic}</span>
+          </div>
+
+          {/* 기획 프롬프트 커스터마이징 */}
+          <div className="border border-violet-200 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowCustomPrompt((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-violet-50 hover:bg-violet-100 transition-colors"
+            >
+              <span className="text-xs font-bold text-violet-700 flex items-center gap-1.5">
+                ✏️ 기획 프롬프트 커스터마이징
+                {planningPrompt?.trim() && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-500 text-white">저장됨</span>
+                )}
+              </span>
+              <span className="text-[10px] text-violet-500">{showCustomPrompt ? "접기 ▲" : "펼치기 ▼"}</span>
+            </button>
+            {showCustomPrompt && (
+              <div className="p-3 space-y-2 bg-white">
+                <p className="text-[10px] text-gray-500 leading-relaxed">
+                  기본 프롬프트(JSON 스키마·길이 제한·cliffhanger 금지) 위에 <span className="font-semibold">추가 지시</span>가 적용됩니다.<br/>
+                  예: "각 슬라이드에 통계 수치 1개 이상 포함" · "톤을 더 직설적으로" · "본문에 인용구 포함"
+                </p>
+                <textarea
+                  rows={4}
+                  value={planningPrompt || ""}
+                  onChange={(e) => setPlanningPrompt(e.target.value)}
+                  placeholder="여기에 추가 지시사항을 입력하세요. 한국어 자유 형식."
+                  className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-violet-400 resize-y leading-relaxed"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={persistPlanningPrompt}
+                    disabled={planningPromptSaving}
+                    className="flex-1 py-2 text-xs font-semibold rounded-lg border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-all disabled:opacity-50"
+                  >
+                    {planningPromptSaving ? "저장 중..." : "💾 프롬프트 저장"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      persistPlanningPrompt();
+                      startPlanningWithCustom?.();
+                    }}
+                    disabled={!planningPrompt?.trim()}
+                    className="flex-[2] py-2 text-xs font-bold rounded-lg text-white bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    🔄 이 프롬프트로 재기획
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
             {plan.slides?.map((s, i) => (

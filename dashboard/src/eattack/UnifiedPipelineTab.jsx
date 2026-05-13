@@ -9,7 +9,7 @@ import { incrementUsage } from "../services/subscription";
 import { runPlanning } from "../services/pipeline/planning";
 import { generateOneImage, analyzeDesignToTemplate } from "../services/pipeline/imageGen";
 import { normalizeInstagramConfig } from "../services/pipeline/instagram";
-import { loadSocial, saveSocial } from "../services/pipeline/socialStorage";
+import { loadSocial, saveSocial, loadLocalText, saveLocalText } from "../services/pipeline/socialStorage";
 import { useInstagramAuto } from "../hooks/useInstagramAuto";
 import { buildHtmlFromTemplate, buildPremiumTemplate, buildHighestTemplate } from "../services/pipeline/cardNews";
 import { collectPostImages } from "../services/pipeline/cardCapture";
@@ -45,6 +45,7 @@ const PURPOSE_OPTS = [
   { v: "review", l: "고객 후기" },
 ];
 const threadsKey = (u) => `eden_threads_${u}_v1`;
+const planningPromptKey = (u) => `eden_planning_prompt_${u}_v1`;
 
 
 // ── 메인 컴포넌트 ──
@@ -100,6 +101,12 @@ export default function UnifiedPipelineTab() {
   const [captionSaving, setCaptionSaving] = useState(false);
   const [captionGenerating, setCaptionGenerating] = useState(false);
 
+  // 기획 단계 추가 지시사항 — 사용자가 직접 입력하는 프롬프트, 기본 프롬프트 끝에 append
+  const [planningPrompt, setPlanningPrompt] = useState(() =>
+    loadLocalText(planningPromptKey(getSession()?.username || "__guest")) || ""
+  );
+  const [planningPromptSaving, setPlanningPromptSaving] = useState(false);
+
   useEffect(() => {
     emitEAttackContext({
       page: "UnifiedPipelineTab",
@@ -126,6 +133,7 @@ export default function UnifiedPipelineTab() {
     setIgConfig(normalizeInstagramConfig(loadSocial(igKey, s.username)));
     setThConfig(loadSocial(threadsKey, s.username));
     setCaptionPrompt(loadCaptionPrompt(s.username));
+    setPlanningPrompt(loadLocalText(planningPromptKey(s.username)) || "");
   };
 
   const handleLogout = () => {
@@ -176,12 +184,33 @@ export default function UnifiedPipelineTab() {
       setResearch(summary);
     });
 
+  // 기본 기획 — 사용자 추가 지시 없이
   const startPlanning = () =>
     run(async () => {
       setStep("planning");
       const p = await runPlanning(topic, research, slideCount, tone, purpose, brandName);
       setPlan(p);
     });
+
+  // 사용자가 입력한 추가 지시사항을 포함해 재기획
+  const startPlanningWithCustom = () =>
+    run(async () => {
+      setStep("planning");
+      const p = await runPlanning(topic, research, slideCount, tone, purpose, brandName, planningPrompt);
+      setPlan(p);
+    });
+
+  // 추가 지시사항을 localStorage에 저장
+  const persistPlanningPrompt = () => {
+    setPlanningPromptSaving(true);
+    try {
+      const next = String(planningPrompt || "").trim();
+      saveLocalText(planningPromptKey(session?.username || "__guest"), next);
+      setPlanningPrompt(next);
+    } finally {
+      setPlanningPromptSaving(false);
+    }
+  };
 
   // HIGHEST 전용 자동 이미지 생성 — slide별 imagePrompt를 batch 호출.
   // 모든 슬라이드 완료 후 step="images" 화면에서 사용자가 결과 확인 → "카드 조립 →" 클릭.
@@ -478,6 +507,11 @@ export default function UnifiedPipelineTab() {
         startImages={startImages}
         startAssembly={startAssembly}
         updateSlide={updateSlide}
+        planningPrompt={planningPrompt}
+        setPlanningPrompt={setPlanningPrompt}
+        planningPromptSaving={planningPromptSaving}
+        persistPlanningPrompt={persistPlanningPrompt}
+        startPlanningWithCustom={startPlanningWithCustom}
       />
     );
 

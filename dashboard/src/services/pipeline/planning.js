@@ -83,14 +83,17 @@ export async function parsePlanningJson(raw) {
   }
 }
 
-export async function runPlanning(topic, research, slideCount, tone, purpose, brandName) {
+export async function runPlanning(topic, research, slideCount, tone, purpose, brandName, customInstructions = "") {
+  const customBlock = String(customInstructions || "").trim()
+    ? `\n\n사용자 추가 지시사항(최우선 반영):\n${String(customInstructions).trim()}`
+    : "";
   const raw = await callGemini(
     [
       {
         role: "user",
         content: `주제: "${topic}" | 브랜드: ${brandName || "브랜드"} | 톤: ${tone} | 목적: ${purpose}
 리서치 요약:
-${research}
+${research}${customBlock}
 
 ${slideCount}장 카드뉴스 기획서를 JSON으로 작성해줘:
 {
