@@ -14,10 +14,11 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
-  const { htmls } = req.body || {};
+  const { htmls, format } = req.body || {};
   if (!htmls || !Array.isArray(htmls) || htmls.length === 0) {
     return res.status(400).json({ error: "htmls 배열이 필요합니다" });
   }
+  const fmt = format === "png" ? "png" : "jpeg";
 
   // @sparticuz/chromium이 /tmp에 압축 해제한 .so 파일을 링커가 찾을 수 있도록 경로 추가
   const libPaths = [
@@ -57,8 +58,12 @@ export default async function handler(req, res) {
     for (const html of targets) {
       await page.setContent(html, { waitUntil: "networkidle0", timeout: 25000 });
       await page.evaluate(() => document.fonts.ready);
-      const buffer = await page.screenshot({ type: "jpeg", quality: 92, fullPage: false });
-      images.push(`data:image/jpeg;base64,${buffer.toString("base64")}`);
+      const shotOpts = fmt === "png"
+        ? { type: "png", fullPage: false }
+        : { type: "jpeg", quality: 92, fullPage: false };
+      const buffer = await page.screenshot(shotOpts);
+      const mime = fmt === "png" ? "image/png" : "image/jpeg";
+      images.push(`data:${mime};base64,${buffer.toString("base64")}`);
     }
 
     await browser.close();

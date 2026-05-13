@@ -2,7 +2,7 @@ import { useState } from "react";
 import ErrorBox from "../ErrorBox";
 import StepBar from "../StepBar";
 import UserBar from "../UserBar";
-import { captureSingleHtmlToImage } from "../../../services/pipeline/cardCapture";
+import { captureViaServerScreenshot } from "../../../services/pipeline/cardCapture";
 
 export default function AssemblyStep({
   session,
@@ -23,12 +23,13 @@ export default function AssemblyStep({
 }) {
   const [downloadingPng, setDownloadingPng] = useState(false);
 
+  // 서버 측 Puppeteer로 캡처 — CSS 효과(background-clip:text 등)를 그대로 렌더.
+  // 콜드 스타트 포함 5~15초 소요될 수 있어 사용자에게 진행 표시 필수.
   const downloadAsPng = async (html, idx) => {
     if (!html || downloadingPng) return;
     setDownloadingPng(true);
     try {
-      const dataUrl = await captureSingleHtmlToImage(html, { mime: "image/png" });
-      if (!dataUrl) throw new Error("캡처 결과가 비어있음");
+      const dataUrl = await captureViaServerScreenshot(html, "png");
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = `${(topic || "카드뉴스").slice(0, 15)}-카드${idx + 1}.png`;
@@ -36,7 +37,6 @@ export default function AssemblyStep({
       a.click();
       a.remove();
     } catch (e) {
-      // 캡처 실패 시 사용자에게 알림은 콘솔 + 버튼 복원
       // eslint-disable-next-line no-console
       console.error("PNG 캡처 실패:", e);
       alert(`PNG 다운로드 실패: ${e.message}`);
@@ -221,7 +221,7 @@ export default function AssemblyStep({
                       <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
                     </svg>
                   )}
-                  {downloadingPng ? "캡처 중..." : `카드 ${safeIdx + 1} PNG`}
+                  {downloadingPng ? "서버 캡처 중 (5~15초)..." : `카드 ${safeIdx + 1} PNG`}
                 </button>
                 <button
                   onClick={() => {

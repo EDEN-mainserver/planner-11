@@ -75,11 +75,29 @@ function captureSingleCard(html, html2canvas, mime = "image/jpeg", quality = 0.9
   });
 }
 
-// 단일 HTML을 PNG(기본) 또는 JPEG dataURL로 캡처. 다운로드 버튼 등 1장 캡처용.
+// 단일 HTML을 PNG(기본) 또는 JPEG dataURL로 캡처 — 브라우저 측 html2canvas.
+// background-clip:text 같은 일부 CSS 효과는 한계가 있어 단순 디자인에 적합.
 export async function captureSingleHtmlToImage(html, { mime = "image/png", quality = 0.95 } = {}) {
   if (!html) return null;
   const { default: html2canvas } = await import("html2canvas");
   return captureSingleCard(html, html2canvas, mime, quality);
+}
+
+// 서버 측 Puppeteer로 캡처 — background-clip:text 등 모든 CSS 효과를 그대로 렌더.
+// 시간 5~15초 (콜드 스타트 포함). 다운로드 등 정확성 우선 케이스에 사용.
+// format: "png" | "jpeg" (default "png")
+export async function captureViaServerScreenshot(html, format = "png") {
+  if (!html) return null;
+  const res = await fetch("/api/html-screenshot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ htmls: [html], format }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || `캡처 실패 (${res.status})`);
+  const dataUrl = data?.images?.[0];
+  if (!dataUrl) throw new Error("캡처 결과가 비어있음");
+  return dataUrl;
 }
 
 // cards[].imageUrl 우선 수집 + 없으면 cardHtmls 캡처 fallback.
