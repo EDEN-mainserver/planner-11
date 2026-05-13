@@ -7,7 +7,7 @@ export async function incrementUsage(username) {
   const res = await fetch("/api/subscription/usage", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ userId: username }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
