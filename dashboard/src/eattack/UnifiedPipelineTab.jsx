@@ -235,6 +235,17 @@ export default function UnifiedPipelineTab() {
     };
   };
 
+  // 기획 단계에서 사용자가 슬라이드를 직접 편집 (headline / body / imagePrompt)
+  const updateSlide = (idx, field, value) => {
+    setPlan((prev) => {
+      if (!prev?.slides) return prev;
+      return {
+        ...prev,
+        slides: prev.slides.map((s, i) => (i === idx ? { ...s, [field]: value } : s)),
+      };
+    });
+  };
+
   const updateCard = (idx, field, value) => {
     setCards((prev) => {
       const next = prev.map((c, i) => (i === idx ? { ...c, [field]: value } : c));
@@ -466,6 +477,7 @@ export default function UnifiedPipelineTab() {
         startBenchmarkImages={startBenchmarkImages}
         startImages={startImages}
         startAssembly={startAssembly}
+        updateSlide={updateSlide}
       />
     );
 

@@ -20,6 +20,7 @@ export default function PlanningStep({
   startBenchmarkImages,
   startImages,
   startAssembly,
+  updateSlide,
 }) {
   const isHighest = templateId === "highest";
   const templateLabel = isHighest ? "🔥 이미지 생성 + HIGHEST 조립 →" : "✨ 프리미엄 템플릿으로 조립 →";
@@ -37,15 +38,15 @@ export default function PlanningStep({
         <>
           <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 flex items-center justify-between">
             <p className="text-xs font-bold text-purple-700">
-              📋 {plan.type} · {plan.slides?.length}장
+              📋 {plan.type} · {plan.slides?.length}장 <span className="font-normal text-purple-500">— 직접 수정 가능</span>
             </p>
             <span className="text-[10px] text-purple-500">{topic}</span>
           </div>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
             {plan.slides?.map((s, i) => (
               <div
                 key={i}
-                className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border text-xs
+                className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border text-xs
                 ${s.part === "표지" ? "border-pink-200 bg-pink-50" : s.part === "마무리" ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-white"}`}
               >
                 <span
@@ -54,16 +55,33 @@ export default function PlanningStep({
                 >
                   {s.num}
                 </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-gray-800 truncate">{s.headline}</p>
-                  {s.body && <p className="text-gray-500 mt-0.5 line-clamp-1">{s.body}</p>}
-                  <p className="text-gray-300 mt-0.5 line-clamp-1 italic text-[10px]">
-                    {s.imagePrompt}
-                  </p>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <input
+                    type="text"
+                    value={s.headline || ""}
+                    onChange={(e) => updateSlide?.(i, "headline", e.target.value)}
+                    placeholder="제목"
+                    className="w-full font-bold text-gray-800 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-violet-400 focus:outline-none px-0 py-0.5 transition-colors"
+                  />
+                  <textarea
+                    value={s.body || ""}
+                    onChange={(e) => updateSlide?.(i, "body", e.target.value)}
+                    placeholder="본문 (줄바꿈으로 항목 분리)"
+                    rows={Math.max(2, Math.min(8, (s.body || "").split("\n").length + 1))}
+                    className="w-full text-gray-600 bg-transparent border border-transparent hover:border-gray-200 focus:border-violet-400 focus:outline-none rounded px-1.5 py-1 resize-y leading-relaxed transition-colors"
+                  />
+                  <input
+                    type="text"
+                    value={s.imagePrompt || ""}
+                    onChange={(e) => updateSlide?.(i, "imagePrompt", e.target.value)}
+                    placeholder="이미지 프롬프트 (영어)"
+                    className="w-full text-gray-400 italic text-[10px] bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-violet-400 focus:outline-none px-0 py-0.5 transition-colors"
+                  />
                 </div>
               </div>
             ))}
           </div>
+          <p className="text-[10px] text-gray-400 text-center">✓ 수정 즉시 저장됨. 조립 시 수정된 내용 반영.</p>
           {error && <ErrorBox msg={error} />}
 
           {/* 벤치마킹 디자인 첨부 */}
