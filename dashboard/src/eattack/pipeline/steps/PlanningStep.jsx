@@ -14,13 +14,15 @@ export default function PlanningStep({
   benchmarkImg,
   setBenchmarkImg,
   handleBenchmarkFile,
-  useTemplate,
-  setImages,
+  templateId,
   startPlanning,
   startBenchmarkImages,
-  startImages,
   startAssembly,
 }) {
+  const templateLabel = templateId === "highest" ? "🔥 HIGHEST 스타일로 조립 →" : "✨ 프리미엄 템플릿으로 조립 →";
+  const templateBtnClass = templateId === "highest"
+    ? "bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600"
+    : "bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600";
   return (
     <div className="p-6 space-y-4">
       <UserBar session={session} onLogout={onLogout} />
@@ -108,37 +110,22 @@ export default function PlanningStep({
             >
               다시 기획
             </button>
-            {useTemplate && !benchmarkImg ? (
+            {benchmarkImg ? (
               <button
-                onClick={() => startAssembly([])}
-                className="flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600"
+                onClick={startBenchmarkImages}
+                className="flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
               >
-                ✨ 프리미엄 템플릿으로 조립 →
+                벤치마킹 디자인으로 생성 →
               </button>
             ) : (
               <button
-                onClick={() => {
-                  setImages([]);
-                  benchmarkImg ? startBenchmarkImages() : startImages();
-                }}
-                className={`flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all
-                  ${benchmarkImg
-                    ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
-                    : "bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600"
-                  }`}
+                onClick={() => startAssembly([])}
+                className={`flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all ${templateBtnClass}`}
               >
-                {benchmarkImg ? "벤치마킹 디자인으로 생성 →" : "이미지 생성 →"}
+                {templateLabel}
               </button>
             )}
           </div>
-          {(!useTemplate || benchmarkImg) && (
-            <button
-              onClick={() => startAssembly([])}
-              className="w-full py-2 border border-dashed border-gray-300 text-xs text-gray-400 rounded-xl hover:bg-gray-50 transition-all"
-            >
-              이미지 건너뛰고 바로 조립
-            </button>
-          )}
         </>
       ) : (
         error && <ErrorBox msg={error} onRetry={startPlanning} />

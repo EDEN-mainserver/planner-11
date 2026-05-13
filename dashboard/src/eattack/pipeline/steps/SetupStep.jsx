@@ -2,7 +2,25 @@ import ErrorBox from "../ErrorBox";
 import StepBar from "../StepBar";
 import UserBar from "../UserBar";
 import TopicPicker from "../../TopicPicker";
-import { FONTS, FONT_LABELS, FONT_CSS } from "../fonts";
+
+const TEMPLATE_OPTIONS = [
+  {
+    id: "premium",
+    label: "✨ 프리미엄",
+    sub: "어두운 톤·인스타 클래식",
+    activeClass: "border-violet-400 bg-violet-50",
+    pillClass: "bg-violet-500 text-white",
+    titleClass: "text-violet-700",
+  },
+  {
+    id: "highest",
+    label: "🔥 HIGHEST",
+    sub: "밝은 톤·오렌지 강조·Pretendard",
+    activeClass: "border-orange-400 bg-orange-50",
+    pillClass: "bg-orange-500 text-white",
+    titleClass: "text-orange-700",
+  },
+];
 
 export default function SetupStep({
   session,
@@ -18,10 +36,8 @@ export default function SetupStep({
   setColor1,
   color2,
   setColor2,
-  useTemplate,
-  setUseTemplate,
-  font,
-  setFont,
+  templateId,
+  setTemplateId,
   tone,
   setTone,
   purpose,
@@ -114,53 +130,29 @@ export default function SetupStep({
         </div>
       </div>
 
-      {/* 이미지 생성 방식 */}
+      {/* 디자인 템플릿 */}
       <div>
-        <label className="text-xs font-bold text-gray-700 block mb-1.5">이미지 방식</label>
+        <label className="text-xs font-bold text-gray-700 block mb-1.5">디자인 템플릿</label>
         <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => setUseTemplate(true)}
-            className={`relative flex flex-col gap-1 p-3 rounded-xl border-2 text-left transition-all
-              ${useTemplate ? "border-violet-400 bg-violet-50" : "border-gray-200 bg-white hover:border-gray-300"}`}
-          >
-            {useTemplate && (
-              <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-500 text-white">선택됨</span>
-            )}
-            <span className="text-sm font-bold text-violet-700">✨ 프리미엄 템플릿</span>
-            <span className="text-[10px] text-gray-500 leading-relaxed">커버·본문·CTA<br/>인스타 전용 디자인</span>
-          </button>
-          <button
-            onClick={() => setUseTemplate(false)}
-            className={`relative flex flex-col gap-1 p-3 rounded-xl border-2 text-left transition-all
-              ${!useTemplate ? "border-pink-400 bg-pink-50" : "border-gray-200 bg-white hover:border-gray-300"}`}
-          >
-            {!useTemplate && (
-              <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-500 text-white">선택됨</span>
-            )}
-            <span className="text-sm font-bold text-pink-700">🖼 AI 이미지 생성</span>
-            <span className="text-[10px] text-gray-500 leading-relaxed">이미지 API로<br/>슬라이드별 생성</span>
-          </button>
+          {TEMPLATE_OPTIONS.map((opt) => {
+            const active = templateId === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => setTemplateId(opt.id)}
+                className={`relative flex flex-col gap-1 p-3 rounded-xl border-2 text-left transition-all
+                  ${active ? opt.activeClass : "border-gray-200 bg-white hover:border-gray-300"}`}
+              >
+                {active && (
+                  <span className={`absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${opt.pillClass}`}>선택됨</span>
+                )}
+                <span className={`text-sm font-bold ${opt.titleClass}`}>{opt.label}</span>
+                <span className="text-[10px] text-gray-500 leading-relaxed">{opt.sub}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
-
-      {/* 폰트 (AI 이미지 모드만) */}
-      {!useTemplate && (
-        <div>
-          <label className="text-xs font-bold text-gray-700 block mb-1.5">폰트</label>
-          <div className="flex gap-2">
-            {FONTS.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFont(f)}
-                className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${font === f ? "border-violet-400 bg-violet-50 text-violet-700 font-semibold" : "border-gray-200 text-gray-600 hover:border-gray-300 bg-white"}`}
-                style={{ fontFamily: FONT_CSS[f] }}
-              >
-                {FONT_LABELS[f]}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* 톤 */}
       <div>

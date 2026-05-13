@@ -7,11 +7,11 @@ import { emitEAttackContext, summarizeText } from "./eattackContext";
 import { runResearch } from "../services/pipeline/research";
 import { incrementUsage } from "../services/subscription";
 import { runPlanning } from "../services/pipeline/planning";
-import { generateOneImage, analyzeDesignToTemplate } from "../services/pipeline/imageGen";
+import { analyzeDesignToTemplate } from "../services/pipeline/imageGen";
 import { normalizeInstagramConfig } from "../services/pipeline/instagram";
 import { loadSocial, saveSocial } from "../services/pipeline/socialStorage";
 import { useInstagramAuto } from "../hooks/useInstagramAuto";
-import { buildHtmlFromTemplate, buildHtmlCardNews, buildPremiumTemplate } from "../services/pipeline/cardNews";
+import { buildHtmlFromTemplate, buildPremiumTemplate, buildHighestTemplate } from "../services/pipeline/cardNews";
 import { collectPostImages } from "../services/pipeline/cardCapture";
 import { postToThreadsAPI } from "../services/pipeline/threadsPost";
 import {
@@ -22,12 +22,10 @@ import {
 import SetupStep from "./pipeline/steps/SetupStep";
 import ResearchStep from "./pipeline/steps/ResearchStep";
 import PlanningStep from "./pipeline/steps/PlanningStep";
-import ImagesStep from "./pipeline/steps/ImagesStep";
 import AssemblyStep from "./pipeline/steps/AssemblyStep";
 import DeployStep from "./pipeline/steps/DeployStep";
 
 // ── 상수 ──
-const BATCH_SIZE = 3;
 // 사용자별 IG 설정 키 (username 기반)
 const igKey = (username) => `eden_ig_${username}_v1`;
 const TONE_OPTS = [
@@ -64,7 +62,6 @@ export default function UnifiedPipelineTab() {
   const [brandName, setBrandName] = useState("");
   const [color1, setColor1] = useState("#7c3aed");
   const [color2, setColor2] = useState("#ec4899");
-  const [font, setFont] = useState("sans");
   const [tone, setTone] = useState("professional");
   const [purpose, setPurpose] = useState("info");
   const [slideCount, setSlideCount] = useState(7);
@@ -72,15 +69,13 @@ export default function UnifiedPipelineTab() {
   // 결과물
   const [research, setResearch] = useState("");
   const [plan, setPlan] = useState(null);
-  const [images, setImages] = useState([]);
-  const [imgProg, setImgProg] = useState({ done: 0, total: 0 });
   const [cards, setCards] = useState([]); // 편집 가능한 카드 데이터
   const [htmlContent, setHtmlContent] = useState("");
   const [cardHtmls, setCardHtmls] = useState([]); // 카드별 개별 HTML (미리보기용)
   const [previewIdx, setPreviewIdx] = useState(0); // 현재 미리보기 중인 카드 인덱스
 
   // 템플릿 모드 (프리미엄 인스타 템플릿 vs 기존 AI 이미지)
-  const [useTemplate, setUseTemplate] = useState(true);
+  const [templateId, setTemplateId] = useState("premium"); // "premium" | "highest"
 
   // 벤치마킹 디자인
   const [benchmarkImg, setBenchmarkImg] = useState(null); // { dataUrl, mime, base64 }
@@ -107,7 +102,7 @@ export default function UnifiedPipelineTab() {
       section: "이미지 > 통합 파이프라인",
       tab: "unified",
       step,
-      mode: useTemplate ? "템플릿" : "AI 이미지",
+      mode: benchmarkTemplate ? "벤치마킹" : templateId === "highest" ? "HIGHEST" : "프리미엄",
       status: running ? "실행 중" : step,
       summary: [
         `주제 ${summarizeText(topic || "미입력", 60)}`,
@@ -119,7 +114,7 @@ export default function UnifiedPipelineTab() {
         thPosting ? "Threads 게시 중" : "",
       ].filter(Boolean).join(" · "),
     });
-  }, [step, running, useTemplate, topic, brandName, tone, purpose, slideCount, cards.length, thPosting]);
+  }, [step, running, templateId, benchmarkTemplate, topic, brandName, tone, purpose, slideCount, cards.length, thPosting]);
 
   // 로그인 핸들러
   const handleLogin = (s) => {
@@ -159,10 +154,9 @@ export default function UnifiedPipelineTab() {
       headline: slide.headline,
       body: slide.body || "",
       imagePrompt: slide.imagePrompt,
-      imageUrl: imageList[i] || null,
+      imageUrl: imageList?.[i] || null,
       color1,
       color2,
-      font,
     }));
   }
 
@@ -185,53 +179,43 @@ export default function UnifiedPipelineTab() {
       setPlan(p);
     });
 
-  const startImages = () =>
-    run(async () => {
-      setStep("images");
-      const slides = plan.slides;
-      const results = new Array(slides.length).fill(null);
-      setImages([...results]);
-      setImgProg({ done: 0, total: slides.length });
-
-      for (let i = 0; i < slides.length; i += BATCH_SIZE) {
-        const batch = slides.slice(i, Math.min(i + BATCH_SIZE, slides.length));
-        const settled = await Promise.allSettled(batch.map((s) => generateOneImage(s.imagePrompt)));
-        settled.forEach((r, j) => {
-          results[i + j] = r.status === "fulfilled" ? r.value : null;
-        });
-        setImages([...results]);
-        setImgProg({ done: Math.min(i + BATCH_SIZE, slides.length), total: slides.length });
-      }
-    });
-
   const startAssembly = (imageList) => {
-    const imgList = imageList || images;
+    const imgList = imageList || [];
     const assembled = buildCards(plan, imgList);
     setCards(assembled);
-    const html = useTemplate && !benchmarkTemplate
-      ? buildPremiumTemplate(topic, assembled, brandName, color1)
-      : benchmarkTemplate
-        ? buildHtmlFromTemplate(assembled, benchmarkTemplate, topic, brandName)
-        : buildHtmlCardNews(topic, assembled, brandName, color1, color2, font);
+    const { html, cardHtmls: nextCardHtmls } = renderCards(assembled);
     setHtmlContent(html);
-    setCardHtmls(buildPremiumTemplate._lastCardHtmls || []);
+    setCardHtmls(nextCardHtmls);
     setPreviewIdx(0);
     setStep("assembly");
   };
 
+  // 현재 선택된 템플릿(벤치마킹/HIGHEST/프리미엄)으로 카드 배열을 HTML + cardHtmls로 빌드.
+  const renderCards = (cardList) => {
+    if (benchmarkTemplate) {
+      return {
+        html: buildHtmlFromTemplate(cardList, benchmarkTemplate, topic, brandName),
+        cardHtmls: [],
+      };
+    }
+    if (templateId === "highest") {
+      return {
+        html: buildHighestTemplate(topic, cardList, brandName, color1),
+        cardHtmls: buildHighestTemplate._lastCardHtmls || [],
+      };
+    }
+    return {
+      html: buildPremiumTemplate(topic, cardList, brandName, color1),
+      cardHtmls: buildPremiumTemplate._lastCardHtmls || [],
+    };
+  };
+
   const updateCard = (idx, field, value) => {
     setCards((prev) => {
-      const next = prev.map((c, i) =>
-        i === idx ? { ...c, [field]: value } : c
-      );
-      // 템플릿 모드 분기
-      const html = useTemplate && !benchmarkTemplate
-        ? buildPremiumTemplate(topic, next, brandName, color1)
-        : benchmarkTemplate
-          ? buildHtmlFromTemplate(next, benchmarkTemplate, topic, brandName)
-          : buildHtmlCardNews(topic, next, brandName, color1, color2, font);
+      const next = prev.map((c, i) => (i === idx ? { ...c, [field]: value } : c));
+      const { html, cardHtmls: nextCardHtmls } = renderCards(next);
       setHtmlContent(html);
-      setCardHtmls(buildPremiumTemplate._lastCardHtmls || []);
+      setCardHtmls(nextCardHtmls);
       return next;
     });
   };
@@ -286,8 +270,6 @@ export default function UnifiedPipelineTab() {
   // 벤치마킹 디자인으로 카드 생성
   const startBenchmarkImages = () =>
     run(async () => {
-      setStep("images");
-      setImgProg({ done: 0, total: plan.slides.length });
       // 1. Gemini Vision으로 디자인 분석
       const template = await analyzeDesignToTemplate(benchmarkImg.base64, benchmarkImg.mime);
       setBenchmarkTemplate(template);
@@ -297,7 +279,6 @@ export default function UnifiedPipelineTab() {
       // 3. HTML 빌드
       const html = buildHtmlFromTemplate(assembled, template, topic, brandName);
       setHtmlContent(html);
-      setImgProg({ done: plan.slides.length, total: plan.slides.length });
       setStep("assembly");
     });
 
@@ -329,7 +310,6 @@ export default function UnifiedPipelineTab() {
     setTopic("");
     setResearch("");
     setPlan(null);
-    setImages([]);
     setCards([]);
     setHtmlContent("");
     setError("");
@@ -406,10 +386,8 @@ export default function UnifiedPipelineTab() {
         setColor1={setColor1}
         color2={color2}
         setColor2={setColor2}
-        useTemplate={useTemplate}
-        setUseTemplate={setUseTemplate}
-        font={font}
-        setFont={setFont}
+        templateId={templateId}
+        setTemplateId={setTemplateId}
         tone={tone}
         setTone={setTone}
         purpose={purpose}
@@ -453,31 +431,9 @@ export default function UnifiedPipelineTab() {
         benchmarkImg={benchmarkImg}
         setBenchmarkImg={setBenchmarkImg}
         handleBenchmarkFile={handleBenchmarkFile}
-        useTemplate={useTemplate}
-        setImages={setImages}
+        templateId={templateId}
         startPlanning={startPlanning}
         startBenchmarkImages={startBenchmarkImages}
-        startImages={startImages}
-        startAssembly={startAssembly}
-      />
-    );
-
-  // ══ STEP: images ══
-  if (step === "images")
-    return (
-      <ImagesStep
-        session={session}
-        onLogout={handleLogout}
-        step={step}
-        running={running}
-        imgProg={imgProg}
-        images={images}
-        plan={plan}
-        error={error}
-        batchSize={BATCH_SIZE}
-        setImages={setImages}
-        setStep={setStep}
-        startImages={startImages}
         startAssembly={startAssembly}
       />
     );

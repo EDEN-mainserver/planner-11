@@ -581,3 +581,154 @@ export function buildPremiumTemplate(topic, cards, brandName, accentColor) {
 </html>`;
 }
 
+// ── HIGHEST 스타일 템플릿 (cardnews_landing 시안 포팅) ──
+// 디자인: Pretendard + 오렌지 강조 + 검정 알약 라벨 + 큰 헤드라인
+// part="표지"  → 어두운 배경 + 그라데이션 큰 헤드라인 (hero)
+// part="마무리" → 오렌지 그라데이션 + 흰 카드 (cta)
+// 그 외(본문) → 밝은 배경 + 검정 알약 + 큰 검정 헤드라인 (proof/formula)
+export function buildHighestTemplate(topic, cards, brandName, color1) {
+  const brand = brandName || "브랜드";
+  const accent = color1 || "#d97757"; // 시안 기본 오렌지
+  const esc = (s) =>
+    String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // 두 줄 헤드라인 — \n 또는 " | " 기준으로 split, 없으면 글자 중간 정도에서 띄어쓰기 기준 분할
+  const splitHeadline = (text) => {
+    const t = String(text || "").trim();
+    if (!t) return ["", ""];
+    if (t.includes("\n")) {
+      const parts = t.split("\n").map((s) => s.trim()).filter(Boolean);
+      return [parts[0] || "", parts.slice(1).join(" ")];
+    }
+    if (t.length <= 14) return [t, ""];
+    const mid = Math.floor(t.length / 2);
+    const after = t.indexOf(" ", mid);
+    const before = t.lastIndexOf(" ", mid);
+    const cut = after !== -1 && (before === -1 || after - mid <= mid - before) ? after : before;
+    if (cut === -1) return [t, ""];
+    return [t.slice(0, cut).trim(), t.slice(cut + 1).trim()];
+  };
+
+  const renderBodyLines = (body, color) => {
+    const lines = String(body || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    if (!lines.length) return "";
+    return lines.map((line) => `<p style="margin:0 0 14px 0;font-size:32px;font-weight:500;line-height:1.55;color:${color};">${esc(line)}</p>`).join("");
+  };
+
+  const renderCard = (card, i) => {
+    const num = String(i + 1).padStart(2, "0");
+    const isCover = card.part === "표지" || i === 0;
+    const isClosing = card.part === "마무리" || i === cards.length - 1;
+    const [head1, head2] = splitHeadline(card.headline);
+
+    if (isCover) {
+      return `
+      <article class="hslide hslide-cover" data-num="${num}">
+        <div class="orb orb-a"></div>
+        <div class="orb orb-b"></div>
+        <p class="cover-top">CARDNEWS · ${esc(brand).toUpperCase()} · 2026</p>
+        <h1 class="cover-mega">${esc(head1)}</h1>
+        ${head2 ? `<h1 class="cover-mega cover-mega-2">${esc(head2)}</h1>` : ""}
+        ${card.body ? `<p class="cover-sub">${esc(card.body)}</p>` : ""}
+        <p class="cover-handle">@${esc(brand).toUpperCase()}</p>
+      </article>`;
+    }
+
+    if (isClosing) {
+      return `
+      <article class="hslide hslide-cta" data-num="${num}">
+        <div class="cta-inner">
+          <span class="pill pill-dark"><span class="dot"></span>${esc(card.part || "마무리")}</span>
+          <p class="cta-eyebrow">${esc(brand)} · 카드뉴스 마무리</p>
+          <h2 class="cta-title">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h2>
+          ${card.body ? `<div class="cta-box">${renderBodyLines(card.body, "#1c1c1f")}<p class="cta-handle">@${esc(brand).toUpperCase()}</p></div>` : ""}
+          <p class="cta-foot">${num} / ${String(cards.length).padStart(2, "0")} · ${esc(topic)}</p>
+        </div>
+      </article>`;
+    }
+
+    return `
+      <article class="hslide hslide-body" data-num="${num}">
+        <span class="pill"><span class="dot"></span>#${num} ${esc(card.part || "본문")}</span>
+        <h2 class="body-title">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h2>
+        <div class="body-text">${renderBodyLines(card.body, "#3a3a3f")}</div>
+        <p class="body-foot">출처 · @${esc(brand).toUpperCase()} &nbsp;·&nbsp; ${num} / ${String(cards.length).padStart(2, "0")}</p>
+      </article>`;
+  };
+
+  const cardHtmls = cards.map((card, i) => {
+    const inner = renderCard(card, i);
+    return `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+<style>${HIGHEST_STYLE(accent)}</style></head>
+<body>${inner}</body></html>`;
+  });
+
+  buildHighestTemplate._lastCardHtmls = cardHtmls;
+
+  const previewBlocks = cards.map((card, i) => renderCard(card, i)).join("\n");
+  return `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<title>${esc(topic)} — 카드뉴스</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+<style>
+  body { margin:0; padding:24px; background:#ececef; display:flex; flex-wrap:wrap; gap:20px; justify-content:center; }
+  ${HIGHEST_STYLE(accent)}
+</style></head>
+<body>${previewBlocks}</body></html>`;
+}
+
+function HIGHEST_STYLE(accent) {
+  return `
+  * { box-sizing:border-box; margin:0; padding:0;
+      font-family:'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      -webkit-font-smoothing:antialiased; }
+  .hslide { width:1080px; height:1350px; position:relative; overflow:hidden;
+            padding:90px 80px; display:flex; flex-direction:column; }
+
+  /* ── COVER ── */
+  .hslide-cover { background:#0a0a0c; color:#fff; align-items:center; justify-content:center; text-align:center; }
+  .hslide-cover .orb { position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none; }
+  .hslide-cover .orb-a { width:600px; height:600px; left:-150px; top:-100px;
+                         background:${accent}; opacity:0.22; }
+  .hslide-cover .orb-b { width:520px; height:520px; right:-120px; bottom:-160px;
+                         background:#57b9d9; opacity:0.14; }
+  .hslide-cover .cover-top { position:relative; z-index:2; font-size:24px; letter-spacing:0.32em;
+                             color:${accent}; font-weight:600; margin-bottom:60px; }
+  .hslide-cover .cover-mega { position:relative; z-index:2; font-size:128px; font-weight:900;
+                              line-height:1.05; letter-spacing:-0.04em; color:#fff; margin-bottom:6px; }
+  .hslide-cover .cover-mega-2 { color:rgba(255,255,255,0.78); }
+  .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:36px;
+                             font-size:34px; color:rgba(255,255,255,0.7); font-weight:500; line-height:1.45; }
+  .hslide-cover .cover-handle { position:absolute; bottom:60px; left:0; right:0; text-align:center;
+                                font-size:22px; letter-spacing:0.28em; color:rgba(255,255,255,0.55); font-weight:600; }
+
+  /* ── BODY ── */
+  .hslide-body { background:#fdfdfd; color:#1c1c1f; }
+  .pill { display:inline-flex; align-items:center; gap:10px;
+          background:#1c1c1f; color:#fff; padding:10px 22px; border-radius:999px;
+          font-size:22px; font-weight:700; align-self:flex-start; }
+  .pill .dot { width:10px; height:10px; border-radius:50%; background:${accent}; }
+  .hslide-body .body-title { font-size:78px; font-weight:900; line-height:1.18;
+                             letter-spacing:-0.025em; color:#1c1c1f; margin:48px 0 56px 0; }
+  .hslide-body .body-text { flex:1; }
+  .hslide-body .body-foot { font-size:20px; letter-spacing:0.18em; color:#8b8b90; font-weight:600; }
+
+  /* ── CTA ── */
+  .hslide-cta { background:linear-gradient(150deg, #f0a06b 0%, ${accent} 60%, #b25c43 100%); color:#fff; }
+  .hslide-cta .cta-inner { display:flex; flex-direction:column; height:100%; align-items:center; text-align:center; }
+  .hslide-cta .pill-dark { background:#0a0a0c; color:#fff; align-self:center; margin-top:90px; }
+  .hslide-cta .cta-eyebrow { margin-top:28px; font-size:20px; letter-spacing:0.34em;
+                             color:rgba(255,255,255,0.85); font-weight:600; }
+  .hslide-cta .cta-title { margin-top:30px; font-size:90px; font-weight:900; line-height:1.1;
+                            letter-spacing:-0.03em; color:#fff; }
+  .hslide-cta .cta-box { margin-top:56px; background:#fff; border-radius:24px;
+                         padding:48px 56px; box-shadow:0 20px 50px rgba(0,0,0,0.18); max-width:780px; }
+  .hslide-cta .cta-box p { color:#1c1c1f; }
+  .hslide-cta .cta-handle { margin-top:14px !important; font-size:22px !important;
+                            letter-spacing:0.28em !important; color:${accent} !important; font-weight:700 !important; }
+  .hslide-cta .cta-foot { margin-top:auto; padding-top:30px; font-size:18px; letter-spacing:0.24em;
+                          color:rgba(255,255,255,0.7); font-weight:600; }
+  `;
+}
