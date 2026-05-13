@@ -1,6 +1,8 @@
+import { useState } from "react";
 import ErrorBox from "../ErrorBox";
 import StepBar from "../StepBar";
 import UserBar from "../UserBar";
+import { captureSingleHtmlToImage } from "../../../services/pipeline/cardCapture";
 
 export default function AssemblyStep({
   session,
@@ -19,6 +21,29 @@ export default function AssemblyStep({
   updateCard,
   setStep,
 }) {
+  const [downloadingPng, setDownloadingPng] = useState(false);
+
+  const downloadAsPng = async (html, idx) => {
+    if (!html || downloadingPng) return;
+    setDownloadingPng(true);
+    try {
+      const dataUrl = await captureSingleHtmlToImage(html, { mime: "image/png" });
+      if (!dataUrl) throw new Error("캡처 결과가 비어있음");
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `${(topic || "카드뉴스").slice(0, 15)}-카드${idx + 1}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      // 캡처 실패 시 사용자에게 알림은 콘솔 + 버튼 복원
+      // eslint-disable-next-line no-console
+      console.error("PNG 캡처 실패:", e);
+      alert(`PNG 다운로드 실패: ${e.message}`);
+    } finally {
+      setDownloadingPng(false);
+    }
+  };
   return (
     <div className="p-6 space-y-4">
       <UserBar session={session} onLogout={onLogout} />
@@ -178,26 +203,48 @@ export default function AssemblyStep({
                   />
                 ))}
               </div>
-              <button
-                onClick={() => {
-                  const html = cardHtmls[safeIdx] || htmlContent;
-                  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${topic.slice(0, 15)}-카드${safeIdx + 1}.html`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-[11px] font-semibold transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                카드 {safeIdx + 1} 다운로드
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => downloadAsPng(cardHtmls[safeIdx] || htmlContent, safeIdx)}
+                  disabled={downloadingPng}
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900 disabled:cursor-wait text-white text-[11px] font-semibold transition-colors"
+                  title="현재 카드를 1080×1350 PNG로 다운로드"
+                >
+                  {downloadingPng ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect width="18" height="18" x="3" y="3" rx="2"/>
+                      <circle cx="9" cy="9" r="2"/>
+                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                    </svg>
+                  )}
+                  {downloadingPng ? "캡처 중..." : `카드 ${safeIdx + 1} PNG`}
+                </button>
+                <button
+                  onClick={() => {
+                    const html = cardHtmls[safeIdx] || htmlContent;
+                    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${topic.slice(0, 15)}-카드${safeIdx + 1}.html`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-[11px] font-semibold transition-colors"
+                  title="HTML 원본 다운로드"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  HTML
+                </button>
+              </div>
             </div>
           </div>
         );

@@ -26,7 +26,7 @@ export async function captureCardsToImages(cardHtmls, logFn = null) {
   return images;
 }
 
-function captureSingleCard(html, html2canvas) {
+function captureSingleCard(html, html2canvas, mime = "image/jpeg", quality = 0.92) {
   return new Promise((resolve, reject) => {
     const blob = new Blob([html], { type: "text/html" });
     const blobUrl = URL.createObjectURL(blob);
@@ -58,7 +58,8 @@ function captureSingleCard(html, html2canvas) {
           y: 0,
         });
         cleanup();
-        resolve(canvas.toDataURL("image/jpeg", 0.92));
+        // PNG는 quality 인자 무시됨 (브라우저 표준).
+        resolve(mime === "image/png" ? canvas.toDataURL("image/png") : canvas.toDataURL(mime, quality));
       } catch (e) {
         cleanup();
         reject(e);
@@ -72,6 +73,13 @@ function captureSingleCard(html, html2canvas) {
 
     document.body.appendChild(iframe);
   });
+}
+
+// 단일 HTML을 PNG(기본) 또는 JPEG dataURL로 캡처. 다운로드 버튼 등 1장 캡처용.
+export async function captureSingleHtmlToImage(html, { mime = "image/png", quality = 0.95 } = {}) {
+  if (!html) return null;
+  const { default: html2canvas } = await import("html2canvas");
+  return captureSingleCard(html, html2canvas, mime, quality);
 }
 
 // cards[].imageUrl 우선 수집 + 없으면 cardHtmls 캡처 fallback.
