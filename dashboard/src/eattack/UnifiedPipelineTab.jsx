@@ -19,7 +19,6 @@ import {
   persistCaptionPrompt as persistCaptionPromptToStorage,
   generateCaption,
 } from "../services/pipeline/caption";
-import { FONTS, FONT_LABELS, FONT_CSS } from "./pipeline/fonts";
 import SetupStep from "./pipeline/steps/SetupStep";
 import ResearchStep from "./pipeline/steps/ResearchStep";
 import PlanningStep from "./pipeline/steps/PlanningStep";
@@ -248,6 +247,10 @@ export default function UnifiedPipelineTab() {
   };
 
   const generateCaptionFromPrompt = async () => {
+    if (!topic?.trim()) {
+      setError("캡션을 만들 주제를 먼저 입력해주세요");
+      return;
+    }
     setCaptionGenerating(true);
     setError("");
     try {
@@ -299,6 +302,10 @@ export default function UnifiedPipelineTab() {
     });
 
   const postToThreads = async () => {
+    if (!thConfig.userId || !thConfig.accessToken) {
+      setError("스레드 사용자 ID와 액세스 토큰을 입력해주세요");
+      return;
+    }
     setThPosting(true);
     setThResult(null);
     setError("");
