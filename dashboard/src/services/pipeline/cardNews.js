@@ -583,16 +583,16 @@ export function buildPremiumTemplate(topic, cards, brandName, accentColor) {
 
 // ── HIGHEST 스타일 템플릿 (cardnews_landing 시안 포팅) ──
 // 디자인: Pretendard + 오렌지 강조 + 검정 알약 라벨 + 큰 헤드라인
-// part="표지"  → 어두운 배경 + 그라데이션 큰 헤드라인 (hero)
-// part="마무리" → 오렌지 그라데이션 + 흰 카드 (cta)
-// 그 외(본문) → 밝은 배경 + 검정 알약 + 큰 검정 헤드라인 (proof/formula)
-export function buildHighestTemplate(topic, cards, brandName, color1) {
+// 컬러는 시안 디자인 정합성을 위해 #d97757 강제(color1 인자 무시).
+// 모든 슬라이드에 imageUrl(AI 생성 배경)을 활용하며 part별로 다른 합성 방식 적용.
+const HIGHEST_ACCENT = "#d97757";
+
+export function buildHighestTemplate(topic, cards, brandName, _color1) {
   const brand = brandName || "브랜드";
-  const accent = color1 || "#d97757"; // 시안 기본 오렌지
   const esc = (s) =>
     String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  // 두 줄 헤드라인 — \n 또는 " | " 기준으로 split, 없으면 글자 중간 정도에서 띄어쓰기 기준 분할
+  // 두 줄 헤드라인 분할 — \n 우선, 없으면 띄어쓰기 기준 mid 가까운 곳에서
   const splitHeadline = (text) => {
     const t = String(text || "").trim();
     if (!t) return ["", ""];
@@ -609,39 +609,52 @@ export function buildHighestTemplate(topic, cards, brandName, color1) {
     return [t.slice(0, cut).trim(), t.slice(cut + 1).trim()];
   };
 
+  // 영문 라벨 — 한글 brand면 EN 약식 표기로 fallback
+  const enLabel = (text) => {
+    const ascii = String(text || "").replace(/[^A-Za-z0-9 ]/g, "").trim().toUpperCase();
+    return ascii || "BRAND";
+  };
+
   const renderBodyLines = (body, color) => {
     const lines = String(body || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
     if (!lines.length) return "";
-    return lines.map((line) => `<p style="margin:0 0 14px 0;font-size:32px;font-weight:500;line-height:1.55;color:${color};">${esc(line)}</p>`).join("");
+    return lines.map((line) => `<p style="margin:0 0 14px 0;font-size:30px;font-weight:500;line-height:1.55;color:${color};">${esc(line)}</p>`).join("");
   };
+
+  const bgImageStyle = (url) => url ? `background-image:url('${url}');background-size:cover;background-position:center;` : "";
 
   const renderCard = (card, i) => {
     const num = String(i + 1).padStart(2, "0");
     const isCover = card.part === "표지" || i === 0;
     const isClosing = card.part === "마무리" || i === cards.length - 1;
     const [head1, head2] = splitHeadline(card.headline);
+    const brandEn = enLabel(brand);
+    const img = card.imageUrl || "";
 
     if (isCover) {
       return `
       <article class="hslide hslide-cover" data-num="${num}">
+        ${img ? `<div class="cover-bg" style="${bgImageStyle(img)}"></div><div class="cover-veil"></div>` : ""}
         <div class="orb orb-a"></div>
         <div class="orb orb-b"></div>
-        <p class="cover-top">CARDNEWS · ${esc(brand).toUpperCase()} · 2026</p>
-        <h1 class="cover-mega">${esc(head1)}</h1>
-        ${head2 ? `<h1 class="cover-mega cover-mega-2">${esc(head2)}</h1>` : ""}
+        <p class="cover-top">CARDNEWS · ${esc(brandEn)} · 2026</p>
+        <h1 class="cover-mega">${esc(brandEn)}</h1>
+        <h2 class="cover-headline">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h2>
         ${card.body ? `<p class="cover-sub">${esc(card.body)}</p>` : ""}
-        <p class="cover-handle">@${esc(brand).toUpperCase()}</p>
+        <p class="cover-handle">@${esc(brandEn)}</p>
       </article>`;
     }
 
     if (isClosing) {
       return `
       <article class="hslide hslide-cta" data-num="${num}">
+        ${img ? `<div class="cta-bg" style="${bgImageStyle(img)}"></div>` : ""}
+        <div class="cta-overlay"></div>
         <div class="cta-inner">
           <span class="pill pill-dark"><span class="dot"></span>${esc(card.part || "마무리")}</span>
           <p class="cta-eyebrow">${esc(brand)} · 카드뉴스 마무리</p>
           <h2 class="cta-title">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h2>
-          ${card.body ? `<div class="cta-box">${renderBodyLines(card.body, "#1c1c1f")}<p class="cta-handle">@${esc(brand).toUpperCase()}</p></div>` : ""}
+          ${card.body ? `<div class="cta-box">${renderBodyLines(card.body, "#1c1c1f")}<p class="cta-handle">@${esc(brandEn)}</p></div>` : ""}
           <p class="cta-foot">${num} / ${String(cards.length).padStart(2, "0")} · ${esc(topic)}</p>
         </div>
       </article>`;
@@ -649,10 +662,13 @@ export function buildHighestTemplate(topic, cards, brandName, color1) {
 
     return `
       <article class="hslide hslide-body" data-num="${num}">
-        <span class="pill"><span class="dot"></span>#${num} ${esc(card.part || "본문")}</span>
-        <h2 class="body-title">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h2>
-        <div class="body-text">${renderBodyLines(card.body, "#3a3a3f")}</div>
-        <p class="body-foot">출처 · @${esc(brand).toUpperCase()} &nbsp;·&nbsp; ${num} / ${String(cards.length).padStart(2, "0")}</p>
+        ${img ? `<div class="body-hero" style="${bgImageStyle(img)}"><div class="body-hero-veil"></div></div>` : `<div class="body-hero body-hero-empty"></div>`}
+        <div class="body-content">
+          <span class="pill"><span class="dot"></span>#${num} ${esc(card.part || "본문")}</span>
+          <h2 class="body-title">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h2>
+          <div class="body-text">${renderBodyLines(card.body, "#3a3a3f")}</div>
+          <p class="body-foot">출처 · @${esc(brandEn)} &nbsp;·&nbsp; ${num} / ${String(cards.length).padStart(2, "0")}</p>
+        </div>
       </article>`;
   };
 
@@ -661,7 +677,7 @@ export function buildHighestTemplate(topic, cards, brandName, color1) {
     return `<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8">
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
-<style>${HIGHEST_STYLE(accent)}</style></head>
+<style>${HIGHEST_STYLE()}</style></head>
 <body>${inner}</body></html>`;
   });
 
@@ -674,61 +690,68 @@ export function buildHighestTemplate(topic, cards, brandName, color1) {
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
 <style>
   body { margin:0; padding:24px; background:#ececef; display:flex; flex-wrap:wrap; gap:20px; justify-content:center; }
-  ${HIGHEST_STYLE(accent)}
+  ${HIGHEST_STYLE()}
 </style></head>
 <body>${previewBlocks}</body></html>`;
 }
 
-function HIGHEST_STYLE(accent) {
+function HIGHEST_STYLE() {
+  const accent = HIGHEST_ACCENT;
   return `
   * { box-sizing:border-box; margin:0; padding:0;
       font-family:'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
       -webkit-font-smoothing:antialiased; }
-  .hslide { width:1080px; height:1350px; position:relative; overflow:hidden;
-            padding:90px 80px; display:flex; flex-direction:column; }
+  .hslide { width:1080px; height:1350px; position:relative; overflow:hidden; display:flex; flex-direction:column; }
 
   /* ── COVER ── */
-  .hslide-cover { background:#0a0a0c; color:#fff; align-items:center; justify-content:center; text-align:center; }
-  .hslide-cover .orb { position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none; }
-  .hslide-cover .orb-a { width:600px; height:600px; left:-150px; top:-100px;
-                         background:${accent}; opacity:0.22; }
-  .hslide-cover .orb-b { width:520px; height:520px; right:-120px; bottom:-160px;
-                         background:#57b9d9; opacity:0.14; }
-  .hslide-cover .cover-top { position:relative; z-index:2; font-size:24px; letter-spacing:0.32em;
-                             color:${accent}; font-weight:600; margin-bottom:60px; }
-  .hslide-cover .cover-mega { position:relative; z-index:2; font-size:128px; font-weight:900;
-                              line-height:1.05; letter-spacing:-0.04em; color:#fff; margin-bottom:6px; }
-  .hslide-cover .cover-mega-2 { color:rgba(255,255,255,0.78); }
-  .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:36px;
-                             font-size:34px; color:rgba(255,255,255,0.7); font-weight:500; line-height:1.45; }
-  .hslide-cover .cover-handle { position:absolute; bottom:60px; left:0; right:0; text-align:center;
-                                font-size:22px; letter-spacing:0.28em; color:rgba(255,255,255,0.55); font-weight:600; }
+  .hslide-cover { background:#0a0a0c; color:#fff; align-items:center; justify-content:center; text-align:center; padding:90px 80px; }
+  .hslide-cover .cover-bg { position:absolute; inset:0; opacity:0.45; filter:saturate(0.85); z-index:0; }
+  .hslide-cover .cover-veil { position:absolute; inset:0; z-index:1;
+                              background:radial-gradient(ellipse at center, rgba(10,10,12,0.55) 0%, rgba(10,10,12,0.92) 70%, #0a0a0c 100%); }
+  .hslide-cover .orb { position:absolute; border-radius:50%; filter:blur(90px); pointer-events:none; z-index:1; }
+  .hslide-cover .orb-a { width:620px; height:620px; left:-160px; top:-120px; background:${accent}; opacity:0.42; }
+  .hslide-cover .orb-b { width:520px; height:520px; right:-120px; bottom:-160px; background:#57b9d9; opacity:0.22; }
+  .hslide-cover .cover-top { position:relative; z-index:2; font-size:22px; letter-spacing:0.4em; color:${accent}; font-weight:700; margin-bottom:50px; }
+  .hslide-cover .cover-mega { position:relative; z-index:2; font-size:160px; font-weight:900; line-height:0.98;
+                              letter-spacing:-0.05em; color:transparent;
+                              background:linear-gradient(180deg, #f4b196 0%, ${accent} 55%, #8a3f28 100%);
+                              -webkit-background-clip:text; background-clip:text;
+                              filter:drop-shadow(0 14px 30px rgba(217,119,87,0.35)); margin-bottom:30px; text-transform:uppercase; }
+  .hslide-cover .cover-headline { position:relative; z-index:2; font-size:64px; font-weight:800; line-height:1.22;
+                                  color:#fff; margin-top:20px; letter-spacing:-0.02em; max-width:880px; }
+  .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:30px; font-size:28px; color:rgba(255,255,255,0.78); font-weight:500; line-height:1.5; max-width:760px; }
+  .hslide-cover .cover-handle { position:absolute; bottom:60px; left:0; right:0; text-align:center; z-index:2;
+                                font-size:22px; letter-spacing:0.32em; color:rgba(255,255,255,0.6); font-weight:600; }
 
   /* ── BODY ── */
   .hslide-body { background:#fdfdfd; color:#1c1c1f; }
+  .hslide-body .body-hero { position:relative; width:100%; height:480px; overflow:hidden; }
+  .hslide-body .body-hero-empty { background:linear-gradient(135deg, #fef2eb 0%, #fad9c6 100%); }
+  .hslide-body .body-hero-veil { position:absolute; inset:0; background:linear-gradient(to bottom, transparent 55%, #fdfdfd 100%); }
+  .hslide-body .body-content { flex:1; padding:48px 80px 60px 80px; display:flex; flex-direction:column; }
   .pill { display:inline-flex; align-items:center; gap:10px;
-          background:#1c1c1f; color:#fff; padding:10px 22px; border-radius:999px;
+          background:#1c1c1f; color:#fff; padding:10px 24px; border-radius:999px;
           font-size:22px; font-weight:700; align-self:flex-start; }
   .pill .dot { width:10px; height:10px; border-radius:50%; background:${accent}; }
-  .hslide-body .body-title { font-size:78px; font-weight:900; line-height:1.18;
-                             letter-spacing:-0.025em; color:#1c1c1f; margin:48px 0 56px 0; }
+  .hslide-body .body-title { font-size:72px; font-weight:900; line-height:1.18;
+                             letter-spacing:-0.025em; color:#1c1c1f; margin:36px 0 40px 0; }
   .hslide-body .body-text { flex:1; }
-  .hslide-body .body-foot { font-size:20px; letter-spacing:0.18em; color:#8b8b90; font-weight:600; }
+  .hslide-body .body-foot { font-size:20px; letter-spacing:0.18em; color:#8b8b90; font-weight:600; margin-top:30px; }
 
   /* ── CTA ── */
-  .hslide-cta { background:linear-gradient(150deg, #f0a06b 0%, ${accent} 60%, #b25c43 100%); color:#fff; }
-  .hslide-cta .cta-inner { display:flex; flex-direction:column; height:100%; align-items:center; text-align:center; }
-  .hslide-cta .pill-dark { background:#0a0a0c; color:#fff; align-self:center; margin-top:90px; }
-  .hslide-cta .cta-eyebrow { margin-top:28px; font-size:20px; letter-spacing:0.34em;
-                             color:rgba(255,255,255,0.85); font-weight:600; }
-  .hslide-cta .cta-title { margin-top:30px; font-size:90px; font-weight:900; line-height:1.1;
+  .hslide-cta { color:#fff; padding:0; }
+  .hslide-cta .cta-bg { position:absolute; inset:0; opacity:0.4; filter:saturate(1.05); }
+  .hslide-cta .cta-overlay { position:absolute; inset:0; background:linear-gradient(150deg, #f0a06b 0%, ${accent} 55%, #9c4d35 100%); mix-blend-mode:multiply; }
+  .hslide-cta .cta-inner { position:relative; z-index:2; display:flex; flex-direction:column; height:100%; align-items:center; text-align:center; padding:90px 80px; }
+  .hslide-cta .pill-dark { background:#0a0a0c; color:#fff; align-self:center; }
+  .hslide-cta .cta-eyebrow { margin-top:28px; font-size:20px; letter-spacing:0.34em; color:rgba(255,255,255,0.9); font-weight:600; }
+  .hslide-cta .cta-title { margin-top:30px; font-size:82px; font-weight:900; line-height:1.1;
                             letter-spacing:-0.03em; color:#fff; }
-  .hslide-cta .cta-box { margin-top:56px; background:#fff; border-radius:24px;
-                         padding:48px 56px; box-shadow:0 20px 50px rgba(0,0,0,0.18); max-width:780px; }
+  .hslide-cta .cta-box { margin-top:48px; background:#fff; border-radius:24px; padding:42px 52px;
+                         box-shadow:0 24px 60px rgba(0,0,0,0.25); max-width:820px; }
   .hslide-cta .cta-box p { color:#1c1c1f; }
   .hslide-cta .cta-handle { margin-top:14px !important; font-size:22px !important;
                             letter-spacing:0.28em !important; color:${accent} !important; font-weight:700 !important; }
-  .hslide-cta .cta-foot { margin-top:auto; padding-top:30px; font-size:18px; letter-spacing:0.24em;
-                          color:rgba(255,255,255,0.7); font-weight:600; }
+  .hslide-cta .cta-foot { margin-top:auto; padding-top:30px; font-size:18px; letter-spacing:0.24em; color:rgba(255,255,255,0.78); font-weight:600; }
   `;
 }

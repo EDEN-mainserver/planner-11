@@ -17,12 +17,15 @@ export default function PlanningStep({
   templateId,
   startPlanning,
   startBenchmarkImages,
+  startImages,
   startAssembly,
 }) {
-  const templateLabel = templateId === "highest" ? "🔥 HIGHEST 스타일로 조립 →" : "✨ 프리미엄 템플릿으로 조립 →";
-  const templateBtnClass = templateId === "highest"
+  const isHighest = templateId === "highest";
+  const templateLabel = isHighest ? "🔥 이미지 생성 + HIGHEST 조립 →" : "✨ 프리미엄 템플릿으로 조립 →";
+  const templateBtnClass = isHighest
     ? "bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600"
     : "bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600";
+  const onConfirmPlan = () => (isHighest ? startImages() : startAssembly([]));
   return (
     <div className="p-6 space-y-4">
       <UserBar session={session} onLogout={onLogout} />
@@ -119,7 +122,7 @@ export default function PlanningStep({
               </button>
             ) : (
               <button
-                onClick={() => startAssembly([])}
+                onClick={onConfirmPlan}
                 className={`flex-[2] py-2.5 text-white text-sm font-bold rounded-xl transition-all ${templateBtnClass}`}
               >
                 {templateLabel}

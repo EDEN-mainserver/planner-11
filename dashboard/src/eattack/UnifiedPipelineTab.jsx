@@ -7,7 +7,7 @@ import { emitEAttackContext, summarizeText } from "./eattackContext";
 import { runResearch } from "../services/pipeline/research";
 import { incrementUsage } from "../services/subscription";
 import { runPlanning } from "../services/pipeline/planning";
-import { analyzeDesignToTemplate } from "../services/pipeline/imageGen";
+import { generateOneImage, analyzeDesignToTemplate } from "../services/pipeline/imageGen";
 import { normalizeInstagramConfig } from "../services/pipeline/instagram";
 import { loadSocial, saveSocial } from "../services/pipeline/socialStorage";
 import { useInstagramAuto } from "../hooks/useInstagramAuto";
@@ -22,10 +22,12 @@ import {
 import SetupStep from "./pipeline/steps/SetupStep";
 import ResearchStep from "./pipeline/steps/ResearchStep";
 import PlanningStep from "./pipeline/steps/PlanningStep";
+import ImagesStep from "./pipeline/steps/ImagesStep";
 import AssemblyStep from "./pipeline/steps/AssemblyStep";
 import DeployStep from "./pipeline/steps/DeployStep";
 
 // ── 상수 ──
+const BATCH_SIZE = 3;
 // 사용자별 IG 설정 키 (username 기반)
 const igKey = (username) => `eden_ig_${username}_v1`;
 const TONE_OPTS = [
@@ -69,6 +71,8 @@ export default function UnifiedPipelineTab() {
   // 결과물
   const [research, setResearch] = useState("");
   const [plan, setPlan] = useState(null);
+  const [images, setImages] = useState([]); // AI 생성 배경 이미지 (HIGHEST 전용)
+  const [imgProg, setImgProg] = useState({ done: 0, total: 0 });
   const [cards, setCards] = useState([]); // 편집 가능한 카드 데이터
   const [htmlContent, setHtmlContent] = useState("");
   const [cardHtmls, setCardHtmls] = useState([]); // 카드별 개별 HTML (미리보기용)
@@ -177,6 +181,27 @@ export default function UnifiedPipelineTab() {
       setStep("planning");
       const p = await runPlanning(topic, research, slideCount, tone, purpose, brandName);
       setPlan(p);
+    });
+
+  // HIGHEST 전용 자동 이미지 생성 — slide별 imagePrompt를 batch 호출.
+  // 모든 슬라이드 완료 후 step="images" 화면에서 사용자가 결과 확인 → "카드 조립 →" 클릭.
+  const startImages = () =>
+    run(async () => {
+      setStep("images");
+      const slides = plan.slides;
+      const results = new Array(slides.length).fill(null);
+      setImages([...results]);
+      setImgProg({ done: 0, total: slides.length });
+
+      for (let i = 0; i < slides.length; i += BATCH_SIZE) {
+        const batch = slides.slice(i, Math.min(i + BATCH_SIZE, slides.length));
+        const settled = await Promise.allSettled(batch.map((s) => generateOneImage(s.imagePrompt)));
+        settled.forEach((r, j) => {
+          results[i + j] = r.status === "fulfilled" ? r.value : null;
+        });
+        setImages([...results]);
+        setImgProg({ done: Math.min(i + BATCH_SIZE, slides.length), total: slides.length });
+      }
     });
 
   const startAssembly = (imageList) => {
@@ -310,6 +335,8 @@ export default function UnifiedPipelineTab() {
     setTopic("");
     setResearch("");
     setPlan(null);
+    setImages([]);
+    setImgProg({ done: 0, total: 0 });
     setCards([]);
     setHtmlContent("");
     setError("");
@@ -434,6 +461,27 @@ export default function UnifiedPipelineTab() {
         templateId={templateId}
         startPlanning={startPlanning}
         startBenchmarkImages={startBenchmarkImages}
+        startImages={startImages}
+        startAssembly={startAssembly}
+      />
+    );
+
+  // ══ STEP: images ══
+  if (step === "images")
+    return (
+      <ImagesStep
+        session={session}
+        onLogout={handleLogout}
+        step={step}
+        running={running}
+        imgProg={imgProg}
+        images={images}
+        plan={plan}
+        error={error}
+        batchSize={BATCH_SIZE}
+        setImages={setImages}
+        setStep={setStep}
+        startImages={startImages}
         startAssembly={startAssembly}
       />
     );
