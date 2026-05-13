@@ -1,6 +1,6 @@
 // 통합 카드뉴스 파이프라인
 // 크롤링/리서치 → 기획 → 이미지 생성 → 카드 조립 → 배포
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import LoginModal from "./LoginModal";
 import { getSession, clearSession } from "../utils/authSession";
 import { emitEAttackContext, summarizeText } from "./eattackContext";
@@ -8,9 +8,9 @@ import { runResearch } from "../services/pipeline/research";
 import { incrementUsage } from "../services/subscription";
 import { runPlanning } from "../services/pipeline/planning";
 import { generateOneImage, analyzeDesignToTemplate } from "../services/pipeline/imageGen";
-import { fetchSchedules, addSchedule, removeSchedule } from "../services/pipeline/schedule";
 import { normalizeInstagramConfig } from "../services/pipeline/instagram";
 import { loadSocial, saveSocial } from "../services/pipeline/socialStorage";
+import { useInstagramAuto } from "../hooks/useInstagramAuto";
 import { buildHtmlFromTemplate, buildHtmlCardNews, buildPremiumTemplate } from "../services/pipeline/cardNews";
 import { collectPostImages } from "../services/pipeline/cardCapture";
 import { postToThreadsAPI } from "../services/pipeline/threadsPost";
@@ -101,22 +101,6 @@ export default function UnifiedPipelineTab() {
   );
   const [captionSaving, setCaptionSaving] = useState(false);
   const [captionGenerating, setCaptionGenerating] = useState(false);
-  const [igAutoConfig, setIgAutoConfig] = useState({
-    enabled: true,
-    keywords: "",
-    postTime: "09:00",
-    slideCount: 7,
-    captionTemplate: "",
-  });
-  const [igAutoSchedules, setIgAutoSchedules] = useState([]);
-  const [igAutoLoading, setIgAutoLoading] = useState(false);
-  const [igAutoSaving, setIgAutoSaving] = useState(false);
-  const [igAutoRunning, setIgAutoRunning] = useState(false);
-  const [igAutoScheduleAt, setIgAutoScheduleAt] = useState("");
-  const [igAutoMessage, setIgAutoMessage] = useState("");
-  const [igAutoMonitor, setIgAutoMonitor] = useState(null);
-  const [igAutoHistory, setIgAutoHistory] = useState([]);
-  const [igAutoMonitorLoading, setIgAutoMonitorLoading] = useState(false);
 
   useEffect(() => {
     emitEAttackContext({
@@ -150,60 +134,6 @@ export default function UnifiedPipelineTab() {
     clearSession();
     setSession(null);
   };
-
-  const loadInstagramAutoMonitor = useCallback(async (runId = null) => {
-    if (!session?.username) return null;
-    setIgAutoMonitorLoading(true);
-    try {
-      const url = runId
-        ? `/api/instagram-auto-monitor?username=${encodeURIComponent(session.username)}&runId=${encodeURIComponent(runId)}`
-        : `/api/instagram-auto-monitor?username=${encodeURIComponent(session.username)}`;
-      const res = await fetch(url);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "자동화 모니터 조회 실패");
-      setIgAutoMonitor(data.current || null);
-      setIgAutoHistory(Array.isArray(data.runs) ? data.runs : []);
-      return data;
-    } catch (e) {
-      setIgAutoMessage(`자동화 로그를 불러오지 못했습니다: ${e.message}`);
-      return null;
-    } finally {
-      setIgAutoMonitorLoading(false);
-    }
-  }, [session?.username]);
-
-  useEffect(() => {
-    if (!session?.username) return;
-    let canceled = false;
-    const loadAutoState = async () => {
-      setIgAutoLoading(true);
-      try {
-        const [configRes, schedules] = await Promise.all([
-          fetch(`/api/instagram-auto-config?username=${encodeURIComponent(session.username)}`).then((res) => res.json().catch(() => ({}))),
-          fetchSchedules(session.username),
-        ]);
-        if (canceled) return;
-        const config = configRes?.config || {};
-        setIgAutoConfig({
-          enabled: config.enabled ?? true,
-          keywords: Array.isArray(config.keywords) ? config.keywords.join(", ") : String(config.keywords || ""),
-          postTime: config.postTime || "09:00",
-          slideCount: Number(config.slideCount) || 7,
-          captionTemplate: config.captionTemplate || "",
-        });
-        setIgAutoSchedules(schedules.filter((item) => String(item.platform || "threads").toLowerCase() === "instagram"));
-        setIgAutoMessage("");
-        await loadInstagramAutoMonitor();
-      } catch {
-        if (!canceled) setIgAutoMessage("자동화 설정을 불러오지 못했습니다.");
-      } finally {
-        if (!canceled) setIgAutoLoading(false);
-      }
-    };
-
-    loadAutoState();
-    return () => { canceled = true; };
-  }, [session?.username, loadInstagramAutoMonitor]);
 
   // 로그인 안 된 경우 모달 표시
   if (!session) {
@@ -438,167 +368,19 @@ export default function UnifiedPipelineTab() {
     }
   };
 
-  const loadInstagramSchedules = async () => {
-    if (!session?.username) return;
-    const schedules = await fetchSchedules(session.username);
-    setIgAutoSchedules(schedules.filter((item) => String(item.platform || "threads").toLowerCase() === "instagram"));
-  };
-
-  const saveInstagramAutoConfig = async () => {
-    if (!session?.username) return;
-    if (!igConfig.accountId || !igConfig.accessToken) {
-      setError("Instagram 계정 연동 후 자동화 설정을 저장하세요");
-      return;
-    }
-
-    setIgAutoSaving(true);
-    setIgAutoMessage("");
-    try {
-      const payload = {
-        enabled: Boolean(igAutoConfig.enabled),
-        keywords: String(igAutoConfig.keywords || ""),
-        postTime: igAutoConfig.postTime || "09:00",
-        slideCount: Math.max(3, Math.min(10, Number(igAutoConfig.slideCount) || slideCount || 7)),
-        captionTemplate: String(igAutoConfig.captionTemplate || postCaption || topic || ""),
-        accountId: igConfig.accountId,
-        accessToken: igConfig.accessToken,
-        brandName,
-        tone,
-        purpose,
-      };
-      const res = await fetch("/api/instagram-auto-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: session.username, config: payload }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "설정 저장 실패");
-      setIgAutoMessage("자동화 설정이 저장되었습니다.");
-      await loadInstagramSchedules();
-      await loadInstagramAutoMonitor();
-    } catch (e) {
-      setIgAutoMessage(`자동화 설정 저장 실패: ${e.message}`);
-    } finally {
-      setIgAutoSaving(false);
-    }
-  };
-
-  const runInstagramAutoResearch = async () => {
-    if (!session?.username) return;
-    if (!igConfig.accountId || !igConfig.accessToken) {
-      setError("Instagram 계정 연동 후 자동화를 실행하세요");
-      return;
-    }
-    setIgAutoRunning(true);
-    setIgAutoMessage("");
-    try {
-      const payload = {
-        enabled: Boolean(igAutoConfig.enabled),
-        keywords: String(igAutoConfig.keywords || ""),
-        postTime: igAutoConfig.postTime || "09:00",
-        slideCount: Math.max(3, Math.min(10, Number(igAutoConfig.slideCount) || slideCount || 7)),
-        captionTemplate: String(igAutoConfig.captionTemplate || postCaption || topic || ""),
-        accountId: igConfig.accountId,
-        accessToken: igConfig.accessToken,
-        brandName,
-        tone,
-        purpose,
-      };
-      const res = await fetch("/api/instagram-auto-research", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: session.username,
-          config: payload,
-          scheduledAt: igAutoScheduleAt ? new Date(igAutoScheduleAt).toISOString() : undefined,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "자동화 실행 실패");
-      setIgAutoMessage("리서치와 예약 생성이 완료되었습니다.");
-      setIgAutoScheduleAt("");
-      await loadInstagramSchedules();
-      await loadInstagramAutoMonitor(data?.result?.runId || null);
-    } catch (e) {
-      setIgAutoMessage(`자동화 실행 실패: ${e.message}`);
-    } finally {
-      setIgAutoRunning(false);
-    }
-  };
-
-  const scheduleCurrentInstagramCarousel = async () => {
-    if (!session?.username) return;
-    if (!igConfig.accountId || !igConfig.accessToken) {
-      setError("Instagram 계정 연동 후 예약을 생성하세요");
-      return;
-    }
-    if (!igAutoScheduleAt) {
-      setError("예약 시간을 선택하세요");
-      return;
-    }
-
-    setIgAutoRunning(true);
-    setError("");
-    try {
-      const scheduledAt = new Date(igAutoScheduleAt).toISOString();
-      if (new Date(scheduledAt) <= new Date()) {
-        throw new Error("예약 시간은 현재보다 미래여야 합니다");
-      }
-      const rawImages = await collectPostImages({ cards, cardHtmls });
-      if (!rawImages.length) throw new Error("예약할 이미지를 만들 수 없습니다");
-      const prepRes = await fetch("/api/instagram-prepare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images: rawImages }),
-      });
-      const prepData = await prepRes.json().catch(() => ({}));
-      if (!prepRes.ok) throw new Error(prepData.error || "예약 이미지 준비 실패");
-      const imageUrls = Array.isArray(prepData.imageUrls) ? prepData.imageUrls : [];
-      if (!imageUrls.length) throw new Error("예약 이미지 URL을 준비하지 못했습니다");
-
-      const schedule = {
-        id: `ig-manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        platform: "instagram",
-        auto: false,
-        status: "pending",
-        text: postCaption || topic,
-        caption: postCaption || topic,
-        images: imageUrls,
-        imageUrls,
-        userId: igConfig.accountId,
-        accountId: igConfig.accountId,
-        accessToken: igConfig.accessToken,
-        scheduledAt,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        retryCount: 0,
-        retryAt: null,
-        lastAttemptAt: null,
-        lastError: null,
-        topic,
-        slideCount: imageUrls.length,
-      };
-      const result = await addSchedule(session.username, schedule);
-      if (!result.ok) throw new Error(result.error || "예약 저장 실패");
-      setIgAutoMessage(`예약이 생성되었습니다: ${new Date(scheduledAt).toLocaleString("ko-KR")}`);
-      setIgAutoScheduleAt("");
-      await loadInstagramSchedules();
-      await loadInstagramAutoMonitor();
-    } catch (e) {
-      setIgAutoMessage(`예약 생성 실패: ${e.message}`);
-    } finally {
-      setIgAutoRunning(false);
-    }
-  };
-
-  const cancelInstagramSchedule = async (id) => {
-    if (!session?.username) return;
-    const ok = await removeSchedule(session.username, id);
-    if (ok) {
-      setIgAutoSchedules((prev) => prev.filter((item) => item.id !== id));
-      setIgAutoMessage("예약이 취소되었습니다.");
-    }
-  };
+  const instagramAuto = useInstagramAuto({
+    session,
+    igConfig,
+    brandName,
+    tone,
+    purpose,
+    slideCount,
+    postCaption,
+    topic,
+    cards,
+    cardHtmls,
+    onValidationError: setError,
+  });
 
   // ══ STEP: setup ══
   if (step === "setup")
@@ -741,24 +523,7 @@ export default function UnifiedPipelineTab() {
         igResult={igResult}
         igLogs={igLogs}
         setIgLogs={setIgLogs}
-        igAutoConfig={igAutoConfig}
-        setIgAutoConfig={setIgAutoConfig}
-        igAutoLoading={igAutoLoading}
-        igAutoSaving={igAutoSaving}
-        igAutoRunning={igAutoRunning}
-        igAutoSchedules={igAutoSchedules}
-        igAutoScheduleAt={igAutoScheduleAt}
-        setIgAutoScheduleAt={setIgAutoScheduleAt}
-        igAutoMessage={igAutoMessage}
-        igAutoMonitor={igAutoMonitor}
-        igAutoHistory={igAutoHistory}
-        igAutoMonitorLoading={igAutoMonitorLoading}
-        saveInstagramAutoConfig={saveInstagramAutoConfig}
-        runInstagramAutoResearch={runInstagramAutoResearch}
-        scheduleCurrentInstagramCarousel={scheduleCurrentInstagramCarousel}
-        loadInstagramAutoMonitor={loadInstagramAutoMonitor}
-        loadInstagramSchedules={loadInstagramSchedules}
-        cancelInstagramSchedule={cancelInstagramSchedule}
+        {...instagramAuto}
         thConfig={thConfig}
         thPosting={thPosting}
         thResult={thResult}
