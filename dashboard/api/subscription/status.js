@@ -1,4 +1,5 @@
 import { put, list } from "@vercel/blob";
+import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 
 const INTERNAL_USERS = ["eden", "user2", "user3", "user4"];
 const BLOB_PREFIX = "subscriptions";
@@ -9,16 +10,71 @@ function cors(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
+function jsonToRow(json) {
+  return {
+    user_id: json.userId,
+    plan_id: json.planId || "basic",
+    status: json.status || "active",
+    current_period_start: json.currentPeriodStart || null,
+    current_period_end: json.currentPeriodEnd || null,
+    usage_count: Number(json.usageCount) || 0,
+    usage_reset_at: json.usageResetAt || null,
+  };
+}
+
+function rowToJson(row) {
+  return {
+    userId: row.user_id,
+    planId: row.plan_id,
+    status: row.status,
+    currentPeriodStart: row.current_period_start,
+    currentPeriodEnd: row.current_period_end,
+    usageCount: row.usage_count,
+    usageResetAt: row.usage_reset_at,
+  };
+}
+
+async function getSubscriptionFromSupabase(userId) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return rowToJson(data);
+}
+
+async function getSubscriptionFromBlob(userId) {
+  try {
+    const path = `${BLOB_PREFIX}/${userId}.json`;
+    const { blobs } = await list({ prefix: path });
+    if (!blobs.length) return null;
+    const resp = await fetch(blobs[0].url);
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+// dual-read: Supabase 우선, 없으면 Blob fallback
 async function getSubscription(userId) {
-  const path = `${BLOB_PREFIX}/${userId}.json`;
-  const { blobs } = await list({ prefix: path });
-  if (!blobs.length) return null;
-  const resp = await fetch(blobs[0].url);
-  if (!resp.ok) return null;
-  return await resp.json();
+  const fromSupabase = await getSubscriptionFromSupabase(userId);
+  if (fromSupabase) return fromSupabase;
+  return getSubscriptionFromBlob(userId);
 }
 
 async function saveSubscription(data) {
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    const { error } = await supabase
+      .from("subscriptions")
+      .upsert(jsonToRow(data), { onConflict: "user_id" });
+    if (!error) return;
+  }
+  // Supabase 실패/미설정 시 Blob에 저장
   const path = `${BLOB_PREFIX}/${data.userId}.json`;
   await put(path, JSON.stringify(data, null, 2), {
     access: "public",
