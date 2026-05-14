@@ -2,7 +2,7 @@ import { useState } from "react";
 import ErrorBox from "../ErrorBox";
 import StepBar from "../StepBar";
 import UserBar from "../UserBar";
-import { captureViaServerScreenshot } from "../../../services/pipeline/cardCapture";
+import { captureSingleHtmlToImage } from "../../../services/pipeline/cardCapture";
 
 export default function AssemblyStep({
   session,
@@ -29,7 +29,8 @@ export default function AssemblyStep({
     if (!html || downloadingPng) return;
     setDownloadingPng(true);
     try {
-      const dataUrl = await captureViaServerScreenshot(html, "png");
+      const dataUrl = await captureSingleHtmlToImage(html, { mime: "image/png" });
+      if (!dataUrl) throw new Error("캡처 결과가 비어있음");
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = `${(topic || "카드뉴스").slice(0, 15)}-카드${idx + 1}.png`;
@@ -221,7 +222,7 @@ export default function AssemblyStep({
                       <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
                     </svg>
                   )}
-                  {downloadingPng ? "서버 캡처 중 (5~15초)..." : `카드 ${safeIdx + 1} PNG`}
+                  {downloadingPng ? "캡처 중..." : `카드 ${safeIdx + 1} PNG`}
                 </button>
                 <button
                   onClick={() => {

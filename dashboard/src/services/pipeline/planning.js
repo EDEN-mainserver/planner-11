@@ -8,35 +8,21 @@ export function extractJsonObject(raw) {
   return match ? match[0] : "";
 }
 
+// 모델 응답을 normalize. 자르지 않고 문장 끝 보존이 우선.
+// 매우 비정상적으로 긴 경우(예: 모델이 1000자 넘게 응답)에만 안전선 cutoff.
+// 일반 길이는 그대로 통과 — 사용자가 인라인 편집으로 다듬도록.
+const SAFE_HEADLINE_MAX = 100;
+const SAFE_BODY_MAX = 1000;
+
 export function normalizePlanData(planData) {
   const slides = Array.isArray(planData?.slides) ? planData.slides : [];
-  const shortenText = (value, maxLen) => {
-    const text = String(value || "").trim().replace(/\s+/g, " ");
-    if (!text) return "";
-    if (text.length <= maxLen) return text;
-    return `${text.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
-  };
-  const shortenLines = (value, maxLenPerLine, maxLines, maxTotalLen) => {
-    const lines = String(value || "")
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .slice(0, maxLines);
-    if (!lines.length) return "";
-    const trimmed = [];
-    let total = 0;
-    for (const line of lines) {
-      let next = shortenText(line, maxLenPerLine);
-      if (total + next.length > maxTotalLen) {
-        const remain = Math.max(0, maxTotalLen - total);
-        if (remain <= 1) break;
-        next = shortenText(next, remain);
-      }
-      trimmed.push(next);
-      total += next.length;
-      if (total >= maxTotalLen) break;
-    }
-    return trimmed.join("\n");
+  // 비정상적으로 긴 경우만 마지막 공백 기준으로 자름 (단어 중간 자르기 방지).
+  const safeCap = (value, maxLen) => {
+    const text = String(value || "").trim();
+    if (!text || text.length <= maxLen) return text;
+    const cut = text.slice(0, maxLen);
+    const lastSpace = cut.lastIndexOf(" ");
+    return lastSpace > maxLen * 0.6 ? cut.slice(0, lastSpace) : cut;
   };
   return {
     ...planData,
@@ -45,13 +31,14 @@ export function normalizePlanData(planData) {
       const bodyLines = Array.isArray(slide.bodyLines)
         ? slide.bodyLines.map((line) => String(line || "").trim()).filter(Boolean)
         : [];
+      const rawBody = bodyLines.length ? bodyLines.join("\n") : (slide.body || "");
       return {
         ...slide,
         num: Number(slide.num) || i + 1,
         part: slide.part || (i === 0 ? "도입" : i === slides.length - 1 ? "마무리" : "본문"),
-        headline: shortenText(slide.headline, 26),
+        headline: safeCap(slide.headline, SAFE_HEADLINE_MAX),
         bodyLines,
-        body: shortenLines(bodyLines.length ? bodyLines.join("\n") : slide.body, 28, 6, 180),
+        body: safeCap(rawBody, SAFE_BODY_MAX),
         imagePrompt: String(slide.imagePrompt || "").trim(),
       };
     }),
@@ -102,17 +89,18 @@ ${slideCount}장 카드뉴스 기획서를 JSON으로 작성해줘:
     {
       "num": 1,
       "part": "표지|본문|마무리",
-      "headline": "제목(한 줄, 18~26자 이내). 글자수 안에서 의미가 완결되도록 작성. 말줄임표(…)로 끝내지 말 것",
-      "body": "본문 — 표지/마무리는 2~3문장. 본문 슬라이드는 반드시 줄바꿈(\\n)으로 구분된 5~6개 항목: 첫째줄=핵심요약(20~28자), 둘째줄=소제목(16~22자), 셋째~여섯째줄=세부내용(각 18~28자), 전체 140~180자. 줄마다 의미 완결, 문장 도중에 끊지 말 것",
+      "headline": "제목 한 줄. 문장이 완결되어야 함 — 단어나 어절 중간에서 끊지 말 것. 가급적 25~40자 권장",
+      "body": "본문. 표지/마무리는 2~3문장. 본문 슬라이드는 줄바꿈(\\n)으로 5~6개 항목: 핵심요약·소제목·세부내용. 모든 줄은 마침표·물음표·느낌표로 마무리되는 완결된 문장이어야 함. 한 줄 길이는 자유롭게 (가급적 줄당 20~35자, 전체 150~250자 권장)",
       "imagePrompt": "영어로 이미지 설명, 사실적 사진 스타일, no text, no watermark, 인스타 카드뉴스 배경용 (1080x1350)"
     }
   ]
 }
 
 엄수사항:
-- 마지막 슬라이드(part="마무리")는 행동 촉구나 명확한 결론으로 마무리할 것. "다음 편에", "곧 공개", "기대해주세요" 같은 미완·예고 표현 금지.
-- 모든 문장은 글자수 제한 안에서 의미가 완결되도록 작성. 말줄임표로 미완 처리 금지.
-- imagePrompt는 글자(text)가 포함되지 않은 분위기 이미지 위주. 카드 디자인 배경으로 어울리는 비주얼.
+- 모든 문장은 마침표·물음표·느낌표로 마무리되는 완결된 문장. 말줄임표(…)나 ',' '~'로 끊지 말 것.
+- 단어·어절 중간에서 끊지 말 것. 예: "스크립…" (X) → "스크립트의 힘" (O).
+- 마지막 슬라이드(part="마무리")는 행동 촉구나 명확한 결론. "다음 편에·곧 공개·기대해주세요" 같은 예고 표현 금지.
+- imagePrompt는 글자 없는 분위기 이미지. 카드 디자인 배경용.
 
 JSON만 반환.`,
       },
