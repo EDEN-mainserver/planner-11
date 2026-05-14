@@ -87,7 +87,7 @@ function SegCard({ seg, idx, isLast, onTextCommit, onStartChange, onEndChange, o
   )
 }
 
-const API = (import.meta.env.VITE_AUTOEDIT_API || '') + '/api'
+const API = (import.meta.env.VITE_AUTOEDIT_API || 'https://autoedit-lab-production.up.railway.app') + '/api'
 const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
 
 let _id = 0
