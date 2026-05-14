@@ -17,11 +17,12 @@ function fmtSec(s) {
 
 // ── API 엔드포인트 설정 ────────────────────────────────────────────
 // 테스트 환경에 맞게 여기서 바꿔가며 실험
+const RAILWAY_URL = import.meta.env.VITE_AUTOEDIT_API || 'https://autoedit-lab-production.up.railway.app'
 const CONFIG = {
   // 'direct'  : 파일 직접 FormData 전송
   // 'blob'    : Vercel Blob 경유 업로드
   mode: 'direct',
-  apiUrl: '/api/transcribe',
+  apiUrl: `${RAILWAY_URL}/api/transcribe`,
 }
 
 export default function TranscribeTest() {
