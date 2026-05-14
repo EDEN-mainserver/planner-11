@@ -67,12 +67,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  const { history, systemPrompt, userKey } = req.body;
+
+  // 사용자 override 키가 있으면 그걸 우선, 없으면 서버 환경변수 사용.
+  // 일반 사용자는 userKey 안 보내므로 항상 서버 키로 호출 — 우리가 비용 부담 + 한도 통제.
+  const GEMINI_KEY = (typeof userKey === 'string' && userKey.trim()) ? userKey.trim() : process.env.GEMINI_API_KEY;
   if (!GEMINI_KEY) {
     return res.status(500).json({ error: 'Gemini API 키가 서버에 설정되지 않았습니다.' });
   }
-
-  const { history, systemPrompt } = req.body;
 
   // 멀티모달 지원: 메시지에 images 배열이 있으면 서버 사이드에서 base64 변환
   const contents = await Promise.all(history.map(async m => {
