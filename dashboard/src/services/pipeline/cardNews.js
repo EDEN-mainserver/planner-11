@@ -632,13 +632,17 @@ export function buildHighestTemplate(topic, cards, brandName, _color1) {
     const img = card.imageUrl || "";
 
     if (isCover) {
+      // 표지는 hook(작은 후크 1줄) + main(메인 카피 1~2줄) 두 부분. 모델이 \n으로 분리해서 보낸다.
+      const hookLine = head2 ? head1 : "";
+      const mainLine = head2 || head1;
       return `
       <article class="hslide hslide-cover" data-num="${num}">
         ${img ? `<div class="cover-bg" style="${bgImageStyle(img)}"></div><div class="cover-veil"></div>` : ""}
         <div class="orb orb-a"></div>
         <div class="orb orb-b"></div>
         <p class="cover-top">CARDNEWS · ${esc(brandEn)} · 2026</p>
-        <h1 class="cover-headline">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h1>
+        ${hookLine ? `<p class="cover-hook">${esc(hookLine)}</p>` : ""}
+        <h1 class="cover-main">${esc(mainLine)}</h1>
         ${card.body ? `<p class="cover-sub">${esc(card.body)}</p>` : ""}
         <p class="cover-handle">@${esc(brandEn)}</p>
       </article>`;
@@ -710,11 +714,13 @@ function HIGHEST_STYLE() {
   .hslide-cover .orb { position:absolute; border-radius:50%; filter:blur(90px); pointer-events:none; z-index:1; }
   .hslide-cover .orb-a { width:620px; height:620px; left:-160px; top:-120px; background:${accent}; opacity:0.42; }
   .hslide-cover .orb-b { width:520px; height:520px; right:-120px; bottom:-160px; background:#57b9d9; opacity:0.22; }
-  .hslide-cover .cover-top { position:relative; z-index:2; font-size:22px; letter-spacing:0.4em; color:${accent}; font-weight:700; margin-bottom:60px; }
-  .hslide-cover .cover-headline { position:relative; z-index:2; font-size:110px; font-weight:900; line-height:1.1;
-                                  color:#fff; letter-spacing:-0.035em; max-width:920px;
-                                  filter:drop-shadow(0 14px 30px rgba(0,0,0,0.35)); }
-  .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:44px; font-size:32px; color:rgba(255,255,255,0.82); font-weight:500; line-height:1.5; max-width:820px; }
+  .hslide-cover .cover-top { position:relative; z-index:2; font-size:22px; letter-spacing:0.4em; color:${accent}; font-weight:700; margin-bottom:48px; }
+  .hslide-cover .cover-hook { position:relative; z-index:2; font-size:38px; font-weight:600; color:rgba(255,255,255,0.86);
+                              letter-spacing:-0.01em; margin-bottom:28px; max-width:880px; line-height:1.35; }
+  .hslide-cover .cover-main { position:relative; z-index:2; font-size:104px; font-weight:900; line-height:1.12;
+                              color:#fff; letter-spacing:-0.035em; max-width:940px;
+                              filter:drop-shadow(0 14px 30px rgba(0,0,0,0.4)); }
+  .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:40px; font-size:30px; color:rgba(255,255,255,0.78); font-weight:500; line-height:1.5; max-width:820px; }
   .hslide-cover .cover-handle { position:absolute; bottom:60px; left:0; right:0; text-align:center; z-index:2;
                                 font-size:22px; letter-spacing:0.32em; color:rgba(255,255,255,0.6); font-weight:600; }
 
