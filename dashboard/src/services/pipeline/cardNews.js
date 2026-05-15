@@ -638,8 +638,7 @@ export function buildHighestTemplate(topic, cards, brandName, _color1) {
         <div class="orb orb-a"></div>
         <div class="orb orb-b"></div>
         <p class="cover-top">CARDNEWS · ${esc(brandEn)} · 2026</p>
-        <h1 class="cover-mega">${esc(brandEn)}</h1>
-        <h2 class="cover-headline">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h2>
+        <h1 class="cover-headline">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h1>
         ${card.body ? `<p class="cover-sub">${esc(card.body)}</p>` : ""}
         <p class="cover-handle">@${esc(brandEn)}</p>
       </article>`;
@@ -711,15 +710,11 @@ function HIGHEST_STYLE() {
   .hslide-cover .orb { position:absolute; border-radius:50%; filter:blur(90px); pointer-events:none; z-index:1; }
   .hslide-cover .orb-a { width:620px; height:620px; left:-160px; top:-120px; background:${accent}; opacity:0.42; }
   .hslide-cover .orb-b { width:520px; height:520px; right:-120px; bottom:-160px; background:#57b9d9; opacity:0.22; }
-  .hslide-cover .cover-top { position:relative; z-index:2; font-size:22px; letter-spacing:0.4em; color:${accent}; font-weight:700; margin-bottom:50px; }
-  .hslide-cover .cover-mega { position:relative; z-index:2; font-size:160px; font-weight:900; line-height:0.98;
-                              letter-spacing:-0.05em; color:transparent;
-                              background:linear-gradient(180deg, #f4b196 0%, ${accent} 55%, #8a3f28 100%);
-                              -webkit-background-clip:text; background-clip:text;
-                              filter:drop-shadow(0 14px 30px rgba(217,119,87,0.35)); margin-bottom:30px; text-transform:uppercase; }
-  .hslide-cover .cover-headline { position:relative; z-index:2; font-size:64px; font-weight:800; line-height:1.22;
-                                  color:#fff; margin-top:20px; letter-spacing:-0.02em; max-width:880px; }
-  .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:30px; font-size:28px; color:rgba(255,255,255,0.78); font-weight:500; line-height:1.5; max-width:760px; }
+  .hslide-cover .cover-top { position:relative; z-index:2; font-size:22px; letter-spacing:0.4em; color:${accent}; font-weight:700; margin-bottom:60px; }
+  .hslide-cover .cover-headline { position:relative; z-index:2; font-size:110px; font-weight:900; line-height:1.1;
+                                  color:#fff; letter-spacing:-0.035em; max-width:920px;
+                                  filter:drop-shadow(0 14px 30px rgba(0,0,0,0.35)); }
+  .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:44px; font-size:32px; color:rgba(255,255,255,0.82); font-weight:500; line-height:1.5; max-width:820px; }
   .hslide-cover .cover-handle { position:absolute; bottom:60px; left:0; right:0; text-align:center; z-index:2;
                                 font-size:22px; letter-spacing:0.32em; color:rgba(255,255,255,0.6); font-weight:600; }
 
