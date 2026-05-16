@@ -716,9 +716,11 @@ function HIGHEST_STYLE() {
   .hslide-cover .orb-b { width:520px; height:520px; right:-120px; bottom:-160px; background:#57b9d9; opacity:0.22; }
   .hslide-cover .cover-top { position:relative; z-index:2; font-size:22px; letter-spacing:0.4em; color:${accent}; font-weight:700; margin-bottom:48px; }
   .hslide-cover .cover-hook { position:relative; z-index:2; font-size:38px; font-weight:600; color:rgba(255,255,255,0.86);
-                              letter-spacing:-0.01em; margin-bottom:28px; max-width:880px; line-height:1.35; }
+                              letter-spacing:-0.01em; margin-bottom:28px; max-width:880px; line-height:1.35;
+                              word-break:keep-all; text-wrap:balance; }
   .hslide-cover .cover-main { position:relative; z-index:2; font-size:96px; font-weight:900; line-height:1.14;
                               color:#fff; letter-spacing:-0.035em; max-width:940px;
+                              word-break:keep-all; text-wrap:balance;
                               filter:drop-shadow(0 14px 30px rgba(0,0,0,0.4)); }
   .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:40px; font-size:30px; color:rgba(255,255,255,0.78); font-weight:500; line-height:1.5; max-width:820px; }
   .hslide-cover .cover-handle { position:absolute; bottom:60px; left:0; right:0; text-align:center; z-index:2;
