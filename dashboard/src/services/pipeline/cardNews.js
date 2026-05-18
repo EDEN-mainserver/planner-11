@@ -1,4 +1,4 @@
-import { FONT_CSS } from "../../eattack/pipeline/fonts";
+import { FONT_CSS } from "../../eattack/pipeline/fonts.js";
 
 export function buildHtmlFromTemplate(slides, template, topicStr, brandStr) {
   const esc = (s) =>
