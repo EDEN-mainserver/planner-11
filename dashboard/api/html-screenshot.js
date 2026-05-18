@@ -44,8 +44,24 @@ export default async function handler(req, res) {
     const targets = htmls.slice(0, 10); // Instagram carousel 최대 10장
 
     for (const html of targets) {
-      await page.setContent(html, { waitUntil: "networkidle0", timeout: 25000 });
-      await page.evaluate(() => document.fonts.ready);
+      // waitUntil:"load" = DOM + 리소스(이미지 등) 로드까지만. networkidle0은
+      // Pretendard 같은 폰트 CDN의 lazy woff 요청 때문에 영원히 끝나지 않을 수 있음.
+      // 폰트는 아래 document.fonts.ready로 별도 대기.
+      await page.setContent(html, { waitUntil: "load", timeout: 40000 });
+      // 폰트 + 모든 <img> 디코드 완료까지 대기 (5초 안전망)
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        const imgs = Array.from(document.images);
+        await Promise.all(imgs.map((img) => {
+          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+          return new Promise((resolve) => {
+            const done = () => resolve();
+            img.addEventListener("load", done, { once: true });
+            img.addEventListener("error", done, { once: true });
+            setTimeout(done, 5000); // 이미지 1장이 5초 넘으면 포기하고 진행
+          });
+        }));
+      });
       const shotOpts = fmt === "png"
         ? { type: "png", fullPage: false }
         : { type: "jpeg", quality: 92, fullPage: false };
