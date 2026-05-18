@@ -105,18 +105,20 @@ export async function captureViaServerScreenshot(html, format = "png") {
 // Instagram/Threads 양쪽에서 게시 직전 호출하는 표준 진입점.
 export async function collectPostImages({ cards, cardHtmls, logFn = null }) {
   // 1) 합성 카드 HTML이 있으면 서버 puppeteer로 일괄 캡처 (네트워크 1회로 7장 처리)
+  //    upload:true → 서버가 PNG를 Blob에 올리고 URL 반환. 다음 단계(instagram-post)에
+  //    가벼운 URL만 전달되므로 Vercel 4.5MB 본문 한도 회피.
   if (Array.isArray(cardHtmls) && cardHtmls.length > 0) {
     if (logFn) logFn(`합성 카드 캡처: ${cardHtmls.length}장 (서버 puppeteer)`);
     const res = await fetch("/api/html-screenshot", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ htmls: cardHtmls, format: "png" }),
+      body: JSON.stringify({ htmls: cardHtmls, format: "png", upload: true }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !Array.isArray(data.images) || data.images.length === 0) {
       if (logFn) logFn(`합성 캡처 실패 (${data.error || res.status}) → raw 배경으로 폴백`);
     } else {
-      if (logFn) logFn(`합성 캡처 완료: ${data.images.length}장`);
+      if (logFn) logFn(`합성 캡처 완료: ${data.images.length}장 (Blob 업로드)`);
       return data.images;
     }
   }

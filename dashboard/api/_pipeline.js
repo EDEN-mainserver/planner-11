@@ -46,31 +46,18 @@ async function composeCardImages({ slides, rawImageUrls, topic, brandName, runId
     ? `https://${process.env.VERCEL_URL}`
     : process.env.SELF_BASE_URL || "http://localhost:3000";
 
-  console.log(`[pipeline] 카드 조립: ${cardHtmls.length}장 → puppeteer 캡처 호출...`);
+  console.log(`[pipeline] 카드 조립: ${cardHtmls.length}장 → puppeteer 캡처 호출(Blob 업로드 모드)...`);
   const shotRes = await fetch(`${baseUrl}/api/html-screenshot`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ htmls: cardHtmls, format: "png" }),
+    body: JSON.stringify({ htmls: cardHtmls, format: "png", upload: true }),
   });
   const shotData = await shotRes.json().catch(() => ({}));
   if (!shotRes.ok || !Array.isArray(shotData.images) || shotData.images.length === 0) {
     throw new Error(`카드 캡처 실패: ${shotData.error || `HTTP ${shotRes.status}`}`);
   }
-
-  // 캡처된 data URL을 Blob에 업로드 → composed URL 반환
-  const composedUrls = [];
-  for (let i = 0; i < shotData.images.length; i++) {
-    const dataUrl = shotData.images[i];
-    const match = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) throw new Error(`카드 ${i + 1}: 캡처 결과 형식 오류`);
-    const mimeType = match[1];
-    const buffer = Buffer.from(match[2], "base64");
-    const ext = mimeType.includes("png") ? "png" : "jpg";
-    const blobPath = `full-auto/composed/${runId}/card-${i + 1}.${ext}`;
-    const blob = await put(blobPath, buffer, { access: "public", contentType: mimeType });
-    composedUrls.push(blob.url);
-  }
-  return composedUrls;
+  // upload:true이므로 shotData.images가 이미 Blob URL 배열. 그대로 반환.
+  return shotData.images;
 }
 
 const IG_API = "https://graph.facebook.com/v19.0";
