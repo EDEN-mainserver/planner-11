@@ -633,8 +633,15 @@ export function buildHighestTemplate(topic, cards, brandName, _color1) {
 
     if (isCover) {
       // 표지는 hook(작은 후크 1줄) + main(메인 카피 1~2줄) 두 부분. 모델이 \n으로 분리해서 보낸다.
-      const hookLine = head2 ? head1 : "";
-      const mainLine = head2 || head1;
+      // 안전망: 브랜드명이 headline에 들어오면 제거 (상단 라벨/하단 핸들과 중복되어 디자인이 망가짐)
+      const normForBrand = (s) =>
+        String(s || "").trim().replace(/[.!?…\s]+$/g, "").replace(/\s+/g, "").toUpperCase();
+      const brandKeys = new Set([normForBrand(brand), normForBrand(brandEn)].filter(Boolean));
+      const dropIfBrand = (line) => (brandKeys.has(normForBrand(line)) ? "" : line);
+      const h1Clean = dropIfBrand(head1);
+      const h2Clean = dropIfBrand(head2);
+      const hookLine = h2Clean ? h1Clean : "";
+      const mainLine = h2Clean || h1Clean;
       return `
       <article class="hslide hslide-cover" data-num="${num}">
         ${img ? `<div class="cover-bg" style="${bgImageStyle(img)}"></div><div class="cover-veil"></div>` : ""}
