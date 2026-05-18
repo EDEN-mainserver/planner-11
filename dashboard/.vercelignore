@@ -12,5 +12,4 @@ api/auth.js
 api/iboss-crawl.js
 api/ig-serve.js
 api/naver-search.js
-api/x-crawl.js
-api/x-trends.js
+# x-crawl, x-trends — threads/instagram 자동 리서치 mixer가 내부 호출

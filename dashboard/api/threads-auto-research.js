@@ -10,7 +10,10 @@ import { fetchPostContent } from "./naver.js";
 // 네이버 후보의 상위 2개 아이템에 대해 본문 크롤 → item.body에 부착.
 // 실패한 아이템은 body 미부착, prompt는 fallback으로 description만 사용.
 async function enrichCandidateWithBodies(candidate, sourceChoice) {
-  if (sourceChoice !== "naver" || !Array.isArray(candidate?.items) || candidate.items.length === 0) return;
+  // naver 후보만 본문 크롤 (item.originallink 보유). 라이브 소셜 후보는 짧은 본문 자체가 evidence.
+  if (candidate?.kind && candidate.kind !== "naver") return;
+  if (!candidate?.kind && sourceChoice !== "naver") return;
+  if (!Array.isArray(candidate?.items) || candidate.items.length === 0) return;
   const targets = candidate.items.slice(0, 2);
   const bodies = await Promise.all(targets.map(async (item) => {
     const url = item?.originallink || item?.link;
@@ -39,8 +42,11 @@ const BLOB_FETCH_TIMEOUT_MS = 10000;
 const NAVER_FETCH_TIMEOUT_MS = 15000;
 const GEMINI_FETCH_TIMEOUT_MS = 45000;
 const RECENT_HISTORY_LIMIT = 10;
-const RECENT_HISTORY_DAYS = 14;
-const MAX_REPEAT_RETRIES = 3;
+const RECENT_HISTORY_DAYS = 3;
+const MAX_REPEAT_RETRIES = 8;
+const LIVE_CRAWL_TIMEOUT_MS = 55000;
+const LIVE_CRAWL_MAX_KEYWORDS = 3;
+const LIVE_CRAWL_TRENDS_BLEND = 3;
 const LEGACY_THEME_SIMILARITY_THRESHOLD = 0.56;
 const MIN_TOKEN_LENGTH = 2;
 const KOREAN_STOPWORDS = new Set([
@@ -633,6 +639,7 @@ function buildNaverCandidates(allArticles) {
       const candidateId = `naver-${index + 1}-${hashString(`${topicFingerprint}|${evidenceFingerprint}`)}`;
       return {
         candidateId,
+        kind: "naver",
         topicLabel,
         topicFingerprint,
         topicFamilyFingerprint,
@@ -650,7 +657,7 @@ function buildNaverCandidates(allArticles) {
   ).sort((a, b) => b.score - a.score);
 }
 
-function buildThreadsCandidates(posts) {
+function buildThreadsCandidates(posts, kind = "threads") {
   const rankedPosts = posts
     .filter((post) => cleanWhitespace(post?.content))
     .sort((a, b) => ((b.views || 0) + (b.likes || 0) + (b.comments || 0)) - ((a.views || 0) + (a.likes || 0) + (a.comments || 0)))
@@ -702,9 +709,10 @@ function buildThreadsCandidates(posts) {
       const sourceUrls = items.map((item) => item.link).filter(Boolean);
       const sourcePathFingerprint = buildSourcePathFingerprint(sourceUrls);
       const evidenceFingerprint = buildEvidenceFingerprint(items.map((item) => item.content));
-      const candidateId = `threads-${index + 1}-${hashString(`${topicFingerprint}|${evidenceFingerprint}`)}`;
+      const candidateId = `${kind}-${index + 1}-${hashString(`${topicFingerprint}|${evidenceFingerprint}`)}`;
       return {
         candidateId,
+        kind,
         topicLabel,
         topicFingerprint,
         topicFamilyFingerprint,
@@ -720,6 +728,123 @@ function buildThreadsCandidates(posts) {
       };
     }
   ).sort((a, b) => b.score - a.score);
+}
+
+// ── 라이브 소셜 크롤 (Threads/X) ──
+// Vercel 내부 fetch — VERCEL_URL 미설정 시 prod 호스트로 폴백
+function getSelfApiOrigin(env) {
+  const vercel = env.VERCEL_URL || process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel}`;
+  return "https://planforge-ui.vercel.app";
+}
+
+async function callSelfApi(path, body, env) {
+  const url = `${getSelfApiOrigin(env)}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    signal: AbortSignal.timeout(LIVE_CRAWL_TIMEOUT_MS),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function pickRotatingKeywords(keywords, max) {
+  const cleaned = Array.from(new Set((keywords || []).map((k) => String(k || "").trim()).filter(Boolean)));
+  if (!cleaned.length) return [];
+  const shuffled = shuffleArray(cleaned);
+  return shuffled.slice(0, max);
+}
+
+// Threads 실시간 검색 — 키워드별로 병렬 호출
+async function fetchThreadsLivePosts(keywords, env) {
+  const targets = pickRotatingKeywords(keywords, LIVE_CRAWL_MAX_KEYWORDS);
+  if (!targets.length) return [];
+  const results = await Promise.allSettled(
+    targets.map((keyword) => callSelfApi("/api/threads-crawl", { keyword }, env))
+  );
+  const posts = [];
+  for (const r of results) {
+    if (r.status !== "fulfilled" || !r.value) continue;
+    const raw = Array.isArray(r.value.posts) ? r.value.posts : [];
+    for (const p of raw) {
+      const content = cleanWhitespace(p?.content || "");
+      if (!content) continue;
+      posts.push({
+        author: p.author || "unknown",
+        content: content.slice(0, 280),
+        views: Number(p.views || 0),
+        likes: Number(p.likes || 0),
+        comments: Number(p.comments || 0),
+        link: p.postUrl || p.link || "",
+      });
+    }
+  }
+  return posts;
+}
+
+// X 실시간 검색 — 키워드별 + 트렌드 보강
+async function fetchXLivePosts(keywords, env) {
+  const baseKeywords = pickRotatingKeywords(keywords, LIVE_CRAWL_MAX_KEYWORDS);
+  const trendNames = await fetchXTrendingNames(env);
+  const blend = pickRotatingKeywords(trendNames, LIVE_CRAWL_TRENDS_BLEND);
+  const targets = Array.from(new Set([...baseKeywords, ...blend]));
+  if (!targets.length) return [];
+  const results = await Promise.allSettled(
+    targets.map((keyword) => callSelfApi("/api/x-crawl", { keyword }, env))
+  );
+  const posts = [];
+  for (const r of results) {
+    if (r.status !== "fulfilled" || !r.value) continue;
+    const raw = Array.isArray(r.value.posts) ? r.value.posts : [];
+    for (const p of raw) {
+      const content = cleanWhitespace(p?.content || "");
+      if (!content) continue;
+      posts.push({
+        author: p.author || "unknown",
+        content: content.slice(0, 280),
+        views: Number(p.likes || 0) + Number(p.shares || 0),
+        likes: Number(p.likes || 0),
+        comments: Number(p.comments || 0),
+        link: p.postUrl || p.link || "",
+      });
+    }
+  }
+  return posts;
+}
+
+// X 한국 실시간 트렌드 — 키워드 이름만 추출
+async function fetchXTrendingNames(env) {
+  try {
+    const url = `${getSelfApiOrigin(env)}/api/x-trends`;
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(LIVE_CRAWL_TIMEOUT_MS),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data?.posts || [])
+      .map((t) => String(t?.title || "").trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// 여러 소스에서 모은 candidates 배열을 dedupe + 정렬
+function combineCandidatePools(pools) {
+  const byId = new Map();
+  for (const pool of pools) {
+    if (!Array.isArray(pool)) continue;
+    for (const c of pool) {
+      if (!c?.candidateId) continue;
+      const prev = byId.get(c.candidateId);
+      if (!prev || (c.score || 0) > (prev.score || 0)) {
+        byId.set(c.candidateId, c);
+      }
+    }
+  }
+  return [...byId.values()].sort((a, b) => (b.score || 0) - (a.score || 0));
 }
 
 // ── 네이버 검색 ──
@@ -1028,10 +1153,12 @@ function buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLa
 }
 
 function buildCandidatePrompt(sourceChoice, config, candidate, templateData = null) {
+  const candidateKind = candidate?.kind || sourceChoice;
+  const isSocial = candidateKind === "threads" || candidateKind === "threads-live" || candidateKind === "x-live";
   const evidenceText = candidate.items
     .slice(0, 3)
     .map((item) => {
-      if (sourceChoice === "threads") {
+      if (isSocial) {
         return `@${item.author} | 조회 ${Number(item.views || 0).toLocaleString()} | 좋아요 ${Number(item.likes || 0).toLocaleString()} | ${item.content}`;
       }
       const head = `(${item.keyword}) ${item.title} | ${item.description}`;
@@ -1039,10 +1166,14 @@ function buildCandidatePrompt(sourceChoice, config, candidate, templateData = nu
     })
     .join("\n");
 
-  const sourceIntro = sourceChoice === "threads"
-    ? `아래는 최근 Threads 인기글을 유사 메시지끼리 묶어 정리한 단일 후보야.
-${templateData ? `\n[Threads 역설계 템플릿]\n${JSON.stringify(buildTemplatePlaybook(templateData), null, 2)}\n` : ""}`
-    : "아래는 네이버 검색 결과를 중복 기사군으로 정리한 단일 후보야.";
+  const sourceIntroByKind = {
+    "threads": `아래는 최근 Threads 인기글을 유사 메시지끼리 묶어 정리한 단일 후보야.
+${templateData ? `\n[Threads 역설계 템플릿]\n${JSON.stringify(buildTemplatePlaybook(templateData), null, 2)}\n` : ""}`,
+    "threads-live": "아래는 Threads에서 방금 크롤한 실시간 게시글 후보야.",
+    "x-live": "아래는 X(트위터)에서 방금 크롤한 실시간 게시글/트렌드 후보야.",
+    "naver": "아래는 네이버 검색 결과를 중복 기사군으로 정리한 단일 후보야.",
+  };
+  const sourceIntro = sourceIntroByKind[candidateKind] || sourceIntroByKind.naver;
 
   return `너는 Threads(인스타그램 텍스트 SNS) 콘텐츠 전문가야.
 ${sourceIntro}
@@ -1181,23 +1312,44 @@ async function runForAccount(username, config, env, runId, options = {}) {
     const threadTemplate = await readLatestThreadTemplate();
     const threadTemplatePosts = Array.isArray(threadTemplate?.posts) ? threadTemplate.posts : [];
     const hasThreadsTemplate = threadTemplatePosts.length > 0;
-    const sourceMode = config.sourceMode || "random";
-    const preferredSource = sourceMode === "random"
-      ? (hasThreadsTemplate ? (Math.random() < 0.5 ? "threads" : "naver") : "naver")
-      : sourceMode;
-    const sourceChoice = preferredSource === "threads" && !hasThreadsTemplate ? "naver" : preferredSource;
+    const sourceMode = config.sourceMode || "mix";
+    // 'random' 은 과거 호환 — mix 와 동일 취급
+    const normalizedMode = sourceMode === "random" ? "mix" : sourceMode;
+    const sourceChoice = normalizedMode;
     await setPhase("selecting_source", `주제 소스 선택: ${sourceChoice}`);
     await log(`주제 소스 선택: ${sourceChoice}${sourceMode !== sourceChoice ? ` (설정: ${sourceMode})` : ""}`, null, "selecting");
-    if (sourceMode === "threads" && !hasThreadsTemplate) {
-      await log("Threads 소스가 선택됐지만 최신 템플릿에 posts가 없어 네이버로 전환", {
-        hasThreadsTemplate,
-        templateHasData: Boolean(threadTemplate?.data),
-      }, "selecting");
-    }
 
     let sourceLabel;
     let rawCandidates = [];
     let templateData = null;
+
+    async function gatherNaver() {
+      const searchTerms = shuffleArray(expandSearchTerms(config.keywords));
+      await log(`네이버 키워드 검색 시작: ${config.keywords.join(", ")}`, { searchTerms }, "searching");
+      const allArticles = [];
+      for (const kw of searchTerms) {
+        await guardCancel();
+        const results = await searchNaver(kw, env);
+        allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
+      }
+      await log(`네이버 검색 결과: ${allArticles.length}건`, { count: allArticles.length }, "searching");
+      config.searchTerms = searchTerms;
+      return allArticles.length ? buildNaverCandidates(allArticles) : [];
+    }
+
+    async function gatherThreadsLive() {
+      await log(`Threads 실시간 크롤 시작`, { keywords: config.keywords }, "searching");
+      const posts = await fetchThreadsLivePosts(config.keywords, env);
+      await log(`Threads 실시간 결과: ${posts.length}건`, { count: posts.length }, "searching");
+      return posts.length ? buildThreadsCandidates(posts, "threads-live") : [];
+    }
+
+    async function gatherXLive() {
+      await log(`X 실시간 크롤 시작 (트렌드 보강)`, { keywords: config.keywords }, "searching");
+      const posts = await fetchXLivePosts(config.keywords, env);
+      await log(`X 실시간 결과: ${posts.length}건`, { count: posts.length }, "searching");
+      return posts.length ? buildThreadsCandidates(posts, "x-live") : [];
+    }
 
     if (sourceChoice === "threads" && hasThreadsTemplate) {
       const posts = threadTemplatePosts;
@@ -1207,25 +1359,50 @@ async function runForAccount(username, config, env, runId, options = {}) {
         savedAt: threadTemplate?.savedAt || null,
       };
       sourceLabel = "Threads 인기글 역설계";
-      rawCandidates = buildThreadsCandidates(posts);
-    } else {
+      rawCandidates = buildThreadsCandidates(posts, "threads");
+    } else if (sourceChoice === "naver") {
       sourceLabel = "네이버 블로그";
       await setPhase("searching", "네이버 블로그 리서치 중");
-      const searchTerms = shuffleArray(expandSearchTerms(config.keywords));
-      await log(`키워드 검색 시작: ${config.keywords.join(", ")}`, { searchTerms }, "searching");
-      const allArticles = [];
-      for (const kw of searchTerms) {
-        await guardCancel();
-        const results = await searchNaver(kw, env);
-        allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
+      rawCandidates = await gatherNaver();
+      if (!rawCandidates.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
+    } else if (sourceChoice === "threads-live") {
+      sourceLabel = "Threads 실시간";
+      await setPhase("searching", "Threads 실시간 크롤 중");
+      rawCandidates = await gatherThreadsLive();
+      if (!rawCandidates.length) {
+        await log("Threads 라이브 결과 없음 — 네이버로 폴백", null, "searching");
+        rawCandidates = await gatherNaver();
+        sourceLabel = "네이버 블로그 (폴백)";
       }
-      if (!allArticles.length) throw new Error("검색 결과 없음 (네이버 API 키 확인 필요)");
-      await log(`검색 결과: ${allArticles.length}건`, { count: allArticles.length }, "searching");
-      for (const [i, a] of allArticles.slice(0, 8).entries()) {
-        await log(`  [${i + 1}] (${a.keyword}) ${a.title.slice(0, 40)}`);
+    } else if (sourceChoice === "x-live") {
+      sourceLabel = "X 실시간";
+      await setPhase("searching", "X 실시간 크롤 중");
+      rawCandidates = await gatherXLive();
+      if (!rawCandidates.length) {
+        await log("X 라이브 결과 없음 — 네이버로 폴백", null, "searching");
+        rawCandidates = await gatherNaver();
+        sourceLabel = "네이버 블로그 (폴백)";
       }
-      rawCandidates = buildNaverCandidates(allArticles);
-      config.searchTerms = searchTerms;
+    } else {
+      // mix: 네이버 + Threads 라이브 + X 라이브 병렬, 한 소스 실패해도 진행
+      sourceLabel = "통합 (네이버+Threads+X)";
+      await setPhase("searching", "통합 소스 리서치 중");
+      const [naverRes, threadsRes, xRes] = await Promise.allSettled([
+        gatherNaver(),
+        gatherThreadsLive(),
+        gatherXLive(),
+      ]);
+      const pools = [];
+      if (naverRes.status === "fulfilled") pools.push(naverRes.value);
+      else await log(`네이버 실패: ${naverRes.reason?.message || naverRes.reason}`, null, "searching");
+      if (threadsRes.status === "fulfilled") pools.push(threadsRes.value);
+      else await log(`Threads 라이브 실패: ${threadsRes.reason?.message || threadsRes.reason}`, null, "searching");
+      if (xRes.status === "fulfilled") pools.push(xRes.value);
+      else await log(`X 라이브 실패: ${xRes.reason?.message || xRes.reason}`, null, "searching");
+      rawCandidates = combineCandidatePools(pools);
+      const breakdown = pools.map((p, i) => `${["naver", "threads", "x"][i] || "?"}:${(p || []).length}`).join(" / ");
+      await log(`통합 후보 풀: ${rawCandidates.length}건 (${breakdown})`, { count: rawCandidates.length }, "searching");
+      if (!rawCandidates.length) throw new Error("모든 소스에서 후보를 구성하지 못했습니다");
     }
 
     if (!rawCandidates.length) throw new Error("후보를 구성하지 못했습니다");

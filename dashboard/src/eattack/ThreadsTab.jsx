@@ -1047,7 +1047,7 @@ ${JSON.stringify(template, null, 2)}
             </div>
 
             <div className="text-[11px] text-violet-600 bg-violet-100 rounded-lg px-3 py-2 leading-relaxed">
-              매일 KST 06:00 · 네이버/Threads 소스를 섞어 키워드 기반 주제 선정 → Gemini 글 생성 → 지정 시간 예약 자동 등록
+              매일 KST 06:00 · 네이버+Threads+X 라이브를 합쳐 키워드 기반 주제 선정 → Gemini 글 생성 → 지정 시간 예약 자동 등록
             </div>
 
             {/* 키워드 */}
@@ -1086,9 +1086,12 @@ ${JSON.stringify(template, null, 2)}
                 onChange={e => setAutoSourceMode(e.target.value)}
                 className="w-full px-2.5 py-2 text-xs border border-violet-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-200"
               >
-                <option value="random">랜덤 혼합 (추천)</option>
+                <option value="mix">통합 (네이버+Threads+X 라이브)</option>
                 <option value="naver">네이버 블로그</option>
-                <option value="threads">Threads 인기글</option>
+                <option value="threads-live">Threads 실시간</option>
+                <option value="x-live">X 실시간 (트렌드 보강)</option>
+                <option value="threads">Threads 인기글 (저장 템플릿)</option>
+                <option value="random">랜덤 혼합 (구버전 호환)</option>
               </select>
             </div>
 
