@@ -1,4 +1,13 @@
 import { del, list, put } from "@vercel/blob";
+import {
+  isSupabaseSchedulesAvailable,
+  upsertScheduleToSupabase,
+  listSchedulesFromSupabase,
+  updateScheduleInSupabase,
+  deleteScheduleFromSupabase,
+  clearNonPendingSchedulesFromSupabase,
+  listUsernamesFromSupabase,
+} from "./_supabase-schedules.js";
 
 export const SCHEDULE_PREFIX = "threads-schedule";
 
@@ -116,7 +125,10 @@ export async function readScheduleItem(username, scheduleId) {
 }
 
 export async function readAllSchedules(username) {
-  const [{ schedules: legacySchedules }, itemBlobs] = await Promise.all([
+  // Supabase + Blob 양쪽에서 읽어 id로 merge. Supabase 데이터가 우선(최신).
+  // 마이그레이션 완료 후엔 Blob 읽기 제거 예정.
+  const [supabaseSchedules, { schedules: legacySchedules }, itemBlobs] = await Promise.all([
+    isSupabaseSchedulesAvailable() ? listSchedulesFromSupabase(username) : Promise.resolve(null),
     readLegacySchedules(username),
     listScheduleItemBlobs(username),
   ]);
@@ -144,6 +156,14 @@ export async function readAllSchedules(username) {
     const schedule = entry?.schedule;
     if (!schedule?.id) continue;
     byId.set(schedule.id, schedule);
+  }
+
+  // Supabase가 마지막 — 동일 ID면 덮어씀 (Supabase가 source of truth)
+  if (Array.isArray(supabaseSchedules)) {
+    for (const schedule of supabaseSchedules) {
+      if (!schedule?.id) continue;
+      byId.set(schedule.id, schedule);
+    }
   }
 
   return [...byId.values()].sort(sortSchedulesAsc);
@@ -178,12 +198,25 @@ export async function saveSchedule(username, schedule) {
     }
   }
 
-  await put(toItemPath(username, stored.id), JSON.stringify(stored), {
-    access: "public",
-    contentType: "application/json",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-  });
+  // Dual-write: Supabase + Blob 동시 기록. Supabase가 source of truth.
+  // Blob은 마이그레이션 안전망 (Supabase 장애 시 fallback). 검증 후 단계적 폐기.
+  const writes = [
+    put(toItemPath(username, stored.id), JSON.stringify(stored), {
+      access: "public",
+      contentType: "application/json",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    }),
+  ];
+  if (isSupabaseSchedulesAvailable()) {
+    writes.push(
+      upsertScheduleToSupabase(username, stored).catch((e) => {
+        console.error("[schedule-storage] Supabase upsert 실패, Blob에만 저장:", e.message);
+        return null;
+      })
+    );
+  }
+  await Promise.all(writes);
   return stored;
 }
 
@@ -235,7 +268,17 @@ export async function deleteScheduleRecord(username, scheduleId) {
     await writeLegacySchedules(username, nextLegacy);
   }
 
-  return itemBlob?.url || nextLegacy.length !== legacy.schedules.length;
+  // Supabase에서도 삭제 (best-effort, 실패해도 Blob 측은 이미 처리됨)
+  let supabaseDeleted = false;
+  if (isSupabaseSchedulesAvailable()) {
+    try {
+      supabaseDeleted = await deleteScheduleFromSupabase(username, scheduleId);
+    } catch (e) {
+      console.error("[schedule-storage] Supabase 삭제 실패:", e.message);
+    }
+  }
+
+  return Boolean(itemBlob?.url) || nextLegacy.length !== legacy.schedules.length || supabaseDeleted;
 }
 
 export async function clearNonPendingSchedules(username) {
@@ -267,19 +310,45 @@ export async function clearNonPendingSchedules(username) {
 
   await Promise.allSettled(removable.map(({ blob }) => del(blob.url)));
 
+  // Supabase에서도 비-pending 일괄 삭제 (best-effort)
+  if (isSupabaseSchedulesAvailable()) {
+    try {
+      await clearNonPendingSchedulesFromSupabase(username);
+    } catch (e) {
+      console.error("[schedule-storage] Supabase clear-non-pending 실패:", e.message);
+    }
+  }
+
   return nextLegacy.length + (itemEntries.length - removable.length);
 }
 
 export async function listScheduleUsernames() {
-  const { blobs } = await list({ prefix: `${SCHEDULE_PREFIX}/` });
   const usernames = new Set();
 
-  for (const blob of blobs) {
-    const suffix = blob.pathname.replace(`${SCHEDULE_PREFIX}/`, "");
-    if (!suffix) continue;
-    const [firstSegment] = suffix.split("/");
-    if (!firstSegment) continue;
-    usernames.add(firstSegment.replace(/\.json$/, ""));
+  // Supabase 우선
+  if (isSupabaseSchedulesAvailable()) {
+    try {
+      const supabaseUsernames = await listUsernamesFromSupabase();
+      if (Array.isArray(supabaseUsernames)) {
+        supabaseUsernames.forEach((u) => usernames.add(u));
+      }
+    } catch (e) {
+      console.error("[schedule-storage] Supabase list-usernames 실패:", e.message);
+    }
+  }
+
+  // Blob 합집합 (마이그레이션 안전망)
+  try {
+    const { blobs } = await list({ prefix: `${SCHEDULE_PREFIX}/` });
+    for (const blob of blobs) {
+      const suffix = blob.pathname.replace(`${SCHEDULE_PREFIX}/`, "");
+      if (!suffix) continue;
+      const [firstSegment] = suffix.split("/");
+      if (!firstSegment) continue;
+      usernames.add(firstSegment.replace(/\.json$/, ""));
+    }
+  } catch (e) {
+    console.error("[schedule-storage] Blob list 실패:", e.message);
   }
 
   return [...usernames].sort();
