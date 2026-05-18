@@ -2,7 +2,7 @@ import { useState } from "react";
 import ErrorBox from "../ErrorBox";
 import StepBar from "../StepBar";
 import UserBar from "../UserBar";
-import { captureSingleHtmlToImage } from "../../../services/pipeline/cardCapture";
+import { captureViaServerScreenshot } from "../../../services/pipeline/cardCapture";
 
 export default function AssemblyStep({
   session,
@@ -29,7 +29,7 @@ export default function AssemblyStep({
     if (!html || downloadingPng) return;
     setDownloadingPng(true);
     try {
-      const dataUrl = await captureSingleHtmlToImage(html, { mime: "image/png" });
+      const dataUrl = await captureViaServerScreenshot(html, "png");
       if (!dataUrl) throw new Error("캡처 결과가 비어있음");
       const a = document.createElement("a");
       a.href = dataUrl;
