@@ -2,7 +2,7 @@ import { callGemini } from "../../utils/gemini";
 import { loadLocalText, saveLocalText } from "./socialStorage";
 
 export const DEFAULT_CAPTION_PROMPT =
-  "기획을 바탕으로 인스타그램 게시용 캡션을 작성해줘. 첫 문장은 시선을 끌고, 본문은 2~4문장으로 자연스럽게 풀어 쓰고, 마지막에는 관련 해시태그 5~8개를 붙여줘.";
+  '기획을 바탕으로 인스타그램 게시용 캡션을 작성해줘. 첫 문장은 "기획의 핵심 키워드를 넣으면 자료 준다고 해줘.", 본문은 2~4문장으로 자연스럽게 풀어 쓰고, 마지막에는 관련 해시태그 5개를 붙여줘.';
 
 export const captionPromptKey = (username) => `eden_caption_prompt_${username}_v1`;
 

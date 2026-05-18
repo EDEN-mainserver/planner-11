@@ -1,6 +1,6 @@
 // 통합 카드뉴스 파이프라인
 // 크롤링/리서치 → 기획 → 이미지 생성 → 카드 조립 → 배포
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LoginModal from "./LoginModal";
 import { getSession, clearSession } from "../utils/authSession";
 import { emitEAttackContext, summarizeText } from "./eattackContext";
@@ -100,6 +100,8 @@ export default function UnifiedPipelineTab() {
   );
   const [captionSaving, setCaptionSaving] = useState(false);
   const [captionGenerating, setCaptionGenerating] = useState(false);
+  // 배포 단계 진입 시 자동 캡션 생성을 한 번만 트리거하기 위한 가드
+  const autoCaptionFiredRef = useRef(false);
 
   // 기획 단계 추가 지시사항 — 사용자가 직접 입력하는 프롬프트, 기본 프롬프트 끝에 append
   const [planningPrompt, setPlanningPrompt] = useState(() =>
@@ -314,6 +316,22 @@ export default function UnifiedPipelineTab() {
       setCaptionGenerating(false);
     }
   };
+
+  // 배포 단계 진입 시 캡션이 비어있으면 한 번 자동 생성. 버튼 클릭은 기존대로 재생성.
+  useEffect(() => {
+    if (step !== "deploy") {
+      autoCaptionFiredRef.current = false;
+      return;
+    }
+    if (autoCaptionFiredRef.current) return;
+    if (captionGenerating) return;
+    if (!topic?.trim()) return;
+    if (postCaption?.trim()) return;
+    if (cards.length === 0) return;
+    autoCaptionFiredRef.current = true;
+    generateCaptionFromPrompt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, topic, postCaption, captionGenerating, cards.length]);
 
   // 벤치마킹 이미지 업로드
   const handleBenchmarkFile = (e) => {
