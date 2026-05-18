@@ -45,7 +45,7 @@ export async function callGemini(history, systemPrompt) {
  * 우리 키 보호 + 향후 토큰 차감을 한 곳에서 통제.
  * @param {string} prompt - 이미지 프롬프트 (영어 권장)
  * @param {string} aspectRatio - '3:4' | '1:1' | '16:9' 등
- * @returns {Promise<string>} data URL (data:image/png;base64,...)
+ * @returns {Promise<string>} 공개 Blob URL (예: https://...blob.vercel-storage.com/image-gen/...)
  */
 export async function generateImage(prompt, aspectRatio = '3:4') {
   const resp = await fetch('/api/image-generate', {
