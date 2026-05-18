@@ -1,5 +1,10 @@
-// Vercel Serverless Function — Gemini Imagen 3 이미지 생성
+// Vercel Serverless Function — Gemini Imagen 4 Fast 이미지 생성
 // GEMINI_API_KEY 환경변수 사용 (api/gemini.js와 동일한 키)
+// 결과: Imagen base64 → Vercel Blob에 즉시 업로드 후 공개 URL 반환
+// (브라우저에 base64를 들고 다니지 않아 게시 단계의 413(Request Entity Too Large) 회피)
+
+import { Buffer } from "node:buffer";
+import { put } from "@vercel/blob";
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -48,11 +53,18 @@ export default async function handler(req, res) {
       throw new Error('이미지 데이터를 받지 못했습니다.');
     }
 
-    // base64 → data URL로 변환하여 반환
+    // base64 → Vercel Blob 업로드 → 공개 URL 반환
+    // 청소 정책: image-gen/ 프리픽스의 파일은 cleanup-image-blobs cron이 7일 이후 자동 삭제
     const mimeType = prediction.mimeType || 'image/png';
-    const imageUrl = `data:${mimeType};base64,${prediction.bytesBase64Encoded}`;
+    const ext = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png';
+    const buffer = Buffer.from(prediction.bytesBase64Encoded, 'base64');
+    const filename = `image-gen/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const blob = await put(filename, buffer, {
+      access: 'public',
+      contentType: mimeType,
+    });
 
-    return res.status(200).json({ imageUrl });
+    return res.status(200).json({ imageUrl: blob.url });
 
   } catch (err) {
     return res.status(500).json({ error: err.message });

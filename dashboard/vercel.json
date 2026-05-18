@@ -58,7 +58,8 @@
     "api/payment/webhook.js":  { "maxDuration": 30, "memory": 512 },
     "api/subscription/status.js": { "maxDuration": 15, "memory": 256 },
     "api/subscription/usage.js":  { "maxDuration": 15, "memory": 256 },
-    "api/fullgraphic-plan.js":    { "maxDuration": 60, "memory": 512 }
+    "api/fullgraphic-plan.js":    { "maxDuration": 60, "memory": 512 },
+    "api/cleanup-image-blobs.js": { "maxDuration": 300, "memory": 512 }
   },
   "crons": [
     {
@@ -80,6 +81,10 @@
     {
       "path": "/api/instagram-auto-research",
       "schedule": "5 21 * * *"
+    },
+    {
+      "path": "/api/cleanup-image-blobs",
+      "schedule": "0 19 * * *"
     }
   ]
 }
