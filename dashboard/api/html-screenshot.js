@@ -1,9 +1,16 @@
-// HTML 문자열 → JPEG 스크린샷 API
-// 카드뉴스 HTML을 받아 1080×1350 JPEG base64로 반환
-// POST /api/html-screenshot  Body: { htmls: string[] }
+// HTML 문자열 → 1080×1350 스크린샷 API
+// POST /api/html-screenshot  Body: { htmls: string[], format?: "png"|"jpeg" }
+// Response: { ok: true, images: ["data:image/png;base64,...", ...] }
+//
+// @sparticuz/chromium-min 사용 — Chromium 바이너리를 번들에 포함하지 않고 런타임에
+// GitHub 릴리즈에서 다운받아 /tmp에 풀음. libnss3.so 등 시스템 라이브러리 호환성
+// 문제 해결 (threads-crawl, media, x-crawl과 동일 패턴).
 
-const { default: chromium } = await import("@sparticuz/chromium");
+const { default: chromium } = await import("@sparticuz/chromium-min");
 const { default: puppeteer } = await import("puppeteer-core");
+
+const CHROMIUM_PACK_URL =
+  "https://github.com/Sparticuz/chromium/releases/download/v131.0.0/chromium-v131.0.0-pack.tar";
 
 export const config = { maxDuration: 120, memory: 1024 };
 
@@ -20,31 +27,11 @@ export default async function handler(req, res) {
   }
   const fmt = format === "png" ? "png" : "jpeg";
 
-  // @sparticuz/chromium이 /tmp에 압축 해제한 .so 파일을 링커가 찾을 수 있도록 경로 추가
-  const libPaths = [
-    "/tmp",
-    "/var/task/node_modules/@sparticuz/chromium/bin",
-    process.env.LD_LIBRARY_PATH,
-  ].filter(Boolean).join(":");
-  process.env.LD_LIBRARY_PATH = libPaths;
-
   let browser;
   try {
-    const executablePath = await chromium.executablePath();
-
     browser = await puppeteer.launch({
-      args: [
-        ...chromium.args,
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--disable-setuid-sandbox",
-        "--no-first-run",
-        "--no-sandbox",
-        "--no-zygote",
-        "--single-process",
-        "--disable-features=site-per-process",
-      ],
-      executablePath,
+      args: chromium.args,
+      executablePath: await chromium.executablePath(CHROMIUM_PACK_URL),
       headless: chromium.headless,
       defaultViewport: { width: 1080, height: 1350, deviceScaleFactor: 1 },
     });
