@@ -78,6 +78,12 @@ export async function generateCaption({
 추가 설명, 머리말, 따옴표, 코드블록 없이 캡션 본문만 출력해.
 줄바꿈과 해시태그는 지시에 맞게 자연스럽게 포함해.
 
+[금지 사항 — 절대 어기지 말 것]
+- 캡션 맨 앞에 인스타그램/스레드 핸들(@username 또는 username_)을 prepend하지 말 것.
+  사용자가 명시적으로 brand나 handle을 첫 줄에 넣으라고 지시하지 않으면 첫 줄은 본문으로 시작.
+- 문맥에 나오는 "브랜드:" 값은 참고용이지 캡션 첫 줄로 박는 게 아님.
+- 환각 금지: 문맥/리서치에 없는 제품명·인물명·기업명을 만들지 말 것.
+
 캡션 작성 지시:
 ${filledPrompt}
 
@@ -88,5 +94,12 @@ ${context}`,
     "SNS 게시용 캡션 카피라이터. 사용자의 스타일 지시를 최우선으로 따르고, 결과물만 출력합니다."
   );
 
-  return String(result || "").trim();
+  // 후처리 안전망: Gemini가 그래도 핸들을 prepend하면 첫 줄만 strip.
+  // 패턴: 영문 시작 + 영숫자/언더스코어 3자 이상 + (선택) trailing 언더스코어 + 줄바꿈
+  let output = String(result || "").trim();
+  const handleLeading = output.match(/^@?[a-z][a-z0-9_.]{2,}_?\s*\n+/i);
+  if (handleLeading) {
+    output = output.slice(handleLeading[0].length).trim();
+  }
+  return output;
 }
