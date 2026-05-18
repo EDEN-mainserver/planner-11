@@ -621,7 +621,7 @@ export function buildHighestTemplate(topic, cards, brandName, _color1) {
     return lines.map((line) => `<p style="margin:0 0 14px 0;font-size:30px;font-weight:500;line-height:1.55;color:${color};">${esc(line)}</p>`).join("");
   };
 
-  const bgImageStyle = (url) => url ? `background-image:url('${url}');background-size:cover;background-position:center;` : "";
+  const bgImageStyle = (url, position = "center") => url ? `background-image:url('${url}');background-size:cover;background-position:${position};` : "";
 
   const renderCard = (card, i) => {
     const num = String(i + 1).padStart(2, "0");
@@ -672,7 +672,7 @@ export function buildHighestTemplate(topic, cards, brandName, _color1) {
 
     return `
       <article class="hslide hslide-body" data-num="${num}">
-        ${img ? `<div class="body-hero" style="${bgImageStyle(img)}"><div class="body-hero-veil"></div></div>` : `<div class="body-hero body-hero-empty"></div>`}
+        ${img ? `<div class="body-hero" style="${bgImageStyle(img, "center 30%")}"><div class="body-hero-veil"></div></div>` : `<div class="body-hero body-hero-empty"></div>`}
         <div class="body-content">
           <span class="pill"><span class="dot"></span>#${num} ${esc(card.part || "본문")}</span>
           <h2 class="body-title">${esc(head1)}${head2 ? `<br/>${esc(head2)}` : ""}</h2>
