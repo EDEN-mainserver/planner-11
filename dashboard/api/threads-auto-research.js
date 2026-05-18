@@ -5,6 +5,27 @@
 // vercel.json cron: "0 21 * * *"
 
 import { list, put } from "@vercel/blob";
+import { fetchPostContent } from "./naver.js";
+
+// 네이버 후보의 상위 2개 아이템에 대해 본문 크롤 → item.body에 부착.
+// 실패한 아이템은 body 미부착, prompt는 fallback으로 description만 사용.
+async function enrichCandidateWithBodies(candidate, sourceChoice) {
+  if (sourceChoice !== "naver" || !Array.isArray(candidate?.items) || candidate.items.length === 0) return;
+  const targets = candidate.items.slice(0, 2);
+  const bodies = await Promise.all(targets.map(async (item) => {
+    const url = item?.originallink || item?.link;
+    if (!url) return "";
+    try {
+      const body = await fetchPostContent(url);
+      return String(body || "").slice(0, 1200);
+    } catch {
+      return "";
+    }
+  }));
+  targets.forEach((item, i) => {
+    if (bodies[i]) item.body = bodies[i];
+  });
+}
 import {
   isDuplicateScheduleTextError,
   readAllSchedules,
@@ -990,6 +1011,15 @@ function buildSourceInfoWithCandidate(config, sourceMode, sourceChoice, sourceLa
     candidateId: candidate?.candidateId || "",
     candidateHash: candidate?.candidateId || "",
     searchTerms: Array.isArray(searchTerms) ? searchTerms : [],
+    // 본문 크롤된 항목들의 미리보기 (UI 출처 본문 보기용)
+    bodyPreviews: (candidate?.items || [])
+      .filter((item) => item?.body)
+      .slice(0, 2)
+      .map((item) => ({
+        url: item?.originallink || item?.link || "",
+        title: item?.title || "",
+        preview: String(item.body || "").slice(0, 300),
+      })),
     provenance: {
       ...sourceInfo.provenance,
       repeatCheck,
@@ -1004,9 +1034,10 @@ function buildCandidatePrompt(sourceChoice, config, candidate, templateData = nu
       if (sourceChoice === "threads") {
         return `@${item.author} | 조회 ${Number(item.views || 0).toLocaleString()} | 좋아요 ${Number(item.likes || 0).toLocaleString()} | ${item.content}`;
       }
-      return `(${item.keyword}) ${item.title} | ${item.description}`;
+      const head = `(${item.keyword}) ${item.title} | ${item.description}`;
+      return item.body ? `${head}\n  본문 발췌: ${item.body}` : head;
     })
-    .join(" / ");
+    .join("\n");
 
   const sourceIntro = sourceChoice === "threads"
     ? `아래는 최근 Threads 인기글을 유사 메시지끼리 묶어 정리한 단일 후보야.
@@ -1244,6 +1275,12 @@ async function runForAccount(username, config, env, runId, options = {}) {
       if (!nextCandidate) {
         await log("새로운 주제군 후보가 없어 생성 중단", null, "generating");
         break;
+      }
+      // 네이버 후보면 상위 2건 본문 크롤 (시간 ~3~6초). 실패 항목은 description만 사용.
+      if (sourceChoice === "naver") {
+        await enrichCandidateWithBodies(nextCandidate, sourceChoice);
+        const bodiesCount = (nextCandidate.items || []).filter((it) => it?.body).length;
+        await log(`본문 크롤 완료: ${bodiesCount}/2건`, { bodiesCount }, "generating");
       }
       const prompt = buildCandidatePrompt(sourceChoice, config, nextCandidate, templateData);
       await log(`후보 선택형 생성 시도 ${attempt}/${MAX_REPEAT_RETRIES} (${remainingCandidates.length}개 후보)`, {

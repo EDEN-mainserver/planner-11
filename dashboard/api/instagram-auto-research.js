@@ -160,6 +160,14 @@ export default async function handler(req, res) {
         postTime: config.postTime || "",
         generatedAt: startedAt,
         researchSummary: generated.researchSummary || "",
+        // _pipeline.js가 반환한 출처 추적 메타데이터 (네이버 본문 크롤 결과 포함)
+        mode: generated.sourceInfo?.mode || "naver-search",
+        label: generated.sourceInfo?.label || "네이버 블로그",
+        topicLabel: generated.sourceInfo?.topicLabel || generated.topic || "",
+        candidateId: generated.sourceInfo?.candidateId || "",
+        sourceUrls: Array.isArray(generated.sourceInfo?.sourceUrls) ? generated.sourceInfo.sourceUrls : [],
+        bodyPreviews: Array.isArray(generated.sourceInfo?.bodyPreviews) ? generated.sourceInfo.bodyPreviews : [],
+        itemsCount: generated.sourceInfo?.itemsCount || 0,
       },
     };
 

@@ -33,7 +33,7 @@ function parseRss(xml) {
   return items;
 }
 
-async function fetchPostContent(url) {
+export async function fetchPostContent(url) {
   try {
     const mobileUrl = url
       .replace('blog.naver.com', 'm.blog.naver.com')

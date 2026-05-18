@@ -3,6 +3,18 @@
 
 import { Buffer } from "node:buffer";
 import { put } from "@vercel/blob";
+import { fetchPostContent } from "./naver.js";
+
+// 네이버 블로그 글 본문 크롤 (모바일 페이지에서 본문 추출, 최대 1500자)
+// 실패해도 빈 문자열만 리턴하므로 호출 측은 fallback 처리 가능
+async function safeCrawlBody(url) {
+  try {
+    const body = await fetchPostContent(url);
+    return String(body || "").slice(0, 1500);
+  } catch {
+    return "";
+  }
+}
 
 const IG_API = "https://graph.facebook.com/v19.0";
 const TH_API = "https://graph.threads.net/v1.0";
@@ -166,12 +178,26 @@ export async function generateFullAutoAssets(account, env) {
   const captionTemplate = settings.captionTemplate || "{title}\n\n{body}";
   const runId = `run-${Date.now()}-${account.id}`;
 
-  // 1. 네이버 검색 (리서치)
+  // 1. 네이버 검색 (리서치) + 상위 2건은 본문도 크롤
   console.log(`[pipeline] 네이버 검색: ${topic}`);
   const searchResults = await searchNaver(topic, env);
-  const researchSummary = searchResults
-    .slice(0, 5)
-    .map((r) => `- ${r.title}: ${r.description}`)
+  const topArticles = searchResults.slice(0, 5);
+
+  // 본문 크롤 (상위 2건 병렬, 실패하면 빈 문자열)
+  console.log(`[pipeline] 본문 크롤 (상위 2건)...`);
+  const bodies = await Promise.all(topArticles.slice(0, 2).map((a) => safeCrawlBody(a.link)));
+  topArticles.forEach((a, i) => {
+    a.body = bodies[i] || "";
+  });
+
+  const sourceUrls = topArticles.map((a) => a.link).filter(Boolean);
+  const candidateId = `naver-ig-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+  const researchSummary = topArticles
+    .map((r) => {
+      const head = `- ${r.title}: ${r.description}`;
+      return r.body ? `${head}\n  본문 발췌: ${r.body.slice(0, 800)}` : head;
+    })
     .join("\n");
 
   // 2. Gemini: 슬라이드 JSON 기획
@@ -184,7 +210,7 @@ export async function generateFullAutoAssets(account, env) {
 브랜드: ${brandName || "없음"}
 톤앤매너: ${tone}
 
-리서치 자료:
+리서치 자료(상위 2건은 본문 발췌 포함):
 ${researchSummary}
 
 반드시 JSON 배열로만 응답하세요. 각 슬라이드는 { "title": "제목", "body": "본문 2-3줄", "imagePrompt": "이미지 생성용 영문 프롬프트" } 형식입니다.
@@ -230,6 +256,17 @@ JSON 배열만 반환, 다른 텍스트 없음.
     slides,
     imageUrls,
     caption,
+    sourceInfo: {
+      mode: "naver-search",
+      label: "네이버 블로그",
+      topicLabel: topic,
+      candidateId,
+      sourceUrls,
+      bodyPreviews: topArticles
+        .filter((a) => a.body)
+        .map((a) => ({ url: a.link, title: a.title, preview: a.body.slice(0, 300) })),
+      itemsCount: topArticles.length,
+    },
   };
 }
 
