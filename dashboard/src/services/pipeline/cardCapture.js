@@ -100,19 +100,31 @@ export async function captureViaServerScreenshot(html, format = "png") {
   return dataUrl;
 }
 
-// cards[].imageUrl 우선 수집 + 없으면 cardHtmls 캡처 fallback.
+// 합성된 카드(cardHtmls) 우선 캡처 — title/body/디자인 오버레이 포함된 완성본.
+// cardHtmls 없을 때만 raw cards[].imageUrl (AI 배경) 로 폴백.
 // Instagram/Threads 양쪽에서 게시 직전 호출하는 표준 진입점.
 export async function collectPostImages({ cards, cardHtmls, logFn = null }) {
-  let images = (cards || [])
-    .map((c) => c.imageUrl)
-    .filter((u) => typeof u === "string" && u.length > 0);
-  if (logFn) logFn(`카드 imageUrl 수집: ${images.length}개`);
-
-  if (images.length === 0 && Array.isArray(cardHtmls) && cardHtmls.length > 0) {
-    if (logFn) logFn(`HTML 카드 감지 (${cardHtmls.length}장) → 브라우저 캡처 시작`);
-    const captured = await captureCardsToImages(cardHtmls, logFn);
-    images = images.concat(captured);
+  // 1) 합성 카드 HTML이 있으면 서버 puppeteer로 일괄 캡처 (네트워크 1회로 7장 처리)
+  if (Array.isArray(cardHtmls) && cardHtmls.length > 0) {
+    if (logFn) logFn(`합성 카드 캡처: ${cardHtmls.length}장 (서버 puppeteer)`);
+    const res = await fetch("/api/html-screenshot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ htmls: cardHtmls, format: "png" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(data.images) || data.images.length === 0) {
+      if (logFn) logFn(`합성 캡처 실패 (${data.error || res.status}) → raw 배경으로 폴백`);
+    } else {
+      if (logFn) logFn(`합성 캡처 완료: ${data.images.length}장`);
+      return data.images;
+    }
   }
 
+  // 2) 폴백: raw cards[].imageUrl (디자인 오버레이 없는 AI 배경만)
+  const images = (cards || [])
+    .map((c) => c.imageUrl)
+    .filter((u) => typeof u === "string" && u.length > 0);
+  if (logFn) logFn(`raw 배경 수집 (폴백): ${images.length}개`);
   return images;
 }
