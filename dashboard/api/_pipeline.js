@@ -310,11 +310,13 @@ JSON 배열만 반환, 다른 텍스트 없음.
   // 3b. 카드 조립 — title/body/디자인 오버레이 입힌 합성 카드 PNG 생성
   // 실패 시 raw 배경 그대로 사용 (회귀 방지)
   let imageUrls = rawImageUrls;
+  let compositionError = null;
   try {
     imageUrls = await composeCardImages({ slides, rawImageUrls, topic, brandName, runId });
     console.log(`[pipeline] 카드 조립 완료: ${imageUrls.length}장`);
   } catch (e) {
-    console.error(`[pipeline] 카드 조립 실패, raw 배경으로 폴백:`, e.message);
+    compositionError = e.message;
+    console.error(`[pipeline] 카드 조립 실패, raw 배경으로 폴백:`, e.message, e.stack?.split("\n").slice(0, 3).join(" | "));
     imageUrls = rawImageUrls;
   }
 
@@ -336,6 +338,8 @@ JSON 배열만 반환, 다른 텍스트 없음.
     slides,
     imageUrls,
     caption,
+    compositionError, // null이면 합성 성공, 메시지 있으면 raw 폴백된 이유 (디버깅용)
+    composed: !compositionError,
     sourceInfo: {
       mode: "naver-search",
       label: "네이버 블로그",
