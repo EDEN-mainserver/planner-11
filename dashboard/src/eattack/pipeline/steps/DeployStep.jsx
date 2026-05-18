@@ -2,6 +2,52 @@ import ErrorBox from "../ErrorBox";
 import StepBar from "../StepBar";
 import UserBar from "../UserBar";
 
+// 자동화 로그 시각 — "MM/DD HH:mm:ss" 포맷 (날짜 포함)
+const fmtLogTime = (iso) => {
+  if (!iso) return "지금";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString("ko-KR", {
+    month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+};
+
+// runId(ig-auto-{epochMs}-{hash6}) → "MM/DD HH:mm · hash6" 사람이 읽을 수 있는 라벨
+const humanizeRunId = (runId) => {
+  if (!runId) return "-";
+  const m = String(runId).match(/^ig-auto-(\d+)-(.+)$/);
+  if (!m) return runId;
+  const ts = Number(m[1]);
+  const hash = m[2];
+  if (!Number.isFinite(ts)) return runId;
+  const when = new Date(ts).toLocaleString("ko-KR", {
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+  return `${when} · ${hash}`;
+};
+
+// 에러 메시지를 사람이 읽을 수 있는 설명 + 원본 코드로 분리
+const humanizeError = (raw) => {
+  const msg = String(raw || "").trim();
+  if (!msg) return null;
+  const patterns = [
+    { re: /429|rate.?limit|quota|exceeded/i, human: "AI API 호출 한도 초과 — 분당 요청 수가 너무 많습니다. 1분쯤 기다렸다 다시 시도해주세요." },
+    { re: /401|unauthorized|invalid.*(key|token)|api.*key.*invalid/i, human: "AI API 키 인증 실패 — Gemini/Instagram API 키를 확인해주세요." },
+    { re: /403|forbidden|permission/i, human: "AI API 권한 거부 — 키의 권한 또는 모델 접근권을 확인해주세요." },
+    { re: /5\d\d|server error|timeout|ETIMEDOUT|ECONNRESET/i, human: "외부 서버 오류 또는 타임아웃 — 잠시 후 다시 시도해주세요." },
+    { re: /network|fetch failed|ENOTFOUND|네트워크/i, human: "네트워크 연결 오류 — 인터넷 연결을 확인해주세요." },
+    { re: /duplicate|중복/i, human: "같은 내용의 예약이 이미 존재합니다." },
+    { re: /scheduledAt|예약 시간/i, human: "예약 시간 설정이 필요합니다 (시간 또는 날짜)." },
+    { re: /계정.*(ID|토큰)|access.?token|account.?id/i, human: "Instagram 계정 연동 정보가 누락됐습니다 — 상단의 계정 연동을 먼저 완료해주세요." },
+  ];
+  const matched = patterns.find((p) => p.re.test(msg));
+  return {
+    human: matched ? matched.human : msg,
+    code: msg,
+  };
+};
+
 export default function DeployStep({
   session,
   onLogout,
@@ -383,28 +429,53 @@ export default function DeployStep({
                 }`}>
                   {igAutoMonitor.status || "idle"}
                 </span>
-                <span className="text-[10px] text-violet-500 font-mono">
-                  {igAutoMonitor.runId || "-"}
+                <span className="text-[10px] text-violet-700" title={igAutoMonitor.runId || ""}>
+                  {humanizeRunId(igAutoMonitor.runId)}
                 </span>
                 {igAutoMonitor.scheduledAt && (
                   <span className="ml-auto text-[10px] text-violet-500">
-                    {new Date(igAutoMonitor.scheduledAt).toLocaleString("ko-KR")}
+                    예약 {new Date(igAutoMonitor.scheduledAt).toLocaleString("ko-KR")}
                   </span>
                 )}
               </div>
-              <p className="text-[12px] text-gray-800 leading-relaxed">
-                {igAutoMonitor.summary || igAutoMonitor.error || igAutoMonitor.skipReason || "실행 로그가 없습니다."}
-              </p>
+              {(() => {
+                const errInfo = humanizeError(igAutoMonitor.error);
+                if (errInfo) {
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-[12px] text-red-700 leading-relaxed font-medium">
+                        ⚠️ {errInfo.human}
+                      </p>
+                      <p className="text-[10px] text-gray-500 font-mono break-all">
+                        원본: {errInfo.code}
+                      </p>
+                    </div>
+                  );
+                }
+                return (
+                  <p className="text-[12px] text-gray-800 leading-relaxed">
+                    {igAutoMonitor.summary || igAutoMonitor.skipReason || "실행 로그가 없습니다."}
+                  </p>
+                );
+              })()}
               {Array.isArray(igAutoMonitor.logs) && igAutoMonitor.logs.length > 0 && (
                 <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg bg-violet-50/60 p-2">
-                  {igAutoMonitor.logs.slice(-8).map((entry, idx) => (
-                    <div key={`${entry?.time || idx}-${idx}`} className="text-[11px] leading-relaxed text-gray-700">
-                      <span className="font-mono text-violet-500 mr-2">
-                        {entry?.time ? new Date(entry.time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "now"}
-                      </span>
-                      {entry?.msg || ""}
-                    </div>
-                  ))}
+                  {igAutoMonitor.logs.slice(-8).map((entry, idx) => {
+                    const detail = entry?.data?.message || entry?.data?.error || "";
+                    return (
+                      <div key={`${entry?.time || idx}-${idx}`} className="text-[11px] leading-relaxed text-gray-700">
+                        <span className="font-mono text-violet-500 mr-2">
+                          {fmtLogTime(entry?.time)}
+                        </span>
+                        <span className={entry?.msg === "오류" ? "text-red-600 font-semibold" : ""}>
+                          {entry?.msg || ""}
+                        </span>
+                        {detail && (
+                          <span className="ml-2 font-mono text-[10px] text-gray-500">— {detail}</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {igAutoHistory.length > 0 && (
