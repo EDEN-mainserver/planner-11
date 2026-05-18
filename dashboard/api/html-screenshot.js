@@ -9,8 +9,9 @@
 const { default: chromium } = await import("@sparticuz/chromium-min");
 const { default: puppeteer } = await import("puppeteer-core");
 
+// Vercel Node 22(Amazon Linux 2023, x64) 호환 pack. v138부터 x64/arm64 분리됨.
 const CHROMIUM_PACK_URL =
-  "https://github.com/Sparticuz/chromium/releases/download/v131.0.0/chromium-v131.0.0-pack.tar";
+  "https://github.com/Sparticuz/chromium/releases/download/v148.0.0/chromium-v148.0.0-pack.x64.tar";
 
 export const config = { maxDuration: 120, memory: 1024 };
 
