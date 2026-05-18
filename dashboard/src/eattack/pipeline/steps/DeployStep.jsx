@@ -40,6 +40,9 @@ const humanizeError = (raw) => {
     { re: /duplicate|중복/i, human: "같은 내용의 예약이 이미 존재합니다." },
     { re: /scheduledAt|예약 시간/i, human: "예약 시간 설정이 필요합니다 (시간 또는 날짜)." },
     { re: /계정.*(ID|토큰)|access.?token|account.?id/i, human: "Instagram 계정 연동 정보가 누락됐습니다 — 상단의 계정 연동을 먼저 완료해주세요." },
+    { re: /Media ID is not available|컨테이너.*시간 초과|status.?code.*IN_PROGRESS/i, human: "Instagram이 이미지 처리를 아직 안 끝냈어요. 한 번 더 게시 버튼을 눌러주세요 (이미지 7장 캐러셀은 처리에 30~60초 걸립니다)." },
+    { re: /컨테이너 처리 실패|status.*ERROR|status.*EXPIRED/i, human: "Instagram이 이미지를 거부했습니다. 이미지 크기·형식·접근 권한을 확인해주세요 (가장 흔한 원인: 이미지 URL이 더 이상 유효하지 않음)." },
+    { re: /Request Entity Too Large|413/i, human: "이미지가 너무 큽니다 (4.5MB 한도 초과). 카드뉴스를 다시 생성해서 새 이미지 URL을 받아주세요." },
   ];
   const matched = patterns.find((p) => p.re.test(msg));
   return {
@@ -285,11 +288,29 @@ export default function DeployStep({
               </div>
             </div>
             <div className="bg-gray-950 p-3 max-h-48 overflow-y-auto space-y-0.5 font-mono">
-              {igLogs.map((line, i) => (
-                <div key={i} className={`text-[11px] leading-relaxed ${line.includes("오류") ? "text-red-400" : "text-gray-300"}`}>
-                  {line}
-                </div>
-              ))}
+              {igLogs.map((line, i) => {
+                const isError = line.includes("오류");
+                let friendly = null;
+                if (isError) {
+                  const m = line.match(/오류[:\s]+(.+)$/);
+                  if (m) {
+                    const info = humanizeError(m[1]);
+                    if (info && info.human !== info.code) friendly = info.human;
+                  }
+                }
+                return (
+                  <div key={i}>
+                    <div className={`text-[11px] leading-relaxed ${isError ? "text-red-400" : "text-gray-300"}`}>
+                      {line}
+                    </div>
+                    {friendly && (
+                      <div className="text-[11px] leading-relaxed text-amber-300 ml-4" style={{ fontFamily: "system-ui, sans-serif" }}>
+                        ↳ {friendly}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

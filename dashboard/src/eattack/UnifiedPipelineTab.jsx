@@ -406,7 +406,7 @@ export default function UnifiedPipelineTab() {
     setIgResult(null);
     setError("");
     setIgLogs([]);
-    const log = (msg) => setIgLogs((p) => [...p, `[${new Date().toLocaleTimeString("ko-KR")}] ${msg}`]);
+    const log = (msg) => setIgLogs((p) => [...p, `[${new Date().toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })}] ${msg}`]);
 
     try {
       log(`계정: @${igConfig.username || igConfig.accountId}`);

@@ -81,6 +81,24 @@ async function publishContainer(accountId, accessToken, containerId) {
   return data.id;
 }
 
+// 인스타 컨테이너가 게시 가능한 상태(FINISHED)가 될 때까지 폴링.
+// 카루셀은 자식 컨테이너 처리 시간만큼 걸리므로 최대 90초까지 기다림.
+async function waitForContainerReady(containerId, accessToken, { maxWaitMs = 90000, intervalMs = 3000 } = {}) {
+  const start = Date.now();
+  let lastStatus = "UNKNOWN";
+  while (Date.now() - start < maxWaitMs) {
+    const res = await fetch(`${IG_API}/${containerId}?fields=status_code&access_token=${accessToken}`);
+    const data = await res.json().catch(() => ({}));
+    lastStatus = data?.status_code || lastStatus;
+    if (lastStatus === "FINISHED") return;
+    if (lastStatus === "ERROR" || lastStatus === "EXPIRED") {
+      throw new Error(`인스타 컨테이너 처리 실패 — 상태: ${lastStatus}`);
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`인스타 컨테이너 처리 시간 초과 (${Math.round(maxWaitMs / 1000)}초 / 마지막 상태: ${lastStatus})`);
+}
+
 async function getPermalink(mediaId, accessToken) {
   try {
     const res = await fetch(`${IG_API}/${mediaId}?fields=permalink&access_token=${accessToken}`);
@@ -128,6 +146,9 @@ export async function postInstagram(accountId, accessToken, images, caption) {
       containerId = await createCarouselContainer(accountId, accessToken, childIds, caption || "");
     }
 
+    // 인스타가 컨테이너를 백그라운드로 처리 — FINISHED 될 때까지 대기 후 게시
+    // (이 대기 없으면 "Media ID is not available" 에러 발생)
+    await waitForContainerReady(containerId, accessToken);
     const mediaId = await publishContainer(accountId, accessToken, containerId);
     const permalink = await getPermalink(mediaId, accessToken);
     return { ok: true, mediaId, permalink };
