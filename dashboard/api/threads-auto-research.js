@@ -295,6 +295,34 @@ function expandSearchTerms(keywords) {
   return uniqueTokens(terms).slice(0, MAX_SEARCH_TERMS);
 }
 
+// 원본 키워드 기반 관련성 토큰 집합 — 검색 확장이 broad 영역으로 새는 것 방지
+function buildRelevanceTokens(keywords) {
+  const tokens = new Set();
+  for (const raw of keywords || []) {
+    const cleaned = String(raw || "")
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 2 && !KOREAN_STOPWORDS.has(t) && !ENGLISH_STOPWORDS.has(t));
+    for (const t of cleaned) tokens.add(t);
+  }
+  return tokens;
+}
+
+function textMatchesRelevance(text, relevanceTokens) {
+  if (!relevanceTokens || relevanceTokens.size === 0) return true;
+  const haystack = String(text || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ");
+  for (const token of relevanceTokens) {
+    if (haystack.includes(token)) return true;
+  }
+  return false;
+}
+
 function canonicalizeSourceUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -1322,6 +1350,7 @@ async function runForAccount(username, config, env, runId, options = {}) {
     let sourceLabel;
     let rawCandidates = [];
     let templateData = null;
+    const relevanceTokens = buildRelevanceTokens(config.keywords);
 
     async function gatherNaver() {
       const searchTerms = shuffleArray(expandSearchTerms(config.keywords));
@@ -1332,23 +1361,39 @@ async function runForAccount(username, config, env, runId, options = {}) {
         const results = await searchNaver(kw, env);
         allArticles.push(...results.map((r) => ({ ...r, keyword: kw })));
       }
-      await log(`네이버 검색 결과: ${allArticles.length}건`, { count: allArticles.length }, "searching");
+      const filtered = allArticles.filter((a) =>
+        textMatchesRelevance(`${a.keyword} ${a.title} ${a.description}`, relevanceTokens)
+      );
+      const dropped = allArticles.length - filtered.length;
+      await log(`네이버 검색 결과: ${allArticles.length}건 (관련성 통과 ${filtered.length}, 제외 ${dropped})`, {
+        count: allArticles.length,
+        relevant: filtered.length,
+        dropped,
+      }, "searching");
       config.searchTerms = searchTerms;
-      return allArticles.length ? buildNaverCandidates(allArticles) : [];
+      return filtered.length ? buildNaverCandidates(filtered) : [];
     }
 
     async function gatherThreadsLive() {
       await log(`Threads 실시간 크롤 시작`, { keywords: config.keywords }, "searching");
       const posts = await fetchThreadsLivePosts(config.keywords, env);
-      await log(`Threads 실시간 결과: ${posts.length}건`, { count: posts.length }, "searching");
-      return posts.length ? buildThreadsCandidates(posts, "threads-live") : [];
+      const filtered = posts.filter((p) => textMatchesRelevance(p.content, relevanceTokens));
+      await log(`Threads 실시간 결과: ${posts.length}건 (관련성 통과 ${filtered.length})`, {
+        count: posts.length,
+        relevant: filtered.length,
+      }, "searching");
+      return filtered.length ? buildThreadsCandidates(filtered, "threads-live") : [];
     }
 
     async function gatherXLive() {
       await log(`X 실시간 크롤 시작 (트렌드 보강)`, { keywords: config.keywords }, "searching");
       const posts = await fetchXLivePosts(config.keywords, env);
-      await log(`X 실시간 결과: ${posts.length}건`, { count: posts.length }, "searching");
-      return posts.length ? buildThreadsCandidates(posts, "x-live") : [];
+      const filtered = posts.filter((p) => textMatchesRelevance(p.content, relevanceTokens));
+      await log(`X 실시간 결과: ${posts.length}건 (관련성 통과 ${filtered.length})`, {
+        count: posts.length,
+        relevant: filtered.length,
+      }, "searching");
+      return filtered.length ? buildThreadsCandidates(filtered, "x-live") : [];
     }
 
     if (sourceChoice === "threads" && hasThreadsTemplate) {
