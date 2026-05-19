@@ -64,7 +64,8 @@
     "api/cleanup-image-blobs.js": { "maxDuration": 300, "memory": 512 },
     "api/threads-insights.js":    { "maxDuration": 30, "memory": 256 },
     "api/instagram-insights.js":  { "maxDuration": 30, "memory": 256 },
-    "api/insights-refresh.js":    { "maxDuration": 300, "memory": 512 }
+    "api/insights-refresh.js":    { "maxDuration": 300, "memory": 512 },
+    "api/external-trending-refresh.js": { "maxDuration": 300, "memory": 1024 }
   },
   "crons": [
     {
@@ -94,6 +95,10 @@
     {
       "path": "/api/insights-refresh",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/external-trending-refresh",
+      "schedule": "0 */12 * * *"
     }
   ]
 }
