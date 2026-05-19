@@ -6,6 +6,23 @@
  */
 import { useState, useEffect, useRef } from "react";
 import { POPULAR_SCRIPTS } from "./community/constants";
+import { getSession } from "../utils/authSession";
+
+// 외부 인기글 ingest — 확장 크롤 결과를 Supabase로 자동 push (실패해도 UI 흐름은 방해 안 함)
+async function pushExternalTrendingSafe(platform, keyword, posts) {
+  try {
+    const session = getSession();
+    const username = session?.username;
+    if (!username || !Array.isArray(posts) || !posts.length) return;
+    await fetch("/api/external-trending-ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, platform, keyword: keyword || null, posts }),
+    });
+  } catch (e) {
+    console.warn("[TopicPicker] external-trending ingest 실패:", e?.message);
+  }
+}
 
 // ── 로컬스토리지 키 ──
 const LS_IBOSS   = "eden_tp_iboss_v1";
@@ -349,6 +366,7 @@ function ThreadsTab({ onSelect }) {
         const c = { keyword: p?.keyword || keyword, posts: newPosts };
         saveCache(LS_THREADS, c);
         setCache({ ...c, savedAt: Date.now() });
+        pushExternalTrendingSafe("threads", c.keyword, newPosts);
       }
     };
     window.addEventListener("message", handler);
@@ -461,6 +479,7 @@ function XTab({ onSelect }) {
         const c = { keyword: p?.keyword || keyword, posts: newPosts };
         saveCache(LS_X, c);
         setCache({ ...c, savedAt: Date.now() });
+        pushExternalTrendingSafe("x", c.keyword, newPosts);
       }
     };
     window.addEventListener("message", handler);

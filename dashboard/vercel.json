@@ -65,7 +65,8 @@
     "api/threads-insights.js":    { "maxDuration": 30, "memory": 256 },
     "api/instagram-insights.js":  { "maxDuration": 30, "memory": 256 },
     "api/insights-refresh.js":    { "maxDuration": 300, "memory": 512 },
-    "api/external-trending-refresh.js": { "maxDuration": 300, "memory": 1024 }
+    "api/external-trending-refresh.js": { "maxDuration": 300, "memory": 1024 },
+    "api/external-trending-ingest.js":  { "maxDuration": 30, "memory": 256 }
   },
   "crons": [
     {
