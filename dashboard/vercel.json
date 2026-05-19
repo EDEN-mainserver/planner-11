@@ -61,7 +61,10 @@
     "api/subscription/status.js": { "maxDuration": 15, "memory": 256 },
     "api/subscription/usage.js":  { "maxDuration": 15, "memory": 256 },
     "api/fullgraphic-plan.js":    { "maxDuration": 60, "memory": 512 },
-    "api/cleanup-image-blobs.js": { "maxDuration": 300, "memory": 512 }
+    "api/cleanup-image-blobs.js": { "maxDuration": 300, "memory": 512 },
+    "api/threads-insights.js":    { "maxDuration": 30, "memory": 256 },
+    "api/instagram-insights.js":  { "maxDuration": 30, "memory": 256 },
+    "api/insights-refresh.js":    { "maxDuration": 300, "memory": 512 }
   },
   "crons": [
     {
@@ -87,6 +90,10 @@
     {
       "path": "/api/cleanup-image-blobs",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/insights-refresh",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

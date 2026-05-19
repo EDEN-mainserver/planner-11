@@ -12,6 +12,18 @@ export function scheduleToRow(username, schedule) {
     : Array.isArray(schedule.images)
       ? schedule.images
       : [];
+  // schedules 스키마에 컬럼이 없는 post-게시 메타(mediaId/permalink/postedAt 등)는
+  // source_info jsonb 안의 _postMeta 키에 묻어 보존.
+  const postMeta = {
+    mediaId: schedule.mediaId || null,
+    permalink: schedule.permalink || null,
+    postedAt: schedule.postedAt || null,
+    failedAt: schedule.failedAt || null,
+    error: schedule.error || null,
+  };
+  const sourceInfo = schedule.sourceInfo
+    ? { ...schedule.sourceInfo, _postMeta: postMeta }
+    : (anyPostMetaPresent(postMeta) ? { _postMeta: postMeta } : null);
   return {
     id: String(schedule.id),
     username: String(username),
@@ -32,14 +44,28 @@ export function scheduleToRow(username, schedule) {
     run_id: schedule.runId || null,
     topic: schedule.topic || null,
     slide_count: Number.isFinite(schedule.slideCount) ? Number(schedule.slideCount) : null,
-    source_info: schedule.sourceInfo || null,
+    source_info: sourceInfo,
   };
+}
+
+function anyPostMetaPresent(meta) {
+  return Boolean(meta && (meta.mediaId || meta.permalink || meta.postedAt || meta.failedAt || meta.error));
 }
 
 // Postgres row → JS 스케줄 객체 (Blob 포맷과 호환되도록 alias 포함)
 export function rowToSchedule(row) {
   if (!row) return null;
   const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
+  // source_info 안에 묻어둔 _postMeta 복원 + sourceInfo는 _postMeta 제외하고 노출
+  const rawSourceInfo = row.source_info || null;
+  const postMeta = rawSourceInfo && typeof rawSourceInfo === "object" ? rawSourceInfo._postMeta || {} : {};
+  let cleanSourceInfo = null;
+  if (rawSourceInfo && typeof rawSourceInfo === "object" && !Array.isArray(rawSourceInfo)) {
+    const { _postMeta: _ignore, ...rest } = rawSourceInfo;
+    cleanSourceInfo = Object.keys(rest).length > 0 ? rest : null;
+  } else {
+    cleanSourceInfo = rawSourceInfo;
+  }
   return {
     id: row.id,
     platform: row.platform,
@@ -62,7 +88,12 @@ export function rowToSchedule(row) {
     runId: row.run_id || null,
     topic: row.topic || "",
     slideCount: row.slide_count || 0,
-    sourceInfo: row.source_info || null,
+    sourceInfo: cleanSourceInfo,
+    mediaId: postMeta.mediaId || null,
+    permalink: postMeta.permalink || null,
+    postedAt: postMeta.postedAt || null,
+    failedAt: postMeta.failedAt || null,
+    error: postMeta.error || null,
   };
 }
 
