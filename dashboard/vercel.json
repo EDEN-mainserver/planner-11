@@ -6,6 +6,7 @@
   "rewrites": [
     { "source": "/api/voices",         "destination": "/api/tts?_fn=voices" },
     { "source": "/api/naver-blog-crawl", "destination": "/api/naver?_fn=blog-crawl" },
+    { "source": "/api/naver-search",     "destination": "/api/naver?_fn=search" },
     { "source": "/api/full-auto-run",  "destination": "/api/full-auto?_fn=run" },
     { "source": "/api/full-auto-config", "destination": "/api/full-auto?_fn=config" },
     { "source": "/api/iboss-post",     "destination": "/api/social-post?_fn=iboss" },

@@ -77,6 +77,40 @@ async function handleBlogCrawl(req, res) {
   return res.status(200).json({ blogId, total: items.length, posts: posts.filter((p) => p.content.length > 50) });
 }
 
+async function handleSearch(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
+
+  const CLIENT_ID     = process.env.NAVER_CLIENT_ID;
+  const CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET;
+  if (!CLIENT_ID || !CLIENT_SECRET) {
+    return res.status(503).json({
+      error: 'NAVER_NOT_CONFIGURED',
+      message: 'Vercel 환경변수에 NAVER_CLIENT_ID, NAVER_CLIENT_SECRET이 설정되지 않았습니다.',
+    });
+  }
+
+  const { query, display = '40', sort = 'sim' } = req.query;
+  if (!query) return res.status(400).json({ error: '검색어(query)가 필요합니다.' });
+
+  const url = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(query)}&display=${display}&sort=${sort}`;
+  const response = await fetch(url, {
+    headers: {
+      'X-Naver-Client-Id':     CLIENT_ID,
+      'X-Naver-Client-Secret': CLIENT_SECRET,
+    },
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    return res.status(response.status).json({
+      error: err.errorMessage || `네이버 API 오류 ${response.status}`,
+    });
+  }
+
+  const data = await response.json();
+  return res.status(200).json(data);
+}
+
 async function handleDatalab(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
@@ -143,7 +177,8 @@ export default async function handler(req, res) {
   try {
     if (fn === 'blog-crawl') return await handleBlogCrawl(req, res);
     if (fn === 'datalab')    return await handleDatalab(req, res);
-    return res.status(400).json({ error: '_fn 파라미터가 필요합니다 (blog-crawl | datalab)' });
+    if (fn === 'search')     return await handleSearch(req, res);
+    return res.status(400).json({ error: '_fn 파라미터가 필요합니다 (blog-crawl | datalab | search)' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
