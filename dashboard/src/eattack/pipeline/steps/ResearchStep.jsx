@@ -23,7 +23,7 @@ export default function ResearchStep({
       {running ? (
         <Spinner
           label={`"${topic}" 리서치 중...`}
-          sub="네이버 검색 + 본문 크롤 + AI 분석"
+          sub="최신순 검색 + 광고 필터 + 본문 크롤 + AI 분석"
           gradient="from-blue-500 to-cyan-600"
         />
       ) : research ? (
@@ -37,7 +37,7 @@ export default function ResearchStep({
           {sources.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <p className="text-xs font-bold text-gray-700 mb-2">
-                🔗 참고 출처 <span className="text-gray-400 font-normal">({sources.length}건, 상위 {Math.min(3, sources.length)}건 본문 포함)</span>
+                🔗 참고 출처 <span className="text-gray-400 font-normal">(최신순·광고 제외 {sources.length}건, 상위 {Math.min(3, sources.length)}건 본문 포함)</span>
               </p>
               <ol className="space-y-1.5 text-xs max-h-48 overflow-y-auto pr-1">
                 {sources.map((s, i) => (

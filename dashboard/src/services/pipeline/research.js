@@ -7,7 +7,7 @@ export async function runResearch(topic) {
   let articlesText = "(네이버 검색 결과 없음)";
   try {
     const res = await fetch(
-      `/api/naver-search?query=${encodeURIComponent(topic)}&display=10&sort=sim&enrich=true&enrichCount=3`
+      `/api/naver-search?query=${encodeURIComponent(topic)}&display=30&sort=date&enrich=true&enrichCount=3&filterAds=true`
     );
     if (res.ok) {
       const data = await res.json();

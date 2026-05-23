@@ -77,6 +77,44 @@ async function handleBlogCrawl(req, res) {
   return res.status(200).json({ blogId, total: items.length, posts: posts.filter((p) => p.content.length > 50) });
 }
 
+// 광고/홍보성 콘텐츠 판별 — 정보성만 통과시키기 위함
+// 보수적으로(과도 필터 방지): 강한 신호 1개 OR 약한 신호 3개 이상이면 광고로 판정.
+function isAdvertorial(item) {
+  const title = (item.title || '').replace(/<[^>]+>/g, '');
+  const desc  = (item.description || '').replace(/<[^>]+>/g, '');
+  const content = item.content || '';
+  const text  = `${title} ${desc} ${content}`;
+  const meta  = item.bloggername || '';
+
+  const strongAd = [
+    /상담\s*문의/, /예약\s*문의/, /문의\s*주세요/, /문의\s*주시면/, /연락\s*주세요/, /연락\s*주시면/,
+    /카톡\s*[:：]\s*\S+/, /카카오톡\s*ID/i, /오픈채팅/, /카톡\s*문의/,
+    /1\s*:\s*1\s*맞춤/, /1대1\s*(상담|컨설팅)/,
+    /오시는\s*길/, /찾아오시는/,
+    /오픈\s*이벤트/, /할인\s*이벤트/, /특가\s*이벤트/, /신규\s*프로모션/,
+    /지점\s*안내/, /제휴\s*문의/, /업체\s*문의/, /가맹\s*문의/,
+    /후원\s*받(았|아)/, /협찬\s*받(았|아)/, /무료\s*제공\s*받/, /업체로?부터\s*제공/, /소정의\s*원고료/, /광고\s*포함/, /[#＃]\s*광고/, /[#＃]\s*협찬/,
+    /\b01[016789]-?\d{3,4}-?\d{4}\b/,
+    /\b0\d{1,2}-\d{3,4}-\d{4}\b/,
+  ];
+  for (const p of strongAd) if (p.test(text)) return true;
+
+  const weakAd = [
+    /할인/, /이벤트/, /프로모션/, /가격\s*[:：]/, /비용\s*[:：]/, /요금\s*[:：]/,
+    /예약/, /상담/, /무료\s*체험/, /수강\s*신청/, /접수\s*중/,
+    /신규\s*오픈/, /개원/, /개점/, /리뉴얼\s*오픈/,
+    /[가-힣A-Za-z0-9]+(병원|의원|클리닉|성형외과|치과|피부과|한의원|학원|센터|아카데미|스튜디오|살롱)/,
+  ];
+  let weakCount = 0;
+  for (const p of weakAd) if (p.test(text)) weakCount++;
+  if (weakCount >= 3) return true;
+
+  if (/(병원|의원|클리닉|학원|센터|아카데미|스튜디오|컨설팅|솔루션|에이전시|마케팅\s*1위|살롱)/.test(meta)) return true;
+  if (/(원장|대표원장)/.test(meta) && weakCount >= 1) return true;
+
+  return false;
+}
+
 async function handleSearch(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
 
@@ -89,7 +127,7 @@ async function handleSearch(req, res) {
     });
   }
 
-  const { query, display = '40', sort = 'sim', enrich, enrichCount = '3' } = req.query;
+  const { query, display = '40', sort = 'sim', enrich, enrichCount = '3', filterAds } = req.query;
   if (!query) return res.status(400).json({ error: '검색어(query)가 필요합니다.' });
 
   const url = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(query)}&display=${display}&sort=${sort}`;
@@ -108,19 +146,30 @@ async function handleSearch(req, res) {
   }
 
   const data = await response.json();
+  const adFilterOn = filterAds === 'true' || filterAds === '1';
+
+  // 1차: title/description 기반 광고 필터 (네이버 정렬 보존)
+  let items = data.items || [];
+  if (adFilterOn) items = items.filter((it) => !isAdvertorial(it));
 
   if (enrich === 'true' || enrich === '1') {
     const n = Math.max(1, Math.min(5, parseInt(enrichCount, 10) || 3));
-    const targets = (data.items || []).slice(0, n);
+    // 본문 재필터를 대비해 후보를 여유 있게(n + 3) 잡음
+    const candidateCount = Math.min(items.length, n + 3);
+    const candidates = items.slice(0, candidateCount);
     const enriched = await Promise.all(
-      targets.map(async (item) => {
+      candidates.map(async (item) => {
         const content = await fetchPostContent(item.link);
         return { ...item, content };
       })
     );
-    data.items = [...enriched, ...(data.items || []).slice(n)];
+    // 2차: 본문까지 본 광고 재필터
+    const filtered = adFilterOn ? enriched.filter((it) => !isAdvertorial(it)) : enriched;
+    const topN = filtered.slice(0, n);
+    items = [...topN, ...items.slice(candidateCount)];
   }
 
+  data.items = items;
   return res.status(200).json(data);
 }
 
