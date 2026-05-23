@@ -52,6 +52,7 @@
     "api/threads-auto-research.js": { "maxDuration": 300, "memory": 1024 },
     "api/instagram-auto-config.js": { "maxDuration": 15, "memory": 256 },
     "api/instagram-auto-research.js": { "maxDuration": 300, "memory": 1024 },
+    "api/instagram-auto-cron.js":     { "maxDuration": 300, "memory": 512  },
     "api/instagram-auto-monitor.js": { "maxDuration": 30, "memory": 256 },
     "api/instagram-prepare.js": { "maxDuration": 120, "memory": 1024 },
     "api/auth-google.js":  { "maxDuration": 30, "memory": 512 },
@@ -88,7 +89,7 @@
       "schedule": "0 21 * * *"
     },
     {
-      "path": "/api/instagram-auto-research",
+      "path": "/api/instagram-auto-cron",
       "schedule": "5 21 * * *"
     },
     {
