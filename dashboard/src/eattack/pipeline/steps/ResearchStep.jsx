@@ -11,6 +11,7 @@ export default function ResearchStep({
   running,
   topic,
   research,
+  sources = [],
   error,
   startResearch,
   startPlanning,
@@ -22,7 +23,7 @@ export default function ResearchStep({
       {running ? (
         <Spinner
           label={`"${topic}" 리서치 중...`}
-          sub="네이버 검색 + AI 분석"
+          sub="네이버 검색 + 본문 크롤 + AI 분석"
           gradient="from-blue-500 to-cyan-600"
         />
       ) : research ? (
@@ -33,6 +34,36 @@ export default function ResearchStep({
               {research}
             </div>
           </div>
+          {sources.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <p className="text-xs font-bold text-gray-700 mb-2">
+                🔗 참고 출처 <span className="text-gray-400 font-normal">({sources.length}건, 상위 {Math.min(3, sources.length)}건 본문 포함)</span>
+              </p>
+              <ol className="space-y-1.5 text-xs max-h-48 overflow-y-auto pr-1">
+                {sources.map((s, i) => (
+                  <li key={s.link || i} className="flex gap-1.5">
+                    <span className="text-gray-400 shrink-0">[{i + 1}]</span>
+                    <div className="min-w-0">
+                      <a
+                        href={s.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline break-words"
+                      >
+                        {s.title || s.link}
+                      </a>
+                      {s.bloggername && (
+                        <span className="text-gray-400 ml-1.5">— {s.bloggername}</span>
+                      )}
+                      {s.content && (
+                        <span className="ml-1 text-[10px] text-emerald-600 font-semibold">본문</span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
           {error && <ErrorBox msg={error} />}
           <div className="flex gap-2">
             <button

@@ -71,6 +71,7 @@ export default function UnifiedPipelineTab() {
 
   // 결과물
   const [research, setResearch] = useState("");
+  const [researchSources, setResearchSources] = useState([]);
   const [plan, setPlan] = useState(null);
   const [images, setImages] = useState([]); // AI 생성 배경 이미지 (HIGHEST 전용)
   const [imgProg, setImgProg] = useState({ done: 0, total: 0 });
@@ -182,8 +183,9 @@ export default function UnifiedPipelineTab() {
         await incrementUsage(session.username);
       }
       setStep("research");
-      const summary = await runResearch(topic);
+      const { summary, sources } = await runResearch(topic);
       setResearch(summary);
+      setResearchSources(sources || []);
     });
 
   // 기본 기획 — 사용자 추가 지시 없이
@@ -392,6 +394,7 @@ export default function UnifiedPipelineTab() {
     setStep("setup");
     setTopic("");
     setResearch("");
+    setResearchSources([]);
     setPlan(null);
     setImages([]);
     setImgProg({ done: 0, total: 0 });
@@ -498,6 +501,7 @@ export default function UnifiedPipelineTab() {
         running={running}
         topic={topic}
         research={research}
+        sources={researchSources}
         error={error}
         startResearch={startResearch}
         startPlanning={startPlanning}

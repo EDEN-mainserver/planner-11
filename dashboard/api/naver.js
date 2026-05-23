@@ -89,7 +89,7 @@ async function handleSearch(req, res) {
     });
   }
 
-  const { query, display = '40', sort = 'sim' } = req.query;
+  const { query, display = '40', sort = 'sim', enrich, enrichCount = '3' } = req.query;
   if (!query) return res.status(400).json({ error: '검색어(query)가 필요합니다.' });
 
   const url = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(query)}&display=${display}&sort=${sort}`;
@@ -108,6 +108,19 @@ async function handleSearch(req, res) {
   }
 
   const data = await response.json();
+
+  if (enrich === 'true' || enrich === '1') {
+    const n = Math.max(1, Math.min(5, parseInt(enrichCount, 10) || 3));
+    const targets = (data.items || []).slice(0, n);
+    const enriched = await Promise.all(
+      targets.map(async (item) => {
+        const content = await fetchPostContent(item.link);
+        return { ...item, content };
+      })
+    );
+    data.items = [...enriched, ...(data.items || []).slice(n)];
+  }
+
   return res.status(200).json(data);
 }
 
