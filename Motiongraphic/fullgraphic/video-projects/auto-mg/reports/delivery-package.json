@@ -1,0 +1,11 @@
+{
+  "createdAt": "2026-05-23T09:35:07.592Z",
+  "project": "C:\\Users\\dlwldyd\\Documents\\New project\\planner-11\\Motiongraphic\\fullgraphic\\video-projects\\auto-mg",
+  "outputs": [
+    "renders/draft.mp4",
+    "renders/final.mp4",
+    "reports/quality-gate.json",
+    "STORYBOARD.md",
+    "meta.json"
+  ]
+}

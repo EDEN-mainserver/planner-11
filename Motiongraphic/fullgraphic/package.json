@@ -6,7 +6,11 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "preflight": "node scripts/preflight.mjs",
-    "preflight:all": "for d in video-projects/*/; do node scripts/preflight.mjs \"$d\" || true; done"
+    "preflight:all": "for d in video-projects/*/; do node scripts/preflight.mjs \"$d\" || true; done",
+    "mg:pipeline": "node scripts/mg-pipeline.mjs --step run",
+    "mg:plan": "node scripts/mg-pipeline.mjs --step plan",
+    "mg:generate": "node scripts/mg-pipeline.mjs --step generate",
+    "mg:quality": "node scripts/mg-pipeline.mjs --step quality"
   },
   "keywords": [],
   "author": "",

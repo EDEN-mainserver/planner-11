@@ -1,0 +1,24 @@
+{
+  "createdAt": "2026-05-23T09:17:25.267Z",
+  "score": 4,
+  "maxScore": 4,
+  "passed": true,
+  "checks": [
+    {
+      "check": "exists:index.html",
+      "passed": true
+    },
+    {
+      "check": "exists:meta.json",
+      "passed": true
+    },
+    {
+      "check": "exists:STORYBOARD.md",
+      "passed": true
+    },
+    {
+      "check": "exists:hyperframes.json",
+      "passed": true
+    }
+  ]
+}
