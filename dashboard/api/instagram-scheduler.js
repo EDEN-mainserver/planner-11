@@ -46,6 +46,15 @@ function isRetryableInstagramError(message) {
   return !fatalMarkers.some((marker) => text.includes(marker));
 }
 
+// 토큰 자체가 만료/무효화된 경우 (비밀번호 변경, 보안 세션 종료 등)
+// 같은 토큰을 쓰는 모든 예약은 즉시 실패시키고 사용자에게 재연동 신호
+function isTokenInvalidError(message) {
+  const text = String(message || "");
+  return /validating access token|session has been invalidated|OAuthException|expired token|invalid.*token|token.*invalid/i.test(text);
+}
+
+const TOKEN_INVALID_MSG = "Instagram 토큰이 만료되었습니다. 위 패널에서 재연동 후 예약을 다시 생성해주세요.";
+
 function getRetryDelayMs(retryCount) {
   const minutes = Math.min(15, 5 * (retryCount + 1));
   return minutes * 60 * 1000;
@@ -98,7 +107,28 @@ export default async function handler(req, res) {
       });
       if (!due.length) continue;
 
+      // 이번 루프에서 토큰 무효로 판명된 (username, accountId) 조합 — 같은 토큰 쓰는 잔여 예약 일괄 실패 처리
+      const invalidatedTokens = new Set();
+      const keyOf = (u, p) => `${u}::${p.accountId || p.userId || ""}`;
+
       for (const post of due) {
+        const tokenKey = keyOf(username, post);
+        // 이미 같은 토큰이 무효로 판명됐으면 API 호출 스킵 + 즉시 실패
+        if (invalidatedTokens.has(tokenKey)) {
+          const nowIso = new Date().toISOString();
+          await updateScheduleRecord(username, post.id, {
+            status: "failed",
+            failedAt: nowIso,
+            error: TOKEN_INVALID_MSG,
+            retryCount: (Number(post.retryCount) || 0) + 1,
+            retryAt: null,
+            lastAttemptAt: nowIso,
+            lastError: TOKEN_INVALID_MSG,
+          });
+          results.push({ id: post.id, username, status: "failed", error: TOKEN_INVALID_MSG, reason: "token_invalidated_batch" });
+          continue;
+        }
+
         try {
           const posted = await postInstagramSchedule(post);
           await updateScheduleRecord(username, post.id, {
@@ -114,6 +144,23 @@ export default async function handler(req, res) {
         } catch (e) {
           const nowIso = new Date().toISOString();
           const retryCount = Number(post.retryCount) || 0;
+
+          // 토큰 무효 — 재시도 무의미, 같은 토큰 쓰는 모든 예약 일괄 실패 표시
+          if (isTokenInvalidError(e.message)) {
+            invalidatedTokens.add(tokenKey);
+            await updateScheduleRecord(username, post.id, {
+              status: "failed",
+              failedAt: nowIso,
+              error: TOKEN_INVALID_MSG,
+              retryCount: retryCount + 1,
+              retryAt: null,
+              lastAttemptAt: nowIso,
+              lastError: TOKEN_INVALID_MSG,
+            });
+            results.push({ id: post.id, username, status: "failed", error: TOKEN_INVALID_MSG, reason: "token_invalidated", rawError: e.message });
+            continue;
+          }
+
           const retryable = isRetryableInstagramError(e.message);
           if (retryable && retryCount + 1 < MAX_RETRY_ATTEMPTS) {
             const nextRetryAt = new Date(now.getTime() + getRetryDelayMs(retryCount)).toISOString();
