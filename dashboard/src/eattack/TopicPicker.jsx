@@ -390,6 +390,18 @@ function ThreadsTab({ onSelect }) {
   const [sortBy, setSortBy] = useState("default");
   const timerRef = useRef(null);
 
+  // 진행 상태가 오면 타임아웃 리셋 — background가 살아있는 한 무기한 대기
+  // (쓰레드 수집 시 처리 시간이 가변적이므로 고정 타임아웃은 부적합)
+  const IDLE_TIMEOUT_MS = 90000; // 90초 동안 아무 신호 없으면 끊김 판단
+  function resetIdleTimer() {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setCrawling(false);
+      setStatusMsg("");
+      setError("수집 시간 초과 — 확장 프로그램이 응답하지 않습니다 (90초 무응답). Threads 로그인 또는 확장 상태를 확인하세요.");
+    }, IDLE_TIMEOUT_MS);
+  }
+
   useEffect(() => {
     const handler = (event) => {
       if (event.source !== window) return;
@@ -402,6 +414,7 @@ function ThreadsTab({ onSelect }) {
           setStatusMsg("");
         } else {
           setStatusMsg(s?.msg || "");
+          resetIdleTimer(); // heartbeat — 진행 신호마다 타임아웃 갱신
         }
       }
       if (event.data?.type === "EDEN_THREADS_RESULTS") {
@@ -411,6 +424,7 @@ function ThreadsTab({ onSelect }) {
         setPosts(newPosts);
         setCrawling(false);
         setStatusMsg("");
+        setError(""); // 타임아웃이 먼저 떴어도 결과 도착 시 에러 클리어
         const c = { keyword: p?.keyword || keyword, posts: newPosts };
         saveCache(LS_THREADS, c);
         setCache({ ...c, savedAt: Date.now() });
@@ -426,11 +440,7 @@ function ThreadsTab({ onSelect }) {
     setPosts([]); setError(""); setStatusMsg("");
     setCrawling(true);
     window.postMessage({ type: "EDEN_START_CRAWL", keyword: keyword.trim(), count: 20 }, "*");
-    timerRef.current = setTimeout(() => {
-      setCrawling(false);
-      setStatusMsg("");
-      setError("수집 시간 초과 — 확장 프로그램이 설치되어 있고 Threads에 로그인되어 있는지 확인하세요");
-    }, 180000); // 3분 — 조회수 수집 포함 시 1-2분 소요
+    resetIdleTimer();
   }
 
   function handleClear() {
