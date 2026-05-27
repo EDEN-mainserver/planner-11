@@ -72,10 +72,28 @@ function parseKeywords(input, defaultCount) {
 }
 
 // ──────────────────────────────────────────────────────────────
-// 조회수 추출 (게시물 상세 페이지에서 실행)
-// ⚠️ 외부 변수 참조 불가 — 완전히 독립적이어야 함
+// 쓰레드 표식 감지 (background 스코프 — 본문 텍스트에서 호출)
+// "1/3", "2/5" 등 N/M 패턴 — 1≤N≤M, 2≤M≤10
+// Threads UI의 자동 인디케이터("2/5" 다음 글 표시)도, 작성자가 손으로 쓴 "1/3"도 모두 잡음
 // ──────────────────────────────────────────────────────────────
-function extractViewCount() {
+function detectThreadTotal(content) {
+  if (!content) return 0;
+  const re = /(?:^|[^\d])([1-9])\s*\/\s*(\d{1,2})(?=\s|$|[.!?,])/g;
+  let m, best = 0;
+  while ((m = re.exec(content)) !== null) {
+    const cur = parseInt(m[1], 10);
+    const total = parseInt(m[2], 10);
+    if (total >= 2 && total <= 10 && cur <= total) best = Math.max(best, total);
+  }
+  return best;
+}
+
+// ──────────────────────────────────────────────────────────────
+// 상세 페이지 정보 수집 — 조회수 + 쓰레드 연속글
+// ⚠️ 외부 변수 참조 불가 — 완전히 독립적이어야 함
+// 동일 작성자(handle) + 다른 postId 필터로 타인 댓글 자동 배제
+// ──────────────────────────────────────────────────────────────
+function extractDetailInfo(authorHandle, currentPostId, expectedThreadCount) {
   function parseCount(text) {
     if (!text) return 0;
     const t = text.trim().replace(/,/g, '');
@@ -88,11 +106,82 @@ function extractViewCount() {
     if (m[2] === '천') return Math.round(n * 1_000);
     return Math.round(n);
   }
+
+  // ── 조회수 ──
+  let views = 0;
   const spans = document.querySelectorAll('span');
   for (const span of spans) {
-    if (span.textContent.includes('조회')) return parseCount(span.textContent);
+    if (span.textContent.includes('조회')) { views = parseCount(span.textContent); break; }
   }
-  return 0;
+
+  // ── 쓰레드 연속글 ──
+  const threadParts = [];
+  const seenPostIds = new Set();
+  if (currentPostId) seenPostIds.add(currentPostId);
+
+  const debugInfo = {
+    wantHandle:        authorHandle ? String(authorHandle).replace(/^@/, '').toLowerCase() : '',
+    currentPostId:     currentPostId || '',
+    expectedTotal:     expectedThreadCount || 0,
+    containerCount:    0,
+    sampleHandles:     [],
+    samePostIds:       [],
+    otherAuthorCount:  0,
+  };
+
+  if (authorHandle && expectedThreadCount > 1) {
+    const wantHandle = debugInfo.wantHandle;
+    const containers = document.querySelectorAll('div[data-pressable-container="true"]');
+    debugInfo.containerCount = containers.length;
+
+    containers.forEach((el) => {
+      // 작성자 핸들 추출 — /@name 또는 /@name/post/xxx 형태
+      const authorEl = el.querySelector('a[href^="/@"]');
+      if (!authorEl) return;
+      const rawHref = authorEl.getAttribute('href') || '';
+      const handle = rawHref.replace(/^\/@?/, '').split(/[/?#]/)[0].toLowerCase();
+      if (debugInfo.sampleHandles.length < 10) debugInfo.sampleHandles.push(handle);
+
+      if (handle !== wantHandle) { debugInfo.otherAuthorCount++; return; }
+
+      // postId 추출 — 동일 작성자라도 postId가 다를 때만 쓰레드 연속글로 인정
+      const postLinkEl = el.querySelector('a[href*="/post/"]');
+      const postHref = postLinkEl ? postLinkEl.getAttribute('href') || '' : '';
+      const postIdMatch = postHref.match(/\/post\/([^/?#]+)/);
+      const postId = postIdMatch ? postIdMatch[1] : '';
+      if (!postId) return;
+      if (seenPostIds.has(postId)) return; // 원본 게시물 OR 중복 렌더링 스킵
+      seenPostIds.add(postId);
+      if (debugInfo.samePostIds.length < 10) debugInfo.samePostIds.push(postId);
+
+      // 본문 텍스트
+      const paragraphs = new Set();
+      el.querySelectorAll("div.xat24cr span[dir='auto'], span[dir='auto']").forEach((span) => {
+        const t = span.textContent.trim();
+        if (t && t.length > 4) paragraphs.add(t);
+      });
+      const text = [...paragraphs].join('\n');
+      if (!text) return;
+
+      const timeEl = el.querySelector('time[datetime]');
+      const datetime = timeEl?.getAttribute('datetime') || '';
+      const postUrl = postHref ? 'https://www.threads.com' + postHref : '';
+
+      threadParts.push({ text, datetime, postUrl, postId });
+    });
+
+    // 시간순 (오래된 게 part 2)
+    threadParts.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+    // expectedThreadCount-1 개로 자르기 (M 신뢰성 낮을 경우 대비, 최대 9개 보장)
+    threadParts.length = Math.min(threadParts.length, Math.max(expectedThreadCount - 1, 0));
+  }
+
+  return {
+    views,
+    threadParts: threadParts.map(p => p.text),
+    threadPartsMeta: threadParts.map(p => ({ postId: p.postId, datetime: p.datetime })),
+    debugInfo,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -291,29 +380,69 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
     await chrome.tabs.remove(tab.id);
     tab = null;
 
-    // 조회수 수집 (중지 요청 시 건너뜀)
+    // 상세 페이지 수집 — 조회수 + 쓰레드 연속글(중지 요청 시 건너뜀)
     const postsWithUrl = allPosts.filter(p => p.postUrl);
     if (postsWithUrl.length > 0 && !stopRequested) {
-      setStatus(`조회수 수집 중... (0/${postsWithUrl.length})`);
+      setStatus(`상세 수집 중... (0/${postsWithUrl.length})`);
       let detailTab = null;
       try {
         detailTab = await chrome.tabs.create({ url: 'about:blank', active: false });
         for (let i = 0; i < postsWithUrl.length; i++) {
-          if (stopRequested) break; // 중지 요청 시 조회수 수집 중단
+          if (stopRequested) break;
           const post = postsWithUrl[i];
-          setStatus(`조회수 수집 중... (${i + 1}/${postsWithUrl.length})`);
+          const threadTotal = detectThreadTotal(post.content);
+          const postIdMatch = (post.postUrl || '').match(/\/post\/([^/?#]+)/);
+          const currentPostId = postIdMatch ? postIdMatch[1] : '';
+          const label = threadTotal > 1 ? `쓰레드(${threadTotal}편)` : '조회수';
+          setStatus(`${label} 수집 중... (${i + 1}/${postsWithUrl.length})`);
+
           await chrome.tabs.update(detailTab.id, { url: post.postUrl });
           await waitForTabLoad(detailTab.id);
-          // body 클릭으로 조회수 로딩 유도
+          // body 클릭으로 로딩 유도
           await chrome.scripting.executeScript({
             target: { tabId: detailTab.id },
             func: () => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
           }).catch(() => {});
           await sleep(2500);
+
+          // 쓰레드면 답글/연속글 lazy-load 트리거 — 추가 스크롤
+          if (threadTotal > 1) {
+            await chrome.scripting.executeScript({
+              target: { tabId: detailTab.id },
+              func: () => window.scrollBy(0, 1500),
+            }).catch(() => {});
+            await sleep(1500);
+          }
+
           try {
-            const [res] = await chrome.scripting.executeScript({ target: { tabId: detailTab.id }, func: extractViewCount });
-            post.views = res.result || 0;
-          } catch (_) { post.views = 0; }
+            const [res] = await chrome.scripting.executeScript({
+              target: { tabId: detailTab.id },
+              func:   extractDetailInfo,
+              args:   [post.author, currentPostId, threadTotal],
+            });
+            const { views = 0, threadParts = [], threadPartsMeta = [], debugInfo = {} } = res.result || {};
+            post.views = views;
+            if (threadTotal > 1) {
+              console.log(`[Eden Crawl BG] 쓰레드 시도: ${post.author} (${threadTotal}편)`, {
+                url:            post.postUrl,
+                currentPostId,
+                wantHandle:     debugInfo.wantHandle,
+                containerCount: debugInfo.containerCount,
+                sampleHandles:  debugInfo.sampleHandles,
+                otherAuthor:    debugInfo.otherAuthorCount,
+                collectedIds:   debugInfo.samePostIds,
+                collected:      threadParts.length,
+              });
+            }
+            if (threadTotal > 1 && threadParts.length > 0) {
+              post.threadTotal = threadTotal;
+              post.threadParts = threadParts;
+              post.threadPartsMeta = threadPartsMeta;
+            }
+          } catch (e) {
+            console.warn('[Eden Crawl BG] 상세 수집 실패:', e?.message);
+            post.views = 0;
+          }
         }
       } finally {
         if (detailTab) await chrome.tabs.remove(detailTab.id).catch(() => {});
