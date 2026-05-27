@@ -129,17 +129,36 @@ function extractDetailInfo(authorHandle, expectedThreadCount) {
 
   // ── 쓰레드 연속글(동일 작성자 답글) ──
   const threadParts = [];
+  const debugInfo = { containerCount: 0, sameAuthorCount: 0, wantHandle: '', sampleHandles: [] };
+
   if (authorHandle && expectedThreadCount > 1) {
-    const wantHandle = String(authorHandle).replace(/^@/, '').toLowerCase();
+    const wantHandle = String(authorHandle).replace(/^@/, '').trim().toLowerCase();
+    debugInfo.wantHandle = wantHandle;
     const containers = document.querySelectorAll('div[data-pressable-container="true"]');
+    debugInfo.containerCount = containers.length;
 
-    containers.forEach((el, idx) => {
-      if (idx === 0) return; // 첫 컨테이너 = 원본 게시물 (스킵)
+    // 원본 게시물 식별 — 현재 URL의 postId가 들어있는 컨테이너 1개를 스킵
+    const currentPath = location.pathname;
+    const postIdMatch = currentPath.match(/\/post\/([^/?#]+)/);
+    const currentPostId = postIdMatch ? postIdMatch[1] : '';
+    let originalSkipped = false;
 
+    containers.forEach((el) => {
+      // 작성자 핸들 추출 — href가 "/@name" / "/@name/post/xxx" / 쿼리/해시 형태 모두 대응
       const authorEl = el.querySelector('a[href^="/@"]');
       if (!authorEl) return;
-      const handle = authorEl.getAttribute('href').replace(/^\/@?/, '').toLowerCase();
+      const rawHref = authorEl.getAttribute('href') || '';
+      const handle = rawHref.replace(/^\/@?/, '').split(/[/?#]/)[0].toLowerCase();
+      if (debugInfo.sampleHandles.length < 8) debugInfo.sampleHandles.push(handle);
+
+      // 원본 게시물 스킵 — postId가 일치하면 원본
+      if (!originalSkipped && currentPostId) {
+        const postLink = el.querySelector(`a[href*="/post/${currentPostId}"]`);
+        if (postLink) { originalSkipped = true; return; }
+      }
+
       if (handle !== wantHandle) return;
+      debugInfo.sameAuthorCount++;
 
       const paragraphs = new Set();
       el.querySelectorAll("div.xat24cr span[dir='auto'], span[dir='auto']").forEach((span) => {
@@ -161,7 +180,7 @@ function extractDetailInfo(authorHandle, expectedThreadCount) {
     threadParts.length = Math.min(threadParts.length, expectedThreadCount - 1);
   }
 
-  return { views, threadParts: threadParts.map(p => p.text) };
+  return { views, threadParts: threadParts.map(p => p.text), debugInfo };
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -366,14 +385,24 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
               func:   extractDetailInfo,
               args:   [post.author, threadTotal],
             });
-            const { views = 0, threadParts = [] } = res.result || {};
+            const { views = 0, threadParts = [], debugInfo = {} } = res.result || {};
             post.views = views;
+            if (threadTotal > 1) {
+              console.log(`[Eden Crawl] 쓰레드 시도: ${post.author} (1/${threadTotal})`, {
+                url:              post.postUrl,
+                wantHandle:       debugInfo.wantHandle,
+                containerCount:   debugInfo.containerCount,
+                sampleHandles:    debugInfo.sampleHandles,
+                sameAuthorFound:  debugInfo.sameAuthorCount,
+                collected:        threadParts.length,
+              });
+            }
             if (threadTotal > 1 && threadParts.length > 0) {
               post.threadTotal = threadTotal;
               post.threadParts = threadParts;
-              console.log(`[Eden Crawl] 쓰레드 수집: ${post.author} — ${threadParts.length}/${threadTotal - 1}편 추가`);
             }
-          } catch (_) {
+          } catch (e) {
+            console.warn('[Eden Crawl] 상세 수집 실패:', e?.message);
             post.views = 0;
           }
         }
