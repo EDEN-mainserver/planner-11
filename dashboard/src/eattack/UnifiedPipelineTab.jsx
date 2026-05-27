@@ -432,7 +432,19 @@ export default function UnifiedPipelineTab() {
       });
       const data = await res.json();
       log(`instagram-post 응답: ${res.status} / ${JSON.stringify(data).slice(0, 120)}`);
-      if (!res.ok) throw new Error(data.error || "게시 실패");
+      if (!res.ok) {
+        // 토큰 무효화 감지 — Facebook/Instagram이 비밀번호 변경·보안 이슈로 세션 끊은 경우
+        const errMsg = data.error || "";
+        const isInvalidToken = /validating access token|session has been invalidated|OAuthException|expired|invalid token/i.test(errMsg);
+        if (isInvalidToken) {
+          const cleared = { accessToken: "", accountId: "", username: "" };
+          setIgConfig(cleared);
+          if (session?.username) saveSocial(igKey, session.username, cleared);
+          log("토큰 무효 감지 → 연동 자동 해제. 우측 상단에서 재연동 해주세요.");
+          throw new Error("Instagram 토큰이 만료되었습니다. 연동이 자동 해제됐어요 — 위 패널에서 재연동 후 다시 시도하세요.");
+        }
+        throw new Error(errMsg || "게시 실패");
+      }
       log(`게시 완료! permalink: ${data.permalink}`);
       setIgResult({ ok: true, permalink: data.permalink });
     } catch (e) {
