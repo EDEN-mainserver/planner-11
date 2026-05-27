@@ -82,11 +82,28 @@ function waitForTabLoad(tabId) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ──────────────────────────────────────────────────────────────
-// 조회수 추출 함수 (게시물 상세 페이지에서 실행)
-// ⚠️ 외부 변수 참조 불가 — 완전히 독립적이어야 함
-// Python 크롤러와 동일 방식: span:has-text("조회") 탐색
+// "1/M" 쓰레드 표식 감지 (팝업 스코프 — 본문 텍스트에서 호출)
+// "1/3", " 1/3 ", "내용 1/2." 등 첫 부분(1)이고 M=2~10인 경우만 인정
 // ──────────────────────────────────────────────────────────────
-function extractViewCount() {
+function detectThreadTotal(content) {
+  if (!content) return 0;
+  const re = /(?:^|[^\d])1\s*\/\s*(\d{1,2})(?=\s|$|[.!?,])/g;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    const total = parseInt(m[1], 10);
+    if (total >= 2 && total <= 10) return total;
+  }
+  return 0;
+}
+
+// ──────────────────────────────────────────────────────────────
+// 상세 페이지 정보 수집 함수 (탭 내 실행)
+// ⚠️ 외부 변수 참조 불가 — 완전히 독립적이어야 함
+// 반환: { views, threadParts }
+//   - views: 조회수 (Python 크롤러와 동일 — span:has-text("조회"))
+//   - threadParts: 동일 작성자 답글 본문, 시간순 정렬, expectedThreadCount-1 개
+// ──────────────────────────────────────────────────────────────
+function extractDetailInfo(authorHandle, expectedThreadCount) {
   function parseCount(text) {
     if (!text) return 0;
     const t = text.trim().replace(/,/g, '');
@@ -99,14 +116,52 @@ function extractViewCount() {
     if (m[2] === '천') return Math.round(n * 1_000);
     return Math.round(n);
   }
-  // "조회" 텍스트 포함 span 탐색
+
+  // ── 조회수 ──
+  let views = 0;
   const spans = document.querySelectorAll('span');
   for (const span of spans) {
     if (span.textContent.includes('조회')) {
-      return parseCount(span.textContent);
+      views = parseCount(span.textContent);
+      break;
     }
   }
-  return 0;
+
+  // ── 쓰레드 연속글(동일 작성자 답글) ──
+  const threadParts = [];
+  if (authorHandle && expectedThreadCount > 1) {
+    const wantHandle = String(authorHandle).replace(/^@/, '').toLowerCase();
+    const containers = document.querySelectorAll('div[data-pressable-container="true"]');
+
+    containers.forEach((el, idx) => {
+      if (idx === 0) return; // 첫 컨테이너 = 원본 게시물 (스킵)
+
+      const authorEl = el.querySelector('a[href^="/@"]');
+      if (!authorEl) return;
+      const handle = authorEl.getAttribute('href').replace(/^\/@?/, '').toLowerCase();
+      if (handle !== wantHandle) return;
+
+      const paragraphs = new Set();
+      el.querySelectorAll("div.xat24cr span[dir='auto'], span[dir='auto']").forEach((span) => {
+        const t = span.textContent.trim();
+        if (t && t.length > 4) paragraphs.add(t);
+      });
+      const text = [...paragraphs].join('\n');
+      if (!text) return;
+
+      const timeEl = el.querySelector('time[datetime]');
+      const datetime = timeEl?.getAttribute('datetime') || '';
+
+      threadParts.push({ text, datetime });
+    });
+
+    // 시간순 정렬 (오래된 것이 part 2)
+    threadParts.sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+    // expectedThreadCount-1 개로 자르기
+    threadParts.length = Math.min(threadParts.length, expectedThreadCount - 1);
+  }
+
+  return { views, threadParts: threadParts.map(p => p.text) };
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -279,25 +334,45 @@ async function crawlSingleKeyword(keyword, targetCount, prefix) {
     await chrome.tabs.remove(tab.id);
     tab = null;
 
-    // 조회수 수집 — 게시물 상세 페이지 순차 방문 (탭 1개 재사용)
+    // 상세 페이지 순차 방문 — 조회수 + 쓰레드 연속글(동일 작성자 답글) 동시 수집
     const postsWithUrl = allPosts.filter(p => p.postUrl);
     if (postsWithUrl.length > 0) {
-      showStatus(`${prefix} 조회수 수집 중... 0 / ${postsWithUrl.length}개`, 'info');
+      showStatus(`${prefix} 상세 수집 중... 0 / ${postsWithUrl.length}개`, 'info');
       let detailTab = null;
       try {
         detailTab = await chrome.tabs.create({ url: 'about:blank', active: false });
         for (let i = 0; i < postsWithUrl.length; i++) {
           const post = postsWithUrl[i];
-          showStatus(`${prefix} 조회수 수집 중... ${i + 1} / ${postsWithUrl.length}개`, 'info');
+          const threadTotal = detectThreadTotal(post.content);
+          const label = threadTotal > 1 ? `쓰레드(${threadTotal}편)` : '조회수';
+          showStatus(`${prefix} ${label} 수집 중... ${i + 1} / ${postsWithUrl.length}개`, 'info');
+
           await chrome.tabs.update(detailTab.id, { url: post.postUrl });
           await waitForTabLoad(detailTab.id);
           await sleep(2500);
+
+          // 쓰레드일 경우 답글 lazy-load 트리거 — 추가 스크롤
+          if (threadTotal > 1) {
+            await chrome.scripting.executeScript({
+              target: { tabId: detailTab.id },
+              func:   () => window.scrollBy(0, 1500),
+            });
+            await sleep(1500);
+          }
+
           try {
             const [res] = await chrome.scripting.executeScript({
               target: { tabId: detailTab.id },
-              func:   extractViewCount,
+              func:   extractDetailInfo,
+              args:   [post.author, threadTotal],
             });
-            post.views = res.result || 0;
+            const { views = 0, threadParts = [] } = res.result || {};
+            post.views = views;
+            if (threadTotal > 1 && threadParts.length > 0) {
+              post.threadTotal = threadTotal;
+              post.threadParts = threadParts;
+              console.log(`[Eden Crawl] 쓰레드 수집: ${post.author} — ${threadParts.length}/${threadTotal - 1}편 추가`);
+            }
           } catch (_) {
             post.views = 0;
           }

@@ -76,7 +76,13 @@ async function convertToScript(rawText) {
 
 // ── 포스트 선택 패널 (변환 버튼 포함) ──
 function ConvertPanel({ post, onConfirm, onBack }) {
-  const rawText = post.title || post.content || post.text || post.full_text || post.subject || "";
+  const baseText = post.title || post.content || post.text || post.full_text || post.subject || "";
+  const threadParts = Array.isArray(post.threadParts) ? post.threadParts : [];
+  const threadTotal = post.threadTotal || (threadParts.length > 0 ? threadParts.length + 1 : 0);
+  // 쓰레드면 본문 + [2/N], [3/N]... 합쳐서 전달
+  const rawText = threadParts.length > 0
+    ? baseText + "\n\n" + threadParts.map((t, i) => `[${i + 2}/${threadTotal}]\n${t}`).join("\n\n")
+    : baseText;
   const [converting, setConverting] = useState(false);
   const [converted, setConverted] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -108,7 +114,12 @@ function ConvertPanel({ post, onConfirm, onBack }) {
       {/* 원문 (변환 전에만 표시) */}
       {!converted && (
         <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 flex-shrink-0">
-          <p className="text-[10px] text-gray-400 font-medium mb-1.5">원문 미리보기</p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[10px] text-gray-400 font-medium">원문 미리보기</p>
+            {threadParts.length > 0 && (
+              <p className="text-[10px] text-purple-500 font-semibold">🧵 쓰레드 {threadTotal}편 자동 포함</p>
+            )}
+          </div>
           <p className="text-xs text-gray-700 whitespace-pre-wrap break-words line-clamp-5">{rawText}</p>
         </div>
       )}
@@ -185,6 +196,63 @@ function ConvertPanel({ post, onConfirm, onBack }) {
   );
 }
 
+// ── 단일 포스트 행 (쓰레드 인라인 드롭다운 포함) ──
+function PostRow({ post, idx, onPreview, accent }) {
+  const [open, setOpen] = useState(false);
+  const text = post.title || post.content || post.text || post.full_text || post.subject || "";
+  const meta = post.likes != null ? `❤️ ${(post.likes||0).toLocaleString()}` :
+               post.views != null ? `👁 ${(post.views||0).toLocaleString()}` : "";
+  const threadParts = Array.isArray(post.threadParts) ? post.threadParts : [];
+  const hasThread = threadParts.length > 0;
+  const threadTotal = post.threadTotal || (hasThread ? threadParts.length + 1 : 0);
+
+  return (
+    <div className={`rounded-lg border border-gray-100 transition-all ${accent.hover}`}>
+      <button
+        onClick={() => onPreview(post)}
+        className="w-full text-left px-3 py-2.5 group"
+      >
+        <div className="flex items-start gap-2">
+          <span className={`text-[10px] font-bold flex-shrink-0 mt-0.5 ${accent.num}`}>{idx + 1}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-gray-800 group-hover:text-gray-900 whitespace-pre-wrap break-words">{text || "(내용 없음)"}</p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {meta && <p className="text-[10px] text-gray-400">{meta}</p>}
+              {hasThread && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); setOpen(o => !o); } }}
+                  className={`text-[10px] font-semibold ${accent.num} hover:underline inline-flex items-center gap-0.5 cursor-pointer select-none`}
+                >
+                  🧵 쓰레드 {threadTotal}편
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={`transition-transform ${open ? "rotate-180" : ""}`}>
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </span>
+              )}
+            </div>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`flex-shrink-0 text-gray-200 mt-0.5 ml-auto transition-colors ${accent.arrow}`}>
+            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+          </svg>
+        </div>
+      </button>
+      {hasThread && open && (
+        <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-2">
+          {threadParts.map((part, j) => (
+            <div key={j} className="flex gap-2 text-[11px]">
+              <span className={`flex-shrink-0 font-bold ${accent.num}`}>{j + 2}/{threadTotal}</span>
+              <p className="text-gray-700 whitespace-pre-wrap break-words leading-relaxed">{part}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 공통 포스트 리스트 ──
 function PostList({ posts, onPreview, emptyMsg, accentClass = "violet" }) {
   const colorMap = {
@@ -205,29 +273,9 @@ function PostList({ posts, onPreview, emptyMsg, accentClass = "violet" }) {
 
   return (
     <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">
-      {posts.map((post, i) => {
-        const text = post.title || post.content || post.text || post.full_text || post.subject || "";
-        const meta = post.likes != null ? `❤️ ${(post.likes||0).toLocaleString()}` :
-                     post.views != null ? `👁 ${(post.views||0).toLocaleString()}` : "";
-        return (
-          <button
-            key={i}
-            onClick={() => onPreview(post)}
-            className={`w-full text-left px-3 py-2.5 rounded-lg border border-gray-100 transition-all group ${c.hover}`}
-          >
-            <div className="flex items-start gap-2">
-              <span className={`text-[10px] font-bold flex-shrink-0 mt-0.5 ${c.num}`}>{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-gray-800 group-hover:text-gray-900 whitespace-pre-wrap break-words">{text || "(내용 없음)"}</p>
-                {meta && <p className="text-[10px] text-gray-400 mt-0.5">{meta}</p>}
-              </div>
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`flex-shrink-0 text-gray-200 mt-0.5 ml-auto transition-colors ${c.arrow}`}>
-                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-              </svg>
-            </div>
-          </button>
-        );
-      })}
+      {posts.map((post, i) => (
+        <PostRow key={i} post={post} idx={i} onPreview={onPreview} accent={c} />
+      ))}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Eden Crawl v2",
-  "version": "3.0.1",
-  "description": "에덴 전용 v3 — Threads/LinkedIn/아이보스/X 인기글 수집 및 AI 바이럴 분석 + 웹앱 연동",
+  "version": "3.1.0",
+  "description": "에덴 전용 v3.1 — Threads 쓰레드(1/N 자동 이어붙임) · LinkedIn · 아이보스 · X 인기글 수집 + 웹앱 연동",
   "background": {
     "service_worker": "background.js"
   },
