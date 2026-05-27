@@ -466,6 +466,9 @@ export default function UnifiedPipelineTab() {
     topic,
     cards,
     cardHtmls,
+    plan,
+    research,
+    captionPrompt,
     onValidationError: setError,
   });
 

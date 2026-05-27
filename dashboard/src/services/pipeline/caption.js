@@ -103,3 +103,20 @@ ${context}`,
   }
   return output;
 }
+
+// 크롤된 외부 게시물 텍스트(SNS 원문)에 자주 붙는 출처 신호를 제거한다.
+// 자동 게시 captionTemplate으로 들어오면 안 되는 패턴들.
+// - 첫 줄의 작성자 핸들 ("calmtiger_", "@choi.openai")
+// - 첫 줄/둘째 줄의 날짜 (YYYY-MM-DD)
+// - 본문 끝의 쓰레드 표식 ("1/3", " 2/5" 등)
+export function stripCrawlSources(text) {
+  if (!text) return "";
+  let s = String(text);
+  // 1) 맨 앞 핸들 라인 (영문/숫자/언더스코어/점, 3자 이상)
+  s = s.replace(/^@?[a-z][a-z0-9_.]{2,}_?\s*\n+/i, "");
+  // 2) 맨 앞(또는 핸들 제거 후 맨 앞)의 날짜 라인
+  s = s.replace(/^\d{4}-\d{2}-\d{2}\s*\n+/, "");
+  // 3) 본문 마지막의 N/M 쓰레드 표식 (앞에 공백 또는 nbsp 필요 — 일반 분수와 구분)
+  s = s.replace(/\s+\d{1,2}\s*\/\s*\d{1,2}\s*$/, "");
+  return s.trim();
+}

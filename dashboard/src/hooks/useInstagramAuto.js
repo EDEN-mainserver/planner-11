@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchSchedules, addSchedule, removeSchedule } from "../services/pipeline/schedule";
 import { collectPostImages } from "../services/pipeline/cardCapture";
+import { generateCaption, stripCrawlSources } from "../services/pipeline/caption";
 
 const INITIAL_CONFIG = {
   enabled: true,
@@ -30,8 +31,12 @@ export function useInstagramAuto({
   topic,
   cards,
   cardHtmls,
+  plan,
+  research,
+  captionPrompt,
   onValidationError,
 }) {
+  const [igAutoCaptionGenerating, setIgAutoCaptionGenerating] = useState(false);
   const [igAutoConfig, setIgAutoConfig] = useState(INITIAL_CONFIG);
   const [igAutoSchedules, setIgAutoSchedules] = useState([]);
   const [igAutoLoading, setIgAutoLoading] = useState(false);
@@ -106,13 +111,41 @@ export function useInstagramAuto({
     keywords: String(igAutoConfig.keywords || ""),
     postTime: igAutoConfig.postTime || "09:00",
     slideCount: Math.max(3, Math.min(10, Number(igAutoConfig.slideCount) || slideCount || 7)),
-    captionTemplate: String(igAutoConfig.captionTemplate || postCaption || topic || ""),
+    // 저장 직전 sanitize — 크롤한 원문이 들어가 있어도 작성자 핸들/N/M 표식 자동 제거
+    captionTemplate: stripCrawlSources(String(igAutoConfig.captionTemplate || postCaption || topic || "")),
     accountId: igConfig.accountId,
     accessToken: igConfig.accessToken,
     brandName,
     tone,
     purpose,
   });
+
+  // 자동화 캡션 템플릿 재생성 — 현재 기획(topic/brand/tone/purpose/cards/plan/research)으로 새 캡션 만들고 출처 strip
+  const regenerateAutoCaption = async () => {
+    if (!String(topic || "").trim()) {
+      onValidationError?.("기획 주제를 먼저 입력해주세요");
+      return;
+    }
+    setIgAutoCaptionGenerating(true);
+    setIgAutoMessage("");
+    try {
+      const raw = await generateCaption({
+        topic, brandName, tone, purpose, research, cards, plan, captionPrompt,
+      });
+      const clean = stripCrawlSources(raw);
+      setIgAutoConfig((prev) => ({ ...prev, captionTemplate: clean }));
+      setIgAutoMessage("기획 기반 캡션을 새로 생성했습니다. 확인 후 저장하세요.");
+    } catch (e) {
+      setIgAutoMessage(`캡션 생성 실패: ${e.message}`);
+    } finally {
+      setIgAutoCaptionGenerating(false);
+    }
+  };
+
+  const clearAutoCaption = () => {
+    setIgAutoConfig((prev) => ({ ...prev, captionTemplate: "" }));
+    setIgAutoMessage("캡션 템플릿을 비웠습니다. 저장하면 매 게시마다 기획에서 자동 생성됩니다.");
+  };
 
   const saveInstagramAutoConfig = async () => {
     if (!session?.username) return;
@@ -263,5 +296,8 @@ export function useInstagramAuto({
     runInstagramAutoResearch,
     scheduleCurrentInstagramCarousel,
     cancelInstagramSchedule,
+    regenerateAutoCaption,
+    clearAutoCaption,
+    igAutoCaptionGenerating,
   };
 }

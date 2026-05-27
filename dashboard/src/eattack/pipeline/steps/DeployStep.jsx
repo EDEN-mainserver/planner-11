@@ -94,6 +94,9 @@ export default function DeployStep({
   loadInstagramAutoMonitor,
   loadInstagramSchedules,
   cancelInstagramSchedule,
+  regenerateAutoCaption,
+  clearAutoCaption,
+  igAutoCaptionGenerating,
   thConfig,
   thPosting,
   thResult,
@@ -370,13 +373,36 @@ export default function DeployStep({
               ))}
             </div>
           </div>
-          <textarea
-            rows={2}
-            value={igAutoConfig.captionTemplate}
-            onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, captionTemplate: e.target.value }))}
-            placeholder="캡션 템플릿(선택). 비우면 현재 게시 캡션을 사용합니다."
-            className="sm:col-span-2 w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white resize-none leading-relaxed"
-          />
+          <div className="sm:col-span-2 space-y-1.5">
+            <textarea
+              rows={3}
+              value={igAutoConfig.captionTemplate}
+              onChange={(e) => setIgAutoConfig((prev) => ({ ...prev, captionTemplate: e.target.value }))}
+              placeholder="비워두면 매 게시마다 기획에서 자동 생성됩니다. 또는 {title} {body} {firstBody} {topicTag} 토큰 사용."
+              className="w-full px-3 py-2 text-sm border border-violet-200 rounded-xl outline-none focus:border-violet-400 bg-white resize-y leading-relaxed"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={regenerateAutoCaption}
+                disabled={igAutoCaptionGenerating}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-40"
+                title="현재 기획(주제·톤·카드 내용)으로 캡션을 새로 생성합니다 — 작성자 핸들/쓰레드 표식 자동 제거"
+              >
+                {igAutoCaptionGenerating ? "생성 중…" : "✨ 기획으로 새 캡션 생성"}
+              </button>
+              <button
+                type="button"
+                onClick={clearAutoCaption}
+                disabled={igAutoCaptionGenerating}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-40"
+                title="템플릿을 비우면 매 게시마다 기획에서 자동 생성됩니다 (권장)"
+              >
+                지우기
+              </button>
+              <span className="text-[10px] text-gray-400 self-center">출처(작성자 핸들·N/N 표식)는 저장 시 자동 제거됨</span>
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
