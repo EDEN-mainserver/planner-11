@@ -609,6 +609,18 @@ export function buildHighestTemplate(topic, cards, brandName, _color1) {
     return [t.slice(0, cut).trim(), t.slice(cut + 1).trim()];
   };
 
+  // 표지 전용 — 헤드라인을 \n 기준 N줄로 분할(자동 2-way split fallback)
+  const coverHeadlineLines = (text) => {
+    const t = String(text || "").trim();
+    if (!t) return [];
+    if (t.includes("\n")) {
+      return t.split("\n").map((s) => s.trim()).filter(Boolean);
+    }
+    if (t.length <= 12) return [t];
+    const [a, b] = splitHeadline(t);
+    return b ? [a, b] : [a];
+  };
+
   // 영문 라벨 — 한글 brand면 EN 약식 표기로 fallback
   const enLabel = (text) => {
     const ascii = String(text || "").replace(/[^A-Za-z0-9 ]/g, "").trim().toUpperCase();
@@ -632,25 +644,31 @@ export function buildHighestTemplate(topic, cards, brandName, _color1) {
     const img = card.imageUrl || "";
 
     if (isCover) {
-      // 표지는 hook(작은 후크 1줄) + main(메인 카피 1~2줄) 두 부분. 모델이 \n으로 분리해서 보낸다.
-      // 안전망: 브랜드명이 headline에 들어오면 제거 (상단 라벨/하단 핸들과 중복되어 디자인이 망가짐)
+      // 표지: 인물 사진 배경 + 좌상단 캡션(인물 정체) + 큰 메인 카피(마지막 줄 강조) + 작은 액센트 + 핸들
+      // 브랜드명이 headline에 들어오면 제거 (핸들과 중복)
       const normForBrand = (s) =>
         String(s || "").trim().replace(/[.!?…\s]+$/g, "").replace(/\s+/g, "").toUpperCase();
       const brandKeys = new Set([normForBrand(brand), normForBrand(brandEn)].filter(Boolean));
-      const dropIfBrand = (line) => (brandKeys.has(normForBrand(line)) ? "" : line);
-      const h1Clean = dropIfBrand(head1);
-      const h2Clean = dropIfBrand(head2);
-      const hookLine = h2Clean ? h1Clean : "";
-      const mainLine = h2Clean || h1Clean;
+      const rawLines = coverHeadlineLines(card.headline).filter((l) => !brandKeys.has(normForBrand(l)));
+      const mainHtml = rawLines.length === 0 ? ""
+        : rawLines.length === 1 ? `<em>${esc(rawLines[0])}</em>`
+        : rawLines.slice(0, -1).map((l) => esc(l)).join("<br>") + `<br><em>${esc(rawLines[rawLines.length - 1])}</em>`;
+      const bgPos = card.bgPosition || "center 22%";
+      const personName = String(card.personName || "").trim();
+      const personRole = String(card.personRole || "").trim();
       return `
       <article class="hslide hslide-cover" data-num="${num}">
-        ${img ? `<div class="cover-bg" style="${bgImageStyle(img)}"></div><div class="cover-veil"></div>` : ""}
-        <div class="orb orb-a"></div>
-        <div class="orb orb-b"></div>
-        <p class="cover-top">CARDNEWS · ${esc(brandEn)} · 2026</p>
-        ${hookLine ? `<p class="cover-hook">${esc(hookLine)}</p>` : ""}
-        <h1 class="cover-main">${esc(mainLine)}</h1>
-        ${card.body ? `<p class="cover-sub">${esc(card.body)}</p>` : ""}
+        ${img ? `<div class="cover-bg" style="${bgImageStyle(img, bgPos)}"></div>` : ""}
+        <div class="cover-veil"></div>
+        ${personName ? `
+        <div class="credit">
+          <span class="credit-name">${esc(personName)}</span>
+          ${personRole ? `<span class="credit-role">${esc(personRole)}</span>` : ""}
+        </div>` : ""}
+        <div class="cover-inner">
+          ${mainHtml ? `<h1 class="cover-main">${mainHtml}</h1>` : ""}
+          ${card.body ? `<span class="cover-accent"><span class="dot"></span>${esc(card.body)}</span>` : ""}
+        </div>
         <p class="cover-handle">@${esc(brandEn)}</p>
       </article>`;
     }
@@ -714,24 +732,49 @@ function HIGHEST_STYLE() {
   .hslide { width:1080px; height:1350px; position:relative; overflow:hidden; display:flex; flex-direction:column; }
 
   /* ── COVER ── */
-  .hslide-cover { background:#0a0a0c; color:#fff; align-items:center; justify-content:center; text-align:center; padding:90px 80px; }
-  .hslide-cover .cover-bg { position:absolute; inset:0; opacity:0.45; filter:saturate(0.85); z-index:0; }
+  .hslide-cover { background:#0a0a0c; color:#fff; padding:0; }
+  .hslide-cover .cover-bg { position:absolute; inset:0; z-index:0;
+                            background-size:cover; background-position:center;
+                            filter:saturate(0.95) contrast(1.05); }
   .hslide-cover .cover-veil { position:absolute; inset:0; z-index:1;
-                              background:radial-gradient(ellipse at center, rgba(10,10,12,0.55) 0%, rgba(10,10,12,0.92) 70%, #0a0a0c 100%); }
-  .hslide-cover .orb { position:absolute; border-radius:50%; filter:blur(90px); pointer-events:none; z-index:1; }
-  .hslide-cover .orb-a { width:620px; height:620px; left:-160px; top:-120px; background:${accent}; opacity:0.42; }
-  .hslide-cover .orb-b { width:520px; height:520px; right:-120px; bottom:-160px; background:#57b9d9; opacity:0.22; }
-  .hslide-cover .cover-top { position:relative; z-index:2; font-size:22px; letter-spacing:0.4em; color:${accent}; font-weight:700; margin-bottom:48px; }
-  .hslide-cover .cover-hook { position:relative; z-index:2; font-size:38px; font-weight:600; color:rgba(255,255,255,0.86);
-                              letter-spacing:-0.01em; margin-bottom:28px; max-width:880px; line-height:1.35;
-                              word-break:keep-all; text-wrap:balance; }
-  .hslide-cover .cover-main { position:relative; z-index:2; font-size:96px; font-weight:900; line-height:1.14;
-                              color:#fff; letter-spacing:-0.035em; max-width:940px;
+                              background:
+                                linear-gradient(180deg, rgba(10,10,12,0.18) 0%, rgba(10,10,12,0.06) 30%, rgba(10,10,12,0.72) 58%, rgba(10,10,12,0.97) 100%); }
+  .hslide-cover .credit { position:absolute; top:56px; left:56px; z-index:3;
+                          display:inline-flex; flex-direction:column; align-items:flex-start; gap:6px;
+                          background:rgba(12,12,14,0.82);
+                          backdrop-filter:blur(8px);
+                          border:1px solid rgba(255,255,255,0.14);
+                          border-radius:28px;
+                          padding:34px 52px;
+                          color:#fff;
+                          box-shadow:0 18px 50px rgba(0,0,0,0.5);
+                          max-width:880px; }
+  .hslide-cover .credit-name { font-size:74px; font-weight:900; letter-spacing:-0.025em; line-height:1.05; }
+  .hslide-cover .credit-role { font-size:38px; font-weight:700; color:rgba(255,255,255,0.78); letter-spacing:-0.005em; line-height:1.1; }
+  .hslide-cover .cover-inner { position:relative; z-index:2;
+                               display:flex; flex-direction:column; justify-content:flex-end;
+                               height:100%; padding:0 70px 200px 70px; }
+  .hslide-cover .cover-main { font-size:110px; font-weight:900; line-height:1.08;
+                              color:#fff; letter-spacing:-0.04em; max-width:940px;
                               word-break:keep-all; text-wrap:balance;
-                              filter:drop-shadow(0 14px 30px rgba(0,0,0,0.4)); }
-  .hslide-cover .cover-sub { position:relative; z-index:2; margin-top:40px; font-size:30px; color:rgba(255,255,255,0.78); font-weight:500; line-height:1.5; max-width:820px; }
-  .hslide-cover .cover-handle { position:absolute; bottom:60px; left:0; right:0; text-align:center; z-index:2;
-                                font-size:22px; letter-spacing:0.32em; color:rgba(255,255,255,0.6); font-weight:600; }
+                              text-shadow:0 6px 24px rgba(0,0,0,0.55); }
+  .hslide-cover .cover-main em { font-style:normal;
+                                 background:linear-gradient(180deg,#ffd5a8 0%, ${accent} 100%);
+                                 -webkit-background-clip:text; background-clip:text;
+                                 -webkit-text-fill-color:transparent; }
+  .hslide-cover .cover-accent { display:inline-flex; align-items:center; gap:12px;
+                                margin-top:36px; align-self:flex-start;
+                                font-size:24px; font-weight:800; color:${accent};
+                                letter-spacing:-0.005em;
+                                background:rgba(217,119,87,0.12);
+                                border:1px solid rgba(240,160,107,0.4);
+                                border-radius:999px; padding:12px 22px;
+                                backdrop-filter:blur(6px); }
+  .hslide-cover .cover-accent .dot { width:8px; height:8px; border-radius:50%;
+                                     background:${accent};
+                                     box-shadow:0 0 12px rgba(240,160,107,0.9); }
+  .hslide-cover .cover-handle { position:absolute; bottom:70px; left:0; right:0; text-align:center; z-index:3;
+                                font-size:24px; letter-spacing:0.22em; color:rgba(255,255,255,0.7); font-weight:600; }
 
   /* ── BODY ── */
   .hslide-body { background:#fdfdfd; color:#1c1c1f; }
