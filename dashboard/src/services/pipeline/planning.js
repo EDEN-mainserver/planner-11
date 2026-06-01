@@ -93,8 +93,8 @@ ${slideCount}장 카드뉴스 기획서를 JSON으로 작성해줘:
       "part": "표지|본문|마무리",
       "headline": "표지(part=표지): 줄바꿈(\\n)으로 2~3줄의 메인 카피. 마지막 줄이 핵심 키워드/임팩트(자동으로 골드 강조됨). 전체 의미는 ≤30자 내 완결. 주제어(예: Claude, ChatGPT 등)를 자연스럽게 1회 포함해 카피만 봐도 주제 인지 가능하게 — 단 브랜드명·계정명(CLAUDEMASTER 등)은 절대 금지. 본문·마무리는 한 문장 카피 1~1.5문장(30~55자). 모두 타겟의 결핍을 자극. 예: \"Claude 결제하고\\n검은 화면에서\\n멈춰있나요?\"",
       "body": "표지(part=표지)는 메인 카피 아래 작은 액센트 핀으로 표시되는 짧은 약속·유도 1줄(≤25자, 행동 유도/구체 수치). 예: \"딸깍 3번이면 코딩이 시작됩니다\", \"90%가 절반도 못 쓰고 있습니다\". 본문은 줄바꿈(\\n)으로 4~6개 항목, 각 항목 마침표·물음표·느낌표로 끝나는 완결된 한 문장, 한 줄 20~40자, 전체 150~280자. 마무리는 2~3문장 자연스러운 단락.",
-      "personName": "표지(part=표지)에만 사용(다른 슬라이드는 빈 문자열). 주제와 권위가 직결되는 공인 이름(예: \"Mike Krieger\", \"Boris Cherny\", \"Dario Amodei\"). 주제의 결정적 인물이 명확할 때만 채우고, 없으면 빈 문자열로 둘 것.",
-      "personRole": "표지에만 사용. 인물의 직책·소속을 짧게(예: \"Anthropic CPO · 인스타그램 창업자\", \"Claude Code 만든 사람\"). personName이 빈 문자열이면 이것도 빈 문자열.",
+      "personName": "표지(part=표지)에만 사용(다른 슬라이드는 빈 문자열). **기본값은 '인물 매칭 시도'** — 주제의 핵심 권위자 공인 1명을 적극 추천. 매번 기획 각도에 맞춰 다른 인물 선정(같은 주제군이라도 동일 인물 반복 금지). 예: Claude 활용/Code 깊이 = Boris Cherny(Code 리드) 또는 Mike Krieger(CPO, Instagram 창업자) / Claude 회사 비전 = Dario Amodei(CEO) / ChatGPT/OpenAI = Sam Altman / 디자인 = 분야 대표 디자이너. 정말 매칭이 어색한 일반 자기계발/생활 주제일 때만 빈 문자열.",
+      "personRole": "표지에만 사용. 인물의 직책·소속을 짧고 한국 독자 친화적으로(예: \"Anthropic CPO · 인스타그램 창업자\", \"Claude Code 만든 사람\", \"OpenAI CEO\"). personName이 빈 문자열이면 이것도 빈 문자열.",
       "imagePrompt": "영어로 이미지 설명, 사실적 사진 스타일, no text, no watermark, 인스타 카드뉴스 배경용 (1080x1350). 표지(part=표지)는 personName이 채워졌다면 그 인물의 인물 사진 컨셉(\"editorial portrait of {Person}, looking off-camera, soft lighting\")으로, 비어있다면 일반 분위기 이미지."
     }
   ]

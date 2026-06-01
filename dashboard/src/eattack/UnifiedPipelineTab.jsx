@@ -220,6 +220,7 @@ export default function UnifiedPipelineTab() {
 
   // HIGHEST 전용 자동 이미지 생성 — slide별 imagePrompt를 batch 호출.
   // 모든 슬라이드 완료 후 step="images" 화면에서 사용자가 결과 확인 → "카드 조립 →" 클릭.
+  // 표지(part=표지) + personName 채워진 슬라이드는 Imagen 호출 스킵 — 사용자가 실인물 사진 URL을 직접 붙여넣어야 하므로 추상 AI 이미지로 덮어쓰지 않음.
   const startImages = () =>
     run(async () => {
       setStep("images");
@@ -228,9 +229,13 @@ export default function UnifiedPipelineTab() {
       setImages([...results]);
       setImgProg({ done: 0, total: slides.length });
 
+      const shouldSkip = (s) => s.part === "표지" && String(s.personName || "").trim().length > 0;
+
       for (let i = 0; i < slides.length; i += BATCH_SIZE) {
         const batch = slides.slice(i, Math.min(i + BATCH_SIZE, slides.length));
-        const settled = await Promise.allSettled(batch.map((s) => generateOneImage(s.imagePrompt)));
+        const settled = await Promise.allSettled(
+          batch.map((s) => (shouldSkip(s) ? Promise.resolve(null) : generateOneImage(s.imagePrompt)))
+        );
         settled.forEach((r, j) => {
           results[i + j] = r.status === "fulfilled" ? r.value : null;
         });
