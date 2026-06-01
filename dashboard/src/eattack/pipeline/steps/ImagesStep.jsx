@@ -44,6 +44,8 @@ export default function ImagesStep({
           const isDone = i < imgProg.done;
           const isCurrent =
             running && !isDone && i >= imgProg.done && i < imgProg.done + batchSize;
+          // 표지 + personName 있는 슬라이드는 자동 생성 스킵 — 사용자가 AssemblyStep에서 실인물 사진 URL 직접 입력
+          const isSkipped = s.part === "표지" && String(s.personName || "").trim().length > 0;
           return (
             <div
               key={i}
@@ -55,9 +57,19 @@ export default function ImagesStep({
               ) : (
                 <div
                   className={`w-full h-full flex flex-col items-center justify-center gap-1 transition-colors
-                  ${isCurrent ? "bg-violet-50 animate-pulse" : isDone && !images[i] ? "bg-red-50" : "bg-gray-50"}`}
+                  ${isSkipped ? "bg-pink-50 border border-pink-200" : isCurrent ? "bg-violet-50 animate-pulse" : isDone && !images[i] ? "bg-red-50" : "bg-gray-50"}`}
                 >
-                  {isCurrent ? (
+                  {isSkipped ? (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-pink-400">
+                        <circle cx="12" cy="8" r="4"/>
+                        <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+                      </svg>
+                      <span className="text-[10px] text-pink-600 text-center px-1 font-semibold leading-tight">
+                        인물 사진<br/>편집에서 URL 입력
+                      </span>
+                    </>
+                  ) : isCurrent ? (
                     <svg
                       className="animate-spin text-violet-400"
                       xmlns="http://www.w3.org/2000/svg"
