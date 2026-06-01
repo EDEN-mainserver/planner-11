@@ -170,6 +170,8 @@ export default function UnifiedPipelineTab() {
       body: slide.body || "",
       imagePrompt: slide.imagePrompt,
       imageUrl: imageList?.[i] || null,
+      personName: slide.personName || "",
+      personRole: slide.personRole || "",
       color1,
       color2,
     }));

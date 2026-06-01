@@ -138,6 +138,24 @@ export default function PlanningStep({
                     placeholder="이미지 프롬프트 (영어)"
                     className="w-full text-gray-400 italic text-[10px] bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-violet-400 focus:outline-none px-0 py-0.5 transition-colors"
                   />
+                  {s.part === "표지" && (
+                    <>
+                      <input
+                        type="text"
+                        value={s.personName || ""}
+                        onChange={(e) => updateSlide?.(i, "personName", e.target.value)}
+                        placeholder="인물 이름 (옵션 — 예: Mike Krieger)"
+                        className="w-full text-pink-700 text-[11px] font-semibold bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-pink-400 focus:outline-none px-0 py-0.5 transition-colors"
+                      />
+                      <input
+                        type="text"
+                        value={s.personRole || ""}
+                        onChange={(e) => updateSlide?.(i, "personRole", e.target.value)}
+                        placeholder="인물 직책 (옵션 — 예: Anthropic CPO · 인스타그램 창업자)"
+                        className="w-full text-pink-600 text-[10px] bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-pink-400 focus:outline-none px-0 py-0.5 transition-colors"
+                      />
+                    </>
+                  )}
                 </div>
               </div>
             ))}

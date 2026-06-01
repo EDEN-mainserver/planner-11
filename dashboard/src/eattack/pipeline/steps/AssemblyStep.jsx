@@ -98,9 +98,34 @@ export default function AssemblyStep({
               type="text"
               value={card.body}
               onChange={(e) => updateCard(i, "body", e.target.value)}
-              placeholder="본문 (선택)"
+              placeholder={card.part === "표지" ? "액센트 핀 (≤25자, 짧은 약속/유도)" : "본문 (선택)"}
               className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-violet-400 bg-white"
             />
+            {card.part === "표지" && (
+              <>
+                <input
+                  type="text"
+                  value={card.personName || ""}
+                  onChange={(e) => updateCard(i, "personName", e.target.value)}
+                  placeholder="인물 이름 (옵션 — 예: Mike Krieger)"
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-pink-400 bg-white"
+                />
+                <input
+                  type="text"
+                  value={card.personRole || ""}
+                  onChange={(e) => updateCard(i, "personRole", e.target.value)}
+                  placeholder="인물 직책 (옵션 — 예: Anthropic CPO · 인스타그램 창업자)"
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-pink-400 bg-white"
+                />
+                <input
+                  type="text"
+                  value={card.imageUrl || ""}
+                  onChange={(e) => updateCard(i, "imageUrl", e.target.value)}
+                  placeholder="인물 사진 URL (옵션 — 직접 붙여넣기)"
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-pink-400 bg-white"
+                />
+              </>
+            )}
           </div>
         ))}
       </div>
