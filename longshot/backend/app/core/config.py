@@ -40,14 +40,6 @@ class Settings(BaseSettings):
     silence_threshold_db: float = -35.0 # 무음 판별 임계값 (dB)
     silence_min_duration: float = 0.5   # 무음 최소 길이 (초)
 
-    # 에덴 아웃리치
-    supabase_service_role_key: str = ""  # 백엔드 전용 (RLS 우회)
-    anthropic_api_key: str = ""
-    gmail_sender: str = "EDEN@teamedenmarketing.com"
-    gmail_app_password: str = ""
-    vercel_public_url: str = "https://longshot.vercel.app"  # 수신거부 링크 베이스
-    outreach_playwright_headless: bool = False  # CAPTCHA 회피용 기본값 headed
-
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     def ensure_dirs(self) -> None:
