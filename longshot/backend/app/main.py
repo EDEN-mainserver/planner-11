@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from app.core.config import settings
-from app.api import health, projects, shorts
+from app.api import health, projects, shorts, outreach
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,3 +38,4 @@ app.mount("/static/outputs", StaticFiles(directory=str(outputs_path)), name="out
 app.include_router(health.router, tags=["health"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(shorts.router, prefix="/api/shorts", tags=["shorts"])
+app.include_router(outreach.router, prefix="/api/outreach", tags=["outreach"])

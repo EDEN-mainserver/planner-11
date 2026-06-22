@@ -24,3 +24,12 @@ passlib[bcrypt]>=1.7.4
 # 작업 큐
 celery[redis]>=5.4.0
 redis>=5.0.0
+
+# 에덴 아웃리치
+playwright>=1.48.0
+readability-lxml>=0.8.1
+langdetect>=1.0.9
+croniter>=2.0.0
+anthropic>=0.34.0
+tldextract>=5.1.0
+beautifulsoup4>=4.12.0
