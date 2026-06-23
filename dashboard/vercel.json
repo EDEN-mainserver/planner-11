@@ -69,7 +69,11 @@
     "api/insights-refresh.js":    { "maxDuration": 300, "memory": 512 },
     "api/external-trending-refresh.js": { "maxDuration": 300, "memory": 1024 },
     "api/external-trending-ingest.js":  { "maxDuration": 30, "memory": 256 },
-    "api/metrics-summary.js":           { "maxDuration": 30, "memory": 512 }
+    "api/metrics-summary.js":           { "maxDuration": 30, "memory": 512 },
+    "api/email-attack/run.js":          { "maxDuration": 300, "memory": 1024 },
+    "api/email-attack/status.js":       { "maxDuration": 15, "memory": 256 },
+    "api/email-attack/jobs.js":         { "maxDuration": 15, "memory": 256 },
+    "api/email-attack/settings.js":     { "maxDuration": 15, "memory": 256 }
   },
   "crons": [
     {

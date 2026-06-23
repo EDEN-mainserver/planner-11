@@ -6,6 +6,7 @@ import ImagePage from "./ImagePage";
 import VideoPage from "./VideoPage";
 import IbossPage from "./IbossPage";
 import FullAutoPage from "./FullAutoPage";
+import EmailAttackPage from "./email-attack/EmailAttackPage";
 import EAttackAssistantDock from "./EAttackAssistantDock";
 import { emitEAttackContext } from "./eattackContext";
 
@@ -65,6 +66,18 @@ const CONTENT_TYPES = [
     ),
     gradient: "from-orange-500 to-amber-500",
     description: "크롤링부터 글 생성·포스팅까지 전 과정을 자동으로 실행합니다",
+  },
+  {
+    key: "emailAttack",
+    label: "E-MAIL Attack",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+      </svg>
+    ),
+    gradient: "from-amber-400 to-orange-500",
+    description: "키워드 1개로 영업 타겟 브랜드의 이메일·홈페이지·상호를 자동 발굴합니다",
   },
 ];
 
@@ -161,6 +174,7 @@ export default function EAttackPage() {
     video: "영상",
     fullAuto: "풀가동화",
     iboss: "아이보스",
+    emailAttack: "E-MAIL Attack",
   };
 
   // 콘텐츠 타입 클릭
@@ -175,6 +189,8 @@ export default function EAttackPage() {
       setDepth("video");
     } else if (type.key === "fullAuto") {
       setDepth("fullAuto");
+    } else if (type.key === "emailAttack") {
+      setDepth("emailAttack");
     }
   };
 
@@ -234,6 +250,8 @@ export default function EAttackPage() {
     pageContent = <VideoPage onBack={() => setDepth("root")} />;
   } else if (depth === "fullAuto") {
     pageContent = <FullAutoPage onBack={() => setDepth("root")} />;
+  } else if (depth === "emailAttack") {
+    pageContent = <EmailAttackPage onBack={() => setDepth("root")} />;
   } else {
     pageContent = (
       <div className="max-w-4xl mx-auto px-6 sm:px-10 py-8 sm:py-12">
