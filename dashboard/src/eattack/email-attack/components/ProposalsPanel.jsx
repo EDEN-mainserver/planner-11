@@ -158,12 +158,14 @@ export default function ProposalsPanel({ jobId, onClose }) {
           ) : (
             <>
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="text-xs text-gray-500">
-                  → <strong className="text-gray-900">{selected.recipient_email}</strong>
-                  <span className="ml-2 px-1.5 py-0.5 bg-gray-100 rounded text-[10px]">
+                <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+                  <span>→ <strong className="text-gray-900">{selected.recipient_email}</strong></span>
+                  <span className="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] uppercase tracking-wide">
                     {selected.language}
                   </span>
-                  <span className="ml-2 text-gray-400">{selected.model}</span>
+                  <span className="px-1.5 py-0.5 bg-orange-50 text-orange-700 rounded text-[10px]">
+                    {selected.model}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-1.5 text-xs cursor-pointer">
