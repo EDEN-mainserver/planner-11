@@ -1,20 +1,30 @@
-// POST /api/email-attack/run
-// 키워드 1개 → 유관 키워드 자동 확장 → 구글+네이버 검색 → 이메일 추출 → ea_results 저장
+// E-MAIL Attack 통합 라우터
+// - Vercel 함수 개수 절약을 위해 4개 endpoint를 1개로 통합
+// - fn query parameter (또는 body.fn)로 분기:
+//   ?fn=run       (POST)   → 키워드 → 풀 파이프라인 실행
+//   ?fn=status    (GET)    → 작업 진행상황 + 결과
+//   ?fn=jobs      (GET)    → 작업 히스토리
+//   ?fn=jobs      (DELETE) → 작업 삭제 (id query)
+//   ?fn=settings  (GET)    → 설정 전체
+//   ?fn=settings  (PATCH)  → 설정 1건 저장
 //
-// 입력: { keyword, sources: ['google','naver'], target_count: 20 }
-// 출력: { job_id, results: [...] }
-//
-// maxDuration: 300초 (vercel.json에서 설정)
-// 5분 안에 끝나는 게 일반적 (병렬 처리 덕분)
+// vercel.json에서 maxDuration 300 (run이 가장 오래 걸림)
 
 import { db } from "./_ea-lib/supabase.js";
 import { searchGoogle } from "./_ea-lib/search-google.js";
 import { searchNaver } from "./_ea-lib/search-naver.js";
 import { extractFromDomain } from "./_ea-lib/extract.js";
-import { domainOf } from "./_ea-lib/blocklist.js";
 
 
-// 유관 키워드 자동 확장 (간단한 휴리스틱)
+// ─── 공통 ───
+function setCors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+
+// ─── /run 핸들러 ───
 function expandKeywords(base) {
   const variants = new Set([base]);
   const suffixes = ["브랜드", "추천", "공식몰", "자사몰"];
@@ -24,7 +34,6 @@ function expandKeywords(base) {
   return Array.from(variants).slice(0, 5);
 }
 
-
 async function updateJob(jobId, patch) {
   await db().from("ea_jobs").update({
     ...patch,
@@ -32,17 +41,10 @@ async function updateJob(jobId, patch) {
   }).eq("id", jobId);
 }
 
-
-export default async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
+async function runHandler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
-
   const { keyword, sources = ["google", "naver"], target_count = 20 } = req.body || {};
   if (!keyword || typeof keyword !== "string") {
     return res.status(400).json({ error: "keyword 필수" });
@@ -50,7 +52,7 @@ export default async function handler(req, res) {
 
   const supabase = db();
 
-  // 1. job 생성
+  // job 생성
   const { data: jobRow, error: jobErr } = await supabase
     .from("ea_jobs")
     .insert({
@@ -68,15 +70,14 @@ export default async function handler(req, res) {
   const jobId = jobRow.id;
 
   try {
-    // 2. 유관 키워드 확장
     const keywords = expandKeywords(keyword.trim());
     await updateJob(jobId, {
       related_keywords: keywords,
       progress: { phase: "search", current: 0, total: keywords.length },
     });
 
-    // 3. 검색 (구글 + 네이버 병렬, 키워드별 순차)
-    const allCandidates = new Map(); // domain → {url, title, source, source_keyword}
+    // 키워드별 구글+네이버 병렬 검색
+    const allCandidates = new Map();
     for (let i = 0; i < keywords.length; i++) {
       const kw = keywords[i];
       const tasks = [];
@@ -106,16 +107,12 @@ export default async function handler(req, res) {
     }
 
     const candidates = Array.from(allCandidates.values());
-
     if (candidates.length === 0) {
-      await updateJob(jobId, {
-        status: "done",
-        progress: { phase: "empty", current: 0, total: 0 },
-      });
+      await updateJob(jobId, { status: "done", progress: { phase: "empty", current: 0, total: 0 } });
       return res.status(200).json({ job_id: jobId, results: [], message: "검색 결과 0건" });
     }
 
-    // 4. 이메일 추출 (병렬, target_count * 3 만큼만 시도)
+    // 이메일 추출 (병렬)
     const maxToTry = Math.min(candidates.length, target_count * 3);
     const toExtract = candidates.slice(0, maxToTry);
     await updateJob(jobId, {
@@ -130,7 +127,7 @@ export default async function handler(req, res) {
     );
     const extracts = await Promise.all(extractTasks);
 
-    // 5. 결과 정리 + 이메일 있는 것만 저장
+    // 결과 저장
     const rows = [];
     for (let i = 0; i < extracts.length; i++) {
       const ext = extracts[i];
@@ -152,9 +149,7 @@ export default async function handler(req, res) {
 
     if (rows.length > 0) {
       const { error: insErr } = await supabase.from("ea_results").insert(rows);
-      if (insErr) {
-        console.error("[ea_results insert]", insErr);
-      }
+      if (insErr) console.error("[ea_results insert]", insErr);
     }
 
     await updateJob(jobId, {
@@ -171,10 +166,92 @@ export default async function handler(req, res) {
     });
   } catch (e) {
     console.error("[ea/run error]", e);
-    await updateJob(jobId, {
-      status: "failed",
-      error: `${e.name}: ${e.message}`,
-    });
+    await updateJob(jobId, { status: "failed", error: `${e.name}: ${e.message}` });
     return res.status(500).json({ job_id: jobId, error: e.message });
+  }
+}
+
+
+// ─── /status 핸들러 ───
+async function statusHandler(req, res) {
+  if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
+  const jobId = req.query.job_id;
+  if (!jobId) return res.status(400).json({ error: "job_id 필수" });
+
+  const supabase = db();
+  const { data: job } = await supabase
+    .from("ea_jobs").select("*").eq("id", jobId).maybeSingle();
+  if (!job) return res.status(404).json({ error: "job not found" });
+
+  const { data: results } = await supabase
+    .from("ea_results").select("*").eq("job_id", jobId)
+    .order("created_at", { ascending: true });
+
+  return res.status(200).json({ job, results: results || [] });
+}
+
+
+// ─── /jobs 핸들러 ───
+async function jobsHandler(req, res) {
+  const supabase = db();
+
+  if (req.method === "GET") {
+    const { data, error } = await supabase
+      .from("ea_jobs")
+      .select("id, keyword, status, progress, created_at, related_keywords")
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json({ jobs: data || [] });
+  }
+  if (req.method === "DELETE") {
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: "id 필수" });
+    await supabase.from("ea_jobs").delete().eq("id", id);
+    return res.status(200).json({ ok: true });
+  }
+  return res.status(405).json({ error: "Method Not Allowed" });
+}
+
+
+// ─── /settings 핸들러 ───
+async function settingsHandler(req, res) {
+  const supabase = db();
+
+  if (req.method === "GET") {
+    const { data, error } = await supabase.from("ea_settings").select("*");
+    if (error) return res.status(500).json({ error: error.message });
+    const map = {};
+    for (const r of data || []) map[r.key] = r.value;
+    return res.status(200).json(map);
+  }
+  if (req.method === "PATCH") {
+    const { key, value } = req.body || {};
+    if (!key) return res.status(400).json({ error: "key 필수" });
+    const { error } = await supabase
+      .from("ea_settings")
+      .upsert({ key, value, updated_at: new Date().toISOString() });
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json({ ok: true });
+  }
+  return res.status(405).json({ error: "Method Not Allowed" });
+}
+
+
+// ─── 메인 dispatcher ───
+export default async function handler(req, res) {
+  setCors(res);
+  if (req.method === "OPTIONS") return res.status(200).end();
+
+  const fn = req.query.fn || (req.body && req.body.fn);
+  switch (fn) {
+    case "run":      return runHandler(req, res);
+    case "status":   return statusHandler(req, res);
+    case "jobs":     return jobsHandler(req, res);
+    case "settings": return settingsHandler(req, res);
+    default:
+      return res.status(400).json({
+        error: "fn 필수: run | status | jobs | settings",
+      });
   }
 }
