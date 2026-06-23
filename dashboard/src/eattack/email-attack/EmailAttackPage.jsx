@@ -31,6 +31,7 @@ export default function EmailAttackPage({ onBack }) {
   const [myInfoOpen, setMyInfoOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genStatus, setGenStatus] = useState("");
+  const [genErrors, setGenErrors] = useState([]);
   const [showProposals, setShowProposals] = useState(false);
 
   // 작업 히스토리 새로고침
@@ -112,7 +113,8 @@ export default function EmailAttackPage({ onBack }) {
     setMyInfoOpen(false);
     if (!currentJobId) return;
     setGenerating(true);
-    setGenStatus(`Claude로 ${results.length}개 제안서 생성 중... (1~3분)`);
+    setGenErrors([]);
+    setGenStatus(`AI로 ${results.length}개 제안서 생성 중... (1~3분)`);
     try {
       const result = await emailAttackApi.generateProposals({
         jobId: currentJobId,
@@ -120,6 +122,7 @@ export default function EmailAttackPage({ onBack }) {
         onlyMissing: true,
       });
       const errCount = (result.errors || []).length;
+      setGenErrors(result.errors || []);
       setGenStatus(
         `완료: 생성 ${result.generated}건 · 스킵 ${result.skipped}건` +
           (errCount > 0 ? ` · 실패 ${errCount}건` : "")
@@ -127,6 +130,7 @@ export default function EmailAttackPage({ onBack }) {
       setShowProposals(true);
     } catch (e) {
       setGenStatus("실패: " + e.message);
+      setGenErrors([]);
     } finally {
       setGenerating(false);
     }
@@ -208,6 +212,16 @@ export default function EmailAttackPage({ onBack }) {
             >
               {generating && <span className="mr-2 animate-pulse">●</span>}
               {genStatus}
+              {genErrors.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs">
+                  {genErrors.slice(0, 3).map((err, idx) => (
+                    <li key={`${err.domain || "error"}-${idx}`}>
+                      {err.domain && <strong>{err.domain}: </strong>}
+                      {err.error}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

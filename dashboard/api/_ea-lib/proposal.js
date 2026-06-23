@@ -103,7 +103,7 @@ async function callGemini({ system, user }) {
           contents: [{ role: "user", parts: [{ text: user }] }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1600,
+            maxOutputTokens: 4096,
             responseMimeType: "application/json",
           },
         }),
@@ -142,7 +142,7 @@ async function callOpenAI({ system, user }) {
     body: JSON.stringify({
       model: OPENAI_MODEL,
       temperature: 0.7,
-      max_tokens: 1500,
+      max_tokens: 2500,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
@@ -198,7 +198,12 @@ async function generateText({ system, user }) {
   const errors = [];
   for (const call of [callGemini, callOpenAI, callClaude]) {
     try {
-      return await call({ system, user });
+      const result = await call({ system, user });
+      const parsed = extractJson(result.text);
+      if (!parsed || !parsed.subject || !parsed.body_html) {
+        throw new Error(`${result.model} 응답 파싱 실패: ${result.text.slice(0, 300)}`);
+      }
+      return { ...result, parsed };
     } catch (e) {
       errors.push(e.message);
     }
@@ -212,11 +217,7 @@ export async function generateOne({ recipient, sender }) {
   const lang = recipient.language === "en" ? "en" : "ko";
   const system = lang === "ko" ? SYSTEM_KO : SYSTEM_EN;
   const user = buildUserPrompt({ recipient, sender, lang });
-  const { text, model } = await generateText({ system, user });
-  const parsed = extractJson(text);
-  if (!parsed || !parsed.subject || !parsed.body_html) {
-    throw new Error(`AI 응답 파싱 실패: ${text.slice(0, 300)}`);
-  }
+  const { model, parsed } = await generateText({ system, user });
 
   return {
     subject: parsed.subject,
