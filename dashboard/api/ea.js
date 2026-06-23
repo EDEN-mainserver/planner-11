@@ -14,6 +14,7 @@ import { db } from "./_ea-lib/supabase.js";
 import { searchGoogle } from "./_ea-lib/search-google.js";
 import { searchNaver } from "./_ea-lib/search-naver.js";
 import { extractFromDomain } from "./_ea-lib/extract.js";
+import { generateOne } from "./_ea-lib/proposal.js";
 
 
 // ─── 공통 ───
@@ -140,6 +141,7 @@ async function runHandler(req, res) {
         brand_name: ext.brand_name || cand.title || cand.domain,
         emails: ext.emails,
         language: ext.language || "ko",
+        summary: ext.summary || "",
         source: cand.source,
         source_keyword: cand.source_keyword,
         rank: cand.rank || null,
@@ -238,6 +240,136 @@ async function settingsHandler(req, res) {
 }
 
 
+// ─── /generate 핸들러 ─── (job 1개의 results 전체에 대해 일괄 제안서 생성)
+async function generateHandler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+  const { job_id, sender = {}, only_missing = true, concurrency = 4 } = req.body || {};
+  if (!job_id) return res.status(400).json({ error: "job_id 필수" });
+
+  const supabase = db();
+
+  // 결과 가져오기 (excluded 제외)
+  const { data: results, error: rErr } = await supabase
+    .from("ea_results")
+    .select("*")
+    .eq("job_id", job_id)
+    .eq("excluded", false);
+  if (rErr) return res.status(500).json({ error: rErr.message });
+  if (!results || results.length === 0) {
+    return res.status(200).json({ generated: 0, skipped: 0, errors: [] });
+  }
+
+  // 이미 만든 제안서 (only_missing=true면 스킵)
+  let existingByResult = new Set();
+  if (only_missing) {
+    const ids = results.map((r) => r.id);
+    const { data: existing } = await supabase
+      .from("ea_proposals")
+      .select("result_id")
+      .in("result_id", ids);
+    existingByResult = new Set((existing || []).map((p) => p.result_id));
+  }
+
+  const toGenerate = results.filter((r) => !existingByResult.has(r.id));
+
+  // 병렬 호출 (concurrency 제한)
+  let generated = 0;
+  const errors = [];
+  const queue = [...toGenerate];
+
+  async function worker() {
+    while (queue.length > 0) {
+      const r = queue.shift();
+      if (!r) return;
+      try {
+        const p = await generateOne({ recipient: r, sender });
+        const recipient_email = (r.emails || [])[0] || "";
+        const { error: insErr } = await supabase.from("ea_proposals").insert({
+          result_id: r.id,
+          recipient_email,
+          subject: p.subject,
+          body_html: p.body_html,
+          body_text: p.body_text,
+          language: p.language,
+          model: p.model,
+        });
+        if (insErr) {
+          errors.push({ domain: r.domain, error: insErr.message });
+        } else {
+          generated++;
+        }
+      } catch (e) {
+        errors.push({ domain: r.domain, error: e.message });
+      }
+    }
+  }
+
+  const n = Math.max(1, Math.min(8, Number(concurrency) || 4));
+  await Promise.all(Array.from({ length: n }, () => worker()));
+
+  return res.status(200).json({
+    generated,
+    skipped: results.length - toGenerate.length,
+    errors,
+    total: results.length,
+  });
+}
+
+
+// ─── /proposals 핸들러 ─── (job의 제안서 목록)
+async function proposalsHandler(req, res) {
+  if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
+  const jobId = req.query.job_id;
+  if (!jobId) return res.status(400).json({ error: "job_id 필수" });
+
+  // result_id로 join 해서 가져오기 (브랜드명 같이)
+  const { data: results } = await db()
+    .from("ea_results")
+    .select("id, domain, brand_name, homepage_url, emails")
+    .eq("job_id", jobId);
+  const resultMap = new Map((results || []).map((r) => [r.id, r]));
+
+  const { data: proposals, error } = await db()
+    .from("ea_proposals")
+    .select("*")
+    .in("result_id", Array.from(resultMap.keys()))
+    .order("created_at", { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+
+  // 결합
+  const merged = (proposals || []).map((p) => ({
+    ...p,
+    result: resultMap.get(p.result_id) || null,
+  }));
+
+  return res.status(200).json({ proposals: merged });
+}
+
+
+// ─── /update_proposal 핸들러 ─── (제안서 수정 저장)
+async function updateProposalHandler(req, res) {
+  if (req.method !== "PATCH") return res.status(405).json({ error: "Method Not Allowed" });
+  const { id, subject, body_html, body_text, approved } = req.body || {};
+  if (!id) return res.status(400).json({ error: "id 필수" });
+
+  const patch = {};
+  if (subject !== undefined) patch.subject = subject;
+  if (body_html !== undefined) patch.body_html = body_html;
+  if (body_text !== undefined) patch.body_text = body_text;
+  if (approved !== undefined) patch.approved = approved;
+  if (Object.keys(patch).length === 0) return res.status(400).json({ error: "수정 필드 없음" });
+
+  const { data, error } = await db()
+    .from("ea_proposals")
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(200).json({ ok: true, proposal: data });
+}
+
+
 // ─── 메인 dispatcher ───
 export default async function handler(req, res) {
   setCors(res);
@@ -245,13 +377,16 @@ export default async function handler(req, res) {
 
   const fn = req.query.fn || (req.body && req.body.fn);
   switch (fn) {
-    case "run":      return runHandler(req, res);
-    case "status":   return statusHandler(req, res);
-    case "jobs":     return jobsHandler(req, res);
-    case "settings": return settingsHandler(req, res);
+    case "run":              return runHandler(req, res);
+    case "status":           return statusHandler(req, res);
+    case "jobs":             return jobsHandler(req, res);
+    case "settings":         return settingsHandler(req, res);
+    case "generate":         return generateHandler(req, res);
+    case "proposals":        return proposalsHandler(req, res);
+    case "update_proposal":  return updateProposalHandler(req, res);
     default:
       return res.status(400).json({
-        error: "fn 필수: run | status | jobs | settings",
+        error: "fn 필수: run | status | jobs | settings | generate | proposals | update_proposal",
       });
   }
 }

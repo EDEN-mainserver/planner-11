@@ -38,4 +38,26 @@ export const emailAttackApi = {
       method: "PATCH",
       body: JSON.stringify({ key, value }),
     }),
+
+  // 제안서 일괄 생성 (Claude)
+  generateProposals: ({ jobId, sender, onlyMissing = true, concurrency = 4 }) =>
+    call("fn=generate", {
+      method: "POST",
+      body: JSON.stringify({
+        job_id: jobId,
+        sender,
+        only_missing: onlyMissing,
+        concurrency,
+      }),
+    }),
+
+  // 제안서 목록 조회
+  listProposals: (jobId) => call(`fn=proposals&job_id=${encodeURIComponent(jobId)}`),
+
+  // 제안서 수정 저장
+  updateProposal: ({ id, subject, body_html, body_text, approved }) =>
+    call("fn=update_proposal", {
+      method: "PATCH",
+      body: JSON.stringify({ id, subject, body_html, body_text, approved }),
+    }),
 };

@@ -5,7 +5,7 @@ const SOURCE_LABEL = {
   naver: { label: "네이버", color: "bg-green-50 text-green-700" },
 };
 
-export default function ResultsTable({ results }) {
+export default function ResultsTable({ results, onGenerateProposals }) {
   if (!results || results.length === 0) {
     return (
       <div className="bg-white border border-dashed border-gray-300 rounded-xl p-8 text-center">
@@ -44,11 +44,11 @@ export default function ResultsTable({ results }) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50 flex-wrap gap-2">
         <h3 className="text-sm font-semibold text-gray-900">
           발굴 결과 <span className="text-gray-500">({results.length}건)</span>
         </h3>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={copyAllEmails}
             className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-white"
@@ -57,10 +57,18 @@ export default function ResultsTable({ results }) {
           </button>
           <button
             onClick={downloadCsv}
-            className="text-xs px-3 py-1.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+            className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-white"
           >
             CSV 다운로드
           </button>
+          {onGenerateProposals && (
+            <button
+              onClick={onGenerateProposals}
+              className="text-xs px-3 py-1.5 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded-lg hover:shadow-md font-semibold"
+            >
+              ✉️ 아래 DB로 제안서 생성하기
+            </button>
+          )}
         </div>
       </div>
 

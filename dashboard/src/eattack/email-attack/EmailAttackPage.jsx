@@ -12,6 +12,8 @@ import KeywordInput from "./components/KeywordInput";
 import JobProgress from "./components/JobProgress";
 import ResultsTable from "./components/ResultsTable";
 import JobHistory from "./components/JobHistory";
+import MyInfoModal from "./components/MyInfoModal";
+import ProposalsPanel from "./components/ProposalsPanel";
 import { emailAttackApi } from "./api/client";
 
 const POLL_INTERVAL_MS = 2000;
@@ -24,6 +26,12 @@ export default function EmailAttackPage({ onBack }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const pollRef = useRef(null);
+
+  // 제안서 생성 관련 상태
+  const [myInfoOpen, setMyInfoOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genStatus, setGenStatus] = useState("");
+  const [showProposals, setShowProposals] = useState(false);
 
   // 작업 히스토리 새로고침
   const refreshJobs = useCallback(async () => {
@@ -99,6 +107,31 @@ export default function EmailAttackPage({ onBack }) {
     loadJob(jobId);
   };
 
+  // 제안서 생성 시작 (모달 → 확인 콜백)
+  const handleGenerateConfirm = async (sender) => {
+    setMyInfoOpen(false);
+    if (!currentJobId) return;
+    setGenerating(true);
+    setGenStatus(`Claude로 ${results.length}개 제안서 생성 중... (1~3분)`);
+    try {
+      const result = await emailAttackApi.generateProposals({
+        jobId: currentJobId,
+        sender,
+        onlyMissing: true,
+      });
+      const errCount = (result.errors || []).length;
+      setGenStatus(
+        `완료: 생성 ${result.generated}건 · 스킵 ${result.skipped}건` +
+          (errCount > 0 ? ` · 실패 ${errCount}건` : "")
+      );
+      setShowProposals(true);
+    } catch (e) {
+      setGenStatus("실패: " + e.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   // 작업 삭제
   const handleDelete = async (jobId) => {
     await emailAttackApi.deleteJob(jobId);
@@ -156,7 +189,34 @@ export default function EmailAttackPage({ onBack }) {
 
           {currentJob && <JobProgress job={currentJob} />}
 
-          <ResultsTable results={results} />
+          <ResultsTable
+            results={results}
+            onGenerateProposals={
+              results.length > 0 && !generating ? () => setMyInfoOpen(true) : null
+            }
+          />
+
+          {(generating || genStatus) && (
+            <div
+              className={`p-4 rounded-xl text-sm ${
+                generating
+                  ? "bg-amber-50 border border-amber-200 text-amber-900"
+                  : genStatus.startsWith("실패")
+                  ? "bg-red-50 border border-red-200 text-red-700"
+                  : "bg-green-50 border border-green-200 text-green-700"
+              }`}
+            >
+              {generating && <span className="mr-2 animate-pulse">●</span>}
+              {genStatus}
+            </div>
+          )}
+
+          {showProposals && currentJobId && (
+            <ProposalsPanel
+              jobId={currentJobId}
+              onClose={() => setShowProposals(false)}
+            />
+          )}
         </div>
 
         {/* 사이드 패널 */}
@@ -169,6 +229,13 @@ export default function EmailAttackPage({ onBack }) {
           />
         </aside>
       </main>
+
+      <MyInfoModal
+        open={myInfoOpen}
+        onClose={() => setMyInfoOpen(false)}
+        onConfirm={handleGenerateConfirm}
+        resultCount={results.length}
+      />
     </div>
   );
 }

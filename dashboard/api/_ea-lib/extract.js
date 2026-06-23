@@ -5,7 +5,7 @@
 
 const COMMON_PATHS = ["", "/contact", "/contact-us", "/about", "/about-us", "/ko", "/en", "/support"];
 
-const EMAIL_REGEX = /(?<![A-Za-z0-9._%+\-])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+const EMAIL_REGEX = /(?<![A-Za-z0-9._%+-])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 const EMAIL_BLOCKLIST = new Set([
   "example@example.com", "your@email.com", "name@email.com",
@@ -106,6 +106,53 @@ function detectLanguage(html) {
 }
 
 
+function decodeEntities(text) {
+  return String(text || "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+
+function cleanText(text, max = 900) {
+  return decodeEntities(text)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+
+function pickMeta(html, name) {
+  const re = new RegExp(`<meta\\s+(?:name|property)=["']${name}["'][^>]*content=["']([^"']+)`, "i");
+  return cleanText((html.match(re) || [])[1] || "", 300);
+}
+
+
+function extractSummary(html) {
+  const desc =
+    pickMeta(html, "description") ||
+    pickMeta(html, "og:description") ||
+    pickMeta(html, "twitter:description");
+  const h1 = cleanText((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1]?.replace(/<[^>]+>/g, " ") || "", 180);
+  const body = cleanText(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+    700
+  );
+
+  return [desc && `소개: ${desc}`, h1 && `대표 문구: ${h1}`, body && `본문 단서: ${body}`]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 1200);
+}
+
+
 // 메인 export: 도메인 1개 → {brand_name, emails, language, homepage_url}
 export async function extractFromDomain(domain) {
   const baseUrl = domain.startsWith("http") ? domain : `https://${domain}`;
@@ -138,6 +185,7 @@ export async function extractFromDomain(domain) {
     homepage_url: baseUrl,
     brand_name: brand,
     language: language || "ko",
+    summary: firstHtml ? extractSummary(firstHtml) : "",
     emails: cleanEmails(allEmails),
   };
 }
