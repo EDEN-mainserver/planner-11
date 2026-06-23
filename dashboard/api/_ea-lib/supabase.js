@@ -2,7 +2,7 @@
 // - 기존 api/_lib/supabaseAdmin.js를 재사용 (싱글톤 캐시 공유)
 // - 별도 import 경로 제공해서 ea 컴포넌트끼리만 묶임
 
-import { getSupabaseAdmin } from "../../_lib/supabaseAdmin.js";
+import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 
 export function db() {
   const client = getSupabaseAdmin();

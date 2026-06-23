@@ -1,7 +1,7 @@
 // GET /api/email-attack/status?job_id=...
 // 작업 진행 상황 + 결과 반환 (대시보드가 폴링)
 
-import { db } from "./_lib/supabase.js";
+import { db } from "./_ea-lib/supabase.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");

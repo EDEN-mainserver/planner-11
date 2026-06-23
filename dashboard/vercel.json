@@ -70,10 +70,10 @@
     "api/external-trending-refresh.js": { "maxDuration": 300, "memory": 1024 },
     "api/external-trending-ingest.js":  { "maxDuration": 30, "memory": 256 },
     "api/metrics-summary.js":           { "maxDuration": 30, "memory": 512 },
-    "api/email-attack/run.js":          { "maxDuration": 300, "memory": 1024 },
-    "api/email-attack/status.js":       { "maxDuration": 15, "memory": 256 },
-    "api/email-attack/jobs.js":         { "maxDuration": 15, "memory": 256 },
-    "api/email-attack/settings.js":     { "maxDuration": 15, "memory": 256 }
+    "api/ea-run.js":                    { "maxDuration": 300, "memory": 1024 },
+    "api/ea-status.js":                 { "maxDuration": 15, "memory": 256 },
+    "api/ea-jobs.js":                   { "maxDuration": 15, "memory": 256 },
+    "api/ea-settings.js":               { "maxDuration": 15, "memory": 256 }
   },
   "crons": [
     {

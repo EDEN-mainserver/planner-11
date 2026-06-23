@@ -7,11 +7,11 @@
 // maxDuration: 300초 (vercel.json에서 설정)
 // 5분 안에 끝나는 게 일반적 (병렬 처리 덕분)
 
-import { db } from "./_lib/supabase.js";
-import { searchGoogle } from "./_lib/search-google.js";
-import { searchNaver } from "./_lib/search-naver.js";
-import { extractFromDomain } from "./_lib/extract.js";
-import { domainOf } from "./_lib/blocklist.js";
+import { db } from "./_ea-lib/supabase.js";
+import { searchGoogle } from "./_ea-lib/search-google.js";
+import { searchNaver } from "./_ea-lib/search-naver.js";
+import { extractFromDomain } from "./_ea-lib/extract.js";
+import { domainOf } from "./_ea-lib/blocklist.js";
 
 
 // 유관 키워드 자동 확장 (간단한 휴리스틱)

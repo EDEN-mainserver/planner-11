@@ -1,7 +1,7 @@
 // GET  /api/email-attack/settings        → 전체 설정 맵
 // PATCH /api/email-attack/settings        → {key, value} 1건 저장
 
-import { db } from "./_lib/supabase.js";
+import { db } from "./_ea-lib/supabase.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");

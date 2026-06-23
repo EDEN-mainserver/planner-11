@@ -1,7 +1,7 @@
 // GET  /api/email-attack/jobs  → 최근 작업 리스트 (히스토리)
 // DELETE /api/email-attack/jobs?id=...  → 작업+결과 삭제
 
-import { db } from "./_lib/supabase.js";
+import { db } from "./_ea-lib/supabase.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
