@@ -2,6 +2,7 @@
 import { useState } from "react";
 import EdenCanvas from "./EdenCanvas";
 import EdenFlowPanel from "./EdenFlowPanel";
+import EmailAttackPage from "./email-attack/EmailAttackPage";
 
 // ── 툴 데이터 ──
 const FREE_TOOLS = [
@@ -79,6 +80,30 @@ const FREE_TOOLS = [
     features: ["PDF·HWP·DOCX 업로드", "서명자 이메일 자동 발송", "필드 드래그 배치", "서명 완료 PDF 다운로드"],
     isInternal: false,
     screenshots: ["esign-1", "esign-2", "esign-3"],
+  },
+  {
+    key: "emailAttack",
+    label: "E-MAIL Attack",
+    category: "영업 자동화",
+    iconBg: "from-amber-400 to-orange-500",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+      </svg>
+    ),
+    description: "키워드 1개로 영업 타겟 브랜드의 이메일·홈페이지·상호를 자동 발굴",
+    longDesc: "E-MAIL Attack은 키워드를 입력하면 구글(SerpAPI)과 네이버(공식 API)에서 영업 타겟이 될 만한 작은 브랜드들을 찾아내 홈페이지 이메일·상호명을 자동으로 수집하는 도구입니다. 매체·포털·대형쇼핑몰은 자동 제외하고, 유관 키워드 4~5개로 자동 확장해 한 번에 20개까지 발굴합니다. CSV 다운로드 + 이메일 일괄 복사 지원.",
+    version: "v1.0",
+    updateDate: "2026-06-23",
+    updateNote: "최초 릴리즈 — 구글·네이버 통합 검색, 매체 자동 필터링, CSV 내보내기",
+    developer: "에덴 에이전트",
+    publisher: "에덴 에이전트",
+    size: "웹 앱 (무료)",
+    replaces: ["Hunter.io 월 $49~", "Apollo.io 월 $59~", "리스트 구매 건당 100원~"],
+    features: ["키워드 → 유관 키워드 자동 확장", "구글·네이버 동시 검색", "매체·포털 자동 제외 (120개+ 도메인)", "이메일 + 상호명 + 홈페이지 추출", "CSV 다운로드", "이메일 일괄 복사"],
+    isInternal: true,
+    screenshots: ["emailattack-1", "emailattack-2", "emailattack-3"],
   },
 ];
 
@@ -222,6 +247,11 @@ export default function MoneyPage({ onBack }) {
   // 에덴플로우는 iframe 임베드
   if (activeTool?.key === "edenflow") {
     return <EdenFlowPanel onBack={() => setActiveTool(null)} />;
+  }
+
+  // E-MAIL Attack
+  if (activeTool?.key === "emailAttack") {
+    return <EmailAttackPage onBack={() => setActiveTool(null)} />;
   }
 
   const filteredTools = FREE_TOOLS.filter(t =>
