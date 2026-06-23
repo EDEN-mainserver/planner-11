@@ -6,6 +6,137 @@
 import { useEffect, useState } from "react";
 import { emailAttackApi } from "../api/client";
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildPreviewDoc(proposal) {
+  const brand = proposal.result?.brand_name || proposal.result?.domain || "제안 대상";
+  const subject = proposal.subject || "제안서";
+  const email = proposal.recipient_email || "";
+  const model = proposal.model || "";
+  const body = proposal.body_html || "";
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #f6f7f9;
+        color: #1f2937;
+        font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      .email {
+        width: min(100%, 720px);
+        margin: 0 auto;
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow: 0 18px 45px rgba(31, 41, 55, 0.08);
+      }
+      .topbar {
+        height: 8px;
+        background: linear-gradient(90deg, #f59e0b, #f97316, #111827);
+      }
+      .header {
+        padding: 24px 28px 18px;
+        border-bottom: 1px solid #eef0f3;
+      }
+      .eyebrow {
+        margin: 0 0 8px;
+        color: #f97316;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0;
+        color: #111827;
+        font-size: 22px;
+        line-height: 1.35;
+        letter-spacing: 0;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: #f3f4f6;
+        color: #4b5563;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .pill.dark {
+        background: #111827;
+        color: #ffffff;
+      }
+      .content {
+        padding: 28px;
+      }
+      .content p {
+        margin: 0 0 15px;
+      }
+      .content p:first-child {
+        font-size: 15px;
+        font-weight: 650;
+        color: #111827;
+      }
+      .content p:last-child {
+        margin-bottom: 0;
+      }
+      .footer {
+        padding: 16px 28px 22px;
+        border-top: 1px solid #eef0f3;
+        background: #fafafa;
+        color: #6b7280;
+        font-size: 12px;
+      }
+      @media (max-width: 560px) {
+        body { padding: 12px; }
+        .header, .content, .footer { padding-left: 18px; padding-right: 18px; }
+        h1 { font-size: 18px; }
+      }
+    </style>
+  </head>
+  <body>
+    <article class="email">
+      <div class="topbar"></div>
+      <header class="header">
+        <p class="eyebrow">Proposal Preview</p>
+        <h1>${escapeHtml(subject)}</h1>
+        <div class="meta">
+          <span class="pill dark">${escapeHtml(brand)}</span>
+          <span class="pill">${escapeHtml(email)}</span>
+          <span class="pill">${escapeHtml(model)}</span>
+        </div>
+      </header>
+      <main class="content">${body}</main>
+      <footer class="footer">발송 전 검토용 디자인 미리보기입니다.</footer>
+    </article>
+  </body>
+</html>`;
+}
+
 export default function ProposalsPanel({ jobId, onClose }) {
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -230,7 +361,7 @@ export default function ProposalsPanel({ jobId, onClose }) {
               {/* 본문 */}
               <div>
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1">
-                  본문 ({editing ? "HTML 직접 편집" : "미리보기"})
+                  본문 ({editing ? "HTML 직접 편집" : "디자인 미리보기"})
                 </label>
                 {editing ? (
                   <textarea
@@ -242,8 +373,8 @@ export default function ProposalsPanel({ jobId, onClose }) {
                 ) : (
                   <iframe
                     title="proposal preview"
-                    srcDoc={`<style>body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;padding:16px;color:#1f2937;line-height:1.6;font-size:14px}p{margin:0 0 12px 0}</style>${selected.body_html}`}
-                    className="w-full h-[440px] border border-gray-200 rounded-lg bg-white"
+                    srcDoc={buildPreviewDoc(selected)}
+                    className="w-full h-[520px] border border-gray-200 rounded-lg bg-gray-50"
                   />
                 )}
               </div>
