@@ -6,6 +6,8 @@
 import { useEffect, useState } from "react";
 import { emailAttackApi } from "../api/client";
 
+const TEST_TO_EMAIL = "EDEN@teamedenmarketing.com";
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -145,6 +147,8 @@ export default function ProposalsPanel({ jobId, onClose }) {
   const [draft, setDraft] = useState({ subject: "", body_html: "" });
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [testSending, setTestSending] = useState(false);
+  const [testMsg, setTestMsg] = useState("");
 
   const refresh = async () => {
     setLoading(true);
@@ -169,6 +173,7 @@ export default function ProposalsPanel({ jobId, onClose }) {
   // 선택 바뀔 때 편집 모드 초기화
   useEffect(() => {
     setEditing(false);
+    setTestMsg("");
     if (selected) {
       setDraft({ subject: selected.subject, body_html: selected.body_html });
     }
@@ -205,6 +210,23 @@ export default function ProposalsPanel({ jobId, onClose }) {
       setProposals((prev) => prev.map((p) => (p.id === proposal.id ? { ...p, ...proposal } : p)));
     } catch (e) {
       alert("저장 실패: " + e.message);
+    }
+  };
+
+  const handleSendTest = async () => {
+    if (!selected || testSending) return;
+    setTestSending(true);
+    setTestMsg("");
+    try {
+      const data = await emailAttackApi.sendTestProposal({
+        id: selected.id,
+        toEmail: TEST_TO_EMAIL,
+      });
+      setTestMsg(`✓ ${data.to_email || TEST_TO_EMAIL}로 테스트 발송됨`);
+    } catch (e) {
+      setTestMsg("발송 실패: " + e.message);
+    } finally {
+      setTestSending(false);
     }
   };
 
@@ -299,6 +321,14 @@ export default function ProposalsPanel({ jobId, onClose }) {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSendTest}
+                    disabled={testSending || editing}
+                    className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50"
+                    title={`DB 이메일이 아닌 ${TEST_TO_EMAIL}로 테스트 발송합니다.`}
+                  >
+                    {testSending ? "발송 중..." : "EDEN 테스트 발송"}
+                  </button>
                   <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                     <input
                       type="checkbox"
@@ -342,6 +372,16 @@ export default function ProposalsPanel({ jobId, onClose }) {
                   {saveMsg}
                 </p>
               )}
+              {testMsg && (
+                <p className={`text-xs ${testMsg.startsWith("✓") ? "text-green-600" : "text-red-600"}`}>
+                  {testMsg}
+                </p>
+              )}
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                테스트 발송은 DB의 수신자 이메일을 사용하지 않고 {TEST_TO_EMAIL}로만 보냅니다.
+                대량 발송 전에는 발송 승인과 발송 로그를 기준으로 단계별로 확장합니다.
+              </div>
 
               {/* 제목 */}
               <div>

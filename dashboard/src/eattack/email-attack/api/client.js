@@ -60,4 +60,11 @@ export const emailAttackApi = {
       method: "PATCH",
       body: JSON.stringify({ id, subject, body_html, body_text, approved }),
     }),
+
+  // 우리 테스트 메일로만 발송
+  sendTestProposal: ({ id, toEmail }) =>
+    call("fn=send_test_proposal", {
+      method: "POST",
+      body: JSON.stringify({ id, to_email: toEmail }),
+    }),
 };

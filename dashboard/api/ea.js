@@ -16,6 +16,8 @@ import { searchNaver } from "./_ea-lib/search-naver.js";
 import { extractFromDomain } from "./_ea-lib/extract.js";
 import { generateOne } from "./_ea-lib/proposal.js";
 
+const DEFAULT_TEST_TO_EMAIL = "EDEN@teamedenmarketing.com";
+
 
 // ─── 공통 ───
 function setCors(res) {
@@ -370,6 +372,180 @@ async function updateProposalHandler(req, res) {
 }
 
 
+// ─── /send_test_proposal 핸들러 ───
+function isEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildOutboundEmailHtml(proposal) {
+  const brand = proposal.result?.brand_name || proposal.result?.domain || "제안 대상";
+  const body = proposal.body_html || "";
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(proposal.subject || "제안서")}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f6f7f9;color:#1f2937;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR','Segoe UI',sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f7f9;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="height:8px;background:#f97316;"></td>
+            </tr>
+            <tr>
+              <td style="padding:24px 28px 18px;border-bottom:1px solid #eef0f3;">
+                <p style="margin:0 0 8px;color:#f97316;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">EDEN MARKETING PROPOSAL</p>
+                <h1 style="margin:0;color:#111827;font-size:22px;line-height:1.35;font-weight:800;">${escapeHtml(proposal.subject || "제안서")}</h1>
+                <p style="margin:14px 0 0;color:#6b7280;font-size:12px;">${escapeHtml(brand)}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px;font-size:14px;line-height:1.75;color:#1f2937;">
+                ${body}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 28px 22px;border-top:1px solid #eef0f3;background:#fafafa;color:#6b7280;font-size:12px;">
+                에덴 마케팅 테스트 발송 메일입니다. 실제 DB 대상에게 발송되지 않았습니다.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+async function insertSendLog({ proposalId, toEmail, status, error }) {
+  const domain = String(toEmail || "").split("@")[1] || null;
+  const { error: logError } = await db().from("ea_send_logs").insert({
+    proposal_id: proposalId,
+    to_email: toEmail,
+    to_domain: domain,
+    status,
+    error: error || null,
+  });
+  if (logError) console.error("[ea_send_logs insert]", logError);
+}
+
+async function sendTestProposalHandler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+  const { id, to_email } = req.body || {};
+  if (!id) return res.status(400).json({ error: "id 필수" });
+
+  const testTo = String(to_email || process.env.EA_TEST_TO_EMAIL || DEFAULT_TEST_TO_EMAIL).trim();
+  if (!isEmail(testTo)) {
+    return res.status(400).json({ error: "테스트 수신 이메일 형식이 올바르지 않습니다." });
+  }
+
+  const supabase = db();
+  const { data: proposal, error } = await supabase
+    .from("ea_proposals")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error || !proposal) {
+    return res.status(404).json({ error: "제안서를 찾을 수 없습니다." });
+  }
+
+  const { data: result } = await supabase
+    .from("ea_results")
+    .select("id, domain, brand_name, homepage_url")
+    .eq("id", proposal.result_id)
+    .maybeSingle();
+  proposal.result = result || null;
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    await insertSendLog({
+      proposalId: proposal.id,
+      toEmail: testTo,
+      status: "failed",
+      error: "RESEND_API_KEY missing",
+    });
+    return res.status(500).json({
+      error: "RESEND_API_KEY 환경변수가 설정되지 않았습니다. Vercel에 메일 발송 API 키를 추가하면 테스트 발송할 수 있습니다.",
+    });
+  }
+
+  const from = process.env.EA_FROM_EMAIL || "EDEN Marketing <onboarding@resend.dev>";
+  const subject = `[TEST] ${proposal.subject || "에덴 마케팅 제안서"}`;
+  const html = buildOutboundEmailHtml(proposal);
+  const text = proposal.body_text || stripHtml(proposal.body_html);
+
+  try {
+    const upstream = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [testTo],
+        subject,
+        html,
+        text,
+        reply_to: process.env.EA_REPLY_TO_EMAIL || undefined,
+      }),
+    });
+    const payload = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) {
+      const message = payload?.message || payload?.error || `Resend HTTP ${upstream.status}`;
+      await insertSendLog({
+        proposalId: proposal.id,
+        toEmail: testTo,
+        status: "failed",
+        error: message,
+      });
+      return res.status(502).json({ error: `메일 발송 실패: ${message}` });
+    }
+
+    await insertSendLog({
+      proposalId: proposal.id,
+      toEmail: testTo,
+      status: "sent",
+    });
+    return res.status(200).json({
+      ok: true,
+      provider: "resend",
+      provider_id: payload?.id || null,
+      to_email: testTo,
+    });
+  } catch (e) {
+    await insertSendLog({
+      proposalId: proposal.id,
+      toEmail: testTo,
+      status: "failed",
+      error: e.message,
+    });
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+
 // ─── 메인 dispatcher ───
 export default async function handler(req, res) {
   setCors(res);
@@ -384,9 +560,10 @@ export default async function handler(req, res) {
     case "generate":         return generateHandler(req, res);
     case "proposals":        return proposalsHandler(req, res);
     case "update_proposal":  return updateProposalHandler(req, res);
+    case "send_test_proposal": return sendTestProposalHandler(req, res);
     default:
       return res.status(400).json({
-        error: "fn 필수: run | status | jobs | settings | generate | proposals | update_proposal",
+        error: "fn 필수: run | status | jobs | settings | generate | proposals | update_proposal | send_test_proposal",
       });
   }
 }
