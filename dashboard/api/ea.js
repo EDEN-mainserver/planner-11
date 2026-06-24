@@ -396,8 +396,20 @@ function stripHtml(value) {
     .trim();
 }
 
+function buildHookSubject(proposal) {
+  const raw = String(proposal.subject || "").trim();
+  const brand = String(proposal.result?.brand_name || proposal.result?.domain || "").split("|")[0].trim();
+  const generic = !raw || /제안서|자동 생성|B2B 영업|협업 제안/i.test(raw);
+  const fallback = brand
+    ? `${brand}, 지금 놓치면 고객을 빼앗깁니다`
+    : "지금 놓치면 고객을 빼앗깁니다";
+  const subject = generic ? fallback : raw;
+  return subject.length > 48 ? `${subject.slice(0, 47)}…` : subject;
+}
+
 function buildOutboundEmailHtml(proposal) {
   const brand = proposal.result?.brand_name || proposal.result?.domain || "제안 대상";
+  const hookSubject = buildHookSubject(proposal);
   const body = proposal.body_html || "";
 
   return `<!doctype html>
@@ -405,30 +417,43 @@ function buildOutboundEmailHtml(proposal) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(proposal.subject || "제안서")}</title>
+    <title>${escapeHtml(hookSubject)}</title>
   </head>
-  <body style="margin:0;padding:0;background:#f6f7f9;color:#1f2937;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR','Segoe UI',sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f7f9;padding:24px 12px;">
+  <body style="margin:0;padding:0;background:#0f172a;color:#1f2937;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR','Segoe UI',sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;padding:24px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;background:#ffffff;border:1px solid #243044;border-radius:18px;overflow:hidden;">
             <tr>
-              <td style="height:8px;background:#f97316;"></td>
+              <td style="height:10px;background:#ff6b00;"></td>
             </tr>
             <tr>
-              <td style="padding:24px 28px 18px;border-bottom:1px solid #eef0f3;">
-                <p style="margin:0 0 8px;color:#f97316;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">EDEN MARKETING PROPOSAL</p>
-                <h1 style="margin:0;color:#111827;font-size:22px;line-height:1.35;font-weight:800;">${escapeHtml(proposal.subject || "제안서")}</h1>
-                <p style="margin:14px 0 0;color:#6b7280;font-size:12px;">${escapeHtml(brand)}</p>
+              <td style="padding:30px 30px 24px;background:#111827;border-bottom:1px solid #243044;">
+                <p style="margin:0 0 10px;color:#ffb86b;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;">EDEN GROWTH SIGNAL</p>
+                <h1 style="margin:0;color:#ffffff;font-size:27px;line-height:1.25;font-weight:900;">${escapeHtml(hookSubject)}</h1>
+                <p style="margin:14px 0 0;color:#cbd5e1;font-size:13px;line-height:1.6;">${escapeHtml(brand)}에 맞춰 본 성장 기회 3가지입니다.</p>
               </td>
             </tr>
             <tr>
-              <td style="padding:28px;font-size:14px;line-height:1.75;color:#1f2937;">
-                ${body}
+              <td style="padding:24px 30px 8px;background:#ffffff;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #fed7aa;background:#fff7ed;border-radius:12px;">
+                  <tr>
+                    <td style="padding:16px 18px;color:#9a3412;font-size:14px;line-height:1.65;font-weight:700;">
+                      지금 고객은 긴 설명보다 짧은 확신, 한 번의 노출보다 반복되는 퍼널을 보고 움직입니다.
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>
-              <td style="padding:16px 28px 22px;border-top:1px solid #eef0f3;background:#fafafa;color:#6b7280;font-size:12px;">
+              <td style="padding:20px 30px 30px;font-size:15px;line-height:1.85;color:#111827;">
+                <div style="font-size:15px;line-height:1.85;color:#111827;">
+                  ${body}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 30px 24px;border-top:1px solid #e5e7eb;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.6;">
                 에덴 마케팅 테스트 발송 메일입니다. 실제 DB 대상에게 발송되지 않았습니다.
               </td>
             </tr>
@@ -530,7 +555,7 @@ async function sendTestProposalHandler(req, res) {
     .maybeSingle();
   proposal.result = result || null;
 
-  const subject = `[TEST] ${proposal.subject || "에덴 마케팅 제안서"}`;
+  const subject = `[TEST] ${buildHookSubject(proposal)}`;
   const html = buildOutboundEmailHtml(proposal);
   const text = proposal.body_text || stripHtml(proposal.body_html);
 

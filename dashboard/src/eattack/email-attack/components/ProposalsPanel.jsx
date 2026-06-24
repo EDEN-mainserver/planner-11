@@ -16,9 +16,20 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function buildHookSubject(proposal) {
+  const raw = String(proposal?.subject || "").trim();
+  const brand = String(proposal?.result?.brand_name || proposal?.result?.domain || "").split("|")[0].trim();
+  const generic = !raw || /제안서|자동 생성|B2B 영업|협업 제안/i.test(raw);
+  const fallback = brand
+    ? `${brand}, 지금 놓치면 고객을 빼앗깁니다`
+    : "지금 놓치면 고객을 빼앗깁니다";
+  const subject = generic ? fallback : raw;
+  return subject.length > 48 ? `${subject.slice(0, 47)}…` : subject;
+}
+
 function buildPreviewDoc(proposal) {
   const brand = proposal.result?.brand_name || proposal.result?.domain || "제안 대상";
-  const subject = proposal.subject || "제안서";
+  const subject = buildHookSubject(proposal);
   const email = proposal.recipient_email || "";
   const model = proposal.model || "";
   const body = proposal.body_html || "";
@@ -33,7 +44,7 @@ function buildPreviewDoc(proposal) {
       body {
         margin: 0;
         padding: 24px;
-        background: #f6f7f9;
+        background: #0f172a;
         color: #1f2937;
         font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
         font-size: 14px;
@@ -43,33 +54,35 @@ function buildPreviewDoc(proposal) {
         width: min(100%, 720px);
         margin: 0 auto;
         overflow: hidden;
-        border: 1px solid #e5e7eb;
-        border-radius: 14px;
+        border: 1px solid #243044;
+        border-radius: 18px;
         background: #ffffff;
-        box-shadow: 0 18px 45px rgba(31, 41, 55, 0.08);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
       }
       .topbar {
-        height: 8px;
-        background: linear-gradient(90deg, #f59e0b, #f97316, #111827);
+        height: 10px;
+        background: #ff6b00;
       }
       .header {
-        padding: 24px 28px 18px;
-        border-bottom: 1px solid #eef0f3;
+        padding: 30px 30px 24px;
+        background: #111827;
+        border-bottom: 1px solid #243044;
       }
       .eyebrow {
-        margin: 0 0 8px;
-        color: #f97316;
+        margin: 0 0 10px;
+        color: #ffb86b;
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
+        font-weight: 800;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
       }
       h1 {
         margin: 0;
-        color: #111827;
-        font-size: 22px;
-        line-height: 1.35;
+        color: #ffffff;
+        font-size: 27px;
+        line-height: 1.25;
         letter-spacing: 0;
+        font-weight: 900;
       }
       .meta {
         display: flex;
@@ -83,34 +96,64 @@ function buildPreviewDoc(proposal) {
         min-height: 24px;
         padding: 4px 9px;
         border-radius: 999px;
-        background: #f3f4f6;
-        color: #4b5563;
+        background: #1f2937;
+        color: #cbd5e1;
         font-size: 11px;
         font-weight: 600;
       }
       .pill.dark {
-        background: #111827;
-        color: #ffffff;
+        background: #ff6b00;
+        color: #111827;
+      }
+      .signal {
+        margin: 24px 28px 0;
+        padding: 16px 18px;
+        border: 1px solid #fed7aa;
+        border-radius: 12px;
+        background: #fff7ed;
+        color: #9a3412;
+        font-weight: 750;
       }
       .content {
-        padding: 28px;
+        padding: 24px 30px 30px;
+        color: #111827;
+        font-size: 15px;
+        line-height: 1.85;
       }
       .content p {
-        margin: 0 0 15px;
+        margin: 0 0 16px;
       }
       .content p:first-child {
-        font-size: 15px;
-        font-weight: 650;
+        font-size: 16px;
+        font-weight: 800;
         color: #111827;
+      }
+      .content h2 {
+        margin: 24px 0 10px;
+        color: #111827;
+        font-size: 16px;
+        line-height: 1.4;
+      }
+      .content ul {
+        margin: 0 0 18px;
+        padding: 0;
+        list-style: none;
+      }
+      .content li {
+        margin: 0 0 8px;
+        padding: 10px 12px;
+        border-left: 4px solid #ff6b00;
+        background: #f8fafc;
+        border-radius: 8px;
       }
       .content p:last-child {
         margin-bottom: 0;
       }
       .footer {
-        padding: 16px 28px 22px;
-        border-top: 1px solid #eef0f3;
-        background: #fafafa;
-        color: #6b7280;
+        padding: 18px 30px 24px;
+        border-top: 1px solid #e5e7eb;
+        background: #f8fafc;
+        color: #64748b;
         font-size: 12px;
       }
       @media (max-width: 560px) {
@@ -132,6 +175,7 @@ function buildPreviewDoc(proposal) {
           <span class="pill">${escapeHtml(model)}</span>
         </div>
       </header>
+      <section class="signal">지금 고객은 긴 설명보다 짧은 확신, 한 번의 노출보다 반복되는 퍼널을 보고 움직입니다.</section>
       <main class="content">${body}</main>
       <footer class="footer">발송 전 검토용 디자인 미리보기입니다.</footer>
     </article>
