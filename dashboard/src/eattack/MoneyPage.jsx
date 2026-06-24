@@ -3,6 +3,7 @@ import { useState } from "react";
 import EdenCanvas from "./EdenCanvas";
 import EdenFlowPanel from "./EdenFlowPanel";
 import EmailAttackPage from "./email-attack/EmailAttackPage";
+import HookingPracticePage from "./HookingPracticePage";
 
 // ── 툴 데이터 ──
 const FREE_TOOLS = [
@@ -105,6 +106,33 @@ const FREE_TOOLS = [
     isInternal: true,
     screenshots: ["emailattack-1", "emailattack-2", "emailattack-3"],
   },
+  {
+    key: "hookingPractice",
+    label: "후킹끝구조끝",
+    category: "숏폼 연습예시",
+    iconBg: "from-rose-500 to-orange-500",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 5h10"/>
+        <path d="M4 12h16"/>
+        <path d="M4 19h10"/>
+        <path d="m17 5 3 3-3 3"/>
+        <path d="m17 13 3 3-3 3"/>
+      </svg>
+    ),
+    description: "숏폼 첫 3초 후킹, 설득 구조, 마지막 CTA를 빠르게 연습하는 카피 훈련 도구",
+    longDesc: "후킹끝구조끝은 숏폼 콘텐츠를 팔거나 기획할 때 필요한 후킹 문장, 설득 전개, 끝 문장을 반복 연습하는 내부 도구입니다. 서비스, 타겟, 고객 문제, 에덴의 차별점을 입력하면 손실회피·왜 지금·왜 에덴·왜 이 상품 관점의 예시를 바로 확인할 수 있습니다.",
+    version: "v1.0",
+    updateDate: "2026-06-24",
+    updateNote: "최초 릴리즈 — 손실회피, 왜 지금, 왜 에덴, 왜 이 상품 4가지 연습 모드",
+    developer: "에덴 에이전트",
+    publisher: "에덴 에이전트",
+    size: "웹 앱 (무료)",
+    replaces: ["숏폼 카피 수기 작성", "Notion 예시 모음", "반복 피드백 시간"],
+    features: ["후킹 문장 연습", "3단 설득 구조", "끝 문장 CTA", "손실회피 모드", "왜 에덴 모드", "원클릭 복사"],
+    isInternal: true,
+    screenshots: ["hooking-1", "hooking-2", "hooking-3"],
+  },
 ];
 
 // ── 앱 스크린샷 목업 ──
@@ -197,6 +225,40 @@ function ScreenshotMock({ id }) {
         </div>
       </div>
     ),
+    "hooking-1": (
+      <div className="w-full h-full bg-gradient-to-br from-rose-50 to-orange-100 flex flex-col p-2 gap-1 overflow-hidden">
+        <div className="text-[7px] font-bold text-rose-600">후킹</div>
+        <div className="flex-1 rounded bg-gray-950 p-2 text-white">
+          <div className="mb-1 h-1.5 w-10 rounded bg-orange-400"/>
+          <div className="h-2 w-full rounded bg-white/90"/>
+          <div className="mt-1 h-2 w-4/5 rounded bg-white/60"/>
+          <div className="mt-3 h-1.5 w-16 rounded bg-orange-300"/>
+        </div>
+      </div>
+    ),
+    "hooking-2": (
+      <div className="w-full h-full bg-gradient-to-br from-orange-50 to-amber-100 flex flex-col p-2 gap-1 overflow-hidden">
+        <div className="text-[7px] font-bold text-orange-600">3단 구조</div>
+        <div className="space-y-1">
+          {[1,2,3].map((n) => (
+            <div key={n} className="flex items-center gap-1 rounded bg-white/75 p-1">
+              <div className="flex h-4 w-4 items-center justify-center rounded-full bg-gray-900 text-[7px] font-bold text-white">{n}</div>
+              <div className="h-1.5 flex-1 rounded bg-orange-200"/>
+            </div>
+          ))}
+        </div>
+      </div>
+    ),
+    "hooking-3": (
+      <div className="w-full h-full bg-gradient-to-br from-slate-50 to-rose-100 flex flex-col p-2 gap-1 overflow-hidden">
+        <div className="text-[7px] font-bold text-slate-700">끝 문장</div>
+        <div className="flex-1 rounded bg-white/75 p-2">
+          <div className="h-2 w-full rounded bg-slate-800"/>
+          <div className="mt-1 h-2 w-2/3 rounded bg-slate-300"/>
+          <div className="mt-4 h-5 rounded bg-rose-500"/>
+        </div>
+      </div>
+    ),
     "esign-1": (
       <div className="w-full h-full bg-gradient-to-br from-amber-50 to-orange-100 flex flex-col p-2 gap-1 overflow-hidden">
         <div className="flex-shrink-0 text-[7px] text-amber-600 font-bold">문서 업로드</div>
@@ -252,6 +314,11 @@ export default function MoneyPage({ onBack }) {
   // E-MAIL Attack
   if (activeTool?.key === "emailAttack") {
     return <EmailAttackPage onBack={() => setActiveTool(null)} />;
+  }
+
+  // 후킹끝구조끝
+  if (activeTool?.key === "hookingPractice") {
+    return <HookingPracticePage onBack={() => setActiveTool(null)} />;
   }
 
   const filteredTools = FREE_TOOLS.filter(t =>
