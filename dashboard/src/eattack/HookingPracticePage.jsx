@@ -1,52 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-const PERSONAS = [
-  {
-    brand: "루미스킨",
-    owner: "3년차 뷰티 브랜드 대표",
-    product: "비건 수분크림",
-    audience: "성분은 따지지만 광고는 잘 믿지 않는 25~34세 여성",
-    pain: "제품력은 있는데 상세페이지 이탈이 높고 재구매 이유가 약함",
-    desire: "성분 신뢰와 사용감을 짧은 영상으로 납득시키고 싶음",
-    objection: "숏폼을 해도 조회수만 나오고 구매는 안 날까 봐 걱정",
-  },
-  {
-    brand: "핏루틴",
-    owner: "온라인 PT 코치",
-    product: "12주 홈트 코칭",
-    audience: "헬스장 등록은 부담스럽고 혼자 운동은 계속 실패한 직장인",
-    pain: "무료 운동 영상과 차별점이 약해 상담 전환이 낮음",
-    desire: "왜 혼자 하면 실패하는지 보여주고 유료 코칭 필요성을 만들고 싶음",
-    objection: "운동 콘텐츠는 이미 너무 많다고 생각함",
-  },
-  {
-    brand: "모아클래스",
-    owner: "키즈 영어 교육원 원장",
-    product: "초등 영어 말하기 클래스",
-    audience: "아이 영어 발화가 늦어 불안한 초등 저학년 학부모",
-    pain: "커리큘럼 설명은 많은데 학부모가 체감할 변화가 잘 안 보임",
-    desire: "수업 전후 변화를 짧은 사례형 콘텐츠로 보여주고 싶음",
-    objection: "교육 광고처럼 보이면 학부모가 넘길까 봐 걱정",
-  },
-  {
-    brand: "세이프박스",
-    owner: "소형 SaaS 대표",
-    product: "개인사업자 세금 자동정리 서비스",
-    audience: "세금 신고 때마다 자료 정리에 지치는 1인 사업자",
-    pain: "기능은 많은데 고객이 가입 전 필요성을 크게 못 느낌",
-    desire: "방치하면 생기는 세금 리스크를 쉽게 보여주고 싶음",
-    objection: "B2B SaaS는 숏폼으로 팔기 어렵다고 생각함",
-  },
-  {
-    brand: "스테이온",
-    owner: "숙박 예약 대행 스타트업 대표",
-    product: "감성 숙소 예약 대행",
-    audience: "숙소 선택에 실패하고 싶지 않은 커플 여행객",
-    pain: "예쁜 숙소 이미지는 많지만 예약 결정까지 이어지는 이유가 약함",
-    desire: "고객이 실패하지 않는 선택 기준을 콘텐츠로 만들고 싶음",
-    objection: "이미 인스타 숙소 계정이 너무 많다고 느낌",
-  },
-];
+const USED_PERSONAS_KEY = "hooking-practice-used-personas-v1";
+const EMPTY_PERSONA = {
+  brand: "생성 중",
+  owner: "AI가 새로운 광고주를 만드는 중입니다",
+  product: "새로운 숏폼 판매 상품",
+  audience: "새로운 구매자 타겟",
+  pain: "새로운 마케팅 문제",
+  desire: "숏폼으로 얻고 싶은 변화",
+  objection: "구매 전 망설임",
+  fingerprint: "",
+};
 
 const HOOK_TYPES = [
   { key: "negative", label: "부정형 후킹", hint: "하지 마세요, 망합니다, 놓칩니다처럼 경고로 시작" },
@@ -128,6 +92,59 @@ function buildQuestion(persona, index) {
     answer: answer.key,
     max: 25,
   };
+}
+
+function loadUsedPersonas() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(USED_PERSONAS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveUsedPersonas(values) {
+  localStorage.setItem(USED_PERSONAS_KEY, JSON.stringify(values.slice(-500)));
+}
+
+function localFingerprint(persona) {
+  return [
+    persona.brand,
+    persona.owner,
+    persona.product,
+    persona.audience,
+    persona.pain,
+  ]
+    .map((v) => String(v || "").replace(/\s+/g, " ").trim())
+    .join("|")
+    .toLowerCase();
+}
+
+async function requestGeneratedPersona() {
+  const used = loadUsedPersonas();
+  let lastPersona = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const resp = await fetch("/api/hooking-persona", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ used }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || "페르소나 생성 실패");
+    const persona = data.persona;
+    const fp = persona.fingerprint || localFingerprint(persona);
+    lastPersona = { ...persona, fingerprint: fp };
+    if (!used.includes(fp)) {
+      const nextUsed = [...used, fp];
+      saveUsedPersonas(nextUsed);
+      return lastPersona;
+    }
+  }
+  if (lastPersona) {
+    saveUsedPersonas([...used, lastPersona.fingerprint]);
+    return lastPersona;
+  }
+  throw new Error("페르소나 생성 실패");
 }
 
 function makeHookExample(persona, key) {
@@ -229,7 +246,9 @@ function gradeAnswer(question, answer, persona) {
 }
 
 export default function HookingPracticePage({ onBack }) {
-  const [persona, setPersona] = useState(() => pickRandom(PERSONAS));
+  const [persona, setPersona] = useState(EMPTY_PERSONA);
+  const [loadingPersona, setLoadingPersona] = useState(true);
+  const [personaError, setPersonaError] = useState("");
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [selected, setSelected] = useState("");
@@ -241,14 +260,27 @@ export default function HookingPracticePage({ onBack }) {
   const maxTotal = history.reduce((sum, item) => sum + item.max, 0);
   const percent = maxTotal ? Math.round((total / maxTotal) * 100) : 0;
 
-  const resetPersona = () => {
-    setPersona(pickRandom(PERSONAS));
+  const resetPersona = async () => {
+    setLoadingPersona(true);
+    setPersonaError("");
     setQuestionIndex(0);
     setAnswer("");
     setSelected("");
     setResult(null);
     setHistory([]);
+    try {
+      setPersona(await requestGeneratedPersona());
+    } catch (e) {
+      setPersonaError(e.message);
+    } finally {
+      setLoadingPersona(false);
+    }
   };
+
+  useEffect(() => {
+    resetPersona();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const submit = () => {
     const value = isChoice ? selected : answer;
@@ -285,8 +317,12 @@ export default function HookingPracticePage({ onBack }) {
             <p className="text-[10px] font-bold text-gray-400">TOTAL SCORE</p>
             <p className="text-lg font-black text-gray-950">{total}<span className="text-xs text-gray-400"> / {maxTotal}</span></p>
           </div>
-          <button onClick={resetPersona} className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50">
-            새 페르소나
+          <button
+            onClick={resetPersona}
+            disabled={loadingPersona}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {loadingPersona ? "생성 중..." : "새 페르소나"}
           </button>
         </div>
       </header>
@@ -296,7 +332,7 @@ export default function HookingPracticePage({ onBack }) {
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.15em] text-orange-500">Random Advertiser</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.15em] text-orange-500">Generated Advertiser</p>
                 <h2 className="mt-1 text-2xl font-black text-gray-950">{persona.brand}</h2>
                 <p className="text-sm text-gray-500">{persona.owner}</p>
               </div>
@@ -310,6 +346,11 @@ export default function HookingPracticePage({ onBack }) {
             <PersonaRow label="문제" value={persona.pain} />
             <PersonaRow label="욕구" value={persona.desire} />
             <PersonaRow label="저항" value={persona.objection} />
+            {personaError && (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+                {personaError}
+              </div>
+            )}
           </section>
 
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
