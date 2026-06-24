@@ -1,4 +1,4 @@
-const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-lite"];
+const GEMINI_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
 
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -8,6 +8,20 @@ function setCors(res) {
 
 function extractJson(text) {
   const raw = String(text || "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // fall through to fenced / embedded JSON extraction
+  }
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fence) {
+    try {
+      return JSON.parse(fence[1]);
+    } catch {
+      // fall through
+    }
+  }
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start < 0 || end < 0) return null;
@@ -83,7 +97,9 @@ JSON 스키마:
       const data = await resp.json();
       const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
       const persona = extractJson(text);
-      if (!persona) throw new Error(`${model} JSON 파싱 실패`);
+      if (!persona) {
+        throw new Error(`${model} JSON 파싱 실패: ${text.slice(0, 220) || JSON.stringify(data).slice(0, 220)}`);
+      }
       for (const key of ["brand", "owner", "product", "audience", "pain", "desire", "objection"]) {
         if (!persona[key]) throw new Error(`${model} ${key} 누락`);
       }
