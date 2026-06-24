@@ -85,8 +85,22 @@ JSON 스키마:
           contents: [{ role: "user", parts: [{ text: user }] }],
           generationConfig: {
             temperature: 1.05,
-            maxOutputTokens: 4096,
+            maxOutputTokens: 8192,
             responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                brand: { type: "string" },
+                owner: { type: "string" },
+                product: { type: "string" },
+                audience: { type: "string" },
+                pain: { type: "string" },
+                desire: { type: "string" },
+                objection: { type: "string" },
+              },
+              required: ["brand", "owner", "product", "audience", "pain", "desire", "objection"],
+            },
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       });
