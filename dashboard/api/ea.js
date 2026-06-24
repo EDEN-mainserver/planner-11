@@ -15,8 +15,10 @@ import { searchGoogle } from "./_ea-lib/search-google.js";
 import { searchNaver } from "./_ea-lib/search-naver.js";
 import { extractFromDomain } from "./_ea-lib/extract.js";
 import { generateOne } from "./_ea-lib/proposal.js";
+import nodemailer from "nodemailer";
 
 const DEFAULT_TEST_TO_EMAIL = "EDEN@teamedenmarketing.com";
+const DEFAULT_SMTP_USER = "EDEN@teamedenmarketing.com";
 
 
 // ─── 공통 ───
@@ -438,6 +440,57 @@ function buildOutboundEmailHtml(proposal) {
 </html>`;
 }
 
+async function sendWithResend({ to, subject, html, text }) {
+  const upstream = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: process.env.EA_FROM_EMAIL || "EDEN Marketing <onboarding@resend.dev>",
+      to: [to],
+      subject,
+      html,
+      text,
+      reply_to: process.env.EA_REPLY_TO_EMAIL || undefined,
+    }),
+  });
+  const payload = await upstream.json().catch(() => ({}));
+  if (!upstream.ok) {
+    const message = payload?.message || payload?.error || `Resend HTTP ${upstream.status}`;
+    throw new Error(message);
+  }
+  return { provider: "resend", provider_id: payload?.id || null };
+}
+
+async function sendWithSmtp({ to, subject, html, text }) {
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT || 587);
+  const user = process.env.SMTP_USER || process.env.GMAIL_SENDER || DEFAULT_SMTP_USER;
+  const pass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD;
+  const from = process.env.SMTP_SENDER || process.env.EA_FROM_EMAIL || user;
+  if (!pass) {
+    throw new Error("SMTP_PASS 또는 GMAIL_APP_PASSWORD 환경변수가 설정되지 않았습니다.");
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+  const info = await transporter.sendMail({
+    from,
+    to,
+    subject,
+    html,
+    text,
+    replyTo: process.env.EA_REPLY_TO_EMAIL || undefined,
+  });
+  return { provider: "smtp", provider_id: info.messageId || null };
+}
+
 async function insertSendLog({ proposalId, toEmail, status, error }) {
   const domain = String(toEmail || "").split("@")[1] || null;
   const { error: logError } = await db().from("ea_send_logs").insert({
@@ -477,51 +530,14 @@ async function sendTestProposalHandler(req, res) {
     .maybeSingle();
   proposal.result = result || null;
 
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    await insertSendLog({
-      proposalId: proposal.id,
-      toEmail: testTo,
-      status: "failed",
-      error: "RESEND_API_KEY missing",
-    });
-    return res.status(500).json({
-      error: "RESEND_API_KEY 환경변수가 설정되지 않았습니다. Vercel에 메일 발송 API 키를 추가하면 테스트 발송할 수 있습니다.",
-    });
-  }
-
-  const from = process.env.EA_FROM_EMAIL || "EDEN Marketing <onboarding@resend.dev>";
   const subject = `[TEST] ${proposal.subject || "에덴 마케팅 제안서"}`;
   const html = buildOutboundEmailHtml(proposal);
   const text = proposal.body_text || stripHtml(proposal.body_html);
 
   try {
-    const upstream = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: [testTo],
-        subject,
-        html,
-        text,
-        reply_to: process.env.EA_REPLY_TO_EMAIL || undefined,
-      }),
-    });
-    const payload = await upstream.json().catch(() => ({}));
-    if (!upstream.ok) {
-      const message = payload?.message || payload?.error || `Resend HTTP ${upstream.status}`;
-      await insertSendLog({
-        proposalId: proposal.id,
-        toEmail: testTo,
-        status: "failed",
-        error: message,
-      });
-      return res.status(502).json({ error: `메일 발송 실패: ${message}` });
-    }
+    const sent = process.env.RESEND_API_KEY
+      ? await sendWithResend({ to: testTo, subject, html, text })
+      : await sendWithSmtp({ to: testTo, subject, html, text });
 
     await insertSendLog({
       proposalId: proposal.id,
@@ -530,8 +546,8 @@ async function sendTestProposalHandler(req, res) {
     });
     return res.status(200).json({
       ok: true,
-      provider: "resend",
-      provider_id: payload?.id || null,
+      provider: sent.provider,
+      provider_id: sent.provider_id,
       to_email: testTo,
     });
   } catch (e) {
