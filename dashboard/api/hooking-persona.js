@@ -63,12 +63,13 @@ ${used.slice(-80).map((v, i) => `${i + 1}. ${v}`).join("\n") || "(없음)"}
 새 광고주 페르소나 1개를 생성하라.
 조건:
 - brand: 실제 브랜드처럼 보이지만 가상의 2~5글자 상호
-- owner: 광고주 유형과 경력/상황
-- product: 구체적인 서비스 또는 상품
-- audience: 구매자 타겟의 상황과 감정
-- pain: 현재 마케팅/판매 문제
-- desire: 숏폼으로 얻고 싶은 변화
-- objection: 숏폼/퍼널 구매 전 망설임
+- owner: 광고주 유형과 경력/상황, 45자 이내
+- product: 구체적인 서비스 또는 상품, 55자 이내
+- audience: 구매자 타겟의 상황과 감정, 70자 이내
+- pain: 현재 마케팅/판매 문제, 70자 이내
+- desire: 숏폼으로 얻고 싶은 변화, 70자 이내
+- objection: 숏폼/퍼널 구매 전 망설임, 70자 이내
+- 모든 값은 한 문장으로 짧게 쓴다.
 
 JSON 스키마:
 {"brand":"","owner":"","product":"","audience":"","pain":"","desire":"","objection":""}`;
@@ -84,7 +85,7 @@ JSON 스키마:
           contents: [{ role: "user", parts: [{ text: user }] }],
           generationConfig: {
             temperature: 1.05,
-            maxOutputTokens: 1200,
+            maxOutputTokens: 4096,
             responseMimeType: "application/json",
           },
         }),
