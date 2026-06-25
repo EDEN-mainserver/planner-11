@@ -133,6 +133,32 @@ const FREE_TOOLS = [
     isInternal: true,
     screenshots: ["hooking-1", "hooking-2", "hooking-3"],
   },
+  {
+    key: "hookingExam",
+    label: "실전 테스트",
+    category: "숏폼 100점 시험",
+    iconBg: "from-slate-800 to-gray-950",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 11 12 14 22 4"/>
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        <path d="M7 8h6"/>
+        <path d="M7 16h8"/>
+      </svg>
+    ),
+    description: "응시자 이름을 남기고 10문제 실전 시험으로 후킹·구조 실력을 100점 만점 채점",
+    longDesc: "실전 테스트는 후킹끝구조끝의 시험 모드입니다. 응시자 이름을 입력하고 시작하면 하나의 가상 광고주 페르소나를 기준으로 후킹 작성, 구조 작성, 후킹 유형 판별, 구조 판별 10문제를 풉니다. 각 문제는 10점 만점으로 환산되고, 최종 점수와 응시 히스토리가 저장됩니다.",
+    version: "v1.0",
+    updateDate: "2026-06-25",
+    updateNote: "최초 릴리즈 — 10문제, 100점 만점, 응시자 이름, 로컬 히스토리 저장",
+    developer: "에덴 에이전트",
+    publisher: "에덴 에이전트",
+    size: "웹 앱 (무료)",
+    replaces: ["숏폼 카피 구두 테스트", "수기 점수 기록", "반복 피드백 시간"],
+    features: ["응시자 이름 입력", "10문제 고정 시험", "문항별 1~10점 채점", "100점 만점 결과", "응시 히스토리 저장", "AI 피드백"],
+    isInternal: true,
+    screenshots: ["hooking-1", "hooking-2", "hooking-3"],
+  },
 ];
 
 // ── 앱 스크린샷 목업 ──
@@ -319,6 +345,11 @@ export default function MoneyPage({ onBack }) {
   // 후킹끝구조끝
   if (activeTool?.key === "hookingPractice") {
     return <HookingPracticePage onBack={() => setActiveTool(null)} />;
+  }
+
+  // 후킹끝구조끝 실전 테스트
+  if (activeTool?.key === "hookingExam") {
+    return <HookingPracticePage onBack={() => setActiveTool(null)} examMode />;
   }
 
   const filteredTools = FREE_TOOLS.filter(t =>

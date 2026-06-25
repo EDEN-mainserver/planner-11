@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 const USED_PERSONAS_KEY = "hooking-practice-used-personas-v1";
+const EXAM_HISTORY_KEY = "hooking-exam-history-v1";
+const EXAM_QUESTION_COUNT = 10;
 const EMPTY_PERSONA = {
   brand: "생성 중",
   owner: "AI가 새로운 광고주를 만드는 중입니다",
@@ -135,6 +137,19 @@ function saveUsedPersonas(values) {
   localStorage.setItem(USED_PERSONAS_KEY, JSON.stringify(values.slice(-500)));
 }
 
+function loadExamHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(EXAM_HISTORY_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveExamHistory(values) {
+  localStorage.setItem(EXAM_HISTORY_KEY, JSON.stringify(values.slice(0, 50)));
+}
+
 function localFingerprint(persona) {
   return [
     persona.brand,
@@ -266,7 +281,36 @@ async function gradeSubjective(question, answer, persona) {
   return data.result;
 }
 
-export default function HookingPracticePage({ onBack }) {
+function toExamScore(score) {
+  return Math.max(1, Math.min(10, Math.round(Number(score || 0) / 10)));
+}
+
+function makeExamRecord({ studentName, persona, history }) {
+  const total = history.reduce((sum, item) => sum + item.score, 0);
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    studentName,
+    total,
+    maxTotal: 100,
+    createdAt: new Date().toISOString(),
+    persona: {
+      brand: persona.brand,
+      product: persona.product,
+      audience: persona.audience,
+      pain: persona.pain,
+    },
+    questions: history.map((item, index) => ({
+      index: index + 1,
+      title: item.title,
+      score: item.score,
+      rawScore: item.rawScore,
+      max: item.max,
+      summary: item.summary,
+    })),
+  };
+}
+
+export default function HookingPracticePage({ onBack, examMode = false }) {
   const [persona, setPersona] = useState(EMPTY_PERSONA);
   const [loadingPersona, setLoadingPersona] = useState(true);
   const [personaError, setPersonaError] = useState("");
@@ -277,11 +321,20 @@ export default function HookingPracticePage({ onBack }) {
   const [result, setResult] = useState(null);
   const [grading, setGrading] = useState(false);
   const [gradeError, setGradeError] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [examStarted, setExamStarted] = useState(!examMode);
+  const [examFinished, setExamFinished] = useState(false);
+  const [examHistory, setExamHistory] = useState(() => loadExamHistory());
   const question = useMemo(() => buildQuestion(persona, questionIndex), [persona, questionIndex]);
   const isChoice = question.kind === "chooseStructure" || question.kind === "chooseHook";
   const total = history.reduce((sum, item) => sum + item.score, 0);
-  const maxTotal = history.reduce((sum, item) => sum + item.max, 0);
+  const maxTotal = examMode ? EXAM_QUESTION_COUNT * 10 : history.reduce((sum, item) => sum + item.max, 0);
   const percent = maxTotal ? Math.round((total / maxTotal) * 100) : 0;
+  const resultPercent = result?.max ? Math.round((result.score / result.max) * 100) : 0;
+  const pageTitle = examMode ? "실전 테스트" : "후킹끝구조끝";
+  const pageDesc = examMode
+    ? "응시자 이름을 남기고 10문제 실전 시험을 100점 만점으로 채점합니다"
+    : "가상 광고주 페르소나를 보고 숏폼 후킹과 구조를 훈련합니다";
 
   const resetPersona = async () => {
     setLoadingPersona(true);
@@ -292,6 +345,7 @@ export default function HookingPracticePage({ onBack }) {
     setResult(null);
     setGradeError("");
     setHistory([]);
+    setExamFinished(false);
     try {
       setPersona(await requestGeneratedPersona());
     } catch (e) {
@@ -306,6 +360,24 @@ export default function HookingPracticePage({ onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const startExam = async () => {
+    if (!studentName.trim()) return;
+    setExamStarted(true);
+    await resetPersona();
+  };
+
+  const finishExam = (completedHistory) => {
+    const record = makeExamRecord({
+      studentName: studentName.trim(),
+      persona,
+      history: completedHistory,
+    });
+    const nextRecords = [record, ...examHistory];
+    setExamHistory(nextRecords);
+    saveExamHistory(nextRecords);
+    setExamFinished(true);
+  };
+
   const submit = async () => {
     const value = isChoice ? selected : answer;
     if (!value.trim()) return;
@@ -315,9 +387,23 @@ export default function HookingPracticePage({ onBack }) {
       const graded = isChoice
         ? gradeChoice(question, value)
         : await gradeSubjective(question, value, persona);
-      const next = { ...graded, title: question.title, max: question.max };
+      const rawScore = Number(graded.score || 0);
+      const examScore = examMode ? toExamScore(rawScore) : rawScore;
+      const next = {
+        ...graded,
+        score: examScore,
+        rawScore,
+        title: question.title,
+        max: examMode ? 10 : question.max,
+      };
       setResult(next);
-      setHistory((prev) => [...prev, next]);
+      setHistory((prev) => {
+        const completed = [...prev, next];
+        if (examMode && completed.length >= EXAM_QUESTION_COUNT) {
+          finishExam(completed);
+        }
+        return completed;
+      });
     } catch (e) {
       setGradeError(e.message);
     } finally {
@@ -326,12 +412,137 @@ export default function HookingPracticePage({ onBack }) {
   };
 
   const nextQuestion = () => {
+    if (examMode && history.length >= EXAM_QUESTION_COUNT) {
+      setExamFinished(true);
+      return;
+    }
     setQuestionIndex((prev) => prev + 1);
     setAnswer("");
     setSelected("");
     setResult(null);
     setGradeError("");
   };
+
+  const restartExam = () => {
+    setExamStarted(false);
+    setExamFinished(false);
+    setStudentName("");
+    setHistory([]);
+    setQuestionIndex(0);
+    setAnswer("");
+    setSelected("");
+    setResult(null);
+    setGradeError("");
+  };
+
+  if (examMode && !examStarted) {
+    return (
+      <div className="h-full min-h-0 overflow-y-auto bg-[#f5f6f8]">
+        <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-gray-200 bg-white/95 px-6 py-4 backdrop-blur">
+          <button onClick={onBack} className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100" aria-label="뒤로가기">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+          <div>
+            <h1 className="text-xl font-black tracking-tight text-gray-950">실전 테스트</h1>
+            <p className="text-xs text-gray-500">10문제 · 문항별 10점 · 총 100점 만점</p>
+          </div>
+        </header>
+        <main className="mx-auto grid max-w-5xl grid-cols-1 gap-5 px-6 py-8 lg:grid-cols-[1fr_380px]">
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-500">Shortform Exam</p>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-gray-950">실전 응시 시작</h2>
+            <p className="mt-3 text-sm leading-7 text-gray-600">
+              하나의 가상 광고주 페르소나를 기준으로 후킹 작성, 구조 작성, 후킹 유형 판별, 구조 판별 문제가 섞여 출제됩니다.
+              주관식은 AI가 채점하고, 객관식은 정답 여부를 즉시 판별합니다.
+            </p>
+            <div className="mt-6">
+              <label className="mb-2 block text-sm font-black text-gray-900">응시자 이름</label>
+              <input
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") startExam();
+                }}
+                placeholder="예: 정대표"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none focus:border-orange-400 focus:bg-white focus:ring-2 focus:ring-orange-100"
+              />
+            </div>
+            <button
+              onClick={startExam}
+              disabled={!studentName.trim() || loadingPersona}
+              className="mt-5 rounded-xl bg-gray-950 px-6 py-3 text-sm font-black text-white hover:bg-black disabled:opacity-40"
+            >
+              {loadingPersona ? "페르소나 준비 중..." : "테스트 시작"}
+            </button>
+          </section>
+
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h3 className="mb-3 text-sm font-black text-gray-900">응시 히스토리</h3>
+            {examHistory.length === 0 ? (
+              <p className="text-sm text-gray-400">아직 저장된 테스트가 없습니다.</p>
+            ) : (
+              <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                {examHistory.map((record) => (
+                  <div key={record.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-black text-gray-950">{record.studentName}</p>
+                      <span className="rounded-full bg-gray-950 px-2.5 py-1 text-xs font-black text-white">{record.total}/100</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">{new Date(record.createdAt).toLocaleString("ko-KR")}</p>
+                    <p className="mt-2 text-xs font-bold leading-5 text-gray-600">{record.persona?.brand} · {record.persona?.product}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  if (examMode && examFinished) {
+    return (
+      <div className="h-full min-h-0 overflow-y-auto bg-[#f5f6f8]">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white/95 px-6 py-4 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100" aria-label="뒤로가기">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <div>
+              <h1 className="text-xl font-black tracking-tight text-gray-950">실전 테스트 결과</h1>
+              <p className="text-xs text-gray-500">{studentName} · {persona.brand}</p>
+            </div>
+          </div>
+          <button onClick={restartExam} className="rounded-lg bg-gray-950 px-4 py-2 text-sm font-black text-white hover:bg-black">새 응시</button>
+        </header>
+        <main className="mx-auto max-w-5xl px-6 py-8">
+          <section className="rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-500">Final Score</p>
+            <h2 className="mt-3 text-6xl font-black tracking-tight text-gray-950">{total}<span className="text-2xl text-gray-400"> / 100</span></h2>
+            <p className="mt-3 text-sm font-bold text-gray-500">10문제 실전 테스트가 히스토리에 저장되었습니다.</p>
+          </section>
+          <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h3 className="mb-3 text-sm font-black text-gray-900">문항별 점수</h3>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {history.map((item, index) => (
+                <div key={`${item.title}-${index}`} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-black text-gray-900">{index + 1}. {item.title}</p>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-gray-950">{item.score}/10</span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-gray-600">{item.summary}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-[#f5f6f8]">
@@ -343,8 +554,8 @@ export default function HookingPracticePage({ onBack }) {
             </svg>
           </button>
           <div>
-            <h1 className="text-xl font-black tracking-tight text-gray-950">후킹끝구조끝</h1>
-            <p className="text-xs text-gray-500">가상 광고주 페르소나를 보고 숏폼 후킹과 구조를 훈련합니다</p>
+            <h1 className="text-xl font-black tracking-tight text-gray-950">{pageTitle}</h1>
+            <p className="text-xs text-gray-500">{pageDesc}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -352,13 +563,15 @@ export default function HookingPracticePage({ onBack }) {
             <p className="text-[10px] font-bold text-gray-400">TOTAL SCORE</p>
             <p className="text-lg font-black text-gray-950">{total}<span className="text-xs text-gray-400"> / {maxTotal}</span></p>
           </div>
-          <button
-            onClick={resetPersona}
-            disabled={loadingPersona}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {loadingPersona ? "생성 중..." : "새 페르소나"}
-          </button>
+          {!examMode && (
+            <button
+              onClick={resetPersona}
+              disabled={loadingPersona}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {loadingPersona ? "생성 중..." : "새 페르소나"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -409,10 +622,10 @@ export default function HookingPracticePage({ onBack }) {
           <div className="rounded-2xl border border-gray-900 bg-gray-950 p-5 text-white shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-300">Question {questionIndex + 1}</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-300">Question {questionIndex + 1}{examMode ? ` / ${EXAM_QUESTION_COUNT}` : ""}</p>
                 <h2 className="mt-1 text-2xl font-black">{question.title}</h2>
               </div>
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-gray-200">{question.max}점</span>
+              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-gray-200">{examMode ? 10 : question.max}점</span>
             </div>
             <p className="text-base font-bold leading-7">{question.prompt}</p>
             {question.guide && <p className="mt-3 text-sm leading-6 text-gray-300">{question.guide}</p>}
@@ -467,7 +680,7 @@ export default function HookingPracticePage({ onBack }) {
                 </button>
               ) : (
                 <button onClick={nextQuestion} className="rounded-lg bg-orange-500 px-5 py-2 text-sm font-black text-white hover:bg-orange-600">
-                  다음 문제
+                  {examMode && history.length >= EXAM_QUESTION_COUNT ? "결과 보기" : "다음 문제"}
                 </button>
               )}
             </div>
@@ -483,7 +696,7 @@ export default function HookingPracticePage({ onBack }) {
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-black text-gray-950">채점 결과</h3>
                 <span className={`rounded-full px-3 py-1 text-sm font-black ${
-                  result.score >= 80 ? "bg-green-100 text-green-700" : result.score >= 60 ? "bg-yellow-100 text-yellow-700" : "bg-rose-100 text-rose-700"
+                  resultPercent >= 80 ? "bg-green-100 text-green-700" : resultPercent >= 60 ? "bg-yellow-100 text-yellow-700" : "bg-rose-100 text-rose-700"
                 }`}>
                   {result.score}/{result.max}
                 </span>
