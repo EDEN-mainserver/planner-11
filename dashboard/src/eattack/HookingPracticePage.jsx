@@ -302,10 +302,19 @@ function makeExamRecord({ studentName, persona, history }) {
     questions: history.map((item, index) => ({
       index: index + 1,
       title: item.title,
+      prompt: item.prompt,
+      guide: item.guide,
+      example: item.example,
+      answerText: item.answerText,
+      targetLabel: item.targetLabel,
       score: item.score,
       rawScore: item.rawScore,
       max: item.max,
       summary: item.summary,
+      coaching: item.coaching,
+      checks: item.checks,
+      rewrite: item.rewrite,
+      model_answers: item.model_answers,
     })),
   };
 }
@@ -325,6 +334,7 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
   const [examStarted, setExamStarted] = useState(!examMode);
   const [examFinished, setExamFinished] = useState(false);
   const [examHistory, setExamHistory] = useState(() => loadExamHistory());
+  const [expandedResultIndex, setExpandedResultIndex] = useState(null);
   const question = useMemo(() => buildQuestion(persona, questionIndex), [persona, questionIndex]);
   const isChoice = question.kind === "chooseStructure" || question.kind === "chooseHook";
   const total = history.reduce((sum, item) => sum + item.score, 0);
@@ -346,6 +356,7 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
     setGradeError("");
     setHistory([]);
     setExamFinished(false);
+    setExpandedResultIndex(null);
     try {
       setPersona(await requestGeneratedPersona());
     } catch (e) {
@@ -384,6 +395,7 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
     setGrading(true);
     setGradeError("");
     try {
+      const pickedOption = isChoice ? question.options.find((option) => option.key === value) : null;
       const graded = isChoice
         ? gradeChoice(question, value)
         : await gradeSubjective(question, value, persona);
@@ -394,6 +406,13 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
         score: examScore,
         rawScore,
         title: question.title,
+        prompt: question.prompt,
+        guide: question.guide,
+        example: question.example,
+        answerText: isChoice
+          ? `${pickedOption?.label || value}${pickedOption?.full || pickedOption?.hint ? ` - ${pickedOption.full || pickedOption.hint}` : ""}`
+          : value,
+        targetLabel: question.target?.label,
         max: examMode ? 10 : question.max,
       };
       setResult(next);
@@ -421,6 +440,7 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
     setSelected("");
     setResult(null);
     setGradeError("");
+    setExpandedResultIndex(null);
   };
 
   const restartExam = () => {
@@ -433,6 +453,7 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
     setSelected("");
     setResult(null);
     setGradeError("");
+    setExpandedResultIndex(null);
   };
 
   if (examMode && !examStarted) {
@@ -529,13 +550,91 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
             <h3 className="mb-3 text-sm font-black text-gray-900">문항별 점수</h3>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {history.map((item, index) => (
-                <div key={`${item.title}-${index}`} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <button
+                  key={`${item.title}-${index}`}
+                  type="button"
+                  onClick={() => setExpandedResultIndex(expandedResultIndex === index ? null : index)}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    expandedResultIndex === index
+                      ? "border-orange-300 bg-orange-50"
+                      : "border-gray-100 bg-gray-50 hover:border-gray-200 hover:bg-white"
+                  }`}
+                  aria-expanded={expandedResultIndex === index}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-black text-gray-900">{index + 1}. {item.title}</p>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-gray-950">{item.score}/10</span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-gray-950">{item.score}/10</span>
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`text-gray-400 transition-transform ${expandedResultIndex === index ? "rotate-180" : ""}`}
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </div>
                   </div>
                   <p className="mt-2 text-xs leading-5 text-gray-600">{item.summary}</p>
-                </div>
+                  {expandedResultIndex === index && (
+                    <div className="mt-3 space-y-3 border-t border-orange-100 pt-3">
+                      <ResultDetailBlock label="문제" value={item.prompt} />
+                      {item.example && <ResultDetailBlock label="제시문" value={item.example} />}
+                      {item.guide && <ResultDetailBlock label="가이드" value={item.guide} />}
+                      {item.targetLabel && <ResultDetailBlock label="정답/목표" value={item.targetLabel} />}
+                      <ResultDetailBlock label="내가 쓴 답" value={item.answerText || "저장된 답변이 없습니다."} tone="answer" />
+                      {item.coaching?.length > 0 && (
+                        <div className="rounded-xl border border-white bg-white/80 p-3">
+                          <p className="mb-2 text-[11px] font-black text-gray-500">세부 피드백</p>
+                          <div className="space-y-2">
+                            {item.coaching.map((coach) => (
+                              <div key={`${coach.item}-${coach.got}`} className="rounded-lg bg-gray-50 px-3 py-2">
+                                <div className="mb-1 flex items-center justify-between gap-2">
+                                  <p className="text-xs font-black text-gray-900">{coach.item}</p>
+                                  <span className="text-[11px] font-black text-gray-500">{coach.got}/{coach.max}</span>
+                                </div>
+                                <p className="text-xs leading-5 text-gray-600">{coach.why}</p>
+                                <p className="mt-1 text-xs leading-5 text-orange-700">{coach.how}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {item.checks?.length > 0 && (
+                        <div className="rounded-xl border border-white bg-white/80 p-3">
+                          <p className="mb-2 text-[11px] font-black text-gray-500">판별 근거</p>
+                          <div className="space-y-1">
+                            {item.checks.map((check) => (
+                              <p key={check.label} className={`text-xs leading-5 ${check.ok ? "text-green-700" : "text-rose-700"}`}>
+                                <span className="font-black">{check.ok ? "OK" : "MISS"}</span> {check.label}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {item.rewrite?.after && (
+                        <ResultDetailBlock label="개선안" value={item.rewrite.after} tone="improve" />
+                      )}
+                      {item.model_answers?.length > 0 && (
+                        <div className="rounded-xl border border-white bg-white/80 p-3">
+                          <p className="mb-2 text-[11px] font-black text-gray-500">모범답안</p>
+                          <div className="space-y-1">
+                            {item.model_answers.map((modelAnswer, modelIndex) => (
+                              <p key={`${modelAnswer}-${modelIndex}`} className="text-xs leading-5 text-gray-700">
+                                {modelIndex + 1}. {modelAnswer}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </button>
               ))}
             </div>
           </section>
@@ -765,6 +864,21 @@ function PersonaRow({ label, value }) {
     <div className="mb-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
       <p className="text-[10px] font-black text-gray-400">{label}</p>
       <p className="mt-1 text-sm font-semibold leading-6 text-gray-800">{value}</p>
+    </div>
+  );
+}
+
+function ResultDetailBlock({ label, value, tone = "default" }) {
+  const toneClass = {
+    default: "bg-white/80 text-gray-700",
+    answer: "bg-gray-950 text-white",
+    improve: "bg-white text-orange-800",
+  }[tone];
+
+  return (
+    <div className={`rounded-xl border border-white p-3 ${toneClass}`}>
+      <p className={`mb-1 text-[11px] font-black ${tone === "answer" ? "text-gray-300" : "text-gray-500"}`}>{label}</p>
+      <p className="whitespace-pre-wrap text-xs leading-5">{value}</p>
     </div>
   );
 }
