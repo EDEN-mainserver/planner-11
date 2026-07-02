@@ -507,6 +507,26 @@ export const QUESTION_SEQUENCE = [
   "writeAdPlan",
 ];
 
+const FIRST_HOOK_ENGINE_KEYS = [
+  "info_gap",
+  "self_reference",
+  "pattern_interrupt",
+  "loss_aversion",
+  "visual_salience",
+  "open_loop",
+  "tension_curve",
+  "narrative_transport",
+  "authority",
+  "vulnerability",
+  "social_proof",
+  "identification",
+  "reciprocity",
+  "scarcity",
+  "liking",
+  "anchoring",
+  "friction_removal",
+];
+
 export function pickRandom(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
@@ -552,33 +572,34 @@ export function fillTemplate(template, persona) {
     .replaceAll("[B]", "퍼널형 숏폼");
 }
 
-function firstToken(value, fallback) {
-  return String(value || fallback || "")
-    .replace(/[·,]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)[0] || fallback;
-}
-
 function audienceLabel(persona) {
   const audience = String(persona.audience || "").trim();
   if (!audience) return "고객";
   if (/반려견|강아지|반려동물/.test(audience) && /보호자/.test(audience)) return "반려견 보호자";
+  if (/부모님|어르신|요양|치매|거동/.test(audience)) return "부모님 돌봄을 고민하는 자녀";
   const roleMatch = audience.match(/([0-9~대\s]*[가-힣A-Za-z]+(?:대표|사장님|대표님|보호자|학부모|직장인|예비창업자|자영업자|원장님|고객))/);
   if (roleMatch?.[1]) return roleMatch[1].replace(/\s+/g, " ").trim();
   return audience.length > 30 ? `${audience.slice(0, 24).trim()} 고객` : audience;
 }
 
 function productLabel(persona) {
-  return String(persona.product || "상품").trim();
+  const product = String(persona.product || "상품").trim();
+  if (/재가\s*요양|인지\s*활동|요양/.test(product)) return "맞춤형 재가 요양 서비스";
+  if (/반려견|강아지|루프탑|포토존/.test(product)) return "반려견 루프탑 포토존";
+  return product.length > 26 ? product.slice(0, 24).trim() : product;
 }
 
 function painLabel(persona) {
   const pain = String(persona.pain || "고민").trim();
+  if (/혼자 두기 불안/.test(pain)) return "부모님을 혼자 두기 불안한 상황";
   return pain.endsWith("없음") ? `${pain.slice(0, -2)}없는 문제` : pain;
 }
 
-function desireLabel(persona) {
-  return String(persona.desire || "원하는 결과").trim();
+function ownerLabel(persona) {
+  const owner = String(persona.owner || "").trim();
+  if (/요양보호사/.test(owner)) return "10년 경력 요양보호사";
+  if (owner) return owner.length > 22 ? owner.slice(0, 20).trim() : owner;
+  return "현장 전문가";
 }
 
 function subjectForm(value) {
@@ -601,32 +622,33 @@ export function makeHookExample(persona, key) {
   const product = productLabel(persona);
   const audience = audienceLabel(persona);
   const pain = painLabel(persona);
-  const desire = desireLabel(persona);
   const brand = persona.brand || "이 브랜드";
+  const owner = ownerLabel(persona);
   const audienceSubject = subjectForm(audience);
   const productObject = objectForm(product);
+  const painAudience = pain.replace(/한 상황$/, "한").replace(/없는 문제$/, "없는");
   const map = {
-    info_gap: `${audienceSubject} 구매 직전에 망설이는 진짜 이유, 대부분 여기서 놓칩니다`,
-    self_reference: `${audience}라면 이 장면에서 바로 스크롤 멈춰야 합니다`,
-    pattern_interrupt: `${productObject} 설명할수록 오히려 문의가 줄어드는 이유`,
-    loss_aversion: `${productObject} 홍보할 때 이 문장 쓰면 관심 고객도 그냥 지나갑니다`,
-    visual_salience: `첫 화면에 이 장면이 없으면 ${audience}는 읽기도 전에 넘깁니다`,
-    open_loop: `${brand}가 ${desire}를 못 만든 이유, 마지막에 진짜 원인이 나옵니다`,
-    processing_fluency: `${pain} 해결하는 숏폼 구조, 딱 3단계로 정리합니다`,
-    escalating_reward: `${product} 숏폼에서 첫째는 시선, 둘째는 신뢰, 마지막이 전환입니다`,
-    tension_curve: `${brand}가 이 각도로 숏폼을 찍으면 문의가 늘까요? 직접 검증해보겠습니다`,
-    peak_end: `${product} 영상은 마지막 한 문장이 구매 결정을 바꿉니다`,
-    narrative_transport: `사실 이 대표님도 처음엔 ${product} 숏폼을 믿지 않았습니다`,
-    authority: `7년차 퍼널 기획자가 보면 ${brand}의 문제는 첫 문장에 있습니다`,
-    vulnerability: `${brand}가 놓친 걸 솔직히 말하면, 제품보다 첫 장면이 약합니다`,
-    social_proof: `요즘 ${firstToken(audience, "고객")} 고객은 ${productObject} 이렇게 비교합니다`,
-    identification: `POV: ${pain} 때문에 또 광고비만 쓰고 있는 대표님`,
-    reciprocity: `${product} 숏폼에서 바로 써먹는 첫 문장 기준, 그냥 공개합니다`,
+    info_gap: `${audienceSubject} 상담 직전에 가장 많이 망설이는 진짜 이유`,
+    self_reference: `${audience}라면 이 기준 하나는 꼭 확인하세요`,
+    pattern_interrupt: `${productObject} 알아볼수록 오히려 더 불안해지는 이유`,
+    loss_aversion: `${productObject} 고르기 전 이 기준 놓치면 나중에 더 불안해집니다`,
+    visual_salience: `첫 상담에서 이 질문이 없으면 ${audience}는 바로 불안해집니다`,
+    open_loop: `${brand} 상담에서 마지막에 꼭 확인해야 할 진짜 기준이 있습니다`,
+    processing_fluency: `${pain} 해결법, 가족이 바로 이해하게 3단계로 보여드립니다`,
+    escalating_reward: `${productObject} 고를 때 첫째는 가격, 둘째는 거리, 마지막이 진짜 기준입니다`,
+    tension_curve: `낯선 사람이 집에 와도 부모님이 편안할까요? 실제 기준으로 확인해보겠습니다`,
+    peak_end: `${product} 선택은 마지막 한 질문에서 갈립니다`,
+    narrative_transport: `사실 이 가족도 처음엔 집에 요양보호사가 오는 게 불안했습니다`,
+    authority: `${owner}가 말하는 ${product} 고르기 전 꼭 볼 기준`,
+    vulnerability: `솔직히 ${product}는 서비스보다 먼저 불안감을 풀어야 합니다`,
+    social_proof: `요즘 ${audience}는 ${productObject} 이렇게 비교합니다`,
+    identification: `POV: ${pain} 때문에 오늘도 휴대폰만 붙잡고 있는 가족`,
+    reciprocity: `${product} 상담 전에 꼭 물어볼 질문 리스트, 그냥 공개합니다`,
     consistency: `${pain} 때문에 고민한 적 있죠? 그럼 이 한 문장부터 바꿔보세요`,
-    scarcity: `이번 주말 지나면 ${audienceSubject} 반응할 계절성 장면 하나를 놓칩니다`,
-    liking: `${pain} 겪는 분들, 친구한테 말하듯 솔직히 알려드릴게요`,
-    anchoring: `광고비 100만 원보다 먼저 바꿔야 할 건 ${product}의 첫 3초입니다`,
-    friction_removal: `${product} 숏폼 시작이 막힌다면 이 문장 하나만 먼저 바꾸세요`,
+    scarcity: `이번 달 방문 상담 전에 ${audienceSubject} 꼭 확인해야 할 기준이 있습니다`,
+    liking: `${painAudience} 분들, 친구한테 말하듯 솔직히 알려드릴게요`,
+    anchoring: `시설 입소 전에 먼저 비교해야 할 선택지가 하나 있습니다`,
+    friction_removal: `${productObject} 알아보는 가족이라면 이 체크 하나만 먼저 보세요`,
     amp_specificity: `${brand} 전환을 막는 첫 장면 3가지`,
     amp_secondperson: `${product} 파는 대표님, 이 실수는 오늘부터 멈추세요`,
     amp_timecompression: `30초 안에 ${brand} 숏폼 첫 문장 각도 정리해드릴게요`,
@@ -641,94 +663,95 @@ export function makeHookModelAnswers(persona, key) {
   const product = productLabel(persona);
   const audience = audienceLabel(persona);
   const pain = painLabel(persona);
-  const desire = desireLabel(persona);
   const brand = persona.brand || "이 브랜드";
+  const owner = ownerLabel(persona);
   const audienceSubject = subjectForm(audience);
   const productObject = objectForm(product);
+  const painAudience = pain.replace(/한 상황$/, "한").replace(/없는 문제$/, "없는");
   const byKey = {
     info_gap: [
-      `${audienceSubject} 구매 직전에 망설이는 진짜 이유, 대부분 여기서 놓칩니다`,
-      `${product} 문의가 끊기는 순간은 가격을 말하기 전부터 시작됩니다`,
+      `${audienceSubject} 상담 직전에 가장 많이 망설이는 진짜 이유`,
+      `${product} 상담이 끊기는 순간은 가격을 말하기 전부터 시작됩니다`,
     ],
     self_reference: [
-      `${product} 파는 대표님, 이 첫 장면 없으면 고객은 바로 넘깁니다`,
+      `${audience}라면 이 기준 하나는 꼭 확인하세요`,
       `${pain} 겪는 ${audience}라면 이 영상 먼저 보세요`,
     ],
     pattern_interrupt: [
-      `${productObject} 설명할수록 오히려 문의가 줄어드는 이유`,
-      `좋은 제품 사진보다 먼저 버려야 할 건 첫 문장입니다`,
+      `${productObject} 알아볼수록 오히려 더 불안해지는 이유`,
+      `친절한 상담보다 먼저 확인해야 할 건 방문 전 기준입니다`,
     ],
     loss_aversion: [
-      `${productObject} 홍보할 때 이 문장 쓰면 관심 고객도 그냥 지나갑니다`,
-      `${pain}를 방치하면 광고비보다 먼저 신뢰를 잃습니다`,
+      `${productObject} 고르기 전 이 기준 놓치면 나중에 더 불안해집니다`,
+      `${pain}를 방치하면 가족의 일상부터 먼저 무너집니다`,
     ],
     visual_salience: [
-      `첫 화면에 이 장면이 없으면 ${audience}는 읽기도 전에 넘깁니다`,
-      `${brand} 영상 첫 0.5초, 고객 눈이 갈 곳이 없습니다`,
+      `첫 상담에서 이 질문이 없으면 ${audience}는 바로 불안해집니다`,
+      `${brand}를 보기 전 가족이 먼저 확인해야 할 장면이 있습니다`,
     ],
     open_loop: [
-      `${brand}가 ${desire}를 못 만든 이유, 마지막에 진짜 원인이 나옵니다`,
-      `${product} 문의가 안 오는 이유는 끝부분이 아니라 첫 3초에 있습니다`,
+      `${brand} 상담에서 마지막에 꼭 확인해야 할 진짜 기준이 있습니다`,
+      `${product} 선택 전에 가족들이 놓치는 기준은 따로 있습니다`,
     ],
     processing_fluency: [
-      `${pain} 해결하는 숏폼 구조, 딱 3단계로 정리합니다`,
-      `${product} 첫 문장부터 CTA까지, 한 번에 이해되게 바꿔보겠습니다`,
+      `${pain} 해결법, 가족이 바로 이해하게 3단계로 보여드립니다`,
+      `${productObject} 고르기 전 가족이 꼭 봐야 할 기준을 쉽게 정리합니다`,
     ],
     escalating_reward: [
-      `${product} 숏폼에서 첫째는 시선, 둘째는 신뢰, 마지막이 전환입니다`,
-      `3가지만 고치면 됩니다. 마지막 한 가지가 문의를 바꿉니다`,
+      `${productObject} 고를 때 첫째는 가격, 둘째는 거리, 마지막이 진짜 기준입니다`,
+      `처음엔 비용을 봅니다. 그런데 마지막 기준 하나가 가족의 선택을 바꿉니다`,
     ],
     tension_curve: [
-      `${brand}가 이 각도로 숏폼을 찍으면 문의가 늘까요? 직접 검증해보겠습니다`,
-      `${product} 첫 문장 하나만 바꿨을 때 고객 반응이 달라질까요?`,
+      `낯선 사람이 집에 와도 부모님이 편안할까요? 실제 기준으로 확인해보겠습니다`,
+      `${product}를 시작하면 가족의 불안이 정말 줄어들까요?`,
     ],
     peak_end: [
-      `${product} 영상은 마지막 한 문장이 구매 결정을 바꿉니다`,
-      `끝까지 본 고객을 놓치지 않으려면 마지막 3초가 이렇게 끝나야 합니다`,
+      `${product} 선택은 마지막 한 질문에서 갈립니다`,
+      `결국 좋은 요양은 시간보다 안심을 남깁니다`,
     ],
     narrative_transport: [
-      `사실 이 대표님도 처음엔 ${product} 숏폼을 믿지 않았습니다`,
-      `${pain} 때문에 광고를 멈추려던 대표님이 처음 바꾼 건 첫 장면이었습니다`,
+      `사실 이 가족도 처음엔 집에 요양보호사가 오는 게 불안했습니다`,
+      `${pain} 때문에 지쳐 있던 가족이 처음 확인한 건 방문 기준이었습니다`,
     ],
     authority: [
-      `7년차 퍼널 기획자가 보면 ${brand}의 문제는 첫 문장에 있습니다`,
-      `${product} 광고를 볼 때 전문가가 가장 먼저 확인하는 3초입니다`,
+      `${owner}가 말하는 ${product} 고르기 전 꼭 볼 기준`,
+      `재가 요양 상담 전, 현장 전문가가 가장 먼저 확인하는 질문입니다`,
     ],
     vulnerability: [
-      `${brand}가 놓친 걸 솔직히 말하면, 제품보다 첫 장면이 약합니다`,
-      `솔직히 이 상품은 좋은데, 지금 후킹이면 고객이 보기 전에 넘깁니다`,
+      `솔직히 ${product}는 서비스보다 먼저 불안감을 풀어야 합니다`,
+      `좋은 돌봄이어도 가족이 불안하면 시작하기 어렵습니다`,
     ],
     social_proof: [
-      `요즘 ${firstToken(audience, "고객")} 고객은 ${productObject} 이렇게 비교합니다`,
-      `${product} 고르는 고객들이 후기보다 먼저 보는 장면이 있습니다`,
+      `요즘 ${audience}는 ${productObject} 이렇게 비교합니다`,
+      `${product}를 고르는 가족들이 후기보다 먼저 보는 기준이 있습니다`,
     ],
     identification: [
-      `POV: ${pain} 때문에 또 광고비만 쓰고 있는 대표님`,
-      `${product} 문의는 오는데 예약이 안 잡히는 상황, 딱 이 장면입니다`,
+      `POV: ${pain} 때문에 오늘도 휴대폰만 붙잡고 있는 가족`,
+      `부모님 걱정은 큰데 어디에 맡겨야 할지 모르겠다면 이 장면입니다`,
     ],
     reciprocity: [
-      `${product} 숏폼에서 바로 써먹는 첫 문장 기준, 그냥 공개합니다`,
-      `${brand} 같은 상품에 쓰는 후킹 체크리스트를 무료로 풀겠습니다`,
+      `${product} 상담 전에 꼭 물어볼 질문 리스트, 그냥 공개합니다`,
+      `${brand} 같은 서비스를 고를 때 가족이 확인할 체크리스트를 드립니다`,
     ],
     consistency: [
       `${pain} 때문에 고민한 적 있죠? 그럼 이 한 문장부터 바꿔보세요`,
       `고객이 읽다가 멈춘 적 있죠? 그 지점이 바로 후킹 문제입니다`,
     ],
     scarcity: [
-      `이번 주말 지나면 ${audienceSubject} 반응할 계절성 장면 하나를 놓칩니다`,
-      `${product} 지금 찍어야 하는 이유는 할인보다 타이밍에 있습니다`,
+      `이번 달 방문 상담 전에 ${audienceSubject} 꼭 확인해야 할 기준이 있습니다`,
+      `${product}는 급해진 뒤 찾으면 선택 기준이 더 흔들립니다`,
     ],
     liking: [
-      `${pain} 겪는 분들, 친구한테 말하듯 솔직히 알려드릴게요`,
+      `${painAudience} 분들, 친구한테 말하듯 솔직히 알려드릴게요`,
       `우리끼리 얘긴데, ${product}는 설명보다 이 첫 장면이 먼저입니다`,
     ],
     anchoring: [
-      `광고비 100만 원보다 먼저 바꿔야 할 건 ${product}의 첫 3초입니다`,
-      `비싼 촬영보다 고객을 먼저 멈추게 하는 한 문장이 더 급합니다`,
+      `시설 입소 전에 먼저 비교해야 할 선택지가 하나 있습니다`,
+      `하루 종일 직접 돌보는 것과 방문 돌봄의 차이를 먼저 보세요`,
     ],
     friction_removal: [
-      `${product} 숏폼 시작이 막힌다면 이 문장 하나만 먼저 바꾸세요`,
-      `오늘은 대본 전체 말고 첫 문장 하나만 고치면 됩니다`,
+      `${productObject} 알아보는 가족이라면 이 체크 하나만 먼저 보세요`,
+      `상담 전에 이것만 확인하면 우리 부모님에게 맞는지 바로 보입니다`,
     ],
   };
   return byKey[key] || [makeHookExample(persona, key)];
@@ -763,8 +786,9 @@ export function makeWeakHook(persona, engine) {
 export function buildQuestion(persona, index, examMode = false) {
   const type = examMode ? QUESTION_SEQUENCE[index % QUESTION_SEQUENCE.length] : QUESTION_SEQUENCE[index % 8];
   const enginePool = ENGINES.filter((item) => item.group !== "토대" && item.group !== "증폭기");
+  const firstHookEnginePool = enginePool.filter((item) => FIRST_HOOK_ENGINE_KEYS.includes(item.key));
   if (type === "chooseHook") {
-    const answer = pickRandom(enginePool);
+    const answer = pickRandom(firstHookEnginePool);
     return {
       kind: "chooseHook",
       questionType: "engine_choice",
@@ -807,7 +831,7 @@ export function buildQuestion(persona, index, examMode = false) {
     };
   }
   if (type === "writeHook") {
-    const engine = pickRandom(enginePool);
+    const engine = pickRandom(firstHookEnginePool);
     return {
       kind: "writeHook",
       questionType: "write_hook_by_engine",
@@ -820,7 +844,7 @@ export function buildQuestion(persona, index, examMode = false) {
     };
   }
   if (type === "rewriteHook") {
-    const engine = pickRandom(enginePool);
+    const engine = pickRandom(firstHookEnginePool);
     return {
       kind: "rewriteHook",
       questionType: "rewrite_weak_hook",
@@ -847,7 +871,7 @@ export function buildQuestion(persona, index, examMode = false) {
     };
   }
   if (type === "diagnoseHook") {
-    const engine = pickRandom(enginePool);
+    const engine = pickRandom(firstHookEnginePool);
     const answer = engine.diagnosis;
     const options = [
       { key: "correct", label: answer, hint: engine.prescription },
