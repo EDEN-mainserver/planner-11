@@ -145,6 +145,42 @@ function countMatches(answer, keywords) {
   return keywords.filter((word) => normalized.includes(word.toLowerCase())).length;
 }
 
+function getMeaninglessAnswerReason(answer) {
+  const stripped = answer.replace(/\s+/g, "");
+  if (stripped.length < 2) return "답변이 거의 비어 있습니다.";
+
+  const lettersAndNumbers = stripped.replace(/[^\p{L}\p{N}]/gu, "");
+  const koreanChars = stripped.match(/[가-힣]/g) || [];
+  const latinChars = stripped.match(/[a-zA-Z]/g) || [];
+  const digitChars = stripped.match(/[0-9]/g) || [];
+  const punctuationChars = stripped.match(/[^\p{L}\p{N}\s]/gu) || [];
+  const alphaNumericRatio = lettersAndNumbers.length / Math.max(stripped.length, 1);
+  const latinRatio = latinChars.length / Math.max(lettersAndNumbers.length, 1);
+  const punctuationRatio = punctuationChars.length / Math.max(stripped.length, 1);
+  const hasKoreanWord = /[가-힣]{2,}/.test(stripped);
+  const hasLatinWord = /[a-zA-Z]{2,}/.test(stripped);
+  const hasVowelRichLatin = /[aeiouAEIOU]/.test(stripped);
+  const repeatedChar = /(.)\1{4,}/u.test(stripped);
+  const keyboardMash = /^[a-zA-Z.,!?~`'"_\-]{5,}$/.test(stripped) && latinRatio > 0.7 && !hasKoreanWord;
+  const consonantOnlyKorean = /[ㄱ-ㅎㅏ-ㅣ]{3,}/.test(stripped) && !hasKoreanWord;
+
+  if (repeatedChar) return "동일 문자가 반복된 무의미 입력입니다.";
+  if (consonantOnlyKorean) return "한글 자모만 반복된 무의미 입력입니다.";
+  if (keyboardMash && (!hasVowelRichLatin || punctuationRatio > 0.15 || stripped.length < 14)) {
+    return "키보드 난타에 가까운 무의미 문자열입니다.";
+  }
+  if (lettersAndNumbers.length < 4 && punctuationRatio > 0.25) {
+    return "문장으로 볼 수 없는 기호 중심 입력입니다.";
+  }
+  if (!hasKoreanWord && !hasLatinWord && digitChars.length < 2) {
+    return "의미 있는 단어가 확인되지 않습니다.";
+  }
+  if (alphaNumericRatio < 0.55 && lettersAndNumbers.length < 8) {
+    return "기호가 많고 의미 있는 문장 성분이 부족합니다.";
+  }
+  return "";
+}
+
 function getCueWords(target, mode) {
   const base = [
     target?.label,
@@ -209,6 +245,7 @@ function normalizeGrading(payload, result) {
   const target = payload.target || {};
   const notes = [];
   let score = Math.max(0, Math.min(100, Number(result.score || 0)));
+  const meaninglessReason = getMeaninglessAnswerReason(answer);
   const personaKeywords = splitKeywords(
     persona.brand,
     persona.product,
@@ -223,7 +260,9 @@ function normalizeGrading(payload, result) {
   const veryShort = answer.length < 18;
   const short = answer.length < 45;
 
-  if (veryShort) {
+  if (meaninglessReason) {
+    score = applyCap(score, 5, meaninglessReason, notes);
+  } else if (veryShort) {
     score = applyCap(score, 35, "답변이 너무 짧아 목표 의도와 페르소나 반영을 검증하기 어렵습니다.", notes);
   } else if (short) {
     score = applyCap(score, 60, "짧은 범용 문장이라 문제별 요구사항을 충분히 수행하지 못했습니다.", notes);
@@ -255,7 +294,9 @@ function normalizeGrading(payload, result) {
       got: roundedScore,
       max: 100,
       why: notes.join(" "),
-      how: "문제에서 요구한 엔진/구조 단서를 먼저 넣고, 광고주의 상품·타겟·문제·욕구 중 최소 2개 이상을 문장에 직접 반영하세요.",
+      how: meaninglessReason
+        ? "무의미 문자열은 점수를 받을 수 없습니다. 완전한 한국어 문장으로 답하고, 문제에서 요구한 엔진/구조 단서와 광고주의 상품·타겟·문제·욕구를 직접 반영하세요."
+        : "문제에서 요구한 엔진/구조 단서를 먼저 넣고, 광고주의 상품·타겟·문제·욕구 중 최소 2개 이상을 문장에 직접 반영하세요.",
     });
   }
 
