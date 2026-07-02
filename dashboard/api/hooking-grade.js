@@ -34,7 +34,7 @@ async function gradeWithGemini(payload) {
   const system = `너는 숏폼 후킹·구조 채점 코치다. 너의 역할은 "격려"가 아니라 정확한 실력 진단이다. 채점만 하지 말고, 사용자가 다음에 더 잘 쓰도록 가르쳐라.
 
 [채점 기준]
-- 후킹: 엔진 일치 40 / 페르소나 적합 30 / 완성도 20 / 규칙 준수 10
+- 후킹: 첫 1초 멈춤력 25 / 엔진 일치 25 / 페르소나 적합 25 / 구체성·궁금증 15 / 규칙 준수 10
 - 구조: 구조 일치 40 / 페르소나 적합 30 / 흐름 20 / 규칙 준수 10
 - 약한 후킹 고치기: 기존 약점 해결 / 지정 엔진 강화 / 타겟·페인 구체화 / 멈춤력 상승 / 신뢰 유지
 - 퍼포먼스 광고: 고객 인식 단계 / 광고 구조 적합성 / 문제·욕구·신뢰 바통 / CTA와 마찰 제거 / 메시지 매칭
@@ -51,6 +51,9 @@ ${rubricText ? `\n[이번 문제 전용 루브릭]\n${rubricText}\n` : ""}
 7. "그럴듯함"이 아니라 payload.target에 얼마나 정확히 맞았는지를 우선한다.
 8. mode=rewrite는 원문 약점을 실제로 고쳤는지 본다. 표현만 바꾸고 지정 엔진이 강화되지 않으면 최대 55점이다.
 9. mode=ad는 광고 구조의 각 단계가 보이지 않으면 최대 55점, CTA와 메시지 매칭이 없으면 최대 70점이다.
+10. mode=hook에서 "예약하세요/신청하세요/구매하세요/문의하세요"처럼 행동 요청이 중심이면 첫후킹이 아니라 CTA다. CTA 중심 답변은 최대 65점이다.
+11. mode=hook에서 "친구처럼 알려줄게요", "솔직히 말할게요"처럼 말투만 있고 타겟·문제·궁금증이 없으면 엔진 단서가 있어도 최대 50점이다.
+12. 좋은 첫후킹은 CTA가 아니라 스크롤을 멈추는 문장이어야 한다. 대상, 문제, 궁금증/손실감, 다음 장면 기대 중 최소 2개가 보여야 한다.
 
 [코칭 원칙]
 1. 각 항목은 why(왜 그 점수인지, 답변의 실제 표현 근거)와 how(만점 받으려면 무엇을 고칠지)를 모두 쓴다.
@@ -160,7 +163,6 @@ function getMeaninglessAnswerReason(answer) {
   if (stripped.length < 2) return "답변이 거의 비어 있습니다.";
 
   const lettersAndNumbers = stripped.replace(/[^\p{L}\p{N}]/gu, "");
-  const koreanChars = stripped.match(/[가-힣]/g) || [];
   const latinChars = stripped.match(/[a-zA-Z]/g) || [];
   const digitChars = stripped.match(/[0-9]/g) || [];
   const punctuationChars = stripped.match(/[^\p{L}\p{N}\s]/gu) || [];
@@ -171,7 +173,7 @@ function getMeaninglessAnswerReason(answer) {
   const hasLatinWord = /[a-zA-Z]{2,}/.test(stripped);
   const hasVowelRichLatin = /[aeiouAEIOU]/.test(stripped);
   const repeatedChar = /(.)\1{4,}/u.test(stripped);
-  const keyboardMash = /^[a-zA-Z.,!?~`'"_\-]{5,}$/.test(stripped) && latinRatio > 0.7 && !hasKoreanWord;
+  const keyboardMash = /^[a-zA-Z.,!?~`'"_-]{5,}$/.test(stripped) && latinRatio > 0.7 && !hasKoreanWord;
   const consonantOnlyKorean = /[ㄱ-ㅎㅏ-ㅣ]{3,}/.test(stripped) && !hasKoreanWord;
 
   if (repeatedChar) return "동일 문자가 반복된 무의미 입력입니다.";
@@ -189,6 +191,20 @@ function getMeaninglessAnswerReason(answer) {
     return "기호가 많고 의미 있는 문장 성분이 부족합니다.";
   }
   return "";
+}
+
+function getHookQualityProblems(answer) {
+  const problems = [];
+  const hasCta = /(예약하세요|신청하세요|구매하세요|문의하세요|클릭하세요|디엠|DM|프로필|링크|지금\s*바로|바로\s*예약|바로\s*신청)/i.test(answer);
+  const ctaCentered = hasCta && answer.length < 80 && !/(왜|이유|모르는|놓치|망설|실수|손해|문제|고민|비밀|진짜|라면|분들|대표님)/.test(answer);
+  const toneOnly = /^(친구한테|친구처럼|나 믿고|솔직히|우리끼리|알려드릴게요|말할게요)/.test(answer)
+    && answer.length < 38
+    && !/(왜|이유|문제|고민|실수|손해|놓치|망설|고객|대표님|분들|라면)/.test(answer);
+  const lacksStopReason = !/(왜|이유|모르는|놓치|망설|실수|손해|문제|고민|비밀|진짜|반전|라면|분들|대표님|POV|가지|초|분|마지막)/.test(answer);
+  if (ctaCentered) problems.push({ cap: 65, reason: "첫 문장이 행동 요청 중심이라 후킹보다 CTA에 가깝습니다." });
+  if (toneOnly) problems.push({ cap: 50, reason: "친근한 말투만 있고 타겟·문제·궁금증이 없어 첫후킹으로 약합니다." });
+  if (lacksStopReason) problems.push({ cap: 70, reason: "첫 1초에 멈출 궁금증, 손실감, 대상 호명 중 최소 2개가 부족합니다." });
+  return problems;
 }
 
 function getCueWords(target, mode) {
@@ -295,6 +311,12 @@ function normalizeGrading(payload, result) {
 
   if (cueMatches === 0) {
     score = applyCap(score, 55, `${target.label || "목표"}의 판별 단서가 답변에 보이지 않습니다.`, notes);
+  }
+
+  if (payload.mode === "hook" || payload.mode === "rewrite") {
+    for (const problem of getHookQualityProblems(answer)) {
+      score = applyCap(score, problem.cap, problem.reason, notes);
+    }
   }
 
   if (payload.mode === "structure") {
