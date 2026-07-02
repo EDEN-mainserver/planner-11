@@ -577,6 +577,7 @@ function audienceLabel(persona) {
   if (!audience) return "고객";
   if (/반려견|강아지|반려동물/.test(audience) && /보호자/.test(audience)) return "반려견 보호자";
   if (/부모님|어르신|요양|치매|거동/.test(audience)) return "부모님 돌봄을 고민하는 자녀";
+  if (/건강한 먹거리|유기농|주부|제철/.test(audience)) return "유기농 먹거리를 찾는 주부";
   const roleMatch = audience.match(/([0-9~대\s]*[가-힣A-Za-z]+(?:대표|사장님|대표님|보호자|학부모|직장인|예비창업자|자영업자|원장님|고객))/);
   if (roleMatch?.[1]) return roleMatch[1].replace(/\s+/g, " ").trim();
   return audience.length > 30 ? `${audience.slice(0, 24).trim()} 고객` : audience;
@@ -586,6 +587,8 @@ function productLabel(persona) {
   const product = String(persona.product || "상품").trim();
   if (/재가\s*요양|인지\s*활동|요양/.test(product)) return "맞춤형 재가 요양 서비스";
   if (/반려견|강아지|루프탑|포토존/.test(product)) return "반려견 루프탑 포토존";
+  if (/유기농|제철|채소|과일|꾸러미/.test(product)) return "유기농 꾸러미";
+  if (/정기\s*배송|구독/.test(product)) return product.replace(/유기농 인증을 받은|제철|채소와 과일|정기 배송 서비스/g, "").trim() || "정기 배송 서비스";
   return product.length > 26 ? product.slice(0, 24).trim() : product;
 }
 
@@ -598,8 +601,25 @@ function painLabel(persona) {
 function ownerLabel(persona) {
   const owner = String(persona.owner || "").trim();
   if (/요양보호사/.test(owner)) return "10년 경력 요양보호사";
+  if (/농부|귀농|농장/.test(owner)) return "친환경 농부";
   if (owner) return owner.length > 22 ? owner.slice(0, 20).trim() : owner;
   return "현장 전문가";
+}
+
+function hookDomain(persona) {
+  const text = `${persona.product || ""} ${persona.audience || ""} ${persona.owner || ""}`;
+  if (/유기농|제철|채소|과일|꾸러미|농부|농장/.test(text)) return "organic";
+  if (/요양|치매|거동|부모님|어르신/.test(text)) return "care";
+  if (/반려견|강아지|반려동물|포토존/.test(text)) return "pet";
+  return "generic";
+}
+
+function customerPainLabel(persona) {
+  const domain = hookDomain(persona);
+  if (domain === "organic") return "유기농이라 믿었는데 신선도가 애매했던 경험";
+  if (domain === "care") return "부모님을 혼자 두기 불안한 상황";
+  if (domain === "pet") return "강아지 사진을 많이 찍어도 건질 사진이 없는 문제";
+  return painLabel(persona);
 }
 
 function subjectForm(value) {
@@ -618,143 +638,210 @@ function objectForm(value) {
   return (code - 0xac00) % 28 === 0 ? `${label}를` : `${label}을`;
 }
 
+function compactHook(text) {
+  return String(text || "")
+    .replace(/나중에 더 불안해집니다/g, "후회합니다")
+    .replace(/고르기 전 이 기준 놓치면/g, "이 기준 없으면")
+    .replace(/상담 직전에 가장 많이 망설이는 진짜 이유/g, "망설이는 진짜 이유")
+    .replace(/알아볼수록 오히려 더 불안해지는 이유/g, "볼수록 더 불안한 이유")
+    .replace(/꼭 확인해야 할 기준이 있습니다/g, "꼭 볼 기준")
+    .replace(/고르기 전 꼭 볼 기준/g, "고르기 전 볼 기준")
+    .replace(/친구한테 말하듯 솔직히 알려드릴게요/g, "솔직히 알려드릴게요")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function domainHookMap({ domain, product, audience, pain, brand, owner, audienceSubject, productObject, painAudience }) {
+  if (domain === "organic") {
+    return {
+      info_gap: "유기농 꾸러미에서 먼저 봐야 할 진짜 기준",
+      self_reference: `${audience}라면 이 기준 하나는 꼭 보세요`,
+      pattern_interrupt: "유기농 인증만 보고 고르면 놓치는 게 있습니다",
+      loss_aversion: "유기농 꾸러미, 이 기준 없으면 후회합니다",
+      visual_salience: "상자 열었을 때 이 상태면 신선도는 이미 늦었습니다",
+      open_loop: `${brand} 꾸러미에서 마지막에 확인할 기준이 있습니다`,
+      processing_fluency: "유기농 꾸러미 고르는 법, 3가지만 보세요",
+      escalating_reward: "첫째는 인증, 둘째는 산지, 마지막이 신선도입니다",
+      tension_curve: "이번 꾸러미, 정말 마트보다 신선할까요?",
+      peak_end: "좋은 꾸러미는 결국 냉장고에서 티가 납니다",
+      narrative_transport: "처음 받은 유기농 꾸러미가 실망스러웠던 적 있나요?",
+      authority: `${owner}가 말하는 유기농 꾸러미 고르는 기준`,
+      vulnerability: "솔직히 유기농이어도 꾸러미 구성은 실패할 수 있습니다",
+      social_proof: `요즘 ${audience}는 유기농 꾸러미를 이렇게 비교합니다`,
+      identification: "POV: 건강하게 먹고 싶은데 뭘 믿어야 할지 모르겠는 날",
+      reciprocity: "유기농 꾸러미 체크리스트, 그냥 공개합니다",
+      consistency: "유기농이라 믿고 샀다가 실망한 적 있죠?",
+      scarcity: "제철 꾸러미는 타이밍 놓치면 맛이 달라집니다",
+      liking: "유기농 꾸러미 고민하는 분들, 솔직히 알려드릴게요",
+      anchoring: "마트 채소와 산지 꾸러미, 비교 기준은 따로 있습니다",
+      friction_removal: "유기농 꾸러미는 이 체크 하나만 먼저 보세요",
+    };
+  }
+  return {
+    info_gap: `${audienceSubject} 망설이는 진짜 이유`,
+    self_reference: `${audience}라면 이 기준 하나는 꼭 확인하세요`,
+    pattern_interrupt: `${productObject} 볼수록 더 불안한 이유`,
+    loss_aversion: `${productObject} 이 기준 없으면 후회합니다`,
+    visual_salience: `첫 상담에서 이 질문이 없으면 ${audience}는 바로 불안해집니다`,
+    open_loop: `${brand} 상담에서 마지막에 꼭 확인할 진짜 기준이 있습니다`,
+    processing_fluency: `${pain} 해결법, 3단계로 보여드립니다`,
+    escalating_reward: `${productObject} 고를 때 첫째는 가격, 둘째는 거리, 마지막이 진짜 기준입니다`,
+    tension_curve: "낯선 사람이 집에 와도 부모님이 편안할까요?",
+    peak_end: `${product} 선택은 마지막 한 질문에서 갈립니다`,
+    narrative_transport: "사실 이 가족도 처음엔 집에 요양보호사가 오는 게 불안했습니다",
+    authority: `${owner}가 말하는 ${product} 고르기 전 볼 기준`,
+    vulnerability: `솔직히 ${product}는 서비스보다 먼저 불안감을 풀어야 합니다`,
+    social_proof: `요즘 ${audience}는 ${productObject} 이렇게 비교합니다`,
+    identification: `POV: ${pain} 때문에 오늘도 휴대폰만 붙잡고 있는 가족`,
+    reciprocity: `${product} 상담 전 질문 리스트, 그냥 공개합니다`,
+    consistency: `${pain} 때문에 고민한 적 있죠?`,
+    scarcity: `이번 달 방문 상담 전에 ${audienceSubject} 꼭 볼 기준`,
+    liking: `${painAudience} 분들, 솔직히 알려드릴게요`,
+    anchoring: "시설 입소 전에 먼저 비교해야 할 선택지가 있습니다",
+    friction_removal: `${productObject} 알아보는 가족이라면 이 체크만 보세요`,
+  };
+}
+
 export function makeHookExample(persona, key) {
   const product = productLabel(persona);
   const audience = audienceLabel(persona);
-  const pain = painLabel(persona);
+  const pain = customerPainLabel(persona);
   const brand = persona.brand || "이 브랜드";
   const owner = ownerLabel(persona);
   const audienceSubject = subjectForm(audience);
   const productObject = objectForm(product);
   const painAudience = pain.replace(/한 상황$/, "한").replace(/없는 문제$/, "없는");
-  const map = {
-    info_gap: `${audienceSubject} 상담 직전에 가장 많이 망설이는 진짜 이유`,
-    self_reference: `${audience}라면 이 기준 하나는 꼭 확인하세요`,
-    pattern_interrupt: `${productObject} 알아볼수록 오히려 더 불안해지는 이유`,
-    loss_aversion: `${productObject} 고르기 전 이 기준 놓치면 나중에 더 불안해집니다`,
-    visual_salience: `첫 상담에서 이 질문이 없으면 ${audience}는 바로 불안해집니다`,
-    open_loop: `${brand} 상담에서 마지막에 꼭 확인해야 할 진짜 기준이 있습니다`,
-    processing_fluency: `${pain} 해결법, 가족이 바로 이해하게 3단계로 보여드립니다`,
-    escalating_reward: `${productObject} 고를 때 첫째는 가격, 둘째는 거리, 마지막이 진짜 기준입니다`,
-    tension_curve: `낯선 사람이 집에 와도 부모님이 편안할까요? 실제 기준으로 확인해보겠습니다`,
-    peak_end: `${product} 선택은 마지막 한 질문에서 갈립니다`,
-    narrative_transport: `사실 이 가족도 처음엔 집에 요양보호사가 오는 게 불안했습니다`,
-    authority: `${owner}가 말하는 ${product} 고르기 전 꼭 볼 기준`,
-    vulnerability: `솔직히 ${product}는 서비스보다 먼저 불안감을 풀어야 합니다`,
-    social_proof: `요즘 ${audience}는 ${productObject} 이렇게 비교합니다`,
-    identification: `POV: ${pain} 때문에 오늘도 휴대폰만 붙잡고 있는 가족`,
-    reciprocity: `${product} 상담 전에 꼭 물어볼 질문 리스트, 그냥 공개합니다`,
-    consistency: `${pain} 때문에 고민한 적 있죠? 그럼 이 한 문장부터 바꿔보세요`,
-    scarcity: `이번 달 방문 상담 전에 ${audienceSubject} 꼭 확인해야 할 기준이 있습니다`,
-    liking: `${painAudience} 분들, 친구한테 말하듯 솔직히 알려드릴게요`,
-    anchoring: `시설 입소 전에 먼저 비교해야 할 선택지가 하나 있습니다`,
-    friction_removal: `${productObject} 알아보는 가족이라면 이 체크 하나만 먼저 보세요`,
-    amp_specificity: `${brand} 전환을 막는 첫 장면 3가지`,
-    amp_secondperson: `${product} 파는 대표님, 이 실수는 오늘부터 멈추세요`,
-    amp_timecompression: `30초 안에 ${brand} 숏폼 첫 문장 각도 정리해드릴게요`,
-  };
-  if (map[key]) return map[key];
+  const map = domainHookMap({ domain: hookDomain(persona), product, audience, pain, brand, owner, audienceSubject, productObject, painAudience });
+  if (map[key]) return compactHook(map[key]);
   const engine = ENGINES.find((item) => item.key === key);
   const template = engine?.formulas?.[0] || `${product}, 이렇게 팔면 고객은 보고도 안 삽니다.`;
-  return fillTemplate(template, persona);
+  return compactHook(fillTemplate(template, persona));
 }
 
 export function makeHookModelAnswers(persona, key) {
   const product = productLabel(persona);
   const audience = audienceLabel(persona);
-  const pain = painLabel(persona);
+  const pain = customerPainLabel(persona);
   const brand = persona.brand || "이 브랜드";
   const owner = ownerLabel(persona);
   const audienceSubject = subjectForm(audience);
   const productObject = objectForm(product);
   const painAudience = pain.replace(/한 상황$/, "한").replace(/없는 문제$/, "없는");
+  const domain = hookDomain(persona);
+  const primary = domainHookMap({ domain, product, audience, pain, brand, owner, audienceSubject, productObject, painAudience });
+  if (domain === "organic") {
+    const organicSecond = {
+      info_gap: "유기농 꾸러미 실패는 인증서보다 여기서 갈립니다",
+      self_reference: "건강한 장보기 고민 중이라면 이 기준부터 보세요",
+      pattern_interrupt: "신선한 꾸러미일수록 예쁜 구성만 보면 안 됩니다",
+      loss_aversion: "유기농 꾸러미, 산지 확인 없으면 후회합니다",
+      visual_salience: "잎 끝이 이렇게 보이면 신선도는 이미 지난 겁니다",
+      open_loop: "좋은 꾸러미를 고르는 마지막 기준은 따로 있습니다",
+      processing_fluency: "유기농 꾸러미 고르는 기준, 인증 산지 수확일입니다",
+      escalating_reward: "인증보다 산지, 산지보다 수확일을 보세요",
+      tension_curve: "이번 주 꾸러미, 냉장고에서 며칠이나 버틸까요?",
+      peak_end: "좋은 꾸러미는 먹는 날보다 남은 날에 티가 납니다",
+      narrative_transport: "첫 유기농 꾸러미가 실망스러웠던 이유가 있습니다",
+      authority: "친환경 농부가 보는 꾸러미 신선도 기준입니다",
+      vulnerability: "솔직히 유기농이어도 오래된 채소는 실망스럽습니다",
+      social_proof: "요즘 주부들은 유기농 꾸러미를 이렇게 고릅니다",
+      identification: "건강하게 먹이고 싶은데 뭘 믿어야 할지 모르겠다면",
+      reciprocity: "유기농 꾸러미 주문 전 체크리스트를 공개합니다",
+      consistency: "유기농이라 믿고 샀다가 실망한 적 있죠?",
+      scarcity: "제철 채소는 같은 유기농이어도 맛있는 때가 짧습니다",
+      liking: "유기농 꾸러미 처음 고르는 분들, 솔직히 말할게요",
+      anchoring: "마트 채소와 산지 꾸러미, 이 기준으로 비교하세요",
+      friction_removal: "유기농 꾸러미는 수확일 하나만 먼저 보세요",
+    };
+    return [primary[key], organicSecond[key] || primary[key]].map(compactHook);
+  }
   const byKey = {
     info_gap: [
-      `${audienceSubject} 상담 직전에 가장 많이 망설이는 진짜 이유`,
+      primary.info_gap,
       `${product} 상담이 끊기는 순간은 가격을 말하기 전부터 시작됩니다`,
     ],
     self_reference: [
-      `${audience}라면 이 기준 하나는 꼭 확인하세요`,
+      primary.self_reference,
       `${pain} 겪는 ${audience}라면 이 영상 먼저 보세요`,
     ],
     pattern_interrupt: [
-      `${productObject} 알아볼수록 오히려 더 불안해지는 이유`,
+      primary.pattern_interrupt,
       `친절한 상담보다 먼저 확인해야 할 건 방문 전 기준입니다`,
     ],
     loss_aversion: [
-      `${productObject} 고르기 전 이 기준 놓치면 나중에 더 불안해집니다`,
+      primary.loss_aversion,
       `${pain}를 방치하면 가족의 일상부터 먼저 무너집니다`,
     ],
     visual_salience: [
-      `첫 상담에서 이 질문이 없으면 ${audience}는 바로 불안해집니다`,
+      primary.visual_salience,
       `${brand}를 보기 전 가족이 먼저 확인해야 할 장면이 있습니다`,
     ],
     open_loop: [
-      `${brand} 상담에서 마지막에 꼭 확인해야 할 진짜 기준이 있습니다`,
+      primary.open_loop,
       `${product} 선택 전에 가족들이 놓치는 기준은 따로 있습니다`,
     ],
     processing_fluency: [
-      `${pain} 해결법, 가족이 바로 이해하게 3단계로 보여드립니다`,
+      primary.processing_fluency,
       `${productObject} 고르기 전 가족이 꼭 봐야 할 기준을 쉽게 정리합니다`,
     ],
     escalating_reward: [
-      `${productObject} 고를 때 첫째는 가격, 둘째는 거리, 마지막이 진짜 기준입니다`,
+      primary.escalating_reward,
       `처음엔 비용을 봅니다. 그런데 마지막 기준 하나가 가족의 선택을 바꿉니다`,
     ],
     tension_curve: [
-      `낯선 사람이 집에 와도 부모님이 편안할까요? 실제 기준으로 확인해보겠습니다`,
+      primary.tension_curve,
       `${product}를 시작하면 가족의 불안이 정말 줄어들까요?`,
     ],
     peak_end: [
-      `${product} 선택은 마지막 한 질문에서 갈립니다`,
+      primary.peak_end,
       `결국 좋은 요양은 시간보다 안심을 남깁니다`,
     ],
     narrative_transport: [
-      `사실 이 가족도 처음엔 집에 요양보호사가 오는 게 불안했습니다`,
+      primary.narrative_transport,
       `${pain} 때문에 지쳐 있던 가족이 처음 확인한 건 방문 기준이었습니다`,
     ],
     authority: [
-      `${owner}가 말하는 ${product} 고르기 전 꼭 볼 기준`,
+      primary.authority,
       `재가 요양 상담 전, 현장 전문가가 가장 먼저 확인하는 질문입니다`,
     ],
     vulnerability: [
-      `솔직히 ${product}는 서비스보다 먼저 불안감을 풀어야 합니다`,
+      primary.vulnerability,
       `좋은 돌봄이어도 가족이 불안하면 시작하기 어렵습니다`,
     ],
     social_proof: [
-      `요즘 ${audience}는 ${productObject} 이렇게 비교합니다`,
+      primary.social_proof,
       `${product}를 고르는 가족들이 후기보다 먼저 보는 기준이 있습니다`,
     ],
     identification: [
-      `POV: ${pain} 때문에 오늘도 휴대폰만 붙잡고 있는 가족`,
+      primary.identification,
       `부모님 걱정은 큰데 어디에 맡겨야 할지 모르겠다면 이 장면입니다`,
     ],
     reciprocity: [
-      `${product} 상담 전에 꼭 물어볼 질문 리스트, 그냥 공개합니다`,
+      primary.reciprocity,
       `${brand} 같은 서비스를 고를 때 가족이 확인할 체크리스트를 드립니다`,
     ],
     consistency: [
-      `${pain} 때문에 고민한 적 있죠? 그럼 이 한 문장부터 바꿔보세요`,
+      primary.consistency,
       `고객이 읽다가 멈춘 적 있죠? 그 지점이 바로 후킹 문제입니다`,
     ],
     scarcity: [
-      `이번 달 방문 상담 전에 ${audienceSubject} 꼭 확인해야 할 기준이 있습니다`,
+      primary.scarcity,
       `${product}는 급해진 뒤 찾으면 선택 기준이 더 흔들립니다`,
     ],
     liking: [
-      `${painAudience} 분들, 친구한테 말하듯 솔직히 알려드릴게요`,
+      primary.liking,
       `우리끼리 얘긴데, ${product}는 설명보다 이 첫 장면이 먼저입니다`,
     ],
     anchoring: [
-      `시설 입소 전에 먼저 비교해야 할 선택지가 하나 있습니다`,
+      primary.anchoring,
       `하루 종일 직접 돌보는 것과 방문 돌봄의 차이를 먼저 보세요`,
     ],
     friction_removal: [
-      `${productObject} 알아보는 가족이라면 이 체크 하나만 먼저 보세요`,
+      primary.friction_removal,
       `상담 전에 이것만 확인하면 우리 부모님에게 맞는지 바로 보입니다`,
     ],
   };
-  return byKey[key] || [makeHookExample(persona, key)];
+  return (byKey[key] || [makeHookExample(persona, key)]).map(compactHook);
 }
 
 export function makeStructureExample(persona, key) {

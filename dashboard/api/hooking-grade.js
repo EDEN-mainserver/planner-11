@@ -54,6 +54,7 @@ ${rubricText ? `\n[이번 문제 전용 루브릭]\n${rubricText}\n` : ""}
 10. mode=hook에서 "예약하세요/신청하세요/구매하세요/문의하세요"처럼 행동 요청이 중심이면 첫후킹이 아니라 CTA다. CTA 중심 답변은 최대 65점이다.
 11. mode=hook에서 "친구처럼 알려줄게요", "솔직히 말할게요"처럼 말투만 있고 타겟·문제·궁금증이 없으면 엔진 단서가 있어도 최대 50점이다.
 12. 좋은 첫후킹은 CTA가 아니라 스크롤을 멈추는 문장이어야 한다. 대상, 문제, 궁금증/손실감, 다음 장면 기대 중 최소 2개가 보여야 한다.
+13. 첫후킹은 되도록 20~35자 안에서 읽혀야 한다. 45자를 넘으면 빠른 뇌가 즉시 처리하기 어렵기 때문에 최대 70점, 60자를 넘으면 최대 55점이다.
 
 [코칭 원칙]
 1. 각 항목은 why(왜 그 점수인지, 답변의 실제 표현 근거)와 how(만점 받으려면 무엇을 고칠지)를 모두 쓴다.
@@ -201,6 +202,8 @@ function getHookQualityProblems(answer) {
     && answer.length < 38
     && !/(왜|이유|문제|고민|실수|손해|놓치|망설|고객|대표님|분들|라면)/.test(answer);
   const lacksStopReason = !/(왜|이유|모르는|놓치|망설|실수|손해|문제|고민|비밀|진짜|반전|라면|분들|대표님|POV|가지|초|분|마지막)/.test(answer);
+  if (answer.length > 60) problems.push({ cap: 55, reason: "첫후킹이 60자를 넘어 빠른 뇌가 즉시 처리하기 어렵습니다." });
+  else if (answer.length > 44) problems.push({ cap: 70, reason: "첫후킹이 길어 첫 1초 멈춤 문장으로는 무겁습니다." });
   if (ctaCentered) problems.push({ cap: 65, reason: "첫 문장이 행동 요청 중심이라 후킹보다 CTA에 가깝습니다." });
   if (toneOnly) problems.push({ cap: 50, reason: "친근한 말투만 있고 타겟·문제·궁금증이 없어 첫후킹으로 약합니다." });
   if (lacksStopReason) problems.push({ cap: 70, reason: "첫 1초에 멈출 궁금증, 손실감, 대상 호명 중 최소 2개가 부족합니다." });

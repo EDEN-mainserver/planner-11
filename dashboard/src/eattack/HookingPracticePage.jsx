@@ -87,6 +87,9 @@ async function requestGeneratedPersona() {
 function assessFirstHookQuality(text) {
   const hook = String(text || "").trim();
   const problems = [];
+  if (hook.length > 44) {
+    problems.push("첫후킹이 길어 빠른 뇌가 아니라 느린 뇌로 읽어야 합니다.");
+  }
   if (/(예약하세요|신청하세요|구매하세요|문의하세요|클릭하세요|바로\s*예약|바로\s*신청|지금\s*바로)/i.test(hook)) {
     problems.push("첫 문장부터 행동을 요구해 후킹보다 CTA에 가깝습니다.");
   }
