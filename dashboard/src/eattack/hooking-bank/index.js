@@ -575,6 +575,7 @@ export function fillTemplate(template, persona) {
 function audienceLabel(persona) {
   const audience = String(persona.audience || "").trim();
   if (!audience) return "고객";
+  if (/이유식|아이|아기|육아|엄마/.test(audience)) return "초보 엄마";
   if (/반려견|강아지|반려동물/.test(audience) && /보호자/.test(audience)) return "반려견 보호자";
   if (/부모님|어르신|요양|치매|거동/.test(audience)) return "부모님 돌봄을 고민하는 자녀";
   if (/건강한 먹거리|유기농|주부|제철/.test(audience)) return "유기농 먹거리를 찾는 주부";
@@ -585,6 +586,7 @@ function audienceLabel(persona) {
 
 function productLabel(persona) {
   const product = String(persona.product || "상품").trim();
+  if (/이유식/.test(product)) return "맞춤 이유식";
   if (/재가\s*요양|인지\s*활동|요양/.test(product)) return "맞춤형 재가 요양 서비스";
   if (/반려견|강아지|루프탑|포토존/.test(product)) return "반려견 루프탑 포토존";
   if (/유기농|제철|채소|과일|꾸러미/.test(product)) return "유기농 꾸러미";
@@ -600,6 +602,7 @@ function painLabel(persona) {
 
 function ownerLabel(persona) {
   const owner = String(persona.owner || "").trim();
+  if (/이유식|육아/.test(owner)) return "이유식 연구원";
   if (/요양보호사/.test(owner)) return "10년 경력 요양보호사";
   if (/농부|귀농|농장/.test(owner)) return "친환경 농부";
   if (owner) return owner.length > 22 ? owner.slice(0, 20).trim() : owner;
@@ -608,6 +611,7 @@ function ownerLabel(persona) {
 
 function hookDomain(persona) {
   const text = `${persona.product || ""} ${persona.audience || ""} ${persona.owner || ""}`;
+  if (/이유식|아기|아이|육아|엄마/.test(text)) return "babyfood";
   if (/유기농|제철|채소|과일|꾸러미|농부|농장/.test(text)) return "organic";
   if (/요양|치매|거동|부모님|어르신/.test(text)) return "care";
   if (/반려견|강아지|반려동물|포토존/.test(text)) return "pet";
@@ -616,6 +620,7 @@ function hookDomain(persona) {
 
 function customerPainLabel(persona) {
   const domain = hookDomain(persona);
+  if (domain === "babyfood") return "이유식 재료와 영양이 늘 불안한 마음";
   if (domain === "organic") return "유기농이라 믿었는데 신선도가 애매했던 경험";
   if (domain === "care") return "부모님을 혼자 두기 불안한 상황";
   if (domain === "pet") return "강아지 사진을 많이 찍어도 건질 사진이 없는 문제";
@@ -652,6 +657,31 @@ function compactHook(text) {
 }
 
 function domainHookMap({ domain, product, audience, pain, brand, owner, audienceSubject, productObject, painAudience }) {
+  if (domain === "babyfood") {
+    return {
+      info_gap: "이유식 고를 때 엄마들이 가장 많이 놓치는 기준",
+      self_reference: `${audience}라면 이 기준 하나는 꼭 보세요`,
+      pattern_interrupt: "직접 만든 이유식이 항상 더 안전한 건 아닙니다",
+      loss_aversion: "이유식, 월령 기준 놓치면 아이가 먼저 힘듭니다",
+      visual_salience: "성분표에 이 단어가 없으면 다시 보세요",
+      open_loop: `${brand} 이유식에서 마지막에 확인할 기준이 있습니다`,
+      processing_fluency: "이유식 고르는 법, 월령 원재료 알레르기",
+      escalating_reward: "첫째는 월령, 둘째는 원재료, 마지막은 알레르기입니다",
+      tension_curve: "배송 이유식, 정말 직접 만든 것만큼 괜찮을까요?",
+      peak_end: "좋은 이유식은 먹는 순간보다 다음 변에서 티가 납니다",
+      narrative_transport: "첫 이유식 시작할 때 제일 불안했던 게 뭔가요?",
+      authority: `${owner}이 말하는 이유식 고르기 전 기준`,
+      vulnerability: "솔직히 유기농 이유식도 월령이 안 맞으면 불안합니다",
+      social_proof: `요즘 ${audience}는 이유식을 이렇게 비교합니다`,
+      identification: "POV: 오늘도 이유식 레시피만 보다가 지친 엄마",
+      reciprocity: "이유식 주문 전 체크리스트, 그냥 공개합니다",
+      consistency: "이유식 성분표 보고도 불안했던 적 있죠?",
+      scarcity: "월령별 이유식은 타이밍 놓치면 더 어려워집니다",
+      liking: "이유식 고민하는 엄마들, 솔직히 알려드릴게요",
+      anchoring: "직접 만든 이유식과 배송 이유식, 기준은 따로 있습니다",
+      friction_removal: "이유식은 월령 하나만 먼저 확인하세요",
+    };
+  }
   if (domain === "organic") {
     return {
       info_gap: "유기농 꾸러미에서 먼저 봐야 할 진짜 기준",
@@ -729,6 +759,32 @@ export function makeHookModelAnswers(persona, key) {
   const painAudience = pain.replace(/한 상황$/, "한").replace(/없는 문제$/, "없는");
   const domain = hookDomain(persona);
   const primary = domainHookMap({ domain, product, audience, pain, brand, owner, audienceSubject, productObject, painAudience });
+  if (domain === "babyfood") {
+    const babyfoodSecond = {
+      info_gap: "이유식 실패는 레시피보다 월령에서 갈립니다",
+      self_reference: "첫 이유식 시작한 엄마라면 이 기준부터 보세요",
+      pattern_interrupt: "유기농 이유식도 월령이 안 맞으면 의미 없습니다",
+      loss_aversion: "이유식, 알레르기 체크 없으면 후회합니다",
+      visual_salience: "성분표 첫 줄에 이게 없으면 다시 보세요",
+      open_loop: "좋은 이유식의 마지막 기준은 따로 있습니다",
+      processing_fluency: "이유식은 월령 원재료 알레르기만 먼저 보세요",
+      escalating_reward: "월령보다 중요한 건 마지막 알레르기 체크입니다",
+      tension_curve: "우리 아이, 배송 이유식도 잘 먹을까요?",
+      peak_end: "좋은 이유식은 완밥보다 속 편함에서 티가 납니다",
+      narrative_transport: "첫 이유식 날, 엄마들이 제일 많이 하는 실수",
+      authority: "이유식 연구원이 보는 월령별 선택 기준입니다",
+      vulnerability: "솔직히 비싼 이유식도 월령이 안 맞으면 아깝습니다",
+      social_proof: "요즘 엄마들은 이유식을 이렇게 비교합니다",
+      identification: "POV: 이유식 레시피 저장만 30개인 엄마",
+      reciprocity: "이유식 주문 전 월령 체크리스트를 공개합니다",
+      consistency: "이유식 시작하고 변 상태부터 보게 됐죠?",
+      scarcity: "월령 타이밍 놓치면 이유식 단계가 더 꼬입니다",
+      liking: "초보 엄마들, 이유식 기준만 쉽게 말해볼게요",
+      anchoring: "직접 만드는 시간과 배송 이유식 기준을 비교해보세요",
+      friction_removal: "이유식은 성분표 첫 줄만 먼저 보세요",
+    };
+    return [primary[key], babyfoodSecond[key] || primary[key]].map(compactHook);
+  }
   if (domain === "organic") {
     const organicSecond = {
       info_gap: "유기농 꾸러미 실패는 인증서보다 여기서 갈립니다",
