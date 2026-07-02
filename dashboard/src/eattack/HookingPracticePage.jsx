@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  EXAM_QUESTION_COUNT as BANK_EXAM_QUESTION_COUNT,
+  buildQuestion as buildBankQuestion,
+} from "./hooking-bank";
 
 const USED_PERSONAS_KEY = "hooking-practice-used-personas-v1";
 const EXAM_HISTORY_KEY = "hooking-exam-history-v1";
-const EXAM_QUESTION_COUNT = 10;
+const EXAM_QUESTION_COUNT = BANK_EXAM_QUESTION_COUNT;
 const EMPTY_PERSONA = {
   brand: "생성 중",
   owner: "AI가 새로운 광고주를 만드는 중입니다",
@@ -246,8 +250,8 @@ function gradeChoice(question, answer) {
   const correct = answer === question.answer;
   const picked = question.options.find((item) => item.key === answer);
   const target = question.target;
-  const pickedTell = picked?.tell || picked?.hint || "";
-  const targetTell = target?.tell || target?.hint || "";
+  const pickedTell = picked?.tell || picked?.hint || picked?.goal || picked?.awareness || "";
+  const targetTell = target?.tell || target?.hint || target?.goal || target?.awareness || "";
   return {
     score: correct ? 100 : 0,
     verdict: correct ? "통과" : "재작성",
@@ -256,16 +260,23 @@ function gradeChoice(question, answer) {
       : `정답은 ${target.label}입니다. ${picked?.label || "선택지"}와 판별 단서가 다릅니다.`,
     checks: [
       { ok: correct, label: correct ? "정답입니다" : `정답: ${target.label}` },
-      { ok: true, label: `정답 이유: ${target.definition || target.full}` },
+      { ok: true, label: `정답 이유: ${target.definition || target.full || target.goal || target.hint}` },
       { ok: true, label: `판별 단서: ${targetTell}` },
       ...(correct ? [] : [{ ok: false, label: `${picked?.label || "선택"}의 단서: ${pickedTell}` }]),
     ],
-    model_answers: target.examples || [],
+    model_answers: target.examples || target.formulas || [target.template, target.full].filter(Boolean),
   };
 }
 
 async function gradeSubjective(question, answer, persona) {
-  const mode = question.kind === "writeHook" ? "hook" : "structure";
+  const modeMap = {
+    writeHook: "hook",
+    formulaFill: "hook",
+    rewriteHook: "rewrite",
+    writeStructure: "structure",
+    writeAdPlan: "ad",
+  };
+  const mode = modeMap[question.kind] || "hook";
   const resp = await fetch("/api/hooking-grade", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -273,6 +284,8 @@ async function gradeSubjective(question, answer, persona) {
       mode,
       persona,
       target: question.target,
+      questionType: question.questionType,
+      rubric: question.rubric,
       answer,
     }),
   });
@@ -301,6 +314,9 @@ function makeExamRecord({ studentName, persona, history }) {
     },
     questions: history.map((item, index) => ({
       index: index + 1,
+      questionType: item.questionType,
+      targetKey: item.targetKey,
+      targetGroup: item.targetGroup,
       title: item.title,
       prompt: item.prompt,
       guide: item.guide,
@@ -311,6 +327,8 @@ function makeExamRecord({ studentName, persona, history }) {
       rawScore: item.rawScore,
       max: item.max,
       summary: item.summary,
+      weaknesses: item.weaknesses,
+      strengths: item.strengths,
       coaching: item.coaching,
       checks: item.checks,
       rewrite: item.rewrite,
@@ -335,8 +353,8 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
   const [examFinished, setExamFinished] = useState(false);
   const [examHistory, setExamHistory] = useState(() => loadExamHistory());
   const [expandedResultIndex, setExpandedResultIndex] = useState(null);
-  const question = useMemo(() => buildQuestion(persona, questionIndex), [persona, questionIndex]);
-  const isChoice = question.kind === "chooseStructure" || question.kind === "chooseHook";
+  const question = useMemo(() => buildBankQuestion(persona, questionIndex, examMode), [persona, questionIndex, examMode]);
+  const isChoice = ["chooseStructure", "chooseHook", "diagnoseHook", "chooseFunnelStage", "chooseAdStructure"].includes(question.kind);
   const total = history.reduce((sum, item) => sum + item.score, 0);
   const maxTotal = examMode ? EXAM_QUESTION_COUNT * 10 : history.reduce((sum, item) => sum + item.max, 0);
   const percent = maxTotal ? Math.round((total / maxTotal) * 100) : 0;
@@ -345,6 +363,26 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
   const pageDesc = examMode
     ? "응시자 이름을 남기고 10문제 실전 시험을 100점 만점으로 채점합니다"
     : "가상 광고주 페르소나를 보고 숏폼 후킹과 구조를 훈련합니다";
+  const weakReport = useMemo(() => {
+    const lowItems = history.filter((item) => (item.rawScore ?? item.score) < 70);
+    const byType = {};
+    const byTarget = {};
+    const reasons = {};
+    lowItems.forEach((item) => {
+      if (item.questionType) byType[item.questionType] = (byType[item.questionType] || 0) + 1;
+      if (item.targetLabel) byTarget[item.targetLabel] = (byTarget[item.targetLabel] || 0) + 1;
+      (item.weaknesses || []).slice(0, 3).forEach((weakness) => {
+        reasons[weakness] = (reasons[weakness] || 0) + 1;
+      });
+    });
+    const top = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    return {
+      count: lowItems.length,
+      types: top(byType),
+      targets: top(byTarget),
+      reasons: top(reasons),
+    };
+  }, [history]);
 
   const resetPersona = async () => {
     setLoadingPersona(true);
@@ -405,6 +443,9 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
         ...graded,
         score: examScore,
         rawScore,
+        questionType: question.questionType,
+        targetKey: question.target?.key,
+        targetGroup: question.target?.group || question.target?.category || question.target?.awareness,
         title: question.title,
         prompt: question.prompt,
         guide: question.guide,
@@ -413,6 +454,8 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
           ? `${pickedOption?.label || value}${pickedOption?.full || pickedOption?.hint ? ` - ${pickedOption.full || pickedOption.hint}` : ""}`
           : value,
         targetLabel: question.target?.label,
+        weaknesses: graded.weaknesses,
+        strengths: graded.strengths,
         max: examMode ? 10 : question.max,
       };
       setResult(next);
@@ -475,8 +518,8 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-500">Shortform Exam</p>
             <h2 className="mt-2 text-3xl font-black tracking-tight text-gray-950">실전 응시 시작</h2>
             <p className="mt-3 text-sm leading-7 text-gray-600">
-              하나의 가상 광고주 페르소나를 기준으로 후킹 작성, 구조 작성, 후킹 유형 판별, 구조 판별 문제가 섞여 출제됩니다.
-              주관식은 AI가 채점하고, 객관식은 정답 여부를 즉시 판별합니다.
+              하나의 가상 광고주 페르소나를 기준으로 엔진 판별, 구조 판별, 공식 빈칸, 후킹 작성, 약한 후킹 고치기,
+              퍼널 단계, 광고 구조, 실전 광고 대본 문제가 섞여 출제됩니다.
             </p>
             <div className="mt-6">
               <label className="mb-2 block text-sm font-black text-gray-900">응시자 이름</label>
@@ -546,6 +589,13 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
             <h2 className="mt-3 text-6xl font-black tracking-tight text-gray-950">{total}<span className="text-2xl text-gray-400"> / 100</span></h2>
             <p className="mt-3 text-sm font-bold text-gray-500">10문제 실전 테스트가 히스토리에 저장되었습니다.</p>
           </section>
+          {weakReport.count > 0 && (
+            <section className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <WeakReportCard title="약한 문제 유형" items={weakReport.types} empty="유형별 약점 없음" />
+              <WeakReportCard title="약한 엔진/구조" items={weakReport.targets} empty="타겟별 약점 없음" />
+              <WeakReportCard title="반복 감점 이유" items={weakReport.reasons} empty="반복 감점 없음" />
+            </section>
+          )}
           <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h3 className="mb-3 text-sm font-black text-gray-900">문항별 점수</h3>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -752,7 +802,7 @@ export default function HookingPracticePage({ onBack, examMode = false }) {
                     } ${result ? "cursor-default" : ""}`}
                   >
                     <p className="font-black text-gray-950">{option.label}</p>
-                    <p className="mt-1 text-xs leading-5 text-gray-500">{option.full || option.hint}</p>
+                    <p className="mt-1 text-xs leading-5 text-gray-500">{option.full || option.hint || option.goal || option.awareness}</p>
                   </button>
                 ))}
               </div>
@@ -879,6 +929,26 @@ function ResultDetailBlock({ label, value, tone = "default" }) {
     <div className={`rounded-xl border border-white p-3 ${toneClass}`}>
       <p className={`mb-1 text-[11px] font-black ${tone === "answer" ? "text-gray-300" : "text-gray-500"}`}>{label}</p>
       <p className="whitespace-pre-wrap text-xs leading-5">{value}</p>
+    </div>
+  );
+}
+
+function WeakReportCard({ title, items, empty }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <p className="mb-3 text-sm font-black text-gray-900">{title}</p>
+      {items.length === 0 ? (
+        <p className="text-xs text-gray-400">{empty}</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map(([label, count]) => (
+            <div key={label} className="flex items-start justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2">
+              <p className="text-xs font-bold leading-5 text-gray-700">{label}</p>
+              <span className="rounded-full bg-gray-950 px-2 py-0.5 text-[11px] font-black text-white">{count}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

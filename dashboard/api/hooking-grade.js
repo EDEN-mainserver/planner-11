@@ -27,13 +27,19 @@ function extractJson(text) {
 async function gradeWithGemini(payload) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.");
+  const rubricText = Array.isArray(payload.rubric)
+    ? payload.rubric.map((item) => `- ${item.label}: ${item.max}`).join("\n")
+    : "";
 
   const system = `너는 숏폼 후킹·구조 채점 코치다. 너의 역할은 "격려"가 아니라 정확한 실력 진단이다. 채점만 하지 말고, 사용자가 다음에 더 잘 쓰도록 가르쳐라.
 
 [채점 기준]
 - 후킹: 엔진 일치 40 / 페르소나 적합 30 / 완성도 20 / 규칙 준수 10
 - 구조: 구조 일치 40 / 페르소나 적합 30 / 흐름 20 / 규칙 준수 10
+- 약한 후킹 고치기: 기존 약점 해결 / 지정 엔진 강화 / 타겟·페인 구체화 / 멈춤력 상승 / 신뢰 유지
+- 퍼포먼스 광고: 고객 인식 단계 / 광고 구조 적합성 / 문제·욕구·신뢰 바통 / CTA와 마찰 제거 / 메시지 매칭
 - 판정: 80+ 통과, 60~79 보완, 60미만 재작성.
+${rubricText ? `\n[이번 문제 전용 루브릭]\n${rubricText}\n` : ""}
 
 [엄격 채점 규칙]
 1. 답변이 짧고 범용적이면 절대 60점 이상 주지 않는다. 예: "아직도 일반 케이크 먹나요?"처럼 어떤 문제에도 붙일 수 있는 문장은 페르소나·구조·엔진 증거가 없으면 낮게 채점한다.
@@ -43,6 +49,8 @@ async function gradeWithGemini(payload) {
 5. 페르소나의 상품, 타겟, 문제, 욕구 중 하나도 반영하지 않으면 최대 50점이다.
 6. 정답 목표와 다른 심리 엔진/구조로 보이면 문장이 좋아도 엔진/구조 일치 점수는 15/40 이하로 제한한다.
 7. "그럴듯함"이 아니라 payload.target에 얼마나 정확히 맞았는지를 우선한다.
+8. mode=rewrite는 원문 약점을 실제로 고쳤는지 본다. 표현만 바꾸고 지정 엔진이 강화되지 않으면 최대 55점이다.
+9. mode=ad는 광고 구조의 각 단계가 보이지 않으면 최대 55점, CTA와 메시지 매칭이 없으면 최대 70점이다.
 
 [코칭 원칙]
 1. 각 항목은 why(왜 그 점수인지, 답변의 실제 표현 근거)와 how(만점 받으려면 무엇을 고칠지)를 모두 쓴다.
@@ -98,6 +106,8 @@ async function gradeWithGemini(payload) {
                   required: ["before", "after", "changed"],
                 },
                 model_answers: { type: "array", items: { type: "string" } },
+                weaknesses: { type: "array", items: { type: "string" } },
+                strengths: { type: "array", items: { type: "string" } },
               },
               required: ["score", "subscores", "verdict", "summary", "coaching", "rewrite", "model_answers"],
             },
@@ -186,7 +196,12 @@ function getCueWords(target, mode) {
     target?.label,
     target?.tell,
     target?.hint,
+    target?.full,
+    target?.template,
+    target?.awareness,
+    target?.goal,
     ...(target?.examples || []),
+    ...(target?.formulas || []),
   ];
   const byKey = {
     info_gap: ["모르는", "비밀", "공개", "이유", "진짜", "왜"],
@@ -227,6 +242,12 @@ function getCueWords(target, mode) {
     reveal: ["비밀", "폭로", "공개", "모르는", "진짜"],
     qna: ["Q", "A", "질문", "답", "?"],
     day_routine: ["하루", "아침", "점심", "저녁", "루틴"],
+    pas: ["문제", "방치", "증폭", "해결", "고민"],
+    bab: ["이전", "이후", "다리", "변화", "방법"],
+    pastor: ["문제", "증폭", "스토리", "변화", "제안", "응답"],
+    fab: ["기능", "장점", "이익", "혜택", "그래서"],
+    four_p: ["상상", "약속", "증거", "행동", "푸시"],
+    three_why: ["왜", "당신", "지금", "이것", "상품"],
   };
   return splitKeywords(...base, ...(byKey[target?.key] || []), mode);
 }
@@ -284,6 +305,21 @@ function normalizeGrading(payload, result) {
     }
   }
 
+  if (payload.mode === "rewrite" && cueMatches === 0) {
+    score = applyCap(score, 55, "약한 후킹을 고쳤지만 지정된 엔진의 판별 단서가 강화되지 않았습니다.", notes);
+  }
+
+  if (payload.mode === "ad") {
+    if (answer.length < 90 || sentenceLikeParts < 3) {
+      score = applyCap(score, 45, "광고 구조 문제인데 20~30초 대본으로 볼 단계 전개가 부족합니다.", notes);
+    } else if (cueMatches === 0) {
+      score = applyCap(score, 55, `${target.label || "광고 구조"}의 핵심 단계 단서가 보이지 않습니다.`, notes);
+    }
+    if (!/(링크|댓글|저장|신청|예약|프로필|문의|클릭|DM|디엠)/i.test(answer)) {
+      score = applyCap(score, 70, "광고 대본에 명확하고 쉬운 CTA가 없습니다.", notes);
+    }
+  }
+
   const roundedScore = Math.round(score);
   const verdict = roundedScore >= 80 ? "통과" : roundedScore >= 60 ? "보완" : "재작성";
   const penaltySummary = notes.length ? ` 엄격 기준 감점: ${notes.join(" ")}` : "";
@@ -306,6 +342,8 @@ function normalizeGrading(payload, result) {
     verdict,
     summary: `${result.summary || ""}${penaltySummary}`.trim(),
     coaching,
+    weaknesses: Array.isArray(result.weaknesses) ? result.weaknesses : notes,
+    strengths: Array.isArray(result.strengths) ? result.strengths : [],
   };
 }
 
@@ -315,11 +353,11 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    const { persona, target, answer, mode } = req.body || {};
+    const { persona, target, answer, mode, questionType, rubric } = req.body || {};
     if (!persona || !target || !answer || !mode) {
       return res.status(400).json({ error: "persona, target, answer, mode가 필요합니다." });
     }
-    const result = await gradeWithGemini({ persona, target, answer, mode });
+    const result = await gradeWithGemini({ persona, target, answer, mode, questionType, rubric });
     return res.status(200).json({ result });
   } catch (e) {
     return res.status(500).json({ error: e.message });
